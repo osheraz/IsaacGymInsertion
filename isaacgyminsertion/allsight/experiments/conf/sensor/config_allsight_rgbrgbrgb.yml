@@ -1,0 +1,83 @@
+# Copyright (c) Facebook, Inc. and its affiliates.
+
+# This source code is licensed under the MIT license found in the
+# LICENSE file in the root directory of this source tree.
+
+sensor:
+  # By default:
+  # - Sensor (camera) is placed towards x-axis
+  # - Sensor origin is the same as .stl/.obj origin
+  
+  camera:
+    - cam0:
+      position: [0.0113, 0.0, 0.0] # Camera position
+      orientation: [90, 0 , -90] # Euler angles, "xyz", in degrees; e.g. [0, 0, 0]: towards negative z-axis; [90, 0, -90]: towards x-axis
+      yfov: 110.0  #140.8 # Vertical field of view in degrees
+      znear: 0.001  # Distance to the near clipping plane, in meters
+      #lightIDList: [0, 1, 2, 3 ,4 ,5, 6, 7, 8] # Select light ID list for rendering (OpenGL has max limit of 8 lights)
+      lightIDList: [0,1,2]
+  gel:
+    origin: [0.0, 0, 0] # Center coordinate of the gel, in meters
+    width: 0.019 # Width of the gel, y-axis, in meters
+    height: 0.05 # Height of the gel, z-axis, in meters
+    curvature: True  # Model the gel as curve? True/False
+    curvatureMax: 0.05  # Deformation of the gel due to convexity
+    R: 0.5 # Radius of curved gel
+    countW: 100 # Number of samples for horizontal direction; higher the finer details
+    mesh: "../assets/meshes/allsight_fine01.STL" # when there is mesh, every other param is ignored
+
+  lights:
+    # Light position & properties.
+    origin: [0.01, 0, 0] # center of the light plane, in meters
+    spot: True # pyrender.SpotLight if True else pyrender.PointLight
+    spot_angles: # spotlight cone inner and outer angles coefficients. result angle will be - (inner/outer)*np.pi [rad] | inner <= outer
+      inner: 0.3
+      outer: 0.4
+
+    shadow: False # enable shadow if True; (based on testing, it requires SpotLight for rendering shadows)
+    # Light position can be expressed in:
+    # - polar coordinates: r and theta. (in y-z plane), and x coordinate of the plane
+    # - cartesian coordinates: xyz
+    # Only one of the xyz or rtheta is required.
+    polar: True # True: apply polar coordinates; False: apply cartesian coordinates;
+    xyz: # cartesian coordinates
+      coords: [[0, 0.01732, 0.01], [0, -0.01732, 0.01], [0, 0.05, 0.01]] # << wrong cartrsian coordinates
+    xrtheta: # polar coordinates in y-z plane
+      xs: [0.0, 0.0, 0.0] # x coordinate of the y-z plane
+      rs: [0.0, 0.0, 0.0] # r in polar coordinates
+      thetas: [20,140,260] #, -60, -100, -140] # theta in polar coordinates, in degrees
+
+    colors: [[1, 1, 1], [1, 1, 1],[1, 1, 1 ]] # R G B color
+    intensities: [0.03,0.03,0.03]
+
+  noise:
+    color:
+      mean: 0
+      std: 3
+
+  force:
+    enable: True # flag for enable force feedback. When enabled, the larger normal force is, the closer object is adjusted to the sensor.  ---TODO---
+    range_force: [0, 1] # dynamic range of forces used to simulate the elastomer deformation
+    max_deformation: 0.008 # max pose depth adjustment, in meters
+
+  bg_calibration:
+    enable: True
+    scale_factor: 1.0  # how much the simulated difference (between _bg_sim and bg_real) will affect the final bg image
+    blur:               # gaussian blur of simulated diff | include ksize and sigma values
+      k_size: 5
+      sigma: 1.1
+    clip: [40,255]       # clipping the combination of the simulated difference image with real background image
+
+  blur_contact:
+    enable: False
+    mask_img:
+      k_size: 25
+      sigma: 10
+    inv_mask_img:
+      k_size: 55
+      sigma: 10
+    add_weighted:
+      w_real: 1
+      w_sim: 0.5
+      bias: 0
+

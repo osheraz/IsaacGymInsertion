@@ -1,0 +1,149 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://ros.org/wiki/xacro">
+
+    <xacro:macro name="load_gazebo_gripper_transmissions" params="prefix">
+        
+        <!--transmission name="${prefix}right_finger_bottom_trans">
+            <type>transmission_interface/SimpleTransmission</type>
+            <joint name="${prefix}right_finger_bottom_joint">
+                <hardwareInterface>hardware_interface/PositionJointInterface</hardwareInterface>
+            </joint>
+            <actuator name="${prefix}right_finger_bottom_motor">
+                <mechanicalReduction>1</mechanicalReduction>
+                <hardwareInterface>hardware_interface/PositionJointInterface</hardwareInterface>
+            </actuator>
+        </transmission-->
+
+
+
+  <transmission name="${prefix}finger1_1_trans" type="SimpleTransmission">
+      <type>transmission_interface/SimpleTransmission</type>
+      <actuator name="${prefix}finger11_motor">
+          <mechanicalReduction>1</mechanicalReduction>
+      </actuator>
+      <joint name="${prefix}base_to_finger_1_1">
+          <hardwareInterface>hardware_interface/PositionJointInterface</hardwareInterface>
+      </joint>
+  </transmission>
+
+  <transmission name="${prefix}finger1_2_trans" type="SimpleTransmission">
+      <type>transmission_interface/SimpleTransmission</type>
+      <actuator name="${prefix}finger12_motor">
+          <mechanicalReduction>1</mechanicalReduction>
+      </actuator>
+      <joint name="${prefix}finger_1_1_to_finger_1_2">
+          <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+      </joint>
+  </transmission>
+
+  <transmission name="${prefix}finger1_3_trans" type="SimpleTransmission">
+      <type>transmission_interface/SimpleTransmission</type>
+      <actuator name="${prefix}finger13_motor">
+          <mechanicalReduction>1</mechanicalReduction>
+      </actuator>
+      <joint name="${prefix}finger_1_2_to_finger_1_3">
+          <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+      </joint>
+  </transmission>
+
+  <transmission name="${prefix}finger2_1_trans" type="SimpleTransmission">
+      <type>transmission_interface/SimpleTransmission</type>
+      <actuator name="${prefix}finger21_motor">
+          <mechanicalReduction>1</mechanicalReduction>
+      </actuator>
+      <joint name="${prefix}base_to_finger_2_1">
+          <hardwareInterface>hardware_interface/PositionJointInterface</hardwareInterface>
+      </joint>
+  </transmission>
+
+  <transmission name="${prefix}finger2_2_trans" type="SimpleTransmission">
+      <type>transmission_interface/SimpleTransmission</type>
+      <actuator name="${prefix}finger22_motor">
+          <mechanicalReduction>1</mechanicalReduction>
+      </actuator>
+      <joint name="${prefix}finger_2_1_to_finger_2_2">
+          <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+      </joint>
+  </transmission>
+
+  <transmission name="${prefix}finger2_3_trans" type="SimpleTransmission">
+      <type>transmission_interface/SimpleTransmission</type>
+      <actuator name="${prefix}finger23_motor">
+          <mechanicalReduction>1</mechanicalReduction>
+      </actuator>
+      <joint name="${prefix}finger_2_2_to_finger_2_3">
+          <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+      </joint>
+  </transmission>
+
+  <transmission name="${prefix}finger2_3_trans" type="SimpleTransmission">
+      <type>transmission_interface/SimpleTransmission</type>
+      <actuator name="${prefix}finger32_motor">
+          <mechanicalReduction>1</mechanicalReduction>
+      </actuator>
+      <joint name="${prefix}base_to_finger_3_2">
+          <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+      </joint>
+  </transmission>
+
+  <transmission name="${prefix}finger3_3_trans" type="SimpleTransmission">
+      <type>transmission_interface/SimpleTransmission</type>
+      <actuator name="${prefix}finger33_motor">
+          <mechanicalReduction>1</mechanicalReduction>
+      </actuator>
+      <joint name="${prefix}finger_3_2_to_finger_3_3">
+          <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+      </joint>
+  </transmission>
+
+
+        <gazebo>
+                  <!--plugin name="gazebo_ros_control" filename="libgazebo_ros_control.so">
+          <robotNamespace>/${prefix}yale_openhand_O</robotNamespace>
+               </plugin-->
+            <!--plugin filename="libroboticsgroup_gazebo_mimic_joint_plugin.so" name="mimic_gen3_lite_2f_1">
+                <joint>${prefix}right_finger_bottom_joint</joint>
+                <mimicJoint>${prefix}right_finger_tip_joint</mimicJoint>
+                <multiplier>-0.676</multiplier>
+                <offset>0.149</offset>
+                <maxEffort>5.0</maxEffort>
+                <hasPID></hasPID>
+            </plugin-->
+            <!--plugin filename="libroboticsgroup_gazebo_mimic_joint_plugin.so" name="mimic_gen3_lite_2f_2">
+                <joint>${prefix}right_finger_bottom_joint</joint>
+                <mimicJoint>${prefix}left_finger_bottom_joint</mimicJoint>
+                <multiplier>-1.0</multiplier>
+                <offset>0.0</offset>
+                <maxEffort>5.0</maxEffort>
+                <hasPID></hasPID-->
+            <!--/plugin>
+            <plugin filename="libroboticsgroup_gazebo_mimic_joint_plugin.so" name="mimic_gen3_lite_2f_3">
+                <joint>${prefix}right_finger_bottom_joint</joint>
+                <mimicJoint>${prefix}left_finger_tip_joint</mimicJoint>
+                <multiplier>-0.676</multiplier>
+                <offset>0.149</offset>
+                <maxEffort>5.0</maxEffort>
+                <hasPID></hasPID>
+            </plugin-->
+
+<!--            <plugin name="gazebo_grasp_fix" filename="libgazebo_grasp_fix.so">-->
+<!--                <arm>-->
+<!--                    <arm_name>my_gen3_lite_gripper</arm_name>-->
+<!--                    <palm_link>${prefix}end_effector_link</palm_link>-->
+<!--                    <gripper_link> ${prefix}right_finger_dist_link </gripper_link>-->
+<!--                    <gripper_link> ${prefix}left_finger_dist_link </gripper_link>-->
+<!--                </arm>-->
+<!--                <forces_angle_tolerance>100</forces_angle_tolerance>-->
+<!--                <update_rate>10</update_rate>-->
+<!--                <grip_count_threshold>3</grip_count_threshold>-->
+<!--                <max_grip_count>10</max_grip_count>-->
+<!--                <release_tolerance>0.001</release_tolerance>-->
+<!--                <disable_collisions_on_attach>false</disable_collisions_on_attach>-->
+<!--                <contact_topic>__default_topic__</contact_topic>-->
+<!--            </plugin>-->
+
+        </gazebo>
+
+    </xacro:macro>
+
+</robot>

@@ -1,0 +1,37 @@
+hydra:
+  run:
+    dir: ./
+
+defaults:
+  - _self_
+  - allsight: allsight
+  - override hydra/job_logging: disabled # disabled | default
+
+allegro:
+  urdf_path: "../assets/robots/allegro_hand_description/allegro_hand_description_left_allsight.urdf"
+  base_position: [0, 0, 0.095]
+  use_fixed_base: True
+
+object:
+  urdf_path: "../assets/objects/sphere_small.urdf"
+  base_position: [0.05, 0.0, 0.235] # (m)
+  global_scaling: 1.0
+
+# id of the links that are allsight
+digit_link_id_allegro: [4, 9, 14, 19]
+
+pybullet_camera:
+  cameraDistance: 0.4
+  cameraYaw: 45.
+  cameraPitch: -45.
+  cameraTargetPosition: [0, 0, 0]
+
+tacto:
+  width: 224
+  height: 224
+  visualize_gui: True
+
+object_control_panel:
+  slider_params:
+    position_low: [-0.3, -0.3, 0]
+    position_high: [0.3, 0.3, 0.3]

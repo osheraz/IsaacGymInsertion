@@ -1,0 +1,41 @@
+hydra:
+  run:
+    dir: ./
+
+defaults:
+ - override hydra/job_logging: disabled
+
+tacto:
+  width: 224 # 480 | 224
+  height: 224 # 480 | 224 for the gan
+  visualize_gui: True
+
+allsight:
+  urdf_path: "../assets/meshes/allsight.urdf"
+  base_position: [0, 0, 0]
+  base_orientation: [0.0, -0.707106, 0.0, 0.707106] # quaternion from p.getQuaternionFromEuler([0, -pi/2, 0])
+  # base_orientation: [0.0, 0, 0.0, 1] # quaternion from p.getQuaternionFromEuler([0, 0 , 0])
+  use_fixed_base: True
+
+sensor_dims:
+  base_h: 0.014
+  cyl_r: 0.013
+  cyl_h: 0.013
+
+object:
+  urdf_path: "../assets/objects/sphere3.urdf"
+  base_position: [0, 0, 0.1]
+  base_orientation: [0.707,0, 0, 0]
+  global_scaling: 1
+  use_fixed_base: False
+
+object_control_panel:
+  slider_params:
+    position_low: [-0.3, -0.3, 0]
+    position_high: [0.3, 0.3, 0.3]
+
+pybullet_camera:
+  cameraDistance: 0.12
+  cameraYaw: 90.
+  cameraPitch: -45.
+  cameraTargetPosition: [0, 0, 0]

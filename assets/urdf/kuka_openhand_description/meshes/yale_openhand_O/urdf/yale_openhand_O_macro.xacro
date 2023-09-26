@@ -1,0 +1,452 @@
+<?xml version="1.0"?>
+
+<robot name="gen3_yale_openhand_O_gripper" xmlns:xacro="http://ros.org/wiki/xacro">
+
+ 	<xacro:macro name="base_color">
+ 		<color rgba="0.1 0.1 0.1 1"/>
+ 	</xacro:macro>
+ 	<xacro:macro name="swivel_color">
+ 		<color rgba="0.1 0.1 0.1 1"/>
+ 	</xacro:macro>
+ 	<xacro:macro name="proximal_color">
+ 		<color rgba="0.16 0.16 0.16 1"/>
+ 	</xacro:macro>
+    <xacro:macro name="distal_color">
+ 		<color rgba="0.16 0.16 0.16 1"/>
+ 	</xacro:macro>
+ 	<xacro:macro name="flex_color">
+ 		<color rgba="0.2 0.2 .2 1"/>
+ 	</xacro:macro>
+    <xacro:macro name="pad_color">
+    <color rgba="0.106 0.227 0.631 1"/>
+  </xacro:macro>
+      <xacro:property name="mass_p" value="0.05" /> <!-- proximal-->
+  <xacro:property name="mass_d" value="0.05" /> <!-- distal -->
+  <xacro:property name="mass_s" value="0.05" /> <!-- swivel -->
+
+  <xacro:property name="rad_p" value="0.02" /> <!-- proximal-->
+  <xacro:property name="rad_d" value="0.01" /> <!-- distal -->
+  <xacro:property name="rad_s" value="0.005" /> <!-- swivel -->
+
+  <xacro:property name="height_p" value="0.02" /> <!-- proximal-->
+  <xacro:property name="height_d" value="0.01" /> <!-- distal -->
+  <xacro:property name="height_s" value="0.02" /> <!-- swivel -->
+
+  <xacro:property name="width" value="0.1" /> <!-- Square dimensions base_link -->
+      <xacro:property name="PI" value="3.1415926535897931"/>
+
+  <xacro:property name="rubber_friction_coefficient" value="1.16" />
+  <xacro:property name="rubber_contact_stiffness_coefficient" value="1000000.0" />
+  <xacro:property name="rubber_contact_damping_coefficient" value="1.0" />
+  <xacro:property name="swivel_distance" value="0.0260" /> <!-- Not sure if this is the right distance for T42 -->
+  <xacro:property name="joint_damping_coefficient" value="7.0" />
+  <xacro:property name="joint_friction_coefficient" value="0.0" />
+
+  <xacro:macro name="load_gripper" params="parent prefix">
+
+          <!-- Tool frame used by the arm -->
+    <!--link name="${prefix}tool_frame"/>
+    <joint name="${prefix}tool_frame_joint" type="fixed">
+        <origin xyz="0 0 0.130" rpy="0 0 1.57079632679" />
+        <parent link="${parent}" />
+        <child link="${prefix}tool_frame" />
+        <axis xyz="0 0 0" />
+    </joint-->
+
+          <!-- Gripper description -->
+  <joint name="${prefix}gripper_base_link" type="fixed">
+            <origin xyz="0 0 0.06" rpy="0 1.57079632679 0." />
+<!--      <origin xyz="0 0 0.06" rpy="0 1.57079632679 1.57079632679" />-->
+      <parent link="${parent}" />
+      <child link="${prefix}gripper_base_link" />
+      <axis xyz="0 0 0" />
+    </joint>
+
+  <link name="${prefix}gripper_base_link">
+      <visual>
+          <origin rpy="1.57 0 -1.57" xyz="0.06 0.017 0"/>
+          <geometry>
+            <mesh filename="package://kortex_description/grippers/yale_openhand_O/meshes/base_link.STL"/>
+          </geometry>
+          <material
+            name="">
+            <xacro:base_color/>
+          </material>
+      </visual>
+      <inertial>
+          <origin xyz="0.03 0 0." rpy="0 0 0"/>
+          <mass value="0.7"/>
+          <inertia
+            ixx="0.01" ixy="0.0" ixz="0.0"
+            iyy="0.01" iyz="0.0"
+            izz="0.01"/>
+         </inertial>
+       <collision>
+        <origin rpy="1.57 0 -1.57" xyz="0.06 0.017 0"/>
+        <geometry>
+          <mesh filename="package://hand_simulator/meshes/base_link.STL"/>
+        </geometry>
+      </collision>
+    </link>
+  <gazebo reference="${prefix}gripper_base_link">
+      <selfCollide>true</selfCollide>
+      <material>Gazebo/Black</material>
+    </gazebo>
+
+  <link name="${prefix}finger_1_1">
+    <inertial>
+          <origin xyz="0 0 0" rpy="0 0 0"/>
+          <mass value="0.1"/>
+          <inertia
+            ixx="0.01" ixy="0.0" ixz="0.0"
+            iyy="0.01" iyz="0.0"
+            izz="0.01"/>
+      </inertial>
+    <visual>
+      <material name="white">
+        <color rgba="1.0 1.0 1.0 1.0" />
+      </material>
+      <origin rpy="1.57 3.14159 -1.57" xyz="-0.00 0.0 0.00" />
+      <geometry>
+        <!-- <cylinder length="0.002" radius="0.018" /> -->
+        <mesh filename="package://kortex_description/grippers/yale_openhand_O/meshes/swivel_1.STL"/>
+      </geometry>
+    </visual>
+     <collision>
+      <origin rpy="0 1.57 0 " xyz="0.00 0.0 0.00" />
+      <geometry>
+        <cylinder length="0.002" radius="0.018" />
+      </geometry>
+    </collision>
+  </link>
+  <gazebo reference="{prefix}finger_1_1">
+      <selfCollide>true</selfCollide>
+      <material>Gazebo/Black</material>
+    </gazebo>
+
+  <link name="${prefix}finger_1_2">
+    <inertial>
+<!--                  <origin xyz="-0.005 0.03 0" rpy="0 0 0"/>-->
+          <origin xyz="0 0 0" rpy="0 0 0"/>
+          <mass value="0.1"/>
+          <inertia
+            ixx="0.01" ixy="0.0" ixz="0.0"
+            iyy="0.01" iyz="0.0"
+            izz="0.01"/>
+      </inertial>
+    <visual>
+      <material name="white">
+        <color rgba="1.0 1.0 1.0 1.0" />
+      </material>
+      <origin rpy="0 -3.141592 2.4" xyz="-0.00 0.0753 0.008" />
+      <geometry>
+        <mesh filename="package://kortex_description/grippers/yale_openhand_O/meshes/proximal_O.STL" scale="0.00100 0.00100 0.00100" />
+      </geometry>
+    </visual>
+    <collision>
+      <origin rpy="0 -3.141592 2.4" xyz="-0.00 0.0753 0.008" />
+      <geometry>
+        <mesh filename="package://kortex_description/grippers/yale_openhand_O/meshes/proximal_O.STL" scale="0.00100 0.00100 0.00100" />
+      </geometry>
+    </collision>
+  </link>
+  <gazebo reference="${prefix}finger_1_2">
+      <selfCollide>true</selfCollide>
+      <material>Gazebo/White</material>
+    </gazebo>
+
+  <link name="${prefix}finger_1_3">
+    <inertial>
+          <origin xyz="-0.01 0.015 0" rpy="0 0 0"/>
+          <mass value="${mass_d}"/>
+         <inertia ixx="0.01" ixy="0.0" ixz="0.0" iyy="0.01" iyz="0.0" izz="0.01" />
+<!--              <inertia ixx="${0.0833333 * mass_d * (3 * rad_d * rad_d + height_d * height_d)}" ixy="0.0" ixz="0.0"-->
+<!--        iyy="${0.0833333 * mass_d * (3 * rad_d * rad_d + height_d * height_d)}" iyz="0.0"-->
+<!--        izz="${0.5 * mass_d * rad_d * rad_d}" />-->
+    </inertial>
+    <visual>
+      <material name="white">
+        <color rgba="1.0 1.0 1.0 1.0" />
+      </material>
+      <origin rpy="-1.57079632679 -1.57079632679 -2.4962" xyz="-0.02 0.0455 -0.008" />
+      <geometry>
+        <mesh filename="package://kortex_description/grippers/yale_openhand_O/meshes/round.STL" scale="0.00100 0.00100 0.00100" />
+      </geometry>
+    </visual>
+    <collision>
+      <origin rpy="-1.57079632679 -1.57079632679 -2.4962" xyz="-0.02 0.0455 -0.008" />
+      <geometry>
+        <mesh filename="package://kortex_description/grippers/yale_openhand_O/meshes/round.STL" scale="0.00100 0.00100 0.00100" />
+      </geometry>
+    </collision>
+  </link>
+  <gazebo reference="${prefix}finger_1_3">
+      <selfCollide>true</selfCollide>
+      <mu1>${rubber_friction_coefficient}</mu1>
+      <mu2>${rubber_friction_coefficient}</mu2>
+      <kp>${rubber_contact_stiffness_coefficient}</kp>
+      <kd>${rubber_contact_damping_coefficient}</kd>
+      <material>Gazebo/White</material>
+    </gazebo>
+
+  <link name="${prefix}finger_2_1">
+    <inertial>
+          <origin xyz="0 0 0" rpy="0 0 0"/>
+          <mass value="0.1"/>
+          <inertia
+            ixx="0.01" ixy="0.0" ixz="0.0"
+            iyy="0.01" iyz="0.0"
+            izz="0.01"/>
+      </inertial>
+    <visual>
+      <material name="white">
+        <color rgba="1.0 1.0 1.0 1.0" />
+      </material>
+      <origin rpy="1.57 3.14159 -1.57" xyz="-0.00 0.0 0.00" />
+      <geometry>
+        <mesh filename="package://kortex_description/grippers/yale_openhand_O/meshes/swivel_1.STL"/>
+      </geometry>
+    </visual>
+     <collision>
+      <origin rpy="0 1.57 0 " xyz="0.00 0.0 0.00" />
+      <geometry>
+        <cylinder length="0.002" radius="0.018" />
+      </geometry>
+    </collision>
+  </link>
+  <gazebo reference="${prefix}finger_2_1">
+      <selfCollide>true</selfCollide>
+      <material>Gazebo/Black</material>
+    </gazebo>
+
+  <link name="${prefix}finger_2_2">
+    <inertial>
+<!--                  <origin xyz="-0.005 0.03 0" rpy="0 0 0"/>-->
+
+          <origin xyz="0 0 0" rpy="0 0 0"/>
+          <mass value="0.1"/>
+          <inertia
+            ixx="0.01" ixy="0.0" ixz="0.0"
+            iyy="0.01" iyz="0.0"
+            izz="0.01"/>
+      </inertial>
+    <visual>
+      <material name="white">
+        <color rgba="1.0 1.0 1.0 1.0" />
+      </material>
+      <origin rpy="0 -3.141592 2.4" xyz="-0.00 0.0753 0.008" />
+      <geometry>
+        <mesh filename="package://kortex_description/grippers/yale_openhand_O/meshes/proximal_O.STL" scale="0.00100 0.00100 0.00100" />
+      </geometry>
+    </visual>
+    <collision>
+      <origin rpy="0 -3.141592 2.4" xyz="-0.00 0.0753 0.008" />
+      <geometry>
+        <mesh filename="package://kortex_description/grippers/yale_openhand_O/meshes/proximal_O.STL" scale="0.00100 0.00100 0.00100" />
+      </geometry>
+    </collision>
+  </link>
+  <gazebo reference="${prefix}finger_2_2">
+      <selfCollide>true</selfCollide>
+      <material>Gazebo/White</material>
+    </gazebo>
+
+  <link name="${prefix}finger_2_3">
+    <inertial>
+          <origin xyz="-0.01 0.015 0" rpy="0 0 0"/>
+      <mass value="${mass_d}" />
+                   <inertia ixx="0.01" ixy="0.0" ixz="0.0" iyy="0.01" iyz="0.0" izz="0.01" />
+<!--              <inertia ixx="${0.0833333 * mass_d * (3 * rad_d * rad_d + height_d * height_d)}" ixy="0.0" ixz="0.0"-->
+<!--        iyy="${0.0833333 * mass_d * (3 * rad_d * rad_d + height_d * height_d)}" iyz="0.0"-->
+<!--        izz="${0.5 * mass_d * rad_d * rad_d}" />-->
+    </inertial>
+    <visual>
+      <material name="white">
+        <color rgba="1.0 1.0 1.0 1.0" />
+      </material>
+<!--      <origin rpy="0 0 -2.4962" xyz="-0.0179 0.0459 -0.008" />-->
+              <origin rpy="-1.57079632679 -1.57079632679 -2.4962" xyz="-0.02 0.0455 -0.008" />
+
+      <geometry>
+        <mesh filename="package://kortex_description/grippers/yale_openhand_O/meshes/round.STL" scale="0.00100 0.00100 0.00100" />
+      </geometry>
+    </visual>
+    <collision>
+      <origin rpy="-1.57079632679 -1.57079632679 -2.4962" xyz="-0.02 0.0455 -0.008" />
+      <geometry>
+        <mesh filename="package://kortex_description/grippers/yale_openhand_O/meshes/round.STL" scale="0.00100 0.00100 0.00100" />
+      </geometry>
+    </collision>
+  </link>
+  <gazebo reference="${prefix}finger_2_3">
+      <selfCollide>true</selfCollide>
+      <mu1>${rubber_friction_coefficient}</mu1>
+      <mu2>${rubber_friction_coefficient}</mu2>
+      <kp>${rubber_contact_stiffness_coefficient}</kp>
+      <kd>${rubber_contact_damping_coefficient}</kd>
+      <material>Gazebo/White</material>
+    </gazebo>
+
+  <link name="${prefix}finger_3_2">
+    <inertial>
+<!--                  <origin xyz="-0.005 0.03 0" rpy="0 0 0"/>-->
+
+          <origin xyz="0 0 0" rpy="0 0 0"/>
+          <mass value="0.1"/>
+          <inertia
+            ixx="0.01" ixy="0.0" ixz="0.0"
+            iyy="0.01" iyz="0.0"
+            izz="0.01"/>
+    </inertial>
+    <visual>
+      <material name="white">
+        <color rgba="1.0 1.0 1.0 1.0" />
+      </material>
+      <origin rpy="0 -3.141592 2.4" xyz="-0.00 0.0753 0.008" />
+      <geometry>
+        <mesh filename="package://kortex_description/grippers/yale_openhand_O/meshes/proximal_O.STL" scale="0.00100 0.00100 0.00100" />
+      </geometry>
+    </visual>
+    <collision>
+      <origin rpy="0 -3.141592 2.4" xyz="-0.00 0.0753 0.008" />
+      <geometry>
+        <mesh filename="package://kortex_description/grippers/yale_openhand_O/meshes/proximal_O.STL" scale="0.00100 0.00100 0.00100" />
+      </geometry>
+    </collision>
+  </link>
+  <gazebo reference="${prefix}finger_3_2">
+      <selfCollide>true</selfCollide>
+      <material>Gazebo/White</material>
+    </gazebo>
+
+  <link name="${prefix}finger_3_3">
+    <inertial>
+          <origin xyz="-0.01 0.015 0" rpy="0 0 0"/>
+      <mass value="${mass_d}" />
+      <inertia ixx="0.01" ixy="0.0" ixz="0.0" iyy="0.01" iyz="0.0" izz="0.01" />
+<!--      <inertia ixx="${0.0833333 * mass_d * (3 * rad_d * rad_d + height_d * height_d)}" ixy="0.0" ixz="0.0"-->
+<!--        iyy="${0.0833333 * mass_d * (3 * rad_d * rad_d + height_d * height_d)}" iyz="0.0"-->
+<!--        izz="${0.5 * mass_d * rad_d * rad_d}" />-->
+    </inertial>
+    <visual>
+      <material name="white">
+        <color rgba="1.0 1.0 1.0 1.0" />
+      </material>
+<!--      <origin rpy="0 0 -2.4962" xyz="-0.0179 0.0459 -0.008" />-->
+              <origin rpy="-1.57079632679 -1.57079632679 -2.4962" xyz="-0.02 0.0455 -0.008" />
+
+      <geometry>
+        <mesh filename="package://kortex_description/grippers/yale_openhand_O/meshes/round.STL" scale="0.00100 0.00100 0.00100" />
+      </geometry>
+    </visual>
+    <collision>
+      <origin rpy="-1.57079632679 -1.57079632679 -2.4962" xyz="-0.02 0.0455 -0.008" />
+      <geometry>
+        <mesh filename="package://kortex_description/grippers/yale_openhand_O/meshes/round.STL" scale="0.00100 0.00100 0.00100" />
+      </geometry>
+    </collision>
+  </link>
+  <gazebo reference="${prefix}finger_3_3">
+      <selfCollide>true</selfCollide>
+      <mu1>${rubber_friction_coefficient}</mu1>
+      <mu2>${rubber_friction_coefficient}</mu2>
+      <kp>${rubber_contact_stiffness_coefficient}</kp>
+      <kd>${rubber_contact_damping_coefficient}</kd>
+      <material>Gazebo/White</material>
+    </gazebo>
+
+  <!-- Joints -->
+
+ <joint name="${prefix}base_to_finger_1_1" type="revolute">
+   <origin rpy="3.14159 0 0" xyz="-0.003 -0.034 -0.027" />
+   <parent link="${prefix}gripper_base_link" />
+   <child link="${prefix}finger_1_1" />
+   <limit effort="1000" lower="0" upper="1.57" velocity="200" />
+   <axis xyz="1 0 0" />
+   <dynamics damping="5" friction="0.0" />
+ </joint>
+
+ <joint name="${prefix}finger_1_1_to_finger_1_2" type="revolute">
+   <origin rpy="0 0 0" xyz="-0.02 +0.00725 0" />
+   <parent link="${prefix}finger_1_1" />
+   <child link="${prefix}finger_1_2" />
+   <limit effort="1000.0" lower="-0.1" upper="3.0" velocity="10"/>
+   <axis xyz="0 0 1" />
+   <dynamics damping="5" friction="0.0" />
+ </joint>
+
+ <joint name="${prefix}finger_1_2_to_finger_1_3" type="revolute">
+   <origin rpy="0 0 0" xyz="0.000800 0.062 0" />
+   <parent link="${prefix}finger_1_2" />
+   <child link="${prefix}finger_1_3" />
+   <limit effort="1000.0" lower="0.0" upper="1.27" velocity="10"/>
+   <axis xyz="0 0 1" />
+   <dynamics damping="5" friction="0.0" />
+  </joint>
+
+  <joint name="${prefix}base_to_finger_2_1" type="revolute">
+    <origin rpy="3.14159 0 0" xyz="-0.003 -0.034 0.027" />
+    <parent link="${prefix}gripper_base_link" />
+    <child link="${prefix}finger_2_1" />
+    <limit effort="1000" lower="-1.57" upper="0" velocity="200" />
+    <axis xyz="1 0 0" />
+    <dynamics damping="5" friction="0.0" />
+  </joint>
+
+  <joint name="${prefix}finger_2_1_to_finger_2_2" type="revolute">
+    <origin rpy="0 0 0" xyz="-0.02 +0.00725 0" />
+    <parent link="${prefix}finger_2_1" />
+    <child link="${prefix}finger_2_2" />
+    <limit effort="1000" lower="-0.1" upper="3.0" velocity="10" />
+    <axis xyz="0 0 1" />
+    <dynamics damping="5" friction="0.0" />
+  </joint>
+
+  <joint name="${prefix}finger_2_2_to_finger_2_3" type="revolute">
+    <origin rpy="0 0 0" xyz="0.000800 0.062 0" />
+    <parent link="${prefix}finger_2_2" />
+    <child link="${prefix}finger_2_3" />
+    <limit effort="1000" lower="0.0" upper="1.27" velocity="10" />
+    <axis xyz="0 0 1" />
+    <dynamics damping="5" friction="0.0" />
+  </joint>
+
+  <joint name="${prefix}base_to_finger_3_2" type="revolute">
+    <origin rpy="0 0 0" xyz="-0.023 0.045 0.000000" />
+    <parent link="${prefix}gripper_base_link" />
+    <child link="${prefix}finger_3_2" />
+    <limit effort="1000" lower="-0.1" upper="3.0" velocity="10" />
+    <axis xyz="0 0 1" />
+    <dynamics damping="5" friction="0.0" />
+  </joint>
+
+  <joint name="${prefix}finger_3_2_to_finger_3_3" type="revolute">
+    <origin rpy="0 0 0" xyz="0.000800 0.062 0" />
+    <parent link="${prefix}finger_3_2" />
+    <child link="${prefix}finger_3_3" />
+    <limit effort="1000" lower="0.0" upper="1.27" velocity="10" />
+    <axis xyz="0 0 1" />
+    <dynamics damping="5" friction="0.0" />
+  </joint>
+
+            <!-- gripper main fixed joint-->
+  <joint name="${prefix}tool_frame_joint" type="fixed">
+    <parent link="${prefix}gripper_base_link"/>
+    <child link="${prefix}tool_frame"/>
+<!--    <origin xyz="-0.1 0.0 0.0" rpy="0 0 0" />-->
+    <origin xyz="-0.1 0 0" rpy="0 ${-0*pi} ${0*pi/2}" />
+  </joint>
+
+  <!-- End Effector -->
+  <link name="${prefix}tool_frame"/>
+
+   <link name="${prefix}camera" />
+      <joint name="${prefix}camera_joint" type="fixed">
+        <origin xyz="0 0 0" rpy="0 ${-pi*0.5} 0" />
+        <parent link="${prefix}gripper_base_link" />
+        <child  link="${prefix}camera" />
+      </joint>
+
+  </xacro:macro>
+
+</robot>

@@ -1,0 +1,36 @@
+hydra:
+  run:
+    dir: ./
+
+defaults:
+ - override hydra/job_logging: disabled
+
+allegro:
+  urdf_path: "../assets/robots/yale_openhand_O/urdf/model.urdf"
+  base_position: [0, 0, 0.095]
+  use_fixed_base: True
+
+object:
+  urdf_path: "../assets/objects/sphere_small.urdf"
+  base_position: [0.05, 0.0, 0.235] # (m)
+  global_scaling: 1.0
+
+# id of the links that are allsight
+allsight_link_id_openhand: [2, 5, 7]
+
+pybullet_camera:
+  cameraDistance: 0.4
+  cameraYaw: -45.
+  cameraPitch: -45.
+  cameraTargetPosition: [0, 0, 0]
+
+tacto:
+  width: 224
+  height: 224
+  visualize_gui: True
+
+object_control_panel:
+  slider_params:
+    position_low: [-0.3, -0.3, 0]
+    position_high: [0.3, 0.3, 0.3]
+

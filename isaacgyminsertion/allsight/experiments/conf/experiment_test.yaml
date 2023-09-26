@@ -1,0 +1,38 @@
+hydra:
+  run:
+    dir: experiments/conf/saved_configs/${summary.name}/${now:%Y-%m-%d}_${now:%H-%M-%S}
+
+defaults:
+  - _self_
+  - allsight: allsight
+  - override hydra/job_logging: disabled # disabled | default
+
+with_bg: True # add background reference frame
+
+summary:
+# used for both demo & collect_data
+  name: collect_data
+  indenter: sphere3 # sphere3 | sphere4 | sphere5 | cube | rect |  ellipse
+  leds: rrrgggbbb
+
+# used only for collect_data
+  method: press
+  start_from: 15
+  up_to: 30
+  gel: clear
+  angle_split: 18
+  cyl_split: 20
+  top_split: 8
+  save: False
+  save_prefix: id3
+
+render:
+  pixmm : 0.03
+  width : 240
+  height : 320
+  cam_dist : 0.022
+  shear_mag : 0.0
+  pen :
+    min : 0.00
+    max : 0.00
+  randomize : False
