@@ -379,12 +379,12 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
         # TODO: Define socket height and plug height params in asset info YAML.
         self.plug_com_pos = fc.translate_along_local_z(pos=self.plug_pos,
                                                        quat=self.plug_quat,
-                                                       offset=self.socket_heights + self.plug_heights * 0.5,
+                                                       offset=self.socket_heights + self.plug_heights * 1.0,
                                                        device=self.device)
 
         self.above_socket_pos = fc.translate_along_local_z(pos=self.socket_pos,
                                                            quat=self.socket_quat,
-                                                           offset=self.socket_heights + self.plug_heights * 1.5,
+                                                           offset=self.socket_heights + self.plug_heights,
                                                            device=self.device)
 
         self.plug_com_quat = self.plug_quat  # always equal
@@ -396,7 +396,6 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
     def refresh_env_tensors(self):
         """Refresh tensors."""
         # NOTE: Tensor refresh functions should be called once per step, before setters.
-        # TODO: Define socket height and plug height params in asset info YAML.
 
         self.plug_com_pos = fc.translate_along_local_z(pos=self.plug_pos,
                                                        quat=self.plug_quat,
@@ -409,10 +408,10 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
 
         self.above_socket_pos = fc.translate_along_local_z(pos=self.socket_pos,
                                                            quat=self.socket_quat,
-                                                           offset=self.socket_heights + self.plug_heights * 1.5,
+                                                           offset=self.socket_heights + self.plug_heights * 1.0,
                                                            device=self.device)
 
         self.socket_tip = fc.translate_along_local_z(pos=self.socket_pos,
                                                      quat=self.socket_quat,
-                                                     offset=self.socket_heights + self.plug_heights * 0.5,
+                                                     offset=self.socket_heights,
                                                      device=self.device)

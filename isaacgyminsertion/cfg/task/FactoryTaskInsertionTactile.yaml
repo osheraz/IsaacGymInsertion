@@ -39,7 +39,7 @@ randomize:
     kuka_arm_initial_dof_pos: [0.0064, 0.2375,  -0.0075,  -1.2022, 0.0015,  1.6900,  -1.5699]
     fingertip_midpoint_pos_initial: [0.0, 0.0, 0.1]  # initial position of midpoint between fingertips above table
     fingertip_midpoint_pos_noise: [0.2, 0.2, 0.1]  # noise on fingertip pos
-    fingertip_midpoint_rot_initial: [-1.5707, -1.5707, 0]  # initial rotation of fingertips (Euler)
+    fingertip_midpoint_rot_initial: [-3.14159265359, 0.0, 1.57079632679]  # initial rotation of fingertips (Euler)
     fingertip_midpoint_rot_noise: [0.3, 0.3, 1]  # noise on rotation
     
     plug_pos_xy_initial: [0., -0.1]  # initial XY position of plug on table

@@ -38,6 +38,8 @@ import hydra
 import omegaconf
 import time
 
+import torch
+
 from isaacgym import gymapi, gymtorch
 from isaacgyminsertion.tasks.factory_tactile.factory_env_insertion import FactoryEnvInsertionTactile
 from isaacgyminsertion.tasks.factory_tactile.factory_schema_class_task import FactoryABCTask
@@ -92,30 +94,29 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
     def _acquire_task_tensors(self):
         """Acquire tensors."""
 
-        plug_grasp_heights = self.socket_heights + self.plug_heights * 1.1
-        self.plug_grasp_pos_local = plug_grasp_heights * torch.tensor([0.0, 0.0, 1.0], device=self.device).repeat(
+        self.plug_grasp_pos_local = self.plug_heights * 0.5 * torch.tensor([0.0, 0.0, 1.0], device=self.device).repeat(
             (self.num_envs, 1))
         self.plug_grasp_quat_local = torch.tensor([0.0, 0.0, 0.0, 1.0], device=self.device).unsqueeze(0).repeat(
             self.num_envs, 1)
 
         self.socket_tip_pos_local = self.socket_heights * torch.tensor([0.0, 0.0, 1.0], device=self.device).repeat(
             (self.num_envs, 1))
-        self.gripper_normal_quat = (torch.tensor([-0.5000, -0.5000, -0.5000, 0.5000],
+        self.gripper_normal_quat = (torch.tensor([-1 / 2 ** 0.5, -1 / 2 ** 0.5, 0.0, 0.0],
                                                  device=self.device).unsqueeze(0).repeat(self.num_envs, 1))
 
         # Keypoint tensors
         self.keypoint_offsets = self._get_keypoint_offsets(
             self.cfg_task.rl.num_keypoints) * self.cfg_task.rl.keypoint_scale
-        self.keypoints_gripper = torch.zeros((self.num_envs, self.cfg_task.rl.num_keypoints, 3), dtype=torch.float32,
-                                             device=self.device)
-        self.keypoints_plug = torch.zeros_like(self.keypoints_gripper, device=self.device)
-        self.keypoints_socket = torch.zeros_like(self.keypoints_gripper, device=self.device)
+        self.keypoints_plug = torch.zeros((self.num_envs, self.cfg_task.rl.num_keypoints, 3),
+                                          dtype=torch.float32,
+                                          device=self.device, )
+        self.keypoints_socket = torch.zeros_like(self.keypoints_plug, device=self.device)
 
         self.identity_quat = torch.tensor([0.0, 0.0, 0.0, 1.0], device=self.device).unsqueeze(0).repeat(self.num_envs,
                                                                                                         1)
         self.actions = torch.zeros((self.num_envs, self.cfg_task.env.numActions), device=self.device)
 
-    def _refresh_task_tensors(self, update_tactile=True):
+    def _refresh_task_tensors(self, update_tactile=False):
         """Refresh tensors."""
 
         self.refresh_base_tensors()
@@ -131,8 +132,8 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             self.socket_pos, dtype=torch.float32, device=self.device
         )
         socket_obs_pos_noise = 2 * (
-            torch.rand((self.num_envs, 3), dtype=torch.float32, device=self.device)
-            - 0.5
+                torch.rand((self.num_envs, 3), dtype=torch.float32, device=self.device)
+                - 0.5
         )
         socket_obs_pos_noise = socket_obs_pos_noise @ torch.diag(
             torch.tensor(
@@ -147,11 +148,12 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.noisy_socket_pos[:, 2] = self.socket_pos[:, 2] + socket_obs_pos_noise[:, 2]
 
         # Add observation noise to desired_rot
-        desired_rot_euler = torch.tensor([-np.pi / 2, -np.pi / 2, 0], device=self.device).unsqueeze(0).repeat(self.num_envs, 1)
+        desired_rot_euler = torch.tensor([-np.pi / 2, -np.pi / 2, 0], device=self.device).unsqueeze(0).repeat(
+            self.num_envs, 1)
 
         desired_rot_noise = 2 * (
-            torch.rand((self.num_envs, 3), dtype=torch.float32, device=self.device)
-            - 0.5
+                torch.rand((self.num_envs, 3), dtype=torch.float32, device=self.device)
+                - 0.5
         )
         socket_obs_rot_noise = desired_rot_noise @ torch.diag(
             torch.tensor(
@@ -169,17 +171,13 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         )
 
         self.noisy_gripper_goal_quat, self.noisy_gripper_goal_pos = torch_jit_utils.tf_combine(
-                                                                        self.identity_quat,
-                                                                        self.noisy_socket_pos,
-                                                                        self.gripper_normal_quat,
-                                                                        self.socket_tip_pos_local)
+            self.identity_quat,
+            self.noisy_socket_pos,
+            self.gripper_normal_quat,
+            self.socket_tip_pos_local)
 
         # Compute pos of keypoints on gripper, socket, and plug in world frame
         for idx, keypoint_offset in enumerate(self.keypoint_offsets):
-            self.keypoints_gripper[:, idx] = torch_jit_utils.tf_combine(self.fingertip_midpoint_quat,
-                                                                        self.fingertip_midpoint_pos,
-                                                                        self.identity_quat,
-                                                                        keypoint_offset.repeat(self.num_envs, 1))[1]
             self.keypoints_plug[:, idx] = torch_jit_utils.tf_combine(self.plug_quat,
                                                                      self.plug_pos,
                                                                      self.identity_quat,
@@ -259,8 +257,8 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         # Define observations (for actor)
         obs_tensors = [
             self.arm_dof_pos,  # 7
-            self.pose_world_to_robot_base(self.fingertip_midpoint_pos, self.fingertip_midpoint_quat)[0],  # 3
-            self.pose_world_to_robot_base(self.fingertip_midpoint_pos, self.fingertip_midpoint_quat)[1],  # 4
+            self.pose_world_to_robot_base(self.fingertip_centered_pos, self.fingertip_centered_quat)[0],  # 3
+            self.pose_world_to_robot_base(self.fingertip_centered_pos, self.fingertip_centered_quat)[1],  # 4
             self.pose_world_to_robot_base(self.noisy_gripper_goal_pos, self.noisy_gripper_goal_quat)[0],  # 3
             self.pose_world_to_robot_base(self.noisy_gripper_goal_pos, self.noisy_gripper_goal_quat)[1],  # 4
             noisy_delta_pos,  # 3
@@ -270,6 +268,10 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         state_tensors = [
             self.arm_dof_pos,  # 7
             self.arm_dof_vel,  # 7
+            self.pose_world_to_robot_base(self.fingertip_centered_pos, self.fingertip_centered_quat)[0],  # 3
+            self.pose_world_to_robot_base(self.fingertip_centered_pos, self.fingertip_centered_quat)[1],  # 4
+            self.fingertip_centered_linvel,  # 3
+            self.fingertip_centered_angvel,  # 3
             self.pose_world_to_robot_base(self.fingertip_midpoint_pos, self.fingertip_midpoint_quat)[0],  # 3
             self.pose_world_to_robot_base(self.fingertip_midpoint_pos, self.fingertip_midpoint_quat)[1],  # 4
             self.fingertip_midpoint_linvel,  # 3
@@ -327,6 +329,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         self._reset_kuka(env_ids)
         self._reset_object(env_ids)
+
         self._zero_velocities(env_ids)
         self._refresh_task_tensors()
 
@@ -339,10 +342,12 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         # Grasp ~ todo add randomization
         self._close_gripper(env_ids, self.cfg_task.env.num_gripper_close_sim_steps)
         self._refresh_task_tensors()
+        self._zero_velocities(env_ids)
 
         # Lift
         self._lift_gripper(env_ids, self.ctrl_target_gripper_dof_pos)
         self._refresh_task_tensors()
+        self._zero_velocities(env_ids)
 
         # Move arm above the socket
         self._move_arm_to_desired_pose(env_ids, self.above_socket_pos.clone(),
@@ -389,14 +394,25 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.dof_vel[env_ids] = 0.0  # shape = (num_envs, num_dofs)
         self.dof_torque[env_ids] = 0.0  # shape = (num_envs, num_dofs)
 
-        self.ctrl_target_dof_pos[env_ids] = self.dof_pos[env_ids]
+        self.ctrl_target_dof_pos[env_ids] = self.dof_pos[env_ids].clone()
         self.ctrl_target_gripper_dof_pos[env_ids] = self.dof_pos[env_ids, 7:]
+
+        self.ctrl_target_fingertip_centered_pos = self.fingertip_centered_pos.clone()
+        self.ctrl_target_fingertip_centered_quat = self.fingertip_centered_quat.clone()
 
         multi_env_ids_int32 = self.kuka_actor_ids_sim[env_ids].flatten()
         self.gym.set_dof_state_tensor_indexed(self.sim,
                                               gymtorch.unwrap_tensor(self.dof_state),
                                               gymtorch.unwrap_tensor(multi_env_ids_int32),
                                               len(multi_env_ids_int32))
+
+        # Set DOF torque
+        self.gym.set_dof_actuation_force_tensor_indexed(
+            self.sim,
+            gymtorch.unwrap_tensor(self.dof_torque),
+            gymtorch.unwrap_tensor(multi_env_ids_int32),
+            len(multi_env_ids_int32),
+        )
 
         self._simulate_and_refresh()
 
@@ -439,33 +455,36 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         """Move gripper to desired pose."""
 
         # Set target pos above object
-        self.ctrl_target_fingertip_midpoint_pos = desired_pos
-
-        # self.ctrl_target_fingertip_midpoint_pos = self.ctrl_target_fingertip_midpoint_pos.repeat(self.num_envs, 1)
+        self.ctrl_target_fingertip_centered_pos = desired_pos.clone()
 
         # Set target rot
         if desired_rot is None:
-            ctrl_target_fingertip_midpoint_euler = torch.tensor(self.cfg_task.randomize.fingertip_midpoint_rot_initial,
+            ctrl_target_fingertip_centered_euler = torch.tensor(self.cfg_task.randomize.fingertip_midpoint_rot_initial,
                                                                 device=self.device).unsqueeze(0).repeat(self.num_envs,
                                                                                                         1)
 
-            self.ctrl_target_fingertip_midpoint_quat = torch_jit_utils.quat_from_euler_xyz(
-                ctrl_target_fingertip_midpoint_euler[:, 0],
-                ctrl_target_fingertip_midpoint_euler[:, 1],
-                ctrl_target_fingertip_midpoint_euler[:, 2])
+            self.ctrl_target_fingertip_centered_quat = torch_jit_utils.quat_from_euler_xyz(
+                ctrl_target_fingertip_centered_euler[:, 0],
+                ctrl_target_fingertip_centered_euler[:, 1],
+                ctrl_target_fingertip_centered_euler[:, 2])
         else:
-            self.ctrl_target_fingertip_midpoint_quat = desired_rot
+            self.ctrl_target_fingertip_centered_quat = desired_rot
 
         # Step sim and render
         # while torch.norm(pos_error, p=2, dim=-1) > 0.001 and torch.norm(axis_angle_error, p=2, dim=-1) > 0.001:
         for _ in range(sim_steps):
+
             self._simulate_and_refresh()
 
+            # NOTE: midpoint is calculated based on the midpoint between the actual gripper finger pos,
+            # and centered is calculated with the assumption that the gripper fingers are perfectly closed at center.
+            # since the fingertips are underactuated, thus we cant know the true pose
+
             pos_error, axis_angle_error = fc.get_pose_error(
-                fingertip_midpoint_pos=self.fingertip_midpoint_pos,
-                fingertip_midpoint_quat=self.fingertip_midpoint_quat,
-                ctrl_target_fingertip_midpoint_pos=self.ctrl_target_fingertip_midpoint_pos,
-                ctrl_target_fingertip_midpoint_quat=self.ctrl_target_fingertip_midpoint_quat,
+                fingertip_midpoint_pos=self.fingertip_centered_pos,
+                fingertip_midpoint_quat=self.fingertip_centered_quat,
+                ctrl_target_fingertip_midpoint_pos=self.ctrl_target_fingertip_centered_pos,
+                ctrl_target_fingertip_midpoint_quat=self.ctrl_target_fingertip_centered_quat,
                 jacobian_type=self.cfg_ctrl['jacobian_type'],
                 rot_error_type='axis_angle')
 
@@ -473,8 +492,8 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             actions = torch.zeros((self.num_envs, self.cfg_task.env.numActions), device=self.device)
             actions[:, :6] = delta_hand_pose
 
-            # Apply the action, dont move the figners
-            self.ctrl_target_dof_pos[env_ids, 7:] = self.ctrl_target_gripper_dof_pos  # 0.
+            # Apply the action, keep fingers in the same status
+            self.ctrl_target_dof_pos[env_ids, 7:] = self.ctrl_target_gripper_dof_pos
             self._apply_actions_as_ctrl_targets(actions=actions,
                                                 ctrl_target_gripper_dof_pos=self.ctrl_target_gripper_dof_pos,
                                                 do_scale=False)
@@ -521,7 +540,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         pos_actions = actions[:, 0:3]
         if do_scale:
             pos_actions = pos_actions @ torch.diag(torch.tensor(self.cfg_task.rl.pos_action_scale, device=self.device))
-        self.ctrl_target_fingertip_midpoint_pos = self.fingertip_midpoint_pos + pos_actions
+        self.ctrl_target_fingertip_centered_pos = self.fingertip_centered_pos + pos_actions
 
         # Interpret actions as target rot (axis-angle) displacements
         rot_actions = actions[:, 3:6]
@@ -537,8 +556,8 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                                            rot_actions_quat,
                                            torch.tensor([0.0, 0.0, 0.0, 1.0], device=self.device).repeat(self.num_envs,
                                                                                                          1))
-        self.ctrl_target_fingertip_midpoint_quat = torch_jit_utils.quat_mul(rot_actions_quat,
-                                                                            self.fingertip_midpoint_quat)
+        self.ctrl_target_fingertip_centered_quat = torch_jit_utils.quat_mul(rot_actions_quat,
+                                                                            self.fingertip_centered_quat)
 
         if self.cfg_ctrl['do_force_ctrl']:
             # Interpret actions as target forces and target torques
@@ -672,8 +691,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                                                      gymtorch.unwrap_tensor(plug_actor_ids_sim_int32[env_ids]),
                                                      len(plug_actor_ids_sim_int32[env_ids]))
 
-        self.gym.simulate(self.sim)
-        self.render()
+        self._simulate_and_refresh()
 
     def _check_lift_success(self, height_multiple):
         """Check if plug is above table by more than specified multiple times height of plug."""

@@ -623,7 +623,7 @@
    <joint name="iiwa7_joint_ee" type="fixed">
     <parent link="gripper_base_link"/>
     <child link="kuka_fingertip_centered"/>
-    <origin rpy="0 0 0" xyz="0 0 0.071"/>
+    <origin rpy="0 -1.57079632679 0" xyz="-0.12 -0.01 -0.000"/>
   </joint>
 
   <link name="kuka_fingertip_centered" />

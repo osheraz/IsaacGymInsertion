@@ -273,6 +273,9 @@ class FactoryBaseTactile(VecTask, FactoryABCBase):
         self.ctrl_target_gripper_dof_pos = torch.zeros((self.num_envs, self.gripper_dof_pos.shape[-1]), device=self.device)
         self.ctrl_target_fingertip_contact_wrench = torch.zeros((self.num_envs, 6), device=self.device)
 
+        self.ctrl_target_fingertip_centered_pos = torch.zeros((self.num_envs, 3), device=self.device)
+        self.ctrl_target_fingertip_centered_quat = torch.zeros((self.num_envs, 4), device=self.device)
+
         self.prev_actions = torch.zeros((self.num_envs, self.num_actions), device=self.device)
 
     def refresh_base_tensors(self):
@@ -288,20 +291,17 @@ class FactoryBaseTactile(VecTask, FactoryABCBase):
         self.gym.refresh_mass_matrix_tensors(self.sim)
         self.gym.refresh_force_sensor_tensor(self.sim)
 
-        # self.finger_midpoint_pos = (self.left_finger_pos + self.right_finger_pos + self.middle_finger_pos) * (1 / 3)
-        #
-        # self.fingertip_midpoint_pos = fc.translate_along_local_z(pos=self.finger_midpoint_pos,
-        #                                                          quat=self.hand_quat,
-        #                                                          offset=self.asset_info_kuka_table.openhand_finger_length,
-        #                                                          device=self.device)
-        #
-        # self.fingertip_midpoint_pos = self.finger_midpoint_pos
-        #
-        # # TODO: Add relative velocity term (see https://dynamicsmotioncontrol487379916.files.wordpress.com/2020/11/21-me258pointmovingrigidbody.pdf)
-        # self.fingertip_midpoint_linvel = self.fingertip_centered_linvel + torch.cross(self.fingertip_centered_angvel,
-        #                                                                               (self.fingertip_midpoint_pos - self.fingertip_centered_pos),
-        #                                                                               dim=1)
-        # self.fingertip_midpoint_jacobian = (self.left_finger_jacobian + self.right_finger_jacobian + self.middle_finger_jacobian) * (1 / 3)  # approximation
+        # Privileged
+        self.finger_midpoint_pos = (self.left_finger_pos + self.right_finger_pos + self.middle_finger_pos) * (1 / 3)
+        self.fingertip_midpoint_pos = self.finger_midpoint_pos # fc.translate_along_local_z(pos=self.finger_midpoint_pos,
+                                                                 # quat=self.hand_quat,
+                                                                 # offset=self.asset_info_kuka_table.openhand_finger_length,
+                                                                 # device=self.device)
+
+        self.fingertip_midpoint_linvel = self.fingertip_centered_linvel + torch.cross(self.fingertip_centered_angvel,
+                                                                                      (self.fingertip_midpoint_pos - self.fingertip_centered_pos),
+                                                                                      dim=1)
+        self.fingertip_midpoint_jacobian = (self.left_finger_jacobian + self.right_finger_jacobian + self.middle_finger_jacobian) * (1 / 3)  # approximation
 
 
     def parse_controller_spec(self):
@@ -455,18 +455,17 @@ class FactoryBaseTactile(VecTask, FactoryABCBase):
                 self.gym.set_actor_dof_properties(env_ptr, kuka_handle, kuka_dof_props)
 
 
-
     def generate_ctrl_signals(self):
         """Get Jacobian. Set kuka DOF position targets or DOF torques."""
 
         # Get desired Jacobian
         if self.cfg_ctrl['jacobian_type'] == 'geometric':
-            self.fingertip_midpoint_jacobian_tf = self.fingertip_midpoint_jacobian
+            self.fingertip_centered_jacobian_tf = self.fingertip_centered_jacobian
 
         elif self.cfg_ctrl['jacobian_type'] == 'analytic':
             self.fingertip_midpoint_jacobian_tf = fc.get_analytic_jacobian(
                 fingertip_quat=self.fingertip_quat,
-                fingertip_jacobian=self.fingertip_midpoint_jacobian,
+                fingertip_jacobian=self.fingertip_centered_jacobian,
                 num_envs=self.num_envs,
                 device=self.device)
 
@@ -482,11 +481,11 @@ class FactoryBaseTactile(VecTask, FactoryABCBase):
         self.ctrl_target_dof_pos = fc.compute_dof_pos_target(
             cfg_ctrl=self.cfg_ctrl,
             arm_dof_pos=self.arm_dof_pos,
-            fingertip_midpoint_pos=self.fingertip_midpoint_pos,
-            fingertip_midpoint_quat=self.fingertip_midpoint_quat,
-            jacobian=self.fingertip_midpoint_jacobian_tf,
-            ctrl_target_fingertip_midpoint_pos=self.ctrl_target_fingertip_midpoint_pos,
-            ctrl_target_fingertip_midpoint_quat=self.ctrl_target_fingertip_midpoint_quat,
+            fingertip_midpoint_pos=self.fingertip_centered_pos,
+            fingertip_midpoint_quat=self.fingertip_centered_quat,
+            jacobian=self.fingertip_centered_jacobian_tf,
+            ctrl_target_fingertip_midpoint_pos=self.ctrl_target_fingertip_centered_pos,
+            ctrl_target_fingertip_midpoint_quat=self.ctrl_target_fingertip_centered_quat,
             ctrl_target_gripper_dof_pos=self.ctrl_target_gripper_dof_pos,
             device=self.device)
 
