@@ -10,7 +10,7 @@ physics_engine: ${..physics_engine}
 
 env:
     numEnvs: ${resolve_default:128,${...num_envs}}
-    numObservations: 27
+    numObservations: 24
     numActions: 12 # [position, ori, force, torque]
     openhand:
         distal_open: 0.0
@@ -22,7 +22,8 @@ env:
     num_gripper_move_sim_steps: 40  # number of timesteps to reserve for moving gripper before first step of episode
     num_gripper_close_sim_steps: 50  # number of timesteps to reserve for closing gripper onto plug during each reset
     num_gripper_lift_sim_steps: 25  # number of timesteps to reserve for lift after last step of episode
-
+    socket_pos_obs_noise: [ 0.001, 0.001, 0.0 ]
+    socket_rot_obs_noise: [ 0.0, 0.0, 0.0 ]
 sim:
     disable_gravity: True
 
@@ -79,6 +80,10 @@ rl:
     far_error_thresh: 0.100  # threshold above which plug is considered too far from bolt
     close_error_thresh: 0.1  # threshold below which plug is considered close enough to bolt
     success_bonus: 0.0  # bonus if plug is close enough to base of bolt shank
+
+    # Success bonus
+    success_height_thresh: 0.003  # threshold distance below which plug is considered successfully inserted
+    engagement_bonus: 10.0  # bonus if plug is engaged (partially inserted) with socket
 
 ctrl:
     ctrl_type:  gym_default # {gym_default,

@@ -95,19 +95,13 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         plug_grasp_heights = self.socket_heights + self.plug_heights * 1.1
         self.plug_grasp_pos_local = plug_grasp_heights * torch.tensor([0.0, 0.0, 1.0], device=self.device).repeat(
             (self.num_envs, 1))
-        self.plug_grasp_quat_local = torch.tensor([0.0, 1.0, 0.0, 0.0], device=self.device).unsqueeze(0).repeat(
+        self.plug_grasp_quat_local = torch.tensor([0.0, 0.0, 0.0, 1.0], device=self.device).unsqueeze(0).repeat(
             self.num_envs, 1)
-        # Compute pose of plug grasping frame
-        self.plug_grasp_quat, self.plug_grasp_pos = torch_jit_utils.tf_combine(self.plug_quat,
-                                                                               self.plug_pos,
-                                                                               self.plug_grasp_quat_local,
-                                                                               self.plug_grasp_pos_local)
 
-        # From place
-        self.socket_base_pos_local = self.socket_heights * torch.tensor([0.0, 0.0, 1.0], device=self.device).repeat(
-            (self.num_envs, 1))
         self.socket_tip_pos_local = self.socket_heights * torch.tensor([0.0, 0.0, 1.0], device=self.device).repeat(
             (self.num_envs, 1))
+        self.gripper_normal_quat = (torch.tensor([-0.5000, -0.5000, -0.5000, 0.5000],
+                                                 device=self.device).unsqueeze(0).repeat(self.num_envs, 1))
 
         # Keypoint tensors
         self.keypoint_offsets = self._get_keypoint_offsets(
@@ -131,6 +125,54 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                                                                                self.plug_pos,
                                                                                self.plug_grasp_quat_local,
                                                                                self.plug_grasp_pos_local)
+
+        # Add observation noise to socket pos
+        self.noisy_socket_pos = torch.zeros_like(
+            self.socket_pos, dtype=torch.float32, device=self.device
+        )
+        socket_obs_pos_noise = 2 * (
+            torch.rand((self.num_envs, 3), dtype=torch.float32, device=self.device)
+            - 0.5
+        )
+        socket_obs_pos_noise = socket_obs_pos_noise @ torch.diag(
+            torch.tensor(
+                self.cfg_task.env.socket_pos_obs_noise,
+                dtype=torch.float32,
+                device=self.device,
+            )
+        )
+
+        self.noisy_socket_pos[:, 0] = self.socket_pos[:, 0] + socket_obs_pos_noise[:, 0]
+        self.noisy_socket_pos[:, 1] = self.socket_pos[:, 1] + socket_obs_pos_noise[:, 1]
+        self.noisy_socket_pos[:, 2] = self.socket_pos[:, 2] + socket_obs_pos_noise[:, 2]
+
+        # Add observation noise to desired_rot
+        desired_rot_euler = torch.tensor([-np.pi / 2, -np.pi / 2, 0], device=self.device).unsqueeze(0).repeat(self.num_envs, 1)
+
+        desired_rot_noise = 2 * (
+            torch.rand((self.num_envs, 3), dtype=torch.float32, device=self.device)
+            - 0.5
+        )
+        socket_obs_rot_noise = desired_rot_noise @ torch.diag(
+            torch.tensor(
+                self.cfg_task.env.socket_rot_obs_noise,
+                dtype=torch.float32,
+                device=self.device,
+            )
+        )
+
+        desired_obs_rot_euler = desired_rot_euler + socket_obs_rot_noise
+        self.noisy_desired_quat = torch_jit_utils.quat_from_euler_xyz(
+            desired_obs_rot_euler[:, 0],
+            desired_obs_rot_euler[:, 1],
+            desired_obs_rot_euler[:, 2],
+        )
+
+        self.noisy_gripper_goal_quat, self.noisy_gripper_goal_pos = torch_jit_utils.tf_combine(
+                                                                        self.identity_quat,
+                                                                        self.noisy_socket_pos,
+                                                                        self.gripper_normal_quat,
+                                                                        self.socket_tip_pos_local)
 
         # Compute pos of keypoints on gripper, socket, and plug in world frame
         for idx, keypoint_offset in enumerate(self.keypoint_offsets):
@@ -199,7 +241,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.progress_buf[:] += 1
 
         # In this policy, episode length is constant
-        # is_last_step = (self.progress_buf[0] == self.max_episode_length - 1)
+        is_last_step = (self.progress_buf[0] == self.max_episode_length - 1)
 
         self.refresh_base_tensors()
         self.refresh_env_tensors()
@@ -211,19 +253,37 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         """Compute observations."""
 
         # Shallow copies of tensors
-        obs_tensors = [self.fingertip_midpoint_pos,
-                       self.fingertip_midpoint_quat,
-                       self.fingertip_midpoint_linvel,
-                       self.fingertip_midpoint_angvel,
-                       self.plug_pos,
-                       self.plug_quat,
-                       self.socket_pos,
-                       self.socket_quat]
+        delta_pos = self.socket_tip - self.fingertip_centered_pos
+        noisy_delta_pos = self.noisy_gripper_goal_pos - self.fingertip_centered_pos
 
-        if self.cfg_task.rl.add_obs_socket_tip_pos:
-            obs_tensors += [self.socket_tip_pos_local]
+        # Define observations (for actor)
+        obs_tensors = [
+            self.arm_dof_pos,  # 7
+            self.pose_world_to_robot_base(self.fingertip_midpoint_pos, self.fingertip_midpoint_quat)[0],  # 3
+            self.pose_world_to_robot_base(self.fingertip_midpoint_pos, self.fingertip_midpoint_quat)[1],  # 4
+            self.pose_world_to_robot_base(self.noisy_gripper_goal_pos, self.noisy_gripper_goal_quat)[0],  # 3
+            self.pose_world_to_robot_base(self.noisy_gripper_goal_pos, self.noisy_gripper_goal_quat)[1],  # 4
+            noisy_delta_pos,  # 3
+        ]
+
+        # Define state (for critic)
+        state_tensors = [
+            self.arm_dof_pos,  # 7
+            self.arm_dof_vel,  # 7
+            self.pose_world_to_robot_base(self.fingertip_midpoint_pos, self.fingertip_midpoint_quat)[0],  # 3
+            self.pose_world_to_robot_base(self.fingertip_midpoint_pos, self.fingertip_midpoint_quat)[1],  # 4
+            self.fingertip_midpoint_linvel,  # 3
+            self.fingertip_midpoint_angvel,  # 3
+            self.pose_world_to_robot_base(self.socket_tip, self.gripper_normal_quat)[0],  # 3
+            self.pose_world_to_robot_base(self.socket_tip, self.gripper_normal_quat)[1],  # 4
+            delta_pos,  # 3
+            self.pose_world_to_robot_base(self.plug_pos, self.plug_quat)[0],  # 3
+            self.pose_world_to_robot_base(self.plug_pos, self.plug_quat)[1],  # 4
+            noisy_delta_pos - delta_pos,  # 3
+        ]
 
         self.obs_buf = torch.cat(obs_tensors, dim=-1)  # shape = (num_envs, num_observations)
+        self.states_buf = torch.cat(state_tensors, dim=-1)
 
         return self.obs_buf  # shape = (num_envs, num_observations)
 
@@ -245,15 +305,15 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         is_last_step = (self.progress_buf[0] == self.max_episode_length - 1)
 
         if is_last_step:
-            # Check if plug is picked up and above table
-            lift_success = self._check_lift_success(height_multiple=3.0)
-            self.rew_buf[:] += lift_success * self.cfg_task.rl.success_bonus
-            self.extras['successes'] = torch.mean(lift_success.float())
+            is_plug_engaged_w_socket = self._check_plug_engaged_w_socket()
+            engagement_reward_scale = self._get_engagement_reward_scale(is_plug_engaged_w_socket,
+                                                                        self.cfg_task.rl.success_height_thresh)
+            self.rew_buf[:] += (engagement_reward_scale * self.cfg_task.rl.engagement_bonus)
 
-            # Check if plug is close enough to socket
-            is_plug_close_to_socket = self._check_plug_close_to_socket()
-            self.rew_buf[:] += is_plug_close_to_socket * self.cfg_task.rl.success_bonus
-            self.extras['successes'] += torch.mean(is_plug_close_to_socket.float())
+            is_plug_inserted_in_socket = self._check_plug_inserted_in_socket()
+            self.rew_buf[:] += is_plug_inserted_in_socket * self.cfg_task.rl.success_bonus
+
+            self.extras['successes'] += torch.mean(is_plug_inserted_in_socket.float())
 
     def _update_reset_buf(self):
         """Assign environments for reset if successful or failed."""
@@ -262,58 +322,39 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                                         torch.ones_like(self.reset_buf),
                                         self.reset_buf)
 
-
     def reset_idx(self, env_ids):
         """Reset specified environments."""
 
-        for _ in range(1):
-            self._reset_kuka(env_ids)
-            self._reset_object(env_ids)
-            self._zero_velocities(env_ids)
-            self._refresh_task_tensors()
+        self._reset_kuka(env_ids)
+        self._reset_object(env_ids)
+        self._zero_velocities(env_ids)
+        self._refresh_task_tensors()
 
-            # Move arm to grasp pose
-            self._move_arm_to_desired_pose(env_ids, self.plug_grasp_pos.clone(),
-                                           sim_steps=5 * self.cfg_task.env.num_gripper_move_sim_steps)
-            self._zero_velocities(env_ids)
-            self._refresh_task_tensors()
+        # Move arm to grasp pose
+        self._move_arm_to_desired_pose(env_ids, self.plug_grasp_pos.clone(),
+                                       sim_steps=5 * self.cfg_task.env.num_gripper_move_sim_steps)
+        self._zero_velocities(env_ids)
+        self._refresh_task_tensors()
 
-            # Grasp ~ todo add randomization
-            self._close_gripper(env_ids, self.cfg_task.env.num_gripper_close_sim_steps)
-            self._refresh_task_tensors()
+        # Grasp ~ todo add randomization
+        self._close_gripper(env_ids, self.cfg_task.env.num_gripper_close_sim_steps)
+        self._refresh_task_tensors()
 
-            # Lift
-            self._lift_gripper(env_ids, self.ctrl_target_gripper_dof_pos)
-            self._refresh_task_tensors()
+        # Lift
+        self._lift_gripper(env_ids, self.ctrl_target_gripper_dof_pos)
+        self._refresh_task_tensors()
 
-            # Move arm above the socket
-            self._move_arm_to_desired_pose(env_ids, self.above_socket_pos.clone(),
-                                           sim_steps=5 * self.cfg_task.env.num_gripper_move_sim_steps)
-            self._refresh_task_tensors()
+        # Move arm above the socket
+        self._move_arm_to_desired_pose(env_ids, self.above_socket_pos.clone(),
+                                       sim_steps=5 * self.cfg_task.env.num_gripper_move_sim_steps)
+        self._refresh_task_tensors()
 
-            # Isidoros @ todo oracle insertion
+        # Insert
+        self._move_arm_to_desired_pose(env_ids, self.socket_tip.clone(),
+                                       sim_steps=5 * self.cfg_task.env.num_gripper_move_sim_steps)
+        self._refresh_task_tensors()
 
-            # inv_Pose_Gripper_quat, inv_Pose_Gripper_t = tf_inverse(self.fingertip_midpoint_quat,
-            #                                                        self.fingertip_midpoint_pos)
-            #
-            # DeltaG_quat, DeltaG_t = tf_combine(inv_Pose_Gripper_quat,
-            #                                    inv_Pose_Gripper_t,
-            #                                    self.plug_quat,
-            #                                    self.plug_pos)
-            #
-            # inv_DeltaG_quat, inv_DeltaG_t = tf_inverse(DeltaG_quat, DeltaG_t)
-            #
-            # target_Pose_Gripper_quat, target_Pose_Gripper_t = tf_combine(self.socket_quat,
-            #                                                              self.socket_tip,
-            #                                                              inv_DeltaG_quat,
-            #                                                              inv_DeltaG_t)
-
-            # Insert
-            self._move_arm_to_desired_pose(env_ids, self.socket_tip.clone(),
-                                           sim_steps=5 * self.cfg_task.env.num_gripper_move_sim_steps)
-            self._refresh_task_tensors()
-
-            self._reset_buffers(env_ids)
+        self._reset_buffers(env_ids)
 
     def _reset_kuka(self, env_ids):
         """Reset DOF states and DOF targets of kuka."""
@@ -416,6 +457,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             self.ctrl_target_fingertip_midpoint_quat = desired_rot
 
         # Step sim and render
+        # while torch.norm(pos_error, p=2, dim=-1) > 0.001 and torch.norm(axis_angle_error, p=2, dim=-1) > 0.001:
         for _ in range(sim_steps):
             self._simulate_and_refresh()
 
@@ -585,11 +627,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         # Step sim
         for _ in range(sim_steps):
-            self.render()
-            self._refresh_task_tensors()
-            self.gym.simulate(self.sim)
-
-        self._refresh_task_tensors()
+            self._simulate_and_refresh()
 
     def _lift_gripper(self, env_ids, gripper_dof_pos, lift_distance=0.2, sim_steps=20):
         """Lift gripper by specified distance. Called outside RL loop (i.e., after last step of episode)."""
@@ -600,9 +638,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         # Step sim
         for _ in range(sim_steps):
             self._apply_actions_as_ctrl_targets(delta_hand_pose, gripper_dof_pos, do_scale=False)
-            self.render()
-            self._refresh_task_tensors()
-            self.gym.simulate(self.sim)
+            self._simulate_and_refresh()
 
     def _get_keypoint_offsets(self, num_keypoints):
         """Get uniformly-spaced keypoints along a line of unit length, centered at 0."""
@@ -616,27 +652,6 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         keypoint_dist = torch.sum(torch.norm(self.keypoints_socket - self.keypoints_plug, p=2, dim=-1), dim=-1)
         return keypoint_dist
-
-    def _check_lift_success(self, height_multiple):
-        """Check if plug is above table by more than specified multiple times height of plug."""
-
-        lift_success = torch.where(
-            self.plug_pos[:, 2] > self.cfg_base.env.table_height + self.plug_heights.squeeze(-1) * height_multiple,
-            torch.ones((self.num_envs,), device=self.device),
-            torch.zeros((self.num_envs,), device=self.device))
-
-        return lift_success
-
-    def _check_plug_close_to_socket(self):
-        """Check if plug is close to socket."""
-
-        keypoint_dist = torch.norm(self.keypoints_socket - self.keypoints_plug, p=2, dim=-1)
-
-        is_plug_close_to_socket = torch.where(torch.sum(keypoint_dist, dim=-1) < self.cfg_task.rl.close_error_thresh,
-                                              torch.ones_like(self.progress_buf),
-                                              torch.zeros_like(self.progress_buf))
-
-        return is_plug_close_to_socket
 
     def _zero_velocities(self, env_ids):
 
@@ -659,3 +674,82 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         self.gym.simulate(self.sim)
         self.render()
+
+    def _check_lift_success(self, height_multiple):
+        """Check if plug is above table by more than specified multiple times height of plug."""
+
+        lift_success = torch.where(
+            self.plug_pos[:, 2] > self.cfg_base.env.table_height + self.plug_heights.squeeze(-1) * height_multiple,
+            torch.ones((self.num_envs,), device=self.device),
+            torch.zeros((self.num_envs,), device=self.device))
+
+        return lift_success
+
+    def _check_plug_close_to_socket(self):
+        """Check if plug is close to socket."""
+
+        keypoint_dist = torch.norm(self.keypoints_socket - self.keypoints_plug, p=2, dim=-1)
+
+        is_plug_close_to_socket = torch.where(torch.sum(keypoint_dist, dim=-1) < self.cfg_task.rl.close_error_thresh,
+                                              torch.ones_like(self.progress_buf),
+                                              torch.zeros_like(self.progress_buf))
+
+        return is_plug_close_to_socket
+
+    def _check_plug_inserted_in_socket(self):
+        """Check if plug is inserted in socket."""
+
+        # Check if plug is within threshold distance of assembled state
+        is_plug_below_insertion_height = (
+                self.plug_pos[:, 2] < self.socket_pos[:, 2] + self.cfg_task.rl.success_height_thresh
+        )
+
+        # Check if plug is close to socket
+        # NOTE: This check addresses edge case where plug is within threshold distance of
+        # assembled state, but plug is outside socket
+        is_plug_close_to_socket = self._check_plug_close_to_socket()
+
+        # Combine both checks
+        is_plug_inserted_in_socket = torch.logical_and(
+            is_plug_below_insertion_height, is_plug_close_to_socket
+        )
+
+        return is_plug_inserted_in_socket
+
+    def _check_plug_engaged_w_socket(self):
+        """Check if plug is engaged with socket."""
+
+        # Check if base of plug is below top of socket
+        # NOTE: In assembled state, plug origin is coincident with socket origin;
+        # thus plug pos must be offset to compute actual pos of base of plug
+        is_plug_below_engagement_height = (
+                self.plug_pos[:, 2] + self.cfg_task.env.socket_base_height < self.socket_tip[:, 2]
+        )
+
+        # Check if plug is close to socket
+        # NOTE: This check addresses edge case where base of plug is below top of socket,
+        # but plug is outside socket
+        is_plug_close_to_socket = self._check_plug_close_to_socket()
+
+        # Combine both checks
+        is_plug_engaged_w_socket = torch.logical_and(
+            is_plug_below_engagement_height, is_plug_close_to_socket
+        )
+
+        return is_plug_engaged_w_socket
+
+    def _get_engagement_reward_scale(self, is_plug_engaged_w_socket, success_height_thresh):
+        """Compute scale on reward. If plug is not engaged with socket, scale is zero.
+        If plug is engaged, scale is proportional to distance between plug and bottom of socket."""
+
+        # Set default value of scale to zero
+        reward_scale = torch.zeros((self.num_envs,), dtype=torch.float32, device=self.device)
+
+        # For envs in which plug and socket are engaged, compute positive scale
+        engaged_idx = np.argwhere(is_plug_engaged_w_socket.cpu().numpy().copy()).squeeze()
+        height_dist = self.plug_pos[engaged_idx, 2] - self.socket_pos[engaged_idx, 2]
+        # NOTE: Edge case: if success_height_thresh is greater than 0.1,
+        # denominator could be negative
+        reward_scale[engaged_idx] = 1.0 / ((height_dist - success_height_thresh) + 0.1)
+
+        return reward_scale

@@ -205,6 +205,7 @@ class FactoryBaseTactile(VecTask, FactoryABCBase):
         self.ft_sensor_tensor = self.ft_sensors.view(self.num_envs, (len(self.fingertip_handles) + 1) * 6)
 
         self.arm_dof_pos = self.dof_pos[:, 0:7]
+        self.arm_dof_vel = self.dof_vel[:, 0:7]
         self.arm_mass_matrix = self.mass_matrix[:, 0:7, 0:7]  # for kuka arm (not gripper)
 
         self.robot_base_pos = self.body_pos[:, self.robot_base_body_id_env, 0:3]
@@ -261,7 +262,7 @@ class FactoryBaseTactile(VecTask, FactoryABCBase):
         # Thus, angular velocity of midpoint w.r.t. world is equal to angular velocity of hand w.r.t. world.
 
         self.fingertip_midpoint_angvel = self.fingertip_centered_angvel  # always equal
-        self.fingertip_midpoint_jacobian = (self.left_finger_jacobian + self.right_finger_jacobian+ self.middle_finger_jacobian) * 1 / 3 # approximation
+        self.fingertip_midpoint_jacobian = (self.left_finger_jacobian + self.right_finger_jacobian + self.middle_finger_jacobian) * 1 / 3 # approximation
 
         self.dof_torque = torch.zeros((self.num_envs, self.num_dofs), device=self.device)
         self.fingertip_contact_wrench = torch.zeros((self.num_envs, 6), device=self.device)
@@ -287,20 +288,20 @@ class FactoryBaseTactile(VecTask, FactoryABCBase):
         self.gym.refresh_mass_matrix_tensors(self.sim)
         self.gym.refresh_force_sensor_tensor(self.sim)
 
-        self.finger_midpoint_pos = (self.left_finger_pos + self.right_finger_pos + self.middle_finger_pos) * (1 / 3)
-
-        self.fingertip_midpoint_pos = fc.translate_along_local_z(pos=self.finger_midpoint_pos,
-                                                                 quat=self.hand_quat,
-                                                                 offset=self.asset_info_kuka_table.openhand_finger_length,
-                                                                 device=self.device)
-
-        self.fingertip_midpoint_pos = self.finger_midpoint_pos
-
-        # TODO: Add relative velocity term (see https://dynamicsmotioncontrol487379916.files.wordpress.com/2020/11/21-me258pointmovingrigidbody.pdf)
-        self.fingertip_midpoint_linvel = self.fingertip_centered_linvel + torch.cross(self.fingertip_centered_angvel,
-                                                                                      (self.fingertip_midpoint_pos - self.fingertip_centered_pos),
-                                                                                      dim=1)
-        self.fingertip_midpoint_jacobian = (self.left_finger_jacobian + self.right_finger_jacobian + self.middle_finger_jacobian) * (1 / 3)  # approximation
+        # self.finger_midpoint_pos = (self.left_finger_pos + self.right_finger_pos + self.middle_finger_pos) * (1 / 3)
+        #
+        # self.fingertip_midpoint_pos = fc.translate_along_local_z(pos=self.finger_midpoint_pos,
+        #                                                          quat=self.hand_quat,
+        #                                                          offset=self.asset_info_kuka_table.openhand_finger_length,
+        #                                                          device=self.device)
+        #
+        # self.fingertip_midpoint_pos = self.finger_midpoint_pos
+        #
+        # # TODO: Add relative velocity term (see https://dynamicsmotioncontrol487379916.files.wordpress.com/2020/11/21-me258pointmovingrigidbody.pdf)
+        # self.fingertip_midpoint_linvel = self.fingertip_centered_linvel + torch.cross(self.fingertip_centered_angvel,
+        #                                                                               (self.fingertip_midpoint_pos - self.fingertip_centered_pos),
+        #                                                                               dim=1)
+        # self.fingertip_midpoint_jacobian = (self.left_finger_jacobian + self.right_finger_jacobian + self.middle_finger_jacobian) * (1 / 3)  # approximation
 
 
     def parse_controller_spec(self):
