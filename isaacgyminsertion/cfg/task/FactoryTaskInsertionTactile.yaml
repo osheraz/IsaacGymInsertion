@@ -10,9 +10,13 @@ physics_engine: ${..physics_engine}
 
 env:
     numEnvs: ${resolve_default:128,${...num_envs}}
-    numStates: 60
+    numStates: 62
     numObservations: 24
-    numActions: 12 # [position, ori, force, torque]
+    numActions: 6 # [position, ori]
+    numTargets: 6 # [position, ori]
+    numObsHist: 5
+    proprio_history_len: 30
+    tactile_history_len: 3
 
     openhand:
         distal_open: 0.0
@@ -92,6 +96,8 @@ rl:
     # Success bonus
     success_height_thresh: 0.003  # threshold distance below which plug is considered successfully inserted
     engagement_bonus: 10.0  # bonus if plug is engaged (partially inserted) with socket
+
+
 
 ctrl:
     ctrl_type:  gym_default # {gym_default,

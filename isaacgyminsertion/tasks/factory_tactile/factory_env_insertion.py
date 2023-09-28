@@ -166,7 +166,7 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
         table_pose.p.z = self.cfg_base.env.table_height * 0.5
         table_pose.r = gymapi.Quat(0.0, 0.0, 0.0, 1.0)
 
-        self.env_ptrs = []
+        self.envs = []
         self.kuka_handles = []
         self.plug_handles = []
         self.socket_handles = []
@@ -193,7 +193,6 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
         self.socket_depths = []
 
         self.asset_indices = []
-        self.envs = []
 
         for i in range(self.num_envs):
 
@@ -201,7 +200,6 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
             j = np.random.randint(0, len(self.cfg_env.env.desired_subassemblies))
 
             env_ptr = self.gym.create_env(self.sim, lower, upper, num_per_row)
-            self.envs.append(env_ptr)
 
             # compute aggregate size
             num_kuka_bodies = self.gym.get_asset_rigid_body_count(kuka_asset)
@@ -327,7 +325,7 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
                 self.socket_widths.append(self.asset_info_insertion[subassembly][components[1]]['diameter'])
 
             self.asset_indices.append(j)
-            self.env_ptrs.append(env_ptr)
+            self.envs.append(env_ptr)
             self.kuka_handles.append(kuka_handle)
             self.plug_handles.append(plug_handle)
             self.socket_handles.append(socket_handle)
@@ -419,6 +417,8 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
                                                               (self.plug_com_pos - self.plug_pos),
                                                               dim=1)
         self.plug_com_angvel = self.plug_angvel  # always equal
+
+
 
     def refresh_env_tensors(self):
         """Refresh tensors."""

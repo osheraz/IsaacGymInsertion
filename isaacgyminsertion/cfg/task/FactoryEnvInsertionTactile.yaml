@@ -38,6 +38,7 @@ env:
     # NOTE: BNC, D-sub, and USB are currently unavailable while we await approval from manufacturers.
 
 randomize:
+
     domain_randomize: True
     randomization_params:
         frequency: 750   # Define how many simulation steps between generating new randomization
@@ -80,7 +81,7 @@ randomize:
                         # schedule_steps: 30000
             plug:
                 scale:
-                    range: [ 0.97, 1.03 ]
+                    range: [ 0.97, 1.0 ]
                     operation: "scaling"
                     distribution: "uniform"
                     setup_only: True # Property will only be randomized once before simulation is started. See Domain Randomization Documentation for more info.

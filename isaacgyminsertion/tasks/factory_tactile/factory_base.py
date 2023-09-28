@@ -183,6 +183,7 @@ class FactoryBaseTactile(VecTask, FactoryABCBase):
         _contact_force = self.gym.acquire_net_contact_force_tensor(self.sim)  # shape = (num_envs * num_bodies, 3)
         _jacobian = self.gym.acquire_jacobian_tensor(self.sim, 'kuka')  # shape = (num envs, num_bodies, 6, num_dofs)
         _mass_matrix = self.gym.acquire_mass_matrix_tensor(self.sim, 'kuka')  # shape = (num_envs, num_dofs, num_dofs)
+
         _ft_sensors = self.gym.acquire_force_sensor_tensor(self.sim)
 
         self.ft_sensors = gymtorch.wrap_tensor(_ft_sensors)
@@ -239,7 +240,6 @@ class FactoryBaseTactile(VecTask, FactoryABCBase):
         self.middle_finger_angvel = self.body_angvel[:, self.middle_finger_body_id_env, 0:3]
         self.middle_finger_jacobian = self.jacobian[:, self.middle_finger_body_id_env - 1, 0:6, 0:7]  # minus 1 because base is fixed
 
-
         self.left_finger_force = self.contact_force[:, self.left_finger_body_id_env, 0:3]
         self.right_finger_force = self.contact_force[:, self.right_finger_body_id_env, 0:3]
         self.middle_finger_force = self.contact_force[:, self.middle_finger_body_id_env, 0:3]
@@ -281,6 +281,8 @@ class FactoryBaseTactile(VecTask, FactoryABCBase):
         self.ctrl_target_fingertip_centered_quat = torch.zeros((self.num_envs, 4), device=self.device)
 
         self.prev_actions = torch.zeros((self.num_envs, self.num_actions), device=self.device)
+
+
 
     def refresh_base_tensors(self):
         """Refresh tensors."""
@@ -442,7 +444,7 @@ class FactoryBaseTactile(VecTask, FactoryABCBase):
             deriv_gains = torch.cat((self.cfg_ctrl['joint_deriv_gains'],
                                      self.cfg_ctrl['gripper_deriv_gains']), dim=-1).to('cpu')
             # No tensor API for getting/setting actor DOF props; thus, loop required
-            for env_ptr, kuka_handle, prop_gain, deriv_gain in zip(self.env_ptrs, self.kuka_handles, prop_gains,
+            for env_ptr, kuka_handle, prop_gain, deriv_gain in zip(self.envs, self.kuka_handles, prop_gains,
                                                                      deriv_gains):
                 kuka_dof_props = self.gym.get_actor_dof_properties(env_ptr, kuka_handle)
                 kuka_dof_props['driveMode'][:] = gymapi.DOF_MODE_POS
@@ -451,7 +453,7 @@ class FactoryBaseTactile(VecTask, FactoryABCBase):
                 self.gym.set_actor_dof_properties(env_ptr, kuka_handle, kuka_dof_props)
         elif self.cfg_ctrl['motor_ctrl_mode'] == 'manual':
             # No tensor API for getting/setting actor DOF props; thus, loop required
-            for env_ptr, kuka_handle in zip(self.env_ptrs, self.kuka_handles):
+            for env_ptr, kuka_handle in zip(self.envs, self.kuka_handles):
                 kuka_dof_props = self.gym.get_actor_dof_properties(env_ptr, kuka_handle)
                 kuka_dof_props['driveMode'][:] = gymapi.DOF_MODE_EFFORT
                 kuka_dof_props['stiffness'][:] = 0.0  # zero passive stiffness
