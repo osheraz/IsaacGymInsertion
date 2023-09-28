@@ -81,6 +81,9 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
         tactile_info_path = '../allsight/experiments/conf/test.yaml'  # relative to Gym's Hydra search path (cfg dir)
         self.cfg_tactile = hydra.compose(config_name=tactile_info_path)['']['']['']['allsight']['experiments']['conf']
 
+        self.randomize = self.cfg_env.randomize.domain_randomize
+        self.randomization_params = self.cfg_env.randomize.randomization_params
+
     def create_envs(self):
         """Set env options. Import assets. Create actors."""
 
@@ -190,10 +193,32 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
         self.socket_depths = []
 
         self.asset_indices = []
+        self.envs = []
 
         for i in range(self.num_envs):
 
+            # sample subassemblie
+            j = np.random.randint(0, len(self.cfg_env.env.desired_subassemblies))
+
             env_ptr = self.gym.create_env(self.sim, lower, upper, num_per_row)
+            self.envs.append(env_ptr)
+
+            # compute aggregate size
+            num_kuka_bodies = self.gym.get_asset_rigid_body_count(kuka_asset)
+            num_kuka_shapes = self.gym.get_asset_rigid_shape_count(kuka_asset)
+            num_plug_bodies = self.gym.get_asset_rigid_body_count(plug_assets[j])
+            num_plug_shapes = self.gym.get_asset_rigid_shape_count(plug_assets[j])
+            num_socket_bodies = self.gym.get_asset_rigid_body_count(socket_assets[j])
+            num_socket_shapes = self.gym.get_asset_rigid_shape_count(socket_assets[j])
+            num_table_bodies = self.gym.get_asset_rigid_body_count(table_asset)
+            num_table_shapes = self.gym.get_asset_rigid_shape_count(table_asset)
+
+            max_agg_bodies = num_kuka_bodies + num_plug_bodies + num_socket_bodies + num_table_bodies
+            max_agg_shapes = num_kuka_shapes + num_plug_shapes + num_socket_shapes + num_table_shapes
+
+            # begin aggregation mode if enabled - this can improve simulation performance
+            if self.cfg_env.env.aggregate_mode:
+                self.gym.begin_aggregate(env_ptr, max_agg_bodies, max_agg_shapes, True)
 
             # Create wrist and fingertip force sensors
             sensor_pose = gymapi.Transform()
@@ -210,7 +235,6 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
             self.kuka_actor_ids_sim.append(actor_count)
             actor_count += 1
 
-            j = np.random.randint(0, len(self.cfg_env.env.desired_subassemblies))
             subassembly = self.cfg_env.env.desired_subassemblies[j]
             components = list(self.asset_info_insertion[subassembly])
 
@@ -317,6 +341,9 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
             self.tactile_handles.append([allsight_renderer(self.cfg_tactile,
                                                            os.path.join(mesh_root, plug_file), randomize=False,
                                                            finger_idx=i) for i in range(len(self.fingertips))])
+
+            if self.cfg_env.env.aggregate_mode:
+                self.gym.end_aggregate(env_ptr)
 
         # Get indices
         self.num_actors = int(actor_count / self.num_envs)  # per env

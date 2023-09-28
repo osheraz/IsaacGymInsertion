@@ -49,6 +49,8 @@ import gym
 from isaacgyminsertion.utils.reformat import omegaconf_to_dict, print_dict
 from isaacgyminsertion.utils.utils import set_np_formatting, set_seed
 
+import warnings
+warnings.filterwarnings("ignore")
 
 def preprocess_train_config(cfg, config_dict):
     """
