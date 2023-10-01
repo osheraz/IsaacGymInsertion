@@ -92,7 +92,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.cfg_ppo = hydra.compose(config_name=ppo_path)
         self.cfg_ppo = self.cfg_ppo['train']  # strip superfluous nesting
 
-        self.prop_hist_len = self.cfg_task.env.proprio_history_len
+        self.ft_hist_len = self.cfg_task.env.ft_history_len
         self.tact_hist_len = self.cfg_task.env.tactile_history_len
 
     def _acquire_task_tensors(self):
@@ -120,19 +120,33 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                                                                                                         1)
         self.actions = torch.zeros((self.num_envs, self.num_actions), device=self.device)
         self.targets = torch.zeros((self.num_envs, self.cfg_task.env.numTargets), device=self.device)
-        self.prev_targets = torch.zeros((self.num_envs, self.cfg_task.env.numTargets), dtype=torch.float, device=self.device)
-        self.cur_targets = torch.zeros((self.num_envs, self.cfg_task.env.numTargets), dtype=torch.float, device=self.device)
+        self.prev_targets = torch.zeros((self.num_envs, self.cfg_task.env.numTargets), dtype=torch.float,
+                                        device=self.device)
+        self.cur_targets = torch.zeros((self.num_envs, self.cfg_task.env.numTargets), dtype=torch.float,
+                                       device=self.device)
 
+        # Keep track of history
         self.actions_queue = torch.zeros((self.num_envs, self.cfg_task.env.numObsHist, self.num_actions),
-                                              dtype=torch.float, device=self.device)
-        self.targets_queue = torch.zeros((self.num_envs, self.cfg_task.env.numObHist, self.num_actions),
-                                              dtype=torch.float, device=self.device)
+                                         dtype=torch.float, device=self.device)
+        self.targets_queue = torch.zeros((self.num_envs, self.cfg_task.env.numObsHist, self.num_actions),
+                                         dtype=torch.float, device=self.device)
 
-        # For Teacher-Student
-        self.proprio_queue = torch.zeros((self.num_envs, self.prop_hist_len, self.num_observations),
-                                            device=self.device, dtype=torch.float)
-        self.tactile_queue = torch.zeros((self.num_envs, self.tact_hist_len, len(self.fingertips)), device=self.device,
-                                            dtype=torch.float)
+        # tactile buffers
+        self.tactile_imgs = torch.zeros(
+            (self.num_envs, len(self.fingertips),
+             self.cfg_tactile.tacto.width, self.cfg_tactile.tacto.height, 3),
+            device=self.device,
+            dtype=torch.float,
+        )
+        self.tactile_queue = torch.zeros(
+            (self.num_envs, self.tact_hist_len, len(self.fingertips),
+             self.cfg_tactile.tacto.width, self.cfg_tactile.tacto.height, 3),
+            device=self.device,
+            dtype=torch.float,
+        )
+
+        self.ft_queue = torch.zeros((self.num_envs, self.ft_hist_len, 6), device=self.device, dtype=torch.float)
+
 
     def _refresh_task_tensors(self, update_tactile=True):
         """Refresh tensors."""
@@ -247,7 +261,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             #         process.join()
 
     def _update_tactile(self, left_finger_pose, right_finger_pose, middle_finger_pose, object_pose, offset=None,
-                        queue=None, display_viz=True):
+                        queue=None, display_viz=False):
 
         tactile_imgs, height_maps = [], []
 
@@ -267,12 +281,14 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             tactile_imgs.append(tactile_imgs_per_env)
             height_maps.append(height_maps_per_env)
 
+        # self.tactile_imgs = torch.tensor(tactile_imgs, dtype=torch.float32, device=self.device)
+
         if display_viz:
             env_to_show = 0
             self.tactile_handles[env_to_show][0].updateGUI(tactile_imgs[env_to_show], height_maps[env_to_show])
 
-        if queue is not None:
-            queue.put((tactile_imgs, offset))
+        # if queue is not None:
+        #     queue.put((tactile_imgs, offset))
 
     def pre_physics_step(self, actions):
         """Reset environments. Apply actions from policy as position/rotation targets, force/torque targets, and/or PD gains."""
@@ -289,13 +305,11 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             # if len(env_ids):
             #     self.reset_idx(env_ids)
 
-        # TODO think about reset , which one needs to be zero
         self.actions = actions.clone().to(self.device)  # shape = (num_envs, num_actions); values = [-1, 1]
         delta_targets = torch.cat([
             self.actions[:, :3] @ torch.diag(torch.tensor(self.cfg_task.rl.pos_action_scale, device=self.device)),  # 3
             self.actions[:, 3:6] @ torch.diag(torch.tensor(self.cfg_task.rl.rot_action_scale, device=self.device))  # 3
         ], dim=-1).clone()
-
 
         # Update targets
         self.targets = self.prev_targets + delta_targets
@@ -310,6 +324,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self._apply_actions_as_ctrl_targets(actions=self.actions,
                                             ctrl_target_gripper_dof_pos=self.ctrl_target_gripper_dof_pos,
                                             do_scale=True)
+
 
         self.prev_actions[:] = self.actions.clone()
         self.prev_targets[:] = self.targets.clone()
@@ -368,8 +383,14 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
     def compute_observations(self):
         """Compute observations."""
 
-        # Compute Observation and state at current timestep
+        # Compute tactile
+        # self.tactile_queue[:, 1:] = self.tactile_queue[:, :-1].clone().detach()
+        # self.tactile_queue[:, 0, :] = self.tactile_imgs
+        #
+        self.ft_queue[:, 1:] = self.ft_queue[:, :-1].clone().detach()
+        self.ft_queue[:, 0, :] = 0.1 * self.ft_sensor_tensor.clone()
 
+        # Compute Observation and state at current timestep
         delta_pos = self.socket_tip - self.fingertip_centered_pos
         noisy_delta_pos = self.noisy_gripper_goal_pos - self.fingertip_centered_pos
 
@@ -381,7 +402,9 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             self.pose_world_to_robot_base(self.noisy_gripper_goal_pos, self.noisy_gripper_goal_quat)[0],  # 3
             self.pose_world_to_robot_base(self.noisy_gripper_goal_pos, self.noisy_gripper_goal_quat)[1],  # 4
             noisy_delta_pos,  # 3
-        ]
+            self.actions_queue.reshape(self.actions_queue.shape[0], -1),  # numObsHist, 6
+            self.targets_queue.reshape(self.targets_queue.shape[0], -1),  # numObsHist, 6
+        ]  # TODO, may need to add history of other obs inputs
 
         # Define state (for teacher)
         # Physics states
@@ -486,7 +509,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         # # Insert
         # self._move_arm_to_desired_pose(env_ids, self.socket_tip.clone(),
         #                                sim_steps=5 * self.cfg_task.env.num_gripper_move_sim_steps)
-        self._refresh_task_tensors()
+        # self._refresh_task_tensors()
 
         self._reset_buffers(env_ids)
 
@@ -655,7 +678,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.progress_buf[env_ids] = 0
 
         # Reset history
-        self.proprio_queue[env_ids] = 0
+        self.ft_queue[env_ids] = 0
         self.tactile_queue[env_ids] = 0
         self.actions_queue[env_ids] *= 0
         self.targets_queue[env_ids] *= 0

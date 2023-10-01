@@ -11,11 +11,12 @@ physics_engine: ${..physics_engine}
 env:
     numEnvs: ${resolve_default:128,${...num_envs}}
     numStates: 62
-    numObservations: 24
+    numObservations: 84
     numActions: 6 # [position, ori]
     numTargets: 6 # [position, ori]
     numObsHist: 5
-    proprio_history_len: 30
+
+    ft_history_len: 30
     tactile_history_len: 3
 
     openhand:
