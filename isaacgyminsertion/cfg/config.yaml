@@ -36,6 +36,8 @@ num_subscenes: 4 # Splits the simulation into N physics scenes and runs each one
 test: False
 # used to set checkpoint path
 checkpoint: ''
+# used to set vae checkpoint path
+checkpoint_tactile: ''
 # set sigma when restoring network
 sigma: ''
 # set to True to use multi-gpu training
@@ -60,7 +62,7 @@ headless: False
 # set default task and default training config based on task
 defaults:
   - task: FactoryTaskInsertionTactile
-  - train: ${task}PPO
+  - train: ${task}PPOv2
   - hydra/job_logging: disabled
   - pbt: no_pbt
 

@@ -14,8 +14,9 @@ env:
     numObservations: 84
     numActions: 6 # [position, ori]
     numTargets: 6 # [position, ori]
-    numObsHist: 5
 
+    # Should be the same as in EnvPPO
+    numObsHist: 5
     ft_history_len: 30
     tactile_history_len: 3
 
@@ -87,6 +88,7 @@ rl:
 
     keypoint_reward_scale: 1.0  # scale on keypoint-based reward
     action_penalty_scale: 0.0  # scale on action penalty
+    orientation_penalty_scale: 0.1
 
     max_episode_length: 8192  # terminate episode after this number of timesteps (failure)
 
