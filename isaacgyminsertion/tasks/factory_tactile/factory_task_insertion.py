@@ -261,7 +261,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             #         process.join()
 
     def _update_tactile(self, left_finger_pose, right_finger_pose, middle_finger_pose, object_pose, offset=None,
-                        queue=None, display_viz=True):
+                        queue=None, display_viz=False):
 
         tactile_imgs, height_maps = [], []
 
@@ -281,7 +281,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             tactile_imgs.append(tactile_imgs_per_env)
             height_maps.append(height_maps_per_env)
 
-        # self.tactile_imgs = torch.tensor(tactile_imgs, dtype=torch.float32, device=self.device)
+        self.tactile_imgs = torch.tensor(tactile_imgs, dtype=torch.float32, device=self.device)
 
         if display_viz:
             env_to_show = 0
