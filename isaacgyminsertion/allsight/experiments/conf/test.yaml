@@ -6,8 +6,8 @@ hydra:
 # - override hydra/job_logging: disabled
 
 tacto:
-  width: 48 # 480 | 224
-  height: 48 # 480 | 224 for the gan
+  width: 120 # 480 | 224
+  height: 120 # 480 | 224 for the gan
   visualize_gui: True
 
 allsight:

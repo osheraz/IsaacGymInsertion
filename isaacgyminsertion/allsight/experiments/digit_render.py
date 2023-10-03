@@ -11,12 +11,12 @@ from os import path as osp
 
 import matplotlib.pyplot as plt
 import numpy as np
-from isaacgymutils.allsight.experiments.utils.object_loader import object_loader
-from isaacgymutils.allsight import tacto
-from isaacgymutils.allsight.tacto.renderer import euler2matrix
+from isaacgyminsertion.allsight.experiments.utils.object_loader import object_loader
+from isaacgyminsertion.allsight import tacto
+from isaacgyminsertion.allsight.tacto.renderer import euler2matrix
 import cv2
 from omegaconf import DictConfig
-from isaacgymutils.allsight.experiments.utils.pose import (
+from isaacgyminsertion.allsight.experiments.utils.pose import (
     pose_from_vertex_normal,
     tf_to_xyzquat_numpy,
 )

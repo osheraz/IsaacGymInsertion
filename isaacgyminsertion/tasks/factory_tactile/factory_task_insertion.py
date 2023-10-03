@@ -261,7 +261,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             #         process.join()
 
     def _update_tactile(self, left_finger_pose, right_finger_pose, middle_finger_pose, object_pose, offset=None,
-                        queue=None, display_viz=False):
+                        queue=None, display_viz=True):
 
         tactile_imgs, height_maps = [], []
 
@@ -281,7 +281,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             tactile_imgs.append(tactile_imgs_per_env)
             height_maps.append(height_maps_per_env)
 
-        self.tactile_imgs = torch.tensor(tactile_imgs, dtype=torch.float32, device=self.device)
+        # self.tactile_imgs = torch.tensor(tactile_imgs, dtype=torch.float32, device=self.device)
 
         if display_viz:
             env_to_show = 0
@@ -533,12 +533,12 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         # Move arm above the socket
         self._move_arm_to_desired_pose(env_ids, self.above_socket_pos.clone(),
-                                       sim_steps=5 * self.cfg_task.env.num_gripper_move_sim_steps)
+                                       sim_steps=3 * self.cfg_task.env.num_gripper_move_sim_steps)
         self._refresh_task_tensors()
 
         # Insert
         self._move_arm_to_desired_pose(env_ids, self.socket_tip.clone(),
-                                       sim_steps=5 * self.cfg_task.env.num_gripper_move_sim_steps)
+                                       sim_steps=self.cfg_task.env.num_gripper_move_sim_steps)
         self._refresh_task_tensors()
 
         self._reset_buffers(env_ids)

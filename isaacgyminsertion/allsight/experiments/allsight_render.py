@@ -7,10 +7,10 @@
 TACTO rendering class
 """
 import numpy as np
-from isaacgymutils.allsight.experiments.utils.object_loader import object_loader
-from isaacgymutils.allsight.tacto.renderer import euler2matrix
+from isaacgyminsertion.allsight.experiments.utils.object_loader import object_loader
+from isaacgyminsertion.allsight.tacto.renderer import euler2matrix
 import cv2
-from isaacgymutils.allsight.experiments.utils.pose import pose_from_vertex_normal, generate_SE3_pose_single_vertex_normal
+from isaacgyminsertion.allsight.experiments.utils.pose import pose_from_vertex_normal, generate_SE3_pose_single_vertex_normal
 from scipy.spatial.transform import Rotation as R
 import os
 import trimesh
@@ -18,7 +18,7 @@ import torch
 import hydra
 from omegaconf import DictConfig
 import random
-from isaacgymutils.allsight.tacto_allsight_wrapper import allsight_wrapper
+from isaacgyminsertion.allsight.tacto_allsight_wrapper import allsight_wrapper
 
 DEBUG = False
 from dataclasses import dataclass

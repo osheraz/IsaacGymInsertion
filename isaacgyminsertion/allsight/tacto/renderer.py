@@ -193,7 +193,7 @@ class Renderer:
         W, H = g.width, g.height
 
         if hasattr(g, "mesh") and g.mesh is not None:
-            gel_trimesh = trimesh.load(g.mesh)
+            gel_trimesh = trimesh.load(os.path.join(os.path.dirname(__file__), "../../../") + g.mesh)
 
             # scale up for clearer indentation
             matrix = np.eye(4)

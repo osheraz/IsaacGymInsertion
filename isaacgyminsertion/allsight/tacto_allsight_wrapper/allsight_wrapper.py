@@ -6,7 +6,7 @@ import pyrender
 from omegaconf import OmegaConf, DictConfig
 from scipy.spatial.transform import Rotation as R
 
-from isaacgymutils.allsight.tacto import Renderer as tRenderer  #, Sensor as tSensor
+from isaacgyminsertion.allsight.tacto import Renderer as tRenderer  #, Sensor as tSensor
 
 
 # helper functions

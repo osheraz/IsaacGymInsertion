@@ -45,7 +45,7 @@ from isaacgyminsertion.tasks.factory_tactile.factory_base import FactoryBaseTact
 from isaacgyminsertion.tasks.factory_tactile.factory_schema_class_env import FactoryABCEnv
 from isaacgyminsertion.tasks.factory_tactile.factory_schema_config_env import FactorySchemaConfigEnv
 from isaacgyminsertion.allsight.experiments.allsight_render import allsight_renderer
-from isaacgymutils.allsight.experiments.digit_render import digit_renderer
+from isaacgyminsertion.allsight.experiments.digit_render import digit_renderer
 import isaacgyminsertion.tasks.factory_tactile.factory_control as fc
 
 
