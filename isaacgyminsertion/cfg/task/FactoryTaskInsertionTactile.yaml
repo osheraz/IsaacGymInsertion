@@ -28,13 +28,15 @@ env:
         base_angle: 0.7
         tactile_finger: [ 'finger_1_3', 'finger_2_3', 'finger_3_3' ]
 
-    num_gripper_move_sim_steps: 60  # number of timesteps to reserve for moving gripper before first step of episode
+    num_gripper_move_sim_steps: 120  # number of timesteps to reserve for moving gripper before first step of episode
     num_gripper_close_sim_steps: 50  # number of timesteps to reserve for closing gripper onto plug during each reset
     num_gripper_lift_sim_steps: 25  # number of timesteps to reserve for lift after last step of episode
 
     socket_pos_obs_noise: [ 0.001, 0.001, 0.0 ]
     socket_rot_obs_noise: [ 0.0, 0.0, 0.0 ]
     socket_base_height: 0.003
+    plug_grasp_threshold: 0.03
+
 sim:
     disable_gravity: True
 
@@ -67,7 +69,7 @@ randomize:
 
 
 rl:
-    pos_action_scale: [0.1, 0.1, 0.1]
+    pos_action_scale: [0.01, 0.01, 0.01]
     rot_action_scale: [0.01, 0.01, 0.01]
     force_action_scale: [1.0, 1.0, 1.0]
     torque_action_scale: [1.0, 1.0, 1.0]
@@ -75,13 +77,8 @@ rl:
     unidirectional_rot: True  # constrain kuka Z-rot to be unidirectional
     unidirectional_force: False  # constrain kuka Z-force to be unidirectional (useful for debugging)
 
-    add_obs_socket_tip_pos: False
-
     clamp_rot: True
     clamp_rot_thresh: 1.0e-6
-
-    add_obs_finger_force: False  # add observations of force on left and right fingers
-    add_obs_bolt_tip_pos: False  # add observation of bolt tip position
 
     num_keypoints: 4  # number of keypoints used in reward
     keypoint_scale: 0.5  # length of line of keypoints
@@ -92,6 +89,7 @@ rl:
 
     max_episode_length: 8192  # terminate episode after this number of timesteps (failure)
 
+    orientation_threshold: 0.1
     far_error_thresh: 0.100  # threshold above which plug is considered too far from bolt
     close_error_thresh: 0.1  # threshold below which plug is considered close enough to bolt
     success_bonus: 0.0  # bonus if plug is close enough to base of bolt shank

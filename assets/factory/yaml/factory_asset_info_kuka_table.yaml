@@ -1,5 +1,5 @@
 # kuka_hand_length: 0.0584  # distance from origin of hand to origin of finger
-openhand_finger_length: 0.038  # distance from origin of finger to bottom of fingerpad
+openhand_finger_length: 0.028  # distance from origin of finger to bottom of fingerpad
 # kuka_fingerpad_length: 0.017608  # distance from top of inner surface of fingerpad to bottom of inner surface of fingerpad
 
 table_depth: 0.6  # depth of table

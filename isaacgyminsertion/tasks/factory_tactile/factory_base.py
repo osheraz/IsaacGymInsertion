@@ -33,7 +33,6 @@ Inherits Gym's VecTask class and abstract base class. Inherited by environment c
 Configuration defined in FactoryBaseTactile.yaml. Asset info defined in factory_asset_info_kuka_table.yaml.
 """
 
-
 import hydra
 import math
 import numpy as np
@@ -63,7 +62,8 @@ class FactoryBaseTactile(VecTask, FactoryABCBase):
         if self.cfg_base.mode.export_scene:
             sim_device = 'cpu'
 
-        super().__init__(cfg, rl_device, sim_device, graphics_device_id, headless, virtual_screen_capture, force_render)  # create_sim() is called here
+        super().__init__(cfg, rl_device, sim_device, graphics_device_id, headless, virtual_screen_capture,
+                         force_render)  # create_sim() is called here
 
     def _get_base_yaml_params(self):
         """Initialize instance variables from YAML files."""
@@ -77,8 +77,8 @@ class FactoryBaseTactile(VecTask, FactoryABCBase):
 
         asset_info_path = '../../assets/factory/yaml/factory_asset_info_kuka_table.yaml'  # relative to Gym's Hydra search path (cfg dir)
         self.asset_info_kuka_table = hydra.compose(config_name=asset_info_path)
-        self.asset_info_kuka_table = self.asset_info_kuka_table['']['']['']['']['']['']['assets']['factory']['yaml']  # strip superfluous nesting
-
+        self.asset_info_kuka_table = self.asset_info_kuka_table['']['']['']['']['']['']['assets']['factory'][
+            'yaml']  # strip superfluous nesting
 
     def create_sim(self):
         """Set sim and PhysX params. Create sim object, ground plane, and envs."""
@@ -166,7 +166,6 @@ class FactoryBaseTactile(VecTask, FactoryABCBase):
 
         return kuka_asset, table_asset
 
-
     def acquire_base_tensors(self):
         """Acquire and wrap tensors. Create views."""
 
@@ -226,19 +225,22 @@ class FactoryBaseTactile(VecTask, FactoryABCBase):
         self.left_finger_quat = self.body_quat[:, self.left_finger_body_id_env, 0:4]
         self.left_finger_linvel = self.body_linvel[:, self.left_finger_body_id_env, 0:3]
         self.left_finger_angvel = self.body_angvel[:, self.left_finger_body_id_env, 0:3]
-        self.left_finger_jacobian = self.jacobian[:, self.left_finger_body_id_env - 1, 0:6, 0:7]  # minus 1 because base is fixed
+        self.left_finger_jacobian = self.jacobian[:, self.left_finger_body_id_env - 1, 0:6,
+                                    0:7]  # minus 1 because base is fixed
 
         self.right_finger_pos = self.body_pos[:, self.right_finger_body_id_env, 0:3]
         self.right_finger_quat = self.body_quat[:, self.right_finger_body_id_env, 0:4]
         self.right_finger_linvel = self.body_linvel[:, self.right_finger_body_id_env, 0:3]
         self.right_finger_angvel = self.body_angvel[:, self.right_finger_body_id_env, 0:3]
-        self.right_finger_jacobian = self.jacobian[:, self.right_finger_body_id_env - 1, 0:6, 0:7]  # minus 1 because base is fixed
+        self.right_finger_jacobian = self.jacobian[:, self.right_finger_body_id_env - 1, 0:6,
+                                     0:7]  # minus 1 because base is fixed
 
         self.middle_finger_pos = self.body_pos[:, self.middle_finger_body_id_env, 0:3]
         self.middle_finger_quat = self.body_quat[:, self.middle_finger_body_id_env, 0:4]
         self.middle_finger_linvel = self.body_linvel[:, self.middle_finger_body_id_env, 0:3]
         self.middle_finger_angvel = self.body_angvel[:, self.middle_finger_body_id_env, 0:3]
-        self.middle_finger_jacobian = self.jacobian[:, self.middle_finger_body_id_env - 1, 0:6, 0:7]  # minus 1 because base is fixed
+        self.middle_finger_jacobian = self.jacobian[:, self.middle_finger_body_id_env - 1, 0:6,
+                                      0:7]  # minus 1 because base is fixed
 
         self.left_finger_force = self.contact_force[:, self.left_finger_body_id_env, 0:3]
         self.right_finger_force = self.contact_force[:, self.right_finger_body_id_env, 0:3]
@@ -251,7 +253,8 @@ class FactoryBaseTactile(VecTask, FactoryABCBase):
         self.fingertip_centered_quat = self.body_quat[:, self.fingertip_centered_body_id_env, 0:4]
         self.fingertip_centered_linvel = self.body_linvel[:, self.fingertip_centered_body_id_env, 0:3]
         self.fingertip_centered_angvel = self.body_angvel[:, self.fingertip_centered_body_id_env, 0:3]
-        self.fingertip_centered_jacobian = self.jacobian[:, self.fingertip_centered_body_id_env - 1, 0:6, 0:7]  # minus 1 because base is fixed
+        self.fingertip_centered_jacobian = self.jacobian[:, self.fingertip_centered_body_id_env - 1, 0:6,
+                                           0:7]  # minus 1 because base is fixed
 
         self.fingertip_midpoint_pos = self.fingertip_centered_pos.detach().clone()  # initial value
         self.fingertip_midpoint_quat = self.fingertip_centered_quat  # always equal
@@ -266,7 +269,8 @@ class FactoryBaseTactile(VecTask, FactoryABCBase):
         # Thus, angular velocity of midpoint w.r.t. world is equal to angular velocity of hand w.r.t. world.
 
         self.fingertip_midpoint_angvel = self.fingertip_centered_angvel  # always equal
-        self.fingertip_midpoint_jacobian = (self.left_finger_jacobian + self.right_finger_jacobian + self.middle_finger_jacobian) * 1 / 3 # approximation
+        self.fingertip_midpoint_jacobian = (
+                                                       self.left_finger_jacobian + self.right_finger_jacobian + self.middle_finger_jacobian) * 1 / 3  # approximation
 
         self.dof_torque = torch.zeros((self.num_envs, self.num_dofs), device=self.device)
         self.fingertip_contact_wrench = torch.zeros((self.num_envs, 6), device=self.device)
@@ -274,7 +278,8 @@ class FactoryBaseTactile(VecTask, FactoryABCBase):
         self.ctrl_target_fingertip_midpoint_pos = torch.zeros((self.num_envs, 3), device=self.device)
         self.ctrl_target_fingertip_midpoint_quat = torch.zeros((self.num_envs, 4), device=self.device)
         self.ctrl_target_dof_pos = torch.zeros((self.num_envs, self.num_dofs), device=self.device)
-        self.ctrl_target_gripper_dof_pos = torch.zeros((self.num_envs, self.gripper_dof_pos.shape[-1]), device=self.device)
+        self.ctrl_target_gripper_dof_pos = torch.zeros((self.num_envs, self.gripper_dof_pos.shape[-1]),
+                                                       device=self.device)
         self.ctrl_target_fingertip_contact_wrench = torch.zeros((self.num_envs, 6), device=self.device)
 
         self.ctrl_target_fingertip_centered_pos = torch.zeros((self.num_envs, 3), device=self.device)
@@ -282,7 +287,11 @@ class FactoryBaseTactile(VecTask, FactoryABCBase):
 
         self.prev_actions = torch.zeros((self.num_envs, self.num_actions), device=self.device)
 
+        self.gripper_normal_quat = (torch.tensor([-1 / 2 ** 0.5, -1 / 2 ** 0.5, 0.0, 0.0],
+                                                 device=self.device).unsqueeze(0).repeat(self.num_envs, 1))
 
+        self.identity_quat = torch.tensor([0.0, 0.0, 0.0, 1.0], device=self.device).unsqueeze(0).repeat(self.num_envs,
+                                                                                                        1)
 
     def refresh_base_tensors(self):
         """Refresh tensors."""
@@ -299,13 +308,18 @@ class FactoryBaseTactile(VecTask, FactoryABCBase):
 
         # Privileged
         self.finger_midpoint_pos = (self.left_finger_pos + self.right_finger_pos + self.middle_finger_pos) * (1 / 3)
-        self.fingertip_midpoint_pos = self.finger_midpoint_pos
+        self.fingertip_midpoint_pos = fc.translate_along_local_z(pos=self.finger_midpoint_pos,
+                                                                 quat=self.gripper_normal_quat,
+                                                                 offset=self.asset_info_kuka_table.openhand_finger_length,
+                                                                 device=self.device)
 
         self.fingertip_midpoint_linvel = self.fingertip_centered_linvel + torch.cross(self.fingertip_centered_angvel,
-                                                                                      (self.fingertip_midpoint_pos - self.fingertip_centered_pos),
+                                                                                      (self.fingertip_midpoint_pos -
+                                                                                       self.fingertip_centered_pos),
                                                                                       dim=1)
-        self.fingertip_midpoint_jacobian = (self.left_finger_jacobian + self.right_finger_jacobian + self.middle_finger_jacobian) * (1 / 3)  # approximation
 
+        self.fingertip_midpoint_jacobian = (self.left_finger_jacobian + self.right_finger_jacobian
+                                            + self.middle_finger_jacobian) * (1 / 3)  # approximation
 
     def parse_controller_spec(self):
         """Parse controller specification into lower-level controller configuration."""
@@ -442,7 +456,7 @@ class FactoryBaseTactile(VecTask, FactoryABCBase):
                                      self.cfg_ctrl['gripper_deriv_gains']), dim=-1).to('cpu')
             # No tensor API for getting/setting actor DOF props; thus, loop required
             for env_ptr, kuka_handle, prop_gain, deriv_gain in zip(self.envs, self.kuka_handles, prop_gains,
-                                                                     deriv_gains):
+                                                                   deriv_gains):
                 kuka_dof_props = self.gym.get_actor_dof_properties(env_ptr, kuka_handle)
                 kuka_dof_props['driveMode'][:] = gymapi.DOF_MODE_POS
                 kuka_dof_props['stiffness'] = prop_gain
@@ -456,7 +470,6 @@ class FactoryBaseTactile(VecTask, FactoryABCBase):
                 kuka_dof_props['stiffness'][:] = 0.0  # zero passive stiffness
                 kuka_dof_props['damping'][:] = 0.0  # zero passive damping
                 self.gym.set_actor_dof_properties(env_ptr, kuka_handle, kuka_dof_props)
-
 
     def generate_ctrl_signals(self):
         """Get Jacobian. Set kuka DOF position targets or DOF torques."""
@@ -526,8 +539,8 @@ class FactoryBaseTactile(VecTask, FactoryABCBase):
     def print_sdf_warning(self):
         """Generate SDF warning message."""
 
-        logger.warn('Please be patient: SDFs may be generating, which may take a few minutes. Terminating prematurely may result in a corrupted SDF cache.')
-
+        logger.warn(
+            'Please be patient: SDFs may be generating, which may take a few minutes. Terminating prematurely may result in a corrupted SDF cache.')
 
     def enable_gravity(self, gravity_mag):
         """Enable gravity."""

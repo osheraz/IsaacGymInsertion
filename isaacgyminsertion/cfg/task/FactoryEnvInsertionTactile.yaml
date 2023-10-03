@@ -14,7 +14,7 @@ env:
     env_name: 'FactoryEnvInsertionTactile'
     aggregate_mode: True
 
-    desired_subassemblies: ['round_peg_hole_16mm_loose'] #,
+    desired_subassemblies: ['round_peg_hole_16mm_loose']
 #                            'round_peg_hole_8mm_loose',
 #                            'round_peg_hole_12mm_loose',
 #                            'round_peg_hole_4mm_loose',
@@ -37,6 +37,7 @@ env:
     #
     # NOTE: BNC, D-sub, and USB are currently unavailable while we await approval from manufacturers.
 
+# Domain randomization params
 randomize:
 
     domain_randomize: True

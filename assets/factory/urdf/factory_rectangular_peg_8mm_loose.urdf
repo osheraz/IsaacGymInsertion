@@ -10,7 +10,7 @@
             <geometry>
                 <mesh filename="../mesh/factory_insertion/factory_rectangular_peg_8mm_loose_subdiv_3x.obj"/>
             </geometry>
-            <sdf resolution="256"/>
+            <!-- sdf resolution="256"-->
         </collision>
     </link>
 </robot>

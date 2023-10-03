@@ -10,7 +10,7 @@
             <geometry>
                 <mesh filename="../mesh/factory_insertion/factory_round_hole_16mm_subdiv_3x.obj"/>
             </geometry>
-            <!-- sdf resolution="256"-->
+             <!-- sdf resolution="256"-->
         </collision>
     </link>
 </robot>
