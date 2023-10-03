@@ -268,7 +268,7 @@ class allsight_renderer:
             depth[j] = self.renderer.depth0[j] - depth[j]
 
         color, depth = color[0], depth[0]
-        mask = circle_mask(size=(224, 224))
+        mask = circle_mask(size=(self.render_config.tacto.width, self.render_config.tacto.height))
         color[mask == 0] = 0
 
         diff_depth = (self.bg_depth) - depth

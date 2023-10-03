@@ -26,7 +26,7 @@ ppo:
   kl_threshold: 0.02
   # PPO batch collection
   horizon_length: 32 # 64 , 8
-  minibatch_size: 512 # 32768
+  minibatch_size: 32 # 32768  # batch size = num_envs * horizon_length; minibatch_size = batch_size / num_minibatches
   mini_epochs: 5 # 8
   # PPO loss setting
   clip_value: True

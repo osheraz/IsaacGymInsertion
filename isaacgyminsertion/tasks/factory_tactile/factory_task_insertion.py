@@ -515,31 +515,31 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self._zero_velocities(env_ids)
         self._refresh_task_tensors()
 
-        # # Move arm to grasp pose
-        # self._move_arm_to_desired_pose(env_ids, self.plug_grasp_pos.clone(),
-        #                                sim_steps=5 * self.cfg_task.env.num_gripper_move_sim_steps)
-        # self._zero_velocities(env_ids)
-        # self._refresh_task_tensors()
-        #
-        # # Grasp ~ todo add randomization
-        # self._close_gripper(env_ids, self.cfg_task.env.num_gripper_close_sim_steps)
-        # self._refresh_task_tensors()
-        # self._zero_velocities(env_ids)
-        #
-        # # Lift
-        # self._lift_gripper(env_ids, self.ctrl_target_gripper_dof_pos)
-        # self._refresh_task_tensors()
-        # self._zero_velocities(env_ids)
-        #
-        # # Move arm above the socket
-        # self._move_arm_to_desired_pose(env_ids, self.above_socket_pos.clone(),
-        #                                sim_steps=5 * self.cfg_task.env.num_gripper_move_sim_steps)
-        # self._refresh_task_tensors()
-        #
-        # # Insert
-        # self._move_arm_to_desired_pose(env_ids, self.socket_tip.clone(),
-        #                                sim_steps=5 * self.cfg_task.env.num_gripper_move_sim_steps)
-        # self._refresh_task_tensors()
+        # Move arm to grasp pose
+        self._move_arm_to_desired_pose(env_ids, self.plug_grasp_pos.clone(),
+                                       sim_steps=5 * self.cfg_task.env.num_gripper_move_sim_steps)
+        self._zero_velocities(env_ids)
+        self._refresh_task_tensors()
+
+        # Grasp ~ todo add randomization
+        self._close_gripper(env_ids, self.cfg_task.env.num_gripper_close_sim_steps)
+        self._refresh_task_tensors()
+        self._zero_velocities(env_ids)
+
+        # Lift
+        self._lift_gripper(env_ids, self.ctrl_target_gripper_dof_pos)
+        self._refresh_task_tensors()
+        self._zero_velocities(env_ids)
+
+        # Move arm above the socket
+        self._move_arm_to_desired_pose(env_ids, self.above_socket_pos.clone(),
+                                       sim_steps=5 * self.cfg_task.env.num_gripper_move_sim_steps)
+        self._refresh_task_tensors()
+
+        # Insert
+        self._move_arm_to_desired_pose(env_ids, self.socket_tip.clone(),
+                                       sim_steps=5 * self.cfg_task.env.num_gripper_move_sim_steps)
+        self._refresh_task_tensors()
 
         self._reset_buffers(env_ids)
 

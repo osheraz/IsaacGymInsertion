@@ -183,7 +183,6 @@ class FactoryBaseTactile(VecTask, FactoryABCBase):
         _contact_force = self.gym.acquire_net_contact_force_tensor(self.sim)  # shape = (num_envs * num_bodies, 3)
         _jacobian = self.gym.acquire_jacobian_tensor(self.sim, 'kuka')  # shape = (num envs, num_bodies, 6, num_dofs)
         _mass_matrix = self.gym.acquire_mass_matrix_tensor(self.sim, 'kuka')  # shape = (num_envs, num_dofs, num_dofs)
-
         _ft_sensors = self.gym.acquire_force_sensor_tensor(self.sim)
 
         self.ft_sensors = gymtorch.wrap_tensor(_ft_sensors)

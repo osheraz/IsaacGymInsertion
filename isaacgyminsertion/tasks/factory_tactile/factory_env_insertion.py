@@ -194,6 +194,13 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
 
         self.asset_indices = []
 
+        # Create wrist and fingertip force sensors
+        sensor_pose = gymapi.Transform()
+        # for ft_handle in self.fingertip_handles:
+        #     self.gym.create_asset_force_sensor(kuka_asset, ft_handle, sensor_pose)
+        wrist_ft_handle = self.gym.find_asset_rigid_body_index(kuka_asset, 'iiwa7_link_7')
+        self.gym.create_asset_force_sensor(kuka_asset, wrist_ft_handle, sensor_pose)
+
         for i in range(self.num_envs):
 
             # sample subassemblie
@@ -217,14 +224,6 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
             # begin aggregation mode if enabled - this can improve simulation performance
             if self.cfg_env.env.aggregate_mode:
                 self.gym.begin_aggregate(env_ptr, max_agg_bodies, max_agg_shapes, True)
-
-            # Create wrist and fingertip force sensors
-            sensor_pose = gymapi.Transform()
-            # for ft_handle in self.fingertip_handles:
-            #     self.gym.create_asset_force_sensor(kuka_asset, ft_handle, sensor_pose)
-
-            wrist_ft_handle = self.gym.find_asset_rigid_body_index(kuka_asset, 'iiwa7_link_7')
-            self.gym.create_asset_force_sensor(kuka_asset, wrist_ft_handle, sensor_pose)
 
             if self.cfg_env.sim.disable_kuka_collisions:
                 kuka_handle = self.gym.create_actor(env_ptr, kuka_asset, kuka_pose, 'kuka', i + self.num_envs, 0, 0)

@@ -101,7 +101,7 @@ class PPO(object):
         self.model.to(self.device)
         # TODO what about normalization of tactile and ft inputs
         # obs is concat with tac and ft output.
-        self.running_mean_std = RunningMeanStd((self.obs_shape[0] + self.priv_info_embed_dim,)).to(self.device)
+        self.running_mean_std = RunningMeanStd(self.obs_shape).to(self.device)
         self.value_mean_std = RunningMeanStd((1,)).to(self.device)
         # ---- Output Dir ----
         # allows us to specify a folder where all experiments will reside
@@ -192,7 +192,7 @@ class PPO(object):
         self.writer.add_scalar('info/e_clip', self.e_clip, self.agent_steps)
         self.writer.add_scalar('info/kl', torch.mean(torch.stack(kls)).item(), self.agent_steps)
         self.writer.add_scalar(
-            "info/grad_norms", torch.mean(grad_norms).item(), self.agent_steps
+            "info/grad_norms", torch.mean(torch.stack(grad_norms)).item(), self.agent_steps
         )
         for k, v in self.extra_info.items():
             self.writer.add_scalar(f'{k}', v, self.agent_steps)
@@ -501,3 +501,4 @@ class AdaptiveScheduler(object):
         if kl_dist < (0.5 * self.kl_threshold):
             lr = min(current_lr * 1.5, self.max_lr)
         return lr
+
