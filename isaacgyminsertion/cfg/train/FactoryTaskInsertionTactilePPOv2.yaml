@@ -41,6 +41,7 @@ ppo:
   save_best_after: 0
   save_frequency: 500
   max_agent_steps: 1500000000
+
   # rma setting
   priv_info: False
   extrin_adapt: False

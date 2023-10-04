@@ -541,6 +541,12 @@ class FactoryBaseTactile(VecTask, FactoryABCBase):
         logger.warn(
             'Please be patient: SDFs may be generating, which may take a few minutes. Terminating prematurely may result in a corrupted SDF cache.')
 
+    def print_sdf_finish(self):
+        """Generate SDF warning message."""
+
+        logger.warn(
+            'Finished generating SDFS.')
+
     def enable_gravity(self, gravity_mag):
         """Enable gravity."""
 

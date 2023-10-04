@@ -95,6 +95,7 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
         kuka_asset, table_asset = self.import_kuka_assets()
         plug_assets, socket_assets = self._import_env_assets()
         self._create_actors(lower, upper, num_per_row, kuka_asset, plug_assets, socket_assets, table_asset)
+        self.print_sdf_finish()
 
     def _import_env_assets(self):
         """Set plug and socket asset options. Import assets."""
@@ -335,10 +336,10 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
             plug_file += '_subdiv_3x.obj' if 'rectangular' in plug_file else '.obj'
             mesh_root = os.path.join(os.path.dirname(__file__), '..', '..', '..', 'assets', 'factory', 'mesh',
                                      'factory_insertion')
-            self.tactile_handles.append([allsight_renderer(self.cfg_tactile,
-                                                           os.path.join(mesh_root, plug_file), randomize=False,
-                                                           finger_idx=i) for i in range(len(self.fingertips))])
-
+            # self.tactile_handles.append([allsight_renderer(self.cfg_tactile,
+            #                                                os.path.join(mesh_root, plug_file), randomize=False,
+            #                                                finger_idx=i) for i in range(len(self.fingertips))])
+            print(i)
             if self.cfg_env.env.aggregate_mode:
                 self.gym.end_aggregate(env_ptr)
 
@@ -389,8 +390,6 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
         # For defining success or failure
         self.plug_widths = torch.tensor(self.plug_widths, device=self.device).unsqueeze(-1)
 
-
-
     def _acquire_env_tensors(self):
         """Acquire and wrap tensors. Create views."""
 
@@ -418,8 +417,6 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
                                                               (self.plug_com_pos - self.plug_pos),
                                                               dim=1)
         self.plug_com_angvel = self.plug_angvel  # always equal
-
-
 
     def refresh_env_tensors(self):
         """Refresh tensors."""

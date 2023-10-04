@@ -26,7 +26,7 @@ env:
         proximal_open: 1.0
         proximal_close: 2.0
         base_angle: 0.7
-        tactile_finger: [ 'finger_1_3', 'finger_2_3', 'finger_3_3' ]
+        tactile_finger: [ 'finger_1_3', 'finger_2_3', 'finger_3_3' ] # left, right middle
 
     num_gripper_move_sim_steps: 120  # number of timesteps to reserve for moving gripper before first step of episode
     num_gripper_close_sim_steps: 50  # number of timesteps to reserve for closing gripper onto plug during each reset
@@ -39,7 +39,6 @@ env:
 
 sim:
     disable_gravity: True
-
 
 randomize:
 
