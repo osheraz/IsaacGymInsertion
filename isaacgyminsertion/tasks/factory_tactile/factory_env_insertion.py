@@ -178,7 +178,7 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
         self.socket_actor_ids_sim = []  # within-sim indices
         self.table_actor_ids_sim = []  # within-sim indices
 
-        self.fingertips = ['finger_1_3', 'finger_2_3', 'finger_3_3']  # same for all envs
+        self.fingertips = ['finger_1_3', 'finger_2_3', 'finger_3_3']  # left, right, bottom. same for all envs
         self.fingertip_handles = [self.gym.find_asset_rigid_body_index(kuka_asset, name) for name in self.fingertips]
         self.tactile_handles = []  # [num_envs , 3]
 
@@ -203,7 +203,7 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
 
         for i in range(self.num_envs):
 
-            # sample subassemblie
+            # sample random subassemblies
             j = np.random.randint(0, len(self.cfg_env.env.desired_subassemblies))
 
             env_ptr = self.gym.create_env(self.sim, lower, upper, num_per_row)
@@ -238,7 +238,7 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
             plug_pose = gymapi.Transform()
             plug_pose.p.x = 0.0
             plug_pose.p.y = self.cfg_env.env.plug_lateral_offset
-            plug_pose.p.z = self.cfg_base.env.table_height  # + self.asset_info_insertion[subassembly][components[0]]['length'] * 0.5
+            plug_pose.p.z = self.cfg_base.env.table_height
             plug_pose.r = gymapi.Quat(0.0, 0.0, 0.0, 1.0)
             plug_handle = self.gym.create_actor(env_ptr, plug_assets[j], plug_pose, 'plug', i, 0, 0)
             self.plug_actor_ids_sim.append(actor_count)
@@ -366,12 +366,14 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
                                                                      gymapi.DOMAIN_ENV)
         self.wrist_body_id_env = self.gym.find_actor_rigid_body_index(env_ptr, kuka_handle, 'iiwa7_link_7',
                                                                      gymapi.DOMAIN_ENV)
+
         self.left_finger_body_id_env = self.gym.find_actor_rigid_body_index(env_ptr, kuka_handle, 'finger_1_3',
                                                                             gymapi.DOMAIN_ENV)
         self.right_finger_body_id_env = self.gym.find_actor_rigid_body_index(env_ptr, kuka_handle, 'finger_2_3',
                                                                              gymapi.DOMAIN_ENV)
         self.middle_finger_body_id_env = self.gym.find_actor_rigid_body_index(env_ptr, kuka_handle, 'finger_3_3',
                                                                               gymapi.DOMAIN_ENV)
+        # Robot motion will be w.r.t this tf.
         self.fingertip_centered_body_id_env = self.gym.find_actor_rigid_body_index(env_ptr, kuka_handle,
                                                                                    'kuka_fingertip_centered',
                                                                                    gymapi.DOMAIN_ENV)

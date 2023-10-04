@@ -269,8 +269,7 @@ class FactoryBaseTactile(VecTask, FactoryABCBase):
         # Thus, angular velocity of midpoint w.r.t. world is equal to angular velocity of hand w.r.t. world.
 
         self.fingertip_midpoint_angvel = self.fingertip_centered_angvel  # always equal
-        self.fingertip_midpoint_jacobian = (
-                                                       self.left_finger_jacobian + self.right_finger_jacobian + self.middle_finger_jacobian) * 1 / 3  # approximation
+        self.fingertip_midpoint_jacobian = (self.left_finger_jacobian + self.right_finger_jacobian + self.middle_finger_jacobian) * 1 / 3  # approximation
 
         self.dof_torque = torch.zeros((self.num_envs, self.num_dofs), device=self.device)
         self.fingertip_contact_wrench = torch.zeros((self.num_envs, 6), device=self.device)

@@ -129,14 +129,14 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         # tactile buffers
         self.tactile_imgs = torch.zeros(
-            (self.num_envs, len(self.fingertips),
+            (self.num_envs, len(self.fingertips),  # left, right, bottom
              self.cfg_tactile.tacto.width, self.cfg_tactile.tacto.height, 3),
             device=self.device,
             dtype=torch.float,
         )
         # Way too big tensor.
         self.tactile_queue = torch.zeros(
-            (self.num_envs, self.tact_hist_len, len(self.fingertips),
+            (self.num_envs, self.tact_hist_len, len(self.fingertips),  # left, right, bottom
              self.cfg_tactile.tacto.width, self.cfg_tactile.tacto.height, 3),
             device=self.device,
             dtype=torch.float,
@@ -265,45 +265,26 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
     def _update_tactile(self, left_finger_pose, right_finger_pose, middle_finger_pose, object_pose,
                         offset=None, queue=None, display_viz=True):
 
-        # tactile_imgs, height_maps = [], []
-        #
-        # for e in range(self.num_envs):
-        #
-        #     self.tactile_handles[e][0].update_pose_given_sim_pose(left_finger_pose[e], object_pose[e])
-        #     self.tactile_handles[e][1].update_pose_given_sim_pose(right_finger_pose[e], object_pose[e])
-        #     self.tactile_handles[e][2].update_pose_given_sim_pose(middle_finger_pose[e], object_pose[e])
-        #
-        #     tactile_imgs_per_env, height_maps_per_env = [], []
-        #
-        #     for n in range(3):
-        #         tactile_img, height_map, _ = self.tactile_handles[e][n].render(object_pose[e])
-        #         tactile_imgs_per_env.append(tactile_img)
-        #         height_maps_per_env.append(height_map)
-        #
-        #     tactile_imgs.append(tactile_imgs_per_env)
-        #     height_maps.append(height_maps_per_env)
-        #
-        # self.tactile_imgs = torch.tensor(tactile_imgs, dtype=torch.float32, device=self.device)
-
-        height = self.tactile_handles[0][0].render_config.tacto.height
-        width = self.tactile_handles[0][0].render_config.tacto.width
         tactile_imgs_list, height_maps = [], []  # only for display.
-        tactile_imgs = torch.empty((self.num_envs, len(self.fingertips), height, width, 3), dtype=torch.float32,
-                                   device=self.device)
 
         for e in range(self.num_envs):
+
             self.tactile_handles[e][0].update_pose_given_sim_pose(left_finger_pose[e], object_pose[e])
             self.tactile_handles[e][1].update_pose_given_sim_pose(right_finger_pose[e], object_pose[e])
             self.tactile_handles[e][2].update_pose_given_sim_pose(middle_finger_pose[e], object_pose[e])
+
             tactile_imgs_per_env, height_maps_per_env = [], []
+
             for n in range(3):
                 tactile_img, height_map, _ = self.tactile_handles[e][n].render(object_pose[e])
-                tactile_imgs[e, n] = torch.tensor(tactile_img, dtype=torch.float32, device=self.device)
+                self.tactile_imgs[e, n] = torch.tensor(tactile_img, dtype=torch.float32, device=self.device)
                 tactile_imgs_per_env.append(tactile_img)
                 height_maps_per_env.append(height_map)
+
             height_maps.append(height_maps_per_env)
             tactile_imgs_list.append(tactile_imgs_per_env)
-        self.tactile_imgs = tactile_imgs
+
+        # self.tactile_imgs = torch.tensor(tactile_imgs_list, dtype=torch.float32, device=self.device)
 
         if display_viz:
             env_to_show = 0
@@ -311,7 +292,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                                                            height_maps[env_to_show])
 
         if queue is not None:
-            queue.put((tactile_imgs, offset))
+            queue.put((tactile_imgs_list, offset))
 
     def pre_physics_step(self, actions):
         """Reset environments. Apply actions from policy as position/rotation targets, force/torque targets, and/or PD gains."""
@@ -394,7 +375,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                 objectz = (self.plug_com_pos[i] + quat_apply(self.plug_quat[i], to_torch([0, 0, 1],
                                                                                          device=self.device) * 0.2)).cpu().numpy()
 
-                p0 = self.fingertip_midpoint_pos[i].cpu().numpy()  # self.plug_com_pos[i].cpu().numpy()
+                p0 = self.plug_com_pos[i].cpu().numpy()
                 self.gym.add_lines(self.viewer, self.envs[i], 1,
                                    [p0[0], p0[1], p0[2], objectx[0], objectx[1], objectx[2]], [0.85, 0.1, 0.1])
                 self.gym.add_lines(self.viewer, self.envs[i], 1,
@@ -423,9 +404,9 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             self.pose_world_to_robot_base(self.fingertip_centered_pos, self.fingertip_centered_quat)[1],  # 4
             self.pose_world_to_robot_base(self.noisy_gripper_goal_pos, self.noisy_gripper_goal_quat)[0],  # 3
             self.pose_world_to_robot_base(self.noisy_gripper_goal_pos, self.noisy_gripper_goal_quat)[1],  # 4
-            noisy_delta_pos,  # 3
-            self.actions_queue.reshape(self.actions_queue.shape[0], -1),  # numObsHist, 6
-            self.targets_queue.reshape(self.targets_queue.shape[0], -1),  # numObsHist, 6
+            noisy_delta_pos,  # 3 TODO, need to think about that one.
+            self.actions_queue.reshape(self.num_envs, -1),  # numObsHist, 6 --> flatten
+            self.targets_queue.reshape(self.num_envs, -1),  # numObsHist, 6 --> flatten
         ]  # TODO, may need to add history of other obs inputs
 
         # Define state (for teacher)
@@ -688,8 +669,8 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             rot_error_type='axis_angle')
 
         # Step sim and render
-        while torch.norm(pos_error, p=2, dim=-1) > 0.001:  # and torch.norm(axis_angle_error, p=2, dim=-1) > 0.001:
-            # for _ in range(sim_steps):
+        # while torch.norm(pos_error, p=2, dim=-1) > 0.001:  # and torch.norm(axis_angle_error, p=2, dim=-1) > 0.001:
+        for _ in range(sim_steps):
             self._simulate_and_refresh()
 
             # NOTE: midpoint is calculated based on the midpoint between the actual gripper finger pos,
