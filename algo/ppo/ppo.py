@@ -1,7 +1,7 @@
 # --------------------------------------------------------
-# todo
+# now its our turn.
 # https://arxiv.org/abs/todo
-# Copyright (c) 2022 Haozhi Qi
+# Copyright (c) 2023 Osher & Co.
 # Licensed under The MIT License [see LICENSE for details]
 # --------------------------------------------------------
 # --------------------------------------------------------
@@ -99,9 +99,10 @@ class PPO(object):
 
         self.model = ActorCritic(net_config)
         self.model.to(self.device)
-        # TODO what about normalization of tactile and ft inputs
-        # obs is concat with tac and ft output.
+
         self.running_mean_std = RunningMeanStd(self.obs_shape).to(self.device)
+        self.priv_mean_std = RunningMeanStd(self.priv_info_dim).to(self.device)
+
         self.value_mean_std = RunningMeanStd((1,)).to(self.device)
         # ---- Output Dir ----
         # allows us to specify a folder where all experiments will reside
@@ -191,9 +192,7 @@ class PPO(object):
         self.writer.add_scalar('info/last_lr', self.last_lr, self.agent_steps)
         self.writer.add_scalar('info/e_clip', self.e_clip, self.agent_steps)
         self.writer.add_scalar('info/kl', torch.mean(torch.stack(kls)).item(), self.agent_steps)
-        self.writer.add_scalar(
-            "info/grad_norms", torch.mean(torch.stack(grad_norms)).item(), self.agent_steps
-        )
+        self.writer.add_scalar("info/grad_norms", torch.mean(torch.stack(grad_norms)).item(), self.agent_steps)
         for k, v in self.extra_info.items():
             self.writer.add_scalar(f'{k}', v, self.agent_steps)
 
@@ -201,6 +200,7 @@ class PPO(object):
         self.model.eval()
         if self.normalize_input:
             self.running_mean_std.eval()
+            self.priv_mean_std.eval()
         if self.normalize_value:
             self.value_mean_std.eval()
 
@@ -208,18 +208,19 @@ class PPO(object):
         self.model.train()
         if self.normalize_input:
             self.running_mean_std.train()
+            self.priv_mean_std.train()
         if self.normalize_value:
             self.value_mean_std.train()
 
     def model_act(self, obs_dict):
-        # TODO need to add normalization for other inputs as well
 
         processed_obs = self.running_mean_std(obs_dict['obs'])
+        processed_priv = self.priv_mean_std(obs_dict['priv_info'])
         input_dict = {
             'obs': processed_obs,
-            'priv_info': obs_dict['priv_info'],
-            'ft_hist': obs_dict['ft_hist'],
-            'tactile_hist': obs_dict['tactile_hist']
+            'priv_info': processed_priv,
+            # 'ft_hist': obs_dict['ft_hist'],
+            # 'tactile_hist': obs_dict['tactile_hist']
         }
         res_dict = self.model.act(input_dict)
         res_dict['values'] = self.value_mean_std(res_dict['values'], True)
@@ -274,6 +275,8 @@ class PPO(object):
         }
         if self.running_mean_std:
             weights['running_mean_std'] = self.running_mean_std.state_dict()
+        if self.priv_mean_std:
+            weights['priv_mean_std'] = self.priv_mean_std.state_dict()
         if self.value_mean_std:
             weights['value_mean_std'] = self.value_mean_std.state_dict()
         torch.save(weights, f'{name}.pth')
@@ -284,12 +287,14 @@ class PPO(object):
         checkpoint = torch.load(fn)
         self.model.load_state_dict(checkpoint['model'])
         self.running_mean_std.load_state_dict(checkpoint['running_mean_std'])
+        self.priv_mean_std.load_state_dict(checkpoint['priv_mean_std'])
 
     def restore_test(self, fn):
         checkpoint = torch.load(fn)
         self.model.load_state_dict(checkpoint['model'])
         if self.normalize_input:
             self.running_mean_std.load_state_dict(checkpoint['running_mean_std'])
+            self.priv_mean_std.load_state_dict(checkpoint['priv_mean_std'])
 
     def test(self):
         self.set_eval()
@@ -297,7 +302,7 @@ class PPO(object):
         while True:
             input_dict = {
                 'obs': self.running_mean_std(obs_dict['obs']),
-                'priv_info': obs_dict['priv_info'],
+                'priv_info': self.priv_mean_std(obs_dict['priv_info']),
             }
             mu = self.model.act_inference(input_dict)
             mu = torch.clamp(mu, -1.0, 1.0)
@@ -321,6 +326,8 @@ class PPO(object):
                 returns, actions, obs, priv_info = self.storage[i]
 
                 obs = self.running_mean_std(obs)
+                priv_info = self.priv_mean_std(priv_info)
+
                 batch_dict = {
                     'prev_actions': actions,
                     'obs': obs,
@@ -393,6 +400,7 @@ class PPO(object):
             # collect o_t
             self.storage.update_data('obses', n, self.obs['obs'])
             self.storage.update_data('priv_info', n, self.obs['priv_info'])
+            
             for k in ['actions', 'neglogpacs', 'values', 'mus', 'sigmas']:
                 self.storage.update_data(k, n, res_dict[k])
             # do env step
@@ -469,21 +477,6 @@ def policy_kl(p0_mu, p0_sigma, p1_mu, p1_sigma):
     kl = kl.sum(dim=-1)  # returning mean between all steps of sum between all actions
     return kl.mean()
 
-
-def load_tactile_autoencoder(root_dir, path_checkpoint):
-    from algo.models.vae.vae import VAE
-
-    path_checkpoint = os.path.join(root_dir, path_checkpoint)
-    vae = VAE.load_from_checkpoint(
-        path_checkpoint,
-        enc_out_dim=512,
-        latent_dim=64,
-        input_height=64,
-    )
-    vae.eval()
-    for param in vae.parameters():
-        param.requires_grad = False
-    return vae
 
 
 # from https://github.com/leggedrobotics/rsl_rl/blob/master/rsl_rl/algorithms/ppo.py

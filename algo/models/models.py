@@ -101,7 +101,6 @@ class ActorCritic(nn.Module):
                     self.tactile_mlp = MLP(
                         units=self.tactile_units, input_size=tactile_input_shape
                     )
-                    # mlp_input_shape += self.tactile_units[-1]
 
                 if self.ft_info:
                     self.ft_units = kwargs.pop("ft_units")
@@ -111,7 +110,6 @@ class ActorCritic(nn.Module):
                     # )
                     self.ft_adapt_tconv = FTAdaptTConv(ft_dim=ft_input_shape,
                                                        ft_out_dim=self.ft_units[-1])
-                    # mlp_input_shape += self.ft_units[-1]
 
         self.actor_mlp = MLP(units=self.units, input_size=mlp_input_shape)
         self.value = torch.nn.Linear(out_size, 1)
@@ -162,7 +160,7 @@ class ActorCritic(nn.Module):
                 extrin = torch.cat([extrin_tactile, extrin_ft], dim=-1)
                 # during supervised training, extrin has gt label
                 extrin_gt = self.env_mlp(obs_dict['priv_info']) if 'priv_info' in obs_dict else extrin
-                extrin_gt = torch.tanh(extrin_gt)
+                extrin_gt = torch.tanh(extrin_gt)  # Why tanh?
                 extrin = torch.tanh(extrin)
                 obs = torch.cat([obs, extrin], dim=-1)
             else:
