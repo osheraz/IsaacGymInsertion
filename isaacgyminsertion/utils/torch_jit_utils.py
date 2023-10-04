@@ -33,6 +33,31 @@ import torch
 import torch.nn.functional as F
 import numpy as np
 
+from torchvision import transforms
+import torch
+from PIL import ImageFilter
+import random
+
+# display visual model inputs
+inv_normalize = transforms.Normalize(
+    mean=[-0.485 / 0.229, -0.456 / 0.224, -0.406 / 0.225],
+    std=[1 / 0.229, 1 / 0.224, 1 / 0.225]
+)
+
+img_transform = transforms.Compose([
+    transforms.ToPILImage(),
+    # transforms.Resize((im_size, im_size)),
+    transforms.ToTensor(),
+    transforms.Normalize([0.485, 0.456, 0.406],
+                         [0.229, 0.224, 0.225])
+])
+
+def _subtract_bg(img1, img2, offset=0.5):
+    img1 = np.int32(img1)
+    img2 = np.int32(img2)
+    diff = img1 - img2
+    diff = diff / 255.0 + offset
+    return diff
 
 def to_torch(x, dtype=torch.float, device='cuda:0', requires_grad=False):
     return torch.tensor(x, dtype=dtype, device=device, requires_grad=requires_grad)

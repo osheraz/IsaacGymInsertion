@@ -111,10 +111,12 @@ class PPO(object):
         self.tb_dif = os.path.join(self.output_dir, 'stage1_tb')
         os.makedirs(self.nn_dir, exist_ok=True)
         os.makedirs(self.tb_dif, exist_ok=True)
+
         # ---- Optim ----
         self.last_lr = float(self.ppo_config['learning_rate'])
         self.weight_decay = self.ppo_config.get('weight_decay', 0.0)
         self.optimizer = torch.optim.Adam(self.model.parameters(), self.last_lr, weight_decay=self.weight_decay)
+
         # ---- PPO Train Param ----
         self.e_clip = self.ppo_config['e_clip']
         self.clip_value = self.ppo_config['clip_value']
@@ -129,22 +131,27 @@ class PPO(object):
         self.normalize_advantage = self.ppo_config['normalize_advantage']
         self.normalize_input = self.ppo_config['normalize_input']
         self.normalize_value = self.ppo_config['normalize_value']
+
         # ---- PPO Collect Param ----
         self.horizon_length = self.ppo_config['horizon_length']
         self.batch_size = self.horizon_length * self.num_actors
         self.minibatch_size = self.ppo_config['minibatch_size']
         self.mini_epochs_num = self.ppo_config['mini_epochs']
         assert self.batch_size % self.minibatch_size == 0 or full_config.test
+
         # ---- scheduler ----
         self.kl_threshold = self.ppo_config['kl_threshold']
         self.scheduler = AdaptiveScheduler(self.kl_threshold)
+
         # ---- Snapshot
         self.save_freq = self.ppo_config['save_frequency']
         self.save_best_after = self.ppo_config['save_best_after']
+
         # ---- Tensorboard Logger ----
         self.extra_info = {}
         writer = SummaryWriter(self.tb_dif)
         self.writer = writer
+
         # ---- Rollout GIFs ----
         self.gif_frame_counter = 0
         self.gif_save_every_n = 7500
@@ -174,6 +181,7 @@ class PPO(object):
         self.agent_steps = 0
         self.max_agent_steps = self.ppo_config['max_agent_steps']
         self.best_rewards = -10000
+
         # ---- Timing
         self.data_collect_time = 0
         self.rl_train_time = 0
@@ -400,7 +408,7 @@ class PPO(object):
             # collect o_t
             self.storage.update_data('obses', n, self.obs['obs'])
             self.storage.update_data('priv_info', n, self.obs['priv_info'])
-            
+
             for k in ['actions', 'neglogpacs', 'values', 'mus', 'sigmas']:
                 self.storage.update_data(k, n, res_dict[k])
             # do env step
@@ -437,6 +445,7 @@ class PPO(object):
             done_indices = self.dones.nonzero(as_tuple=False)
             self.episode_rewards.update(self.current_rewards[done_indices])
             self.episode_lengths.update(self.current_lengths[done_indices])
+            # self.episode_success.update(?) TODO..
 
             assert isinstance(infos, dict), 'Info Should be a Dict'
             self.extra_info = {}

@@ -1,5 +1,11 @@
 # --------------------------------------------------------
-# In-Hand Object Rotation via Rapid Motor Adaptation
+# now its our turn.
+# https://arxiv.org/abs/todo
+# Copyright (c) 2023 Osher & Co.
+# Licensed under The MIT License [see LICENSE for details]
+# --------------------------------------------------------
+# --------------------------------------------------------
+# Based on: In-Hand Object Rotation via Rapid Motor Adaptation
 # https://arxiv.org/abs/2210.04887
 # Copyright (c) 2022 Haozhi Qi
 # Licensed under The MIT License [see LICENSE for details]
@@ -73,14 +79,20 @@ class ExtrinsicAdapt(object):
             "tactile_decoder_embed_dim": self.network_config.tactile_mlp.units[0],
             "ft_units": self.network_config.ft_mlp.units,
         }
+
         self.model = ActorCritic(net_config)
         self.model.to(self.device)
         self.model.eval()
+
         self.running_mean_std = RunningMeanStd(self.obs_shape).to(self.device)
         self.running_mean_std.eval()
-        # TODO
+        self.priv_mean_std = RunningMeanStd(self.priv_info_dim).to(self.device)
+        self.priv_mean_std.eval()
+
         self.ft_mean_std = RunningMeanStd((self.ft_seq_length, 32)).to(self.device)
         self.ft_mean_std.train()
+        # tactile is already normalized to imagenet values. (check task)
+
         # ---- Output Dir ----
         self.output_dir = output_dir
         self.nn_dir = os.path.join(self.output_dir, 'stage2_nn')
@@ -94,15 +106,19 @@ class ExtrinsicAdapt(object):
         self.batch_size = self.num_actors
         self.mean_eps_reward = AverageScalarMeter(window_size=20000)
         self.mean_eps_length = AverageScalarMeter(window_size=20000)
+        self.mean_eps_success = AverageScalarMeter(window_size=20000)
+
         self.best_rewards = -10000
         self.agent_steps = 0
+
         # ---- Optim ----
         adapt_params = []
         for name, p in self.model.named_parameters():
-            if 'adapt_tconv' in name:
+            if 'tactile_decoder' in name or 'tactile_mlp' in name or 'ft_adapt_tconv' in name:
                 adapt_params.append(p)
             else:
                 p.requires_grad = False
+
         self.optim = torch.optim.Adam(adapt_params, lr=3e-4)
         # ---- Training Misc
         self.internal_counter = 0
@@ -115,7 +131,8 @@ class ExtrinsicAdapt(object):
     def set_eval(self):
         self.model.eval()
         self.running_mean_std.eval()
-        self.sa_mean_std.eval()
+        self.priv_mean_std.eval()
+        self.ft_mean_std.eval()
 
     def test(self):
         self.set_eval()
@@ -123,7 +140,8 @@ class ExtrinsicAdapt(object):
         while True:
             input_dict = {
                 'obs': self.running_mean_std(obs_dict['obs']),
-                'proprio_hist': self.sa_mean_std(obs_dict['proprio_hist'].detach()),
+                'ft_hist': self.ft_mean_std(obs_dict['ft_hist'].detach()),
+                'tactile_hist': obs_dict['tactile_hist'].detach(),
             }
             mu = self.model.act_inference(input_dict)
             mu = torch.clamp(mu, -1.0, 1.0)
@@ -138,8 +156,9 @@ class ExtrinsicAdapt(object):
         while self.agent_steps <= 1e9:
             input_dict = {
                 'obs': self.running_mean_std(obs_dict['obs']).detach(),
-                'priv_info': obs_dict['priv_info'],
-                'proprio_hist': self.sa_mean_std(obs_dict['proprio_hist'].detach()),
+                'priv_info': self.priv_mean_std(obs_dict['priv_info']).detach(),
+                'ft_hist': self.ft_mean_std(obs_dict['ft_hist'].detach()),
+                'tactile_hist': obs_dict['tactile_hist'].detach(),
             }
             mu, _, _, e, e_gt = self.model._actor_critic(input_dict)
             loss = ((e - e_gt.detach()) ** 2).mean()
@@ -180,7 +199,7 @@ class ExtrinsicAdapt(object):
             info_string = f'Agent Steps: {int(self.agent_steps // 1e6):04}M | FPS: {all_fps:.1f} | ' \
                           f'Last FPS: {last_fps:.1f} | ' \
                           f'Current Best: {self.best_rewards:.2f}'
-            tprint(info_string)
+            cprint(info_string)
 
     def log_tensorboard(self):
         self.writer.add_scalar('episode_rewards/step', self.mean_eps_reward.get_mean(), self.agent_steps)
@@ -193,6 +212,8 @@ class ExtrinsicAdapt(object):
         cprint('careful, using non-strict matching', 'red', attrs=['bold'])
         self.model.load_state_dict(checkpoint['model'], strict=False)
         self.running_mean_std.load_state_dict(checkpoint['running_mean_std'])
+        # self.ft_mean_std.load_state_dict(checkpoint['ft_mean_std'])
+        # self.priv_mean_std.load_state_dict(checkpoint['priv_mean_std'])
 
     def restore_test(self, fn):
         if not fn:
@@ -200,7 +221,8 @@ class ExtrinsicAdapt(object):
         checkpoint = torch.load(fn)
         self.running_mean_std.load_state_dict(checkpoint['running_mean_std'])
         self.model.load_state_dict(checkpoint['model'])
-        self.sa_mean_std.load_state_dict(checkpoint['sa_mean_std'])
+        self.ft_mean_std.load_state_dict(checkpoint['ft_mean_std'])
+        self.priv_mean_std.load_state_dict(checkpoint['priv_mean_std'])
 
     def save(self, name):
         weights = {
@@ -208,6 +230,8 @@ class ExtrinsicAdapt(object):
         }
         if self.running_mean_std:
             weights['running_mean_std'] = self.running_mean_std.state_dict()
-        if self.sa_mean_std:
-            weights['sa_mean_std'] = self.sa_mean_std.state_dict()
+        if self.priv_mean_std:
+            weights['priv_mean_std'] = self.priv_mean_std.state_dict()
+        if self.ft_mean_std:
+            weights['ft_mean_std'] = self.ft_mean_std.state_dict()
         torch.save(weights, f'{name}.pth')

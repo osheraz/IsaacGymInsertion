@@ -277,7 +277,9 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
             for n in range(3):
                 tactile_img, height_map, _ = self.tactile_handles[e][n].render(object_pose[e])
-                self.tactile_imgs[e, n] = torch.tensor(tactile_img, dtype=torch.float32, device=self.device)
+                # Converts a PIL Image or numpy.ndarray (H x W x C) in the range [0, 255]
+                # to a torch.FloatTensor of shape (C x H x W) in the range [0.0, 1.0]
+                self.tactile_imgs[e, n] = torch_jit_utils.img_transform(tactile_img).to(self.device).permute(1, 2, 0)
                 tactile_imgs_per_env.append(tactile_img)
                 height_maps_per_env.append(height_map)
 
@@ -509,7 +511,6 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.reset_buf[:] = torch.where(self.dist_plug_socket > self.cfg_task.rl.far_error_thresh,
                                         torch.ones_like(self.reset_buf),
                                         self.reset_buf)
-
 
     def reset_idx(self, env_ids):
         """Reset specified environments."""
