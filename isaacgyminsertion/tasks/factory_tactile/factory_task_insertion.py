@@ -278,8 +278,9 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
             for n in range(3):
                 tactile_img, height_map, _ = self.tactile_handles[e][n].render(object_pose[e])
-                tactile_img = cv2.resize(tactile_img, (self.cfg_tactile.decoder.width, self.cfg_tactile.decoder.height), interpolation=cv2.INTER_AREA)
-                self.tactile_imgs[e, n] = torch_jit_utils.img_transform(tactile_img).to(self.device).permute(1, 2, 0)
+                resized_img = cv2.resize(tactile_img, (self.cfg_tactile.decoder.width,
+                                                       self.cfg_tactile.decoder.height), interpolation=cv2.INTER_AREA)
+                self.tactile_imgs[e, n] = torch_jit_utils.img_transform(resized_img).to(self.device).permute(1, 2, 0)
                 tactile_imgs_per_env.append(tactile_img)
                 height_maps_per_env.append(height_map)
 
