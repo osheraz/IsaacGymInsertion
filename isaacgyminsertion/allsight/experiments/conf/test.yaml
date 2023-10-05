@@ -10,6 +10,10 @@ tacto:
   height: 224 # 480 | 224 for the gan
   visualize_gui: True
 
+decoder:
+  width: 64
+  height: 64
+
 allsight:
   urdf_path: "../assets/meshes/allsight.urdf"
   base_position: [0, 0, 0]

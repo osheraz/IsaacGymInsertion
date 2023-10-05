@@ -48,6 +48,7 @@ import isaacgyminsertion.tasks.factory_tactile.factory_control as fc
 from isaacgyminsertion.tasks.factory_tactile.factory_utils import *
 from isaacgyminsertion.utils import torch_jit_utils
 from multiprocessing import Process, Queue, Manager
+import cv2
 
 torch.set_printoptions(sci_mode=False)
 
@@ -130,14 +131,14 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         # tactile buffers
         self.tactile_imgs = torch.zeros(
             (self.num_envs, len(self.fingertips),  # left, right, bottom
-             self.cfg_tactile.tacto.width, self.cfg_tactile.tacto.height, 3),
+             self.cfg_tactile.decoder.width, self.cfg_tactile.decoder.height, 3),
             device=self.device,
             dtype=torch.float,
         )
         # Way too big tensor.
         self.tactile_queue = torch.zeros(
             (self.num_envs, self.tact_hist_len, len(self.fingertips),  # left, right, bottom
-             self.cfg_tactile.tacto.width, self.cfg_tactile.tacto.height, 3),
+             self.cfg_tactile.decoder.width, self.cfg_tactile.decoder.height, 3),
             device=self.device,
             dtype=torch.float,
         )
@@ -277,6 +278,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
             for n in range(3):
                 tactile_img, height_map, _ = self.tactile_handles[e][n].render(object_pose[e])
+                tactile_img = cv2.resize(tactile_img, (self.cfg_tactile.decoder.width, self.cfg_tactile.decoder.height), interpolation=cv2.INTER_AREA)
                 self.tactile_imgs[e, n] = torch_jit_utils.img_transform(tactile_img).to(self.device).permute(1, 2, 0)
                 tactile_imgs_per_env.append(tactile_img)
                 height_maps_per_env.append(height_map)
