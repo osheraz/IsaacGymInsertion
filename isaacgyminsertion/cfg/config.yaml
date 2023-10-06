@@ -5,7 +5,7 @@ task_name: ${task.name}
 experiment: ''
 
 # if set to positive integer, overrides the default number of environments
-num_envs: 2 #''
+num_envs: 512 #''
 
 # seed - set to -1 to choose random seed
 seed: 42
@@ -51,13 +51,13 @@ wandb_project: 'isaacgymenvs'
 wandb_tags: []
 wandb_logcode_dir: '' 
 
-capture_video: False
+capture_video: True
 capture_video_freq: 1464
 capture_video_len: 100
 force_render: True
 # disables rendering
 
-headless: False
+headless: True
 
 # set default task and default training config based on task
 defaults:

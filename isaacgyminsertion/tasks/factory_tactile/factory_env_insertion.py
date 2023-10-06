@@ -63,6 +63,11 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
         self.refresh_base_tensors()  # defined in superclass
         self.refresh_env_tensors()
 
+        # defining video recording params, todo: where do we put this?
+        self.record_now = False
+        self.complete_video_frames = None
+        self.video_frames = []
+
     def _get_env_yaml_params(self):
         """Initialize instance variables from YAML files."""
 
@@ -209,6 +214,8 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
 
             env_ptr = self.gym.create_env(self.sim, lower, upper, num_per_row)
 
+            
+
             # compute aggregate size
             num_kuka_bodies = self.gym.get_asset_rigid_body_count(kuka_asset)
             num_kuka_shapes = self.gym.get_asset_rigid_shape_count(kuka_asset)
@@ -331,6 +338,16 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
             self.socket_handles.append(socket_handle)
             self.table_handles.append(table_handle)
 
+            # creating a camera on environment 0
+            if (i == 0) and self.cfg_env.env.record_video:
+                self.camera_props = gymapi.CameraProperties()
+                self.camera_props.width = 1280
+                self.camera_props.height = 720
+                self.rendering_camera = self.gym.create_camera_sensor(env_ptr, self.camera_props)
+                print('CAMERA:', self.rendering_camera)
+                self.gym.set_camera_location(self.rendering_camera, env_ptr, gymapi.Vec3(1.5, 1, 3.0),
+                                            gymapi.Vec3(0, 0, 0))
+
             # add Tactile modules for the tips
             plug_file = self.asset_info_insertion[subassembly][components[0]]['urdf_path']
             plug_file += '_subdiv_3x.obj' if 'rectangular' in plug_file else '.obj'
@@ -339,9 +356,12 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
             # self.tactile_handles.append([allsight_renderer(self.cfg_tactile,
             #                                                os.path.join(mesh_root, plug_file), randomize=False,
             #                                                finger_idx=i) for i in range(len(self.fingertips))])
-            print(i)
             if self.cfg_env.env.aggregate_mode:
                 self.gym.end_aggregate(env_ptr)
+
+
+            
+
 
         # Get indices
         self.num_actors = int(actor_count / self.num_envs)  # per env
@@ -440,3 +460,48 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
                                                      quat=self.socket_quat,
                                                      offset=self.socket_heights,
                                                      device=self.device)
+        
+    ### start code for logging videos while training ###
+    # record camera (does not matter if headless)
+    def _render_headless(self):
+        if self.record_now and self.complete_video_frames is not None and len(self.complete_video_frames) == 0:
+        # bx, by, bz = self.root_states[0, 0], self.root_states[0, 1], self.root_states[0, 2]
+            bx, by, bz = -0.0012, -0.0093,  0.4335 # self.root_pos[0, self.plug_actor_id_env, 0], self.root_pos[0, self.plug_actor_id_env, 1], self.root_pos[0, self.plug_actor_id_env, 2]
+            # bx, by, bz = 0, 1, 0
+            
+            self.gym.set_camera_location(self.rendering_camera, self.envs[0], gymapi.Vec3(bx - 0.2, by, bz),
+                                            gymapi.Vec3(bx, by, bz))
+            self.video_frame = self.gym.get_camera_image(self.sim, self.envs[0], self.rendering_camera,
+                                                            gymapi.IMAGE_COLOR)
+            self.video_frame = self.video_frame.reshape((self.camera_props.height, self.camera_props.width, 4))
+            # print(self.video_frame.shape)
+            self.video_frames.append(self.video_frame)
+
+    def start_recording(self):
+        self.complete_video_frames = None
+        self.record_now = True
+
+    def pause_recording(self):
+        self.complete_video_frames = []
+        self.video_frames = []
+        self.record_now = False
+
+    def get_complete_frames(self):
+        if self.complete_video_frames is None:
+            return []
+        return self.complete_video_frames
+    
+    # def start_recording_eval(self):
+    #     self.complete_video_frames_eval = None
+    #     self.record_eval_now = True
+
+    # def pause_recording_eval(self):
+    #     self.complete_video_frames_eval = []
+    #     self.video_frames_eval = []
+    #     self.record_eval_now = False
+
+    # def get_complete_frames_eval(self):
+    #     if self.complete_video_frames_eval is None:
+    #         return []
+    #     return self.complete_video_frames_eval
+    ### end code for logging videos while training ###

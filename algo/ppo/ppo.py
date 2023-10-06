@@ -25,6 +25,7 @@
 import os
 import time
 import cv2
+import imageio
 import torch
 import torch.distributed as dist
 import numpy as np
@@ -36,6 +37,7 @@ from algo.models.running_mean_std import RunningMeanStd
 from isaacgyminsertion.utils.misc import AverageScalarMeter
 from isaacgyminsertion.utils.misc import add_to_fifo, multi_gpu_aggregate_stats
 from tensorboardX import SummaryWriter
+
 
 
 class PPO(object):
@@ -157,6 +159,12 @@ class PPO(object):
         self.gif_save_every_n = 7500
         self.gif_save_length = 300
         self.gif_frames = []
+
+        # ---- Rollout Videos ----
+        self.it = 0
+        self.log_video_every = self.env.cfg_env.env.record_video_every
+        self.last_recording_it = 0
+        # self.fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # Use 'XVID' for .avi format
 
         self.episode_rewards = AverageScalarMeter(100)
         self.episode_lengths = AverageScalarMeter(100)
@@ -400,10 +408,42 @@ class PPO(object):
 
         self.rl_train_time += (time.time() - _t)
         return a_losses, c_losses, b_losses, entropies, kls, grad_norms
+    
+    def _write_video(self, frames, output_loc, frame_rate):
+        writer = imageio.get_writer(output_loc, mode='I', fps=frame_rate)
+        # out = cv2.VideoWriter(output_loc, self.fourcc, frame_rate, (240, 360))
+        for i in range(len(frames)):
+            frame = np.uint8(frames[i])
+            writer.append_data(frame)
+            # cv2.imshow('frame', frames[i])
+            # cv2.waitKey(0)
+            # out.write(frames[i])
+        writer.close()
+        # out.release()
+        # cv2.destroyAllWindows()
+
+    def log_video(self):
+        if ((self.it - self.last_recording_it) >= self.log_video_every):
+            self.env.start_recording()
+            print("START RECORDING")
+            self.last_recording_it = self.it
+
+        frames = self.env.get_complete_frames()
+        if len(frames) > 0:
+            print(len(frames))
+            self.env.pause_recording()
+            video_dir = os.path.join(self.output_dir, 'videos')
+            if not os.path.exists(video_dir):
+                os.makedirs(video_dir)
+            self._write_video(frames, f"{video_dir}/{self.it:05d}.mp4", frame_rate=30)
+            print("LOGGING VIDEO")
 
     def play_steps(self):
+        
         record_frame = False
         for n in range(self.horizon_length):
+            self.log_video()
+            self.it += 1
             res_dict = self.model_act(self.obs)
             # collect o_t
             self.storage.update_data('obses', n, self.obs['obs'])
@@ -415,22 +455,22 @@ class PPO(object):
             actions = torch.clamp(res_dict['actions'], -1.0, 1.0)
             self.obs, rewards, self.dones, infos = self.env.step(actions)
 
-            if record_frame:
-                self.gif_frames.append(self.env.capture_frame())
-                # add frame to GIF
-                if len(self.gif_frames) == self.gif_save_length:
-                    frame_array = np.array([f["color"] for f in self.gif_frames])[
-                        None
-                    ]  # add batch axis
-                    self.writer.add_video(
-                        "rollout_gif",
-                        frame_array,
-                        global_step=self.agent_steps,
-                        dataformats="NTHWC",
-                        fps=20,
-                    )
-                    self.writer.flush()
-                    self.gif_frames.clear()
+            # if record_frame:
+            #     self.gif_frames.append(self.env.capture_frame())
+            #     # add frame to GIF
+            #     if len(self.gif_frames) == self.gif_save_length:
+            #         frame_array = np.array([f["color"] for f in self.gif_frames])[
+            #             None
+            #         ]  # add batch axis
+            #         self.writer.add_video(
+            #             "rollout_gif",
+            #             frame_array,
+            #             global_step=self.agent_steps,
+            #             dataformats="NTHWC",
+            #             fps=20,
+            #         )
+            #         self.writer.flush()
+            #         self.gif_frames.clear()
 
             rewards = rewards.unsqueeze(1)
             # update dones and rewards after env step
