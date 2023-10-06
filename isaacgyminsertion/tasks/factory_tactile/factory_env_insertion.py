@@ -438,6 +438,8 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
                                                               dim=1)
         self.plug_com_angvel = self.plug_angvel  # always equal
 
+        self.socket_contact_force = self.contact_force[:, self.socket_actor_id_env, :3]
+
     def refresh_env_tensors(self):
         """Refresh tensors."""
         # NOTE: Tensor refresh functions should be called once per step, before setters.

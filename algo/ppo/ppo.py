@@ -455,23 +455,6 @@ class PPO(object):
             actions = torch.clamp(res_dict['actions'], -1.0, 1.0)
             self.obs, rewards, self.dones, infos = self.env.step(actions)
 
-            # if record_frame:
-            #     self.gif_frames.append(self.env.capture_frame())
-            #     # add frame to GIF
-            #     if len(self.gif_frames) == self.gif_save_length:
-            #         frame_array = np.array([f["color"] for f in self.gif_frames])[
-            #             None
-            #         ]  # add batch axis
-            #         self.writer.add_video(
-            #             "rollout_gif",
-            #             frame_array,
-            #             global_step=self.agent_steps,
-            #             dataformats="NTHWC",
-            #             fps=20,
-            #         )
-            #         self.writer.flush()
-            #         self.gif_frames.clear()
-
             rewards = rewards.unsqueeze(1)
             # update dones and rewards after env step
             self.storage.update_data('dones', n, self.dones)
