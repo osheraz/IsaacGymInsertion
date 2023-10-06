@@ -80,8 +80,16 @@ def run(cfg: DictConfig):
         graphics_device_id=cfg.graphics_device_id,
         headless=cfg.headless,
         virtual_screen_capture=False,  # cfg.capture_video,
-        force_render=cfg.force_render if not cfg.headless else False,
+        force_render=cfg.force_render # if not cfg.headless else False,
     )
+
+    # envs.is_vector_env = True
+    # envs = gym.wrappers.RecordVideo(
+    #     envs,
+    #     f"videos",
+    #     step_trigger=lambda step: step % 1000 == 0,
+    #     video_length=100,
+    # )
 
     output_dif = os.path.join('outputs', cfg.train.ppo.output_name)
     os.makedirs(output_dif, exist_ok=True)
@@ -119,12 +127,13 @@ def run(cfg: DictConfig):
             "stage1_nn" if cfg.train.algo == "PPO" else "stage2_nn",
             "best.pth",
         )
-        if os.path.exists(best_ckpt_path):
-            user_input = input(
-                f"are you intentionally going to overwrite files in {cfg.train.ppo.output_name}, type yes to continue \n"
-            )
-            if user_input != "yes":
-                exit()
+        user_input = 'yes'
+        # if os.path.exists(best_ckpt_path):
+        #     user_input = input(
+        #         f"are you intentionally going to overwrite files in {cfg.train.ppo.output_name}, type yes to continue \n"
+        #     )
+        #     if user_input != "yes":
+        #         exit()
 
         agent.restore_train(cfg.train.load_path)
         agent.train()

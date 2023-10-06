@@ -10,8 +10,8 @@ physics_engine: ${..physics_engine}
 
 env:
     numEnvs: ${resolve_default:128,${...num_envs}}
-    numStates: 62
-    numObservations: 84
+    numStates: 22 # 62
+    numObservations: 74 # 84
     numActions: 6 # [position, ori]
     numTargets: 6 # [position, ori]
 
@@ -82,11 +82,11 @@ rl:
     num_keypoints: 4  # number of keypoints used in reward
     keypoint_scale: 0.5  # length of line of keypoints
 
-    keypoint_reward_scale: 1.0  # scale on keypoint-based reward
-    action_penalty_scale: 0.0  # scale on action penalty
-    orientation_penalty_scale: 0.1
+    keypoint_reward_scale: -5.0  # scale on keypoint-based reward
+    action_penalty_scale: -0.0  # scale on action penalty
+    orientation_penalty_scale: -0.1
 
-    max_episode_length: 8192  # terminate episode after this number of timesteps (failure)
+    max_episode_length: 500 # 8192  # terminate episode after this number of timesteps (failure)
 
     orientation_threshold: 0.1
     far_error_thresh: 0.100  # threshold above which plug is considered too far from bolt

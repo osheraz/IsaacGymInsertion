@@ -93,7 +93,7 @@ class Env(ABC):
         # if training in a headless mode
         self.headless = headless
 
-        enable_camera_sensors = config.get("enableCameraSensors", False)
+        enable_camera_sensors = True # config.get("enableCameraSensors", False)
         self.graphics_device_id = graphics_device_id
         if enable_camera_sensors == False and self.headless == True:
             self.graphics_device_id = -1
@@ -381,10 +381,12 @@ class VecTask(Env):
             if self.force_render:
                 self.render()
             self.gym.simulate(self.sim)
+            self.gym.step_graphics(self.sim)
+            self.gym.fetch_results(self.sim, True)
+            self._refresh_task_tensors()
 
         # to fix!
-        if self.device == 'cpu':
-            self.gym.fetch_results(self.sim, True)
+        # if self.device == 'cpu':
 
         # compute observations, rewards, resets, ...
         self.post_physics_step()
@@ -457,6 +459,7 @@ class VecTask(Env):
 
     def render(self, mode="rgb_array"):
         """Draw the frame to the viewer, and check for keyboard events."""
+
         if self.viewer:
             # check for window closed
             if self.gym.query_viewer_has_closed(self.viewer):
@@ -508,13 +511,18 @@ class VecTask(Env):
 
                 self.gym.write_viewer_image_to_file(self.viewer, join(self.record_frames_dir, f"frame_{self.control_steps}.png"))
 
+            # viewer_camera_handle = self.gym.get_viewer_camera_handle(self.viewer)
+            # frame = self.gym.get_camera_image(self.sim, 0, viewer_camera_handle, gymapi.IMAGE_COLOR)
+
             if self.virtual_display and mode == "rgb_array":
                 img = self.virtual_display.grab()
                 return np.array(img)
-
+            
+            # return frame
+        # else:
+        #     self.gym.step_graphics(self.sim)
     def __parse_sim_params(self, physics_engine: str, config_sim: Dict[str, Any]) -> gymapi.SimParams:
         """Parse the config dictionary for physics stepping settings.
-
         Args:
             physics_engine: which physics engine to use. "physx" or "flex"
             config_sim: dict of sim configuration parameters
@@ -565,7 +573,6 @@ class VecTask(Env):
     """
     Domain Randomization methods
     """
-
     def get_actor_params_info(self, dr_params: Dict[str, Any], env):
         """Generate a flat array of actor params, their names and ranges.
 
