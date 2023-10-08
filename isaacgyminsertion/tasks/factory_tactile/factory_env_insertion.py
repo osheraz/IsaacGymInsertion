@@ -63,10 +63,7 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
         self.refresh_base_tensors()  # defined in superclass
         self.refresh_env_tensors()
 
-        # defining video recording params, todo: where do we put this?
-        self.record_now = False
-        self.complete_video_frames = None
-        self.video_frames = []
+        
 
     def _get_env_yaml_params(self):
         """Initialize instance variables from YAML files."""
@@ -206,8 +203,8 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
         #     self.gym.create_asset_force_sensor(kuka_asset, ft_handle, sensor_pose)
         wrist_ft_handle = self.gym.find_asset_rigid_body_index(kuka_asset, 'iiwa7_link_7')
         self.gym.create_asset_force_sensor(kuka_asset, wrist_ft_handle, sensor_pose)
-
-        for i in range(self.num_envs):
+        from tqdm import tqdm
+        for i in tqdm(range(self.num_envs)):
 
             # sample random subassemblies
             j = np.random.randint(0, len(self.cfg_env.env.desired_subassemblies))
@@ -353,9 +350,9 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
             plug_file += '_subdiv_3x.obj' if 'rectangular' in plug_file else '.obj'
             mesh_root = os.path.join(os.path.dirname(__file__), '..', '..', '..', 'assets', 'factory', 'mesh',
                                      'factory_insertion')
-            # self.tactile_handles.append([allsight_renderer(self.cfg_tactile,
-            #                                                os.path.join(mesh_root, plug_file), randomize=False,
-            #                                                finger_idx=i) for i in range(len(self.fingertips))])
+            self.tactile_handles.append([allsight_renderer(self.cfg_tactile,
+                                                           os.path.join(mesh_root, plug_file), randomize=False,
+                                                           finger_idx=i) for i in range(len(self.fingertips))])
             if self.cfg_env.env.aggregate_mode:
                 self.gym.end_aggregate(env_ptr)
 

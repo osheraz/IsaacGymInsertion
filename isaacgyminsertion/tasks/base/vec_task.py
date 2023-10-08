@@ -381,9 +381,9 @@ class VecTask(Env):
             if self.force_render:
                 self.render()
             self.gym.simulate(self.sim)
-            self.gym.step_graphics(self.sim)
-            self.gym.fetch_results(self.sim, True)
-            self._refresh_task_tensors()
+            # self.gym.step_graphics(self.sim)
+            # self.gym.fetch_results(self.sim, True)
+            # self._refresh_task_tensors()
 
         # to fix!
         # if self.device == 'cpu':
@@ -520,7 +520,11 @@ class VecTask(Env):
             
             # return frame
         # else:
+        #     self.gym.fetch_results(self.sim, True)
         #     self.gym.step_graphics(self.sim)
+            # self.gym.simulate(self.sim)
+            # self.gym.step_graphics(self.sim)
+            # self._refresh_task_tensors()
     def __parse_sim_params(self, physics_engine: str, config_sim: Dict[str, Any]) -> gymapi.SimParams:
         """Parse the config dictionary for physics stepping settings.
         Args:

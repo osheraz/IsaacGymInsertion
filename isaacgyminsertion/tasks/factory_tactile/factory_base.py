@@ -62,8 +62,15 @@ class FactoryBaseTactile(VecTask, FactoryABCBase):
         if self.cfg_base.mode.export_scene:
             sim_device = 'cpu'
 
+        
+
         super().__init__(cfg, rl_device, sim_device, graphics_device_id, headless, virtual_screen_capture,
                          force_render)  # create_sim() is called here
+        
+        # defining video recording params, todo: where do we put this?
+        self.record_now = False
+        self.complete_video_frames = None
+        self.video_frames = []
 
     def _get_base_yaml_params(self):
         """Initialize instance variables from YAML files."""
@@ -304,7 +311,11 @@ class FactoryBaseTactile(VecTask, FactoryABCBase):
         self.gym.refresh_jacobian_tensors(self.sim)
         self.gym.refresh_mass_matrix_tensors(self.sim)
         self.gym.refresh_force_sensor_tensor(self.sim)
-        self.gym.render_all_camera_sensors(self.sim)
+        if self.record_now:
+            self.gym.fetch_results(self.sim, True)
+            self.gym.step_graphics(self.sim)
+            self.gym.render_all_camera_sensors(self.sim)
+            self.gym.start_access_image_tensors(self.sim)
 
         # Privileged
         self.finger_midpoint_pos = (self.left_finger_pos + self.right_finger_pos + self.middle_finger_pos) * (1 / 3)

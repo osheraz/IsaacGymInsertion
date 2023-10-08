@@ -22,7 +22,7 @@ env:
 
     openhand:
         distal_open: 0.0
-        distal_close: 0.2
+        distal_close: 0.0
         proximal_open: 1.0
         proximal_close: 2.0
         base_angle: 0.7
@@ -63,7 +63,7 @@ randomize:
     plug_noise_rot_in_gripper: 0.0  # noise on plug rotation within gripper
     
     socket_pos_xy_initial: [0.0, 0.0]  # initial XY position of plug on table
-    socket_pos_xy_noise: [0., 0.]  # noise on plug position
+    socket_pos_xy_noise: [0.05, 0.05]  # noise on plug position
 
 
 
@@ -86,7 +86,7 @@ rl:
     action_penalty_scale: -0.0  # scale on action penalty
     orientation_penalty_scale: -0.1
 
-    max_episode_length: 500 # 8192  # terminate episode after this number of timesteps (failure)
+    max_episode_length: 1 # 8192  # terminate episode after this number of timesteps (failure)
 
     orientation_threshold: 0.1
     far_error_thresh: 0.100  # threshold above which plug is considered too far from bolt
