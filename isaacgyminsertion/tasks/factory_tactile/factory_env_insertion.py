@@ -483,7 +483,7 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
             self.video_frames.append(self.video_frame)
 
         if self.record_now_ft and self.complete_ft_frames is not None and len(self.complete_ft_frames) == 0:
-            self.ft_frames.append(0.1 * self.ft_sensor_tensor.cpu().numpy().squeeze())
+            self.ft_frames.append(0.1 * self.ft_sensor_tensor[:1].cpu().numpy().squeeze())
 
     def start_recording(self):
         self.complete_video_frames = None

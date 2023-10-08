@@ -71,6 +71,7 @@ class FactoryBaseTactile(VecTask, FactoryABCBase):
         self.record_now = False
         self.complete_video_frames = None
         self.video_frames = []
+        
 
     def _get_base_yaml_params(self):
         """Initialize instance variables from YAML files."""
@@ -99,10 +100,37 @@ class FactoryBaseTactile(VecTask, FactoryABCBase):
                                       sim_params=self.sim_params)
         self._create_ground_plane()
         self.create_envs()  # defined in subclass
-
+        self._initialize_grasp_poses()
         # If randomizing, apply once immediately on startup before the fist sim step
         if self.randomize:
             self.apply_randomizations(self.randomization_params)
+
+    def _initialize_grasp_poses(self):
+        # TODO: add this path to the config file
+        self.initial_grasp_poses = np.load('initial_grasp_data/init_grasp1.npz')
+        self.total_init_poses = self.initial_grasp_poses['socket_pos'].shape[0]
+        self.init_socket_pos = torch.zeros((self.total_init_poses, 3))
+        self.init_socket_quat = torch.zeros((self.total_init_poses, 4))
+        self.init_plug_pos = torch.zeros((self.total_init_poses, 3))
+        self.init_plug_quat = torch.zeros((self.total_init_poses, 4))
+        self.init_dof_pos = torch.zeros((self.total_init_poses, 15))
+
+        socket_pos = self.initial_grasp_poses['socket_pos']
+        socket_quat = self.initial_grasp_poses['socket_quat']
+        plug_pos = self.initial_grasp_poses['plug_pos']
+        plug_quat = self.initial_grasp_poses['plug_quat']
+        dof_pos = self.initial_grasp_poses['dof_pos']
+
+        self.env_to_grasp = torch.zeros((self.num_envs,)).to(dtype=torch.int32)
+        from tqdm import tqdm
+        print("Loading Poses")
+        for i in tqdm(range(self.total_init_poses)):
+            self.init_socket_pos[i] = torch.from_numpy(socket_pos[i])
+            self.init_socket_quat[i] = torch.from_numpy(socket_quat[i])
+            self.init_plug_pos[i] = torch.from_numpy(plug_pos[i])
+            self.init_plug_quat[i] = torch.from_numpy(plug_quat[i])
+            self.init_dof_pos[i] = torch.from_numpy(dof_pos[i])
+
 
     def _create_ground_plane(self):
         """Set ground plane params. Add plane."""

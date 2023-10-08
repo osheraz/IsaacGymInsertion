@@ -622,14 +622,37 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         # print('plug is too far', self.reset_buf)
 
+    def _reset_environment(self, env_ids):
+        
+        random_init_idx = torch.randint(0, self.total_init_poses, size=(len(env_ids), ))
+        # self.env_to_grasp[env_ids] = random_init_idx
+        
+        kuka_dof_pos = self.init_dof_pos[random_init_idx]
+        # print(kuka_dof_pos.shape)
+        self._reset_kuka(env_ids, new_pose=kuka_dof_pos)
+
+        socket_pos = self.init_socket_pos[random_init_idx]
+        socket_quat = self.init_socket_quat[random_init_idx]
+        plug_pos = self.init_plug_pos[random_init_idx]
+        plug_quat = self.init_plug_quat[random_init_idx]
+
+        object_pose = {
+            'socket_pose': socket_pos,
+            'socket_quat': socket_quat,
+            'plug_pose': plug_pos,
+            'plug_quat': plug_quat
+        }
+        self._reset_object(env_ids, new_pose=object_pose)
+
     def reset_idx(self, env_ids):
         """Reset specified environments."""
 
         if self.randomize:
             self.apply_randomizations(self.randomization_params)
 
-        self._reset_kuka(env_ids)
-        self._reset_object(env_ids)
+        # self._reset_kuka(env_ids)
+        # self._reset_object(env_ids)
+        self._reset_environment(env_ids)
 
         self._zero_velocities(env_ids)
         self._refresh_task_tensors()
@@ -687,7 +710,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         self._reset_buffers(env_ids)
 
-    def _reset_kuka(self, env_ids):
+    def _reset_kuka(self, env_ids, new_pose=None):
         """Reset DOF states and DOF targets of kuka."""
 
         # shape of dof_pos = (num_envs, num_dofs)
@@ -699,9 +722,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         # dof_pos at grasp pose tensor([[-0.0047,  0.2375,  0.0203, -1.2496, -0.0070,  1.6475, -1.5514,  0.6907,
         #   1.8478,  0.1660, -0.6892,  1.8515,  0.1625,  1.8333,  0.1740]]),
 
-        self.dof_pos[env_ids, :] = torch.tensor([[-0.0047, 0.2375, 0.0203, -1.2496, -0.0070, 1.6475, -1.5514, 0.6907,
-                                                  1.8478, 0.1660, -0.6892, 1.8515, 0.1625, 1.8333, 0.1740]],
-                                                device=self.device).repeat((len(env_ids), 1))
+        self.dof_pos[env_ids, :] = new_pose.to(device=self.device) #.repeat((len(env_ids), 1))
 
         # dont play with these joints (no actuation here)#
         # self.dof_pos[
@@ -750,7 +771,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         self._simulate_and_refresh()
 
-    def _reset_object(self, env_ids):
+    def _reset_object(self, env_ids, new_pose=None):
         """Reset root state of plug."""
 
         # Randomize root state of plug
@@ -770,10 +791,11 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         # plug pose at grasp pose tensor([[-0.0012, -0.0093,  0.4335]])
         # plug quat at grasp pose tensor([[-0.0709,  0.0626,  0.0375,  0.9948]])
 
-        self.root_pos[env_ids, self.plug_actor_id_env, :] = torch.tensor([[-0.0012, -0.0093, 0.4335]],
-                                                                         device=self.device).repeat(len(env_ids), 1)
-        self.root_quat[env_ids, self.plug_actor_id_env, :] = torch.tensor([[-0.0709, 0.0626, 0.0375, 0.9948]],
-                                                                          device=self.device).repeat(len(env_ids), 1)
+        plug_pose = new_pose['plug_pose']
+        plug_quat = new_pose['plug_quat']
+
+        self.root_pos[env_ids, self.plug_actor_id_env, :] = plug_pose.to(device=self.device) # .repeat(len(env_ids), 1)
+        self.root_quat[env_ids, self.plug_actor_id_env, :] = plug_quat.to(device=self.device) # .repeat(len(env_ids), 1)
 
         # Stabilize plug
         self.root_linvel[env_ids, self.plug_actor_id_env] = 0.0
@@ -784,6 +806,40 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                                                      gymtorch.unwrap_tensor(self.root_state),
                                                      gymtorch.unwrap_tensor(plug_actor_ids_sim_int32[env_ids]),
                                                      len(plug_actor_ids_sim_int32[env_ids]))
+
+        self._simulate_and_refresh()
+
+        # Randomize root state of socket
+        socket_noise_xy = 2 * (torch.rand((self.num_envs, 2), dtype=torch.float32, device=self.device) - 0.5)  # [-1, 1]
+        socket_noise_xy = socket_noise_xy @ torch.diag(
+            torch.tensor(self.cfg_task.randomize.socket_pos_xy_noise, device=self.device))
+
+        # self.root_pos[env_ids, self.socket_actor_id_env, 0] = self.cfg_task.randomize.socket_pos_xy_initial[0] \
+        #                                                     + socket_noise_xy[env_ids, 0]
+        # self.root_pos[env_ids, self.socket_actor_id_env, 1] = self.cfg_task.randomize.socket_pos_xy_initial[1] \
+        #                                                     + socket_noise_xy[env_ids, 1]
+        # self.root_pos[env_ids, self.socket_actor_id_env, 2] = self.cfg_base.env.table_height
+
+        # self.root_quat[env_ids, self.socket_actor_id_env] = torch.tensor([0.0, 0.0, 0.0, 1.0], dtype=torch.float32,
+        #                                                                device=self.device).repeat(len(env_ids), 1)
+
+        # socket pose at grasp pose tensor([[-0.0012, -0.0093,  0.4335]])
+        # socket quat at grasp pose tensor([[-0.0709,  0.0626,  0.0375,  0.9948]])
+        socket_pose = new_pose['socket_pose']
+        socket_quat = new_pose['socket_quat']
+
+        self.root_pos[env_ids, self.socket_actor_id_env, :] = socket_pose.to(device=self.device) #.repeat(len(env_ids), 1)
+        self.root_quat[env_ids, self.socket_actor_id_env, :] = socket_quat.to(device=self.device) #.repeat(len(env_ids), 1)
+
+        # Stabilize socket
+        self.root_linvel[env_ids, self.socket_actor_id_env] = 0.0
+        self.root_angvel[env_ids, self.socket_actor_id_env] = 0.0
+
+        socket_actor_ids_sim_int32 = self.socket_actor_ids_sim.to(dtype=torch.int32, device=self.device)
+        self.gym.set_actor_root_state_tensor_indexed(self.sim,
+                                                     gymtorch.unwrap_tensor(self.root_state),
+                                                     gymtorch.unwrap_tensor(socket_actor_ids_sim_int32[env_ids]),
+                                                     len(socket_actor_ids_sim_int32[env_ids]))
 
         self._simulate_and_refresh()
 
@@ -849,10 +905,10 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         """Simulate one step, refresh tensors, and render results."""
 
         self.gym.simulate(self.sim)
-        self.refresh_base_tensors()
-        self.refresh_env_tensors()
-        self._refresh_task_tensors()
+        # self.refresh_base_tensors()
+        # self.refresh_env_tensors()
         self.render()
+        self._refresh_task_tensors()
 
     def _reset_buffers(self, env_ids):
         """Reset buffers. """

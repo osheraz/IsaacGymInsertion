@@ -87,7 +87,7 @@ rl:
     action_penalty_scale: -0.0  # scale on action penalty
     orientation_penalty_scale: -0.1
 
-    max_episode_length: 1 # 8192  # terminate episode after this number of timesteps (failure)
+    max_episode_length: 128 # 8192  # terminate episode after this number of timesteps (failure)
 
     orientation_threshold: 0.1
     far_error_thresh: 0.100  # threshold above which plug is considered too far from bolt
