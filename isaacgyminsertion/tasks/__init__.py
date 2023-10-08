@@ -34,6 +34,6 @@ from .factory_tactile.factory_task_grasp import FactoryTaskGraspTactile
 
 # Mappings from strings to environments
 isaacgym_task_map = {
-    # "FactoryTaskInsertionTactile": FactoryTaskInsertionTactile,
-    "FactoryTaskInsertionTactile": FactoryTaskGraspTactile
+    "FactoryTaskInsertionTactile": FactoryTaskInsertionTactile,
+    # "FactoryTaskInsertionTactile": FactoryTaskGraspTactile
 }

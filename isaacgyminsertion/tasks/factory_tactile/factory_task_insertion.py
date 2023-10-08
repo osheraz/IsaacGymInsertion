@@ -51,6 +51,7 @@ from multiprocessing import Process, Queue, Manager
 import cv2
 # from isaacgyminsertion.allsight.experiments.allsight_render import allsight_renderer
 
+
 torch.set_printoptions(sci_mode=False)
 
 
@@ -75,6 +76,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         if self.cfg_base.mode.export_scene:
             self.export_scene(label='kuka_task_insertion')
+
 
     def _get_task_yaml_params(self):
         """Initialize instance variables from YAML files."""
@@ -149,6 +151,9 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         )
 
         self.ft_queue = torch.zeros((self.num_envs, self.ft_hist_len, 6), device=self.device, dtype=torch.float)
+        self.gt_extrinsic_contact = torch.zeros((self.num_envs, self.extrinsic_contact_gt[0].pointcloud_obj.shape[0]),
+                                           device=self.device, dtype=torch.float)
+
 
     def _refresh_task_tensors(self, update_tactile=False):
         """Refresh tensors."""
@@ -502,6 +507,13 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         middle_tip_pose_wrt_robot = self.pose_world_to_robot_base(self.middle_finger_pos, self.middle_finger_quat)
         tip_midpoint_pose_wrt_robot = self.pose_world_to_robot_base(self.fingertip_midpoint_pos,
                                                                     self.fingertip_midpoint_quat)
+
+        if self.cfg_env.env.compute_contact_gt:
+            for e in range(self.num_envs):
+                self.gt_extrinsic_contact[e] = self.extrinsic_contact_gt[e].get_extrinsic_contact(
+                    obj_pos=self.plug_pos, obj_quat=self.plug_quat
+                )
+            # todo should be added to priv.
 
         state_tensors = [
             left_tip_pose_wrt_robot[0],  # 3
