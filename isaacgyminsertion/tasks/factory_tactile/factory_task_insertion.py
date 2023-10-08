@@ -627,6 +627,13 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                 self.complete_video_frames = self.video_frames[:]
             self.video_frames = []
 
+        if self.cfg_env.env.record_ft and 0 in env_ids:
+            if self.complete_ft_frames is None:
+                self.complete_ft_frames = []
+            else:
+                self.complete_ft_frames = self.ft_frames[:]
+            self.ft_frames = []
+
         self._reset_buffers(env_ids)
 
     def _reset_kuka(self, env_ids):

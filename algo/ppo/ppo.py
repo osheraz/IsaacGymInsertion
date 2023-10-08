@@ -163,7 +163,10 @@ class PPO(object):
         # ---- Rollout Videos ----
         self.it = 0
         self.log_video_every = self.env.cfg_env.env.record_video_every
+        self.log_ft_every = self.env.cfg_env.env.record_ft_every
+
         self.last_recording_it = 0
+        self.last_recording_it_ft =0
         # self.fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # Use 'XVID' for .avi format
 
         self.episode_rewards = AverageScalarMeter(100)
@@ -408,7 +411,8 @@ class PPO(object):
 
         self.rl_train_time += (time.time() - _t)
         return a_losses, c_losses, b_losses, entropies, kls, grad_norms
-    
+
+    # TODO move all of this logging to an utils\misc folder
     def _write_video(self, frames, output_loc, frame_rate):
         writer = imageio.get_writer(output_loc, mode='I', fps=frame_rate)
         # out = cv2.VideoWriter(output_loc, self.fourcc, frame_rate, (240, 360))
@@ -421,6 +425,23 @@ class PPO(object):
         writer.close()
         # out.release()
         # cv2.destroyAllWindows()
+
+    def _write_ft(self, data, output_loc):
+        # todo convert it to gif with same rate as video
+        # todo split into 2 plot, 1 for the fore a
+        import matplotlib.pyplot as plt
+        plt.figure(figsize=(8, 6))
+        plt.plot(np.array(data)[:,:3])
+        plt.xlabel('time')
+        plt.ylabel('force')
+        plt.savefig(f'{output_loc}_force.png')
+        plt.close()
+        plt.figure(figsize=(8, 6))
+        plt.plot(np.array(data)[:, 3:])
+        plt.xlabel('time')
+        plt.ylabel('torque')
+        plt.savefig(f'{output_loc}_torque.png')
+        plt.close()
 
     def log_video(self):
         if ((self.it - self.last_recording_it) >= self.log_video_every):
@@ -438,11 +459,28 @@ class PPO(object):
             self._write_video(frames, f"{video_dir}/{self.it:05d}.mp4", frame_rate=30)
             print("LOGGING VIDEO")
 
+    def log_ft(self):
+        if ((self.it - self.last_recording_it_ft) >= self.log_ft_every):
+            self.env.start_recording_ft()
+            print("START FT RECORDING")
+            self.last_recording_it_ft = self.it
+
+        frames = self.env.get_ft_frames()
+        if len(frames) > 0:
+            print(len(frames))
+            self.env.pause_recording_ft()
+            ft_dir = os.path.join(self.output_dir, 'ft')
+            if not os.path.exists(ft_dir):
+                os.makedirs(ft_dir)
+            self._write_ft(frames, f"{ft_dir}/{self.it:05d}")
+            print("LOGGING FT")
+
     def play_steps(self):
         
         record_frame = False
         for n in range(self.horizon_length):
             self.log_video()
+            self.log_ft()
             self.it += 1
             res_dict = self.model_act(self.obs)
             # collect o_t

@@ -65,8 +65,12 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
 
         # defining video recording params, todo: where do we put this?
         self.record_now = False
+        self.record_now_ft = False
         self.complete_video_frames = None
+        self.complete_ft_frames = None
+
         self.video_frames = []
+        self.ft_frames = []
 
     def _get_env_yaml_params(self):
         """Initialize instance variables from YAML files."""
@@ -476,23 +480,39 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
             self.video_frame = self.gym.get_camera_image(self.sim, self.envs[0], self.rendering_camera,
                                                             gymapi.IMAGE_COLOR)
             self.video_frame = self.video_frame.reshape((self.camera_props.height, self.camera_props.width, 4))
-            # print(self.video_frame.shape)
             self.video_frames.append(self.video_frame)
+
+        if self.record_now_ft and self.complete_ft_frames is not None and len(self.complete_ft_frames) == 0:
+            self.ft_frames.append(0.1 * self.ft_sensor_tensor.cpu().numpy().squeeze())
 
     def start_recording(self):
         self.complete_video_frames = None
         self.record_now = True
+
+    def start_recording_ft(self):
+        self.complete_ft_frames = None
+        self.record_now_ft = True
 
     def pause_recording(self):
         self.complete_video_frames = []
         self.video_frames = []
         self.record_now = False
 
+    def pause_recording_ft(self):
+        self.complete_ft_frames = []
+        self.ft_frames = []
+        self.record_now_ft = False
+
     def get_complete_frames(self):
         if self.complete_video_frames is None:
             return []
         return self.complete_video_frames
-    
+
+    def get_ft_frames(self):
+        if self.complete_ft_frames is None:
+            return []
+        return self.complete_ft_frames
+
     # def start_recording_eval(self):
     #     self.complete_video_frames_eval = None
     #     self.record_eval_now = True
