@@ -103,7 +103,7 @@ class PPO(object):
         self.model.to(self.device)
 
         self.running_mean_std = RunningMeanStd(self.obs_shape).to(self.device)
-        self.priv_mean_std = RunningMeanStd(self.priv_info_dim).to(self.device)
+        self.priv_mean_std = RunningMeanStd((self.priv_info_dim,)).to(self.device)
 
         self.value_mean_std = RunningMeanStd((1,)).to(self.device)
         # ---- Output Dir ----
@@ -163,7 +163,10 @@ class PPO(object):
         # ---- Rollout Videos ----
         self.it = 0
         self.log_video_every = self.env.cfg_env.env.record_video_every
+        self.log_ft_every = self.env.cfg_env.env.record_ft_every
+
         self.last_recording_it = 0
+        self.last_recording_it_ft =0
         # self.fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # Use 'XVID' for .avi format
 
         self.episode_rewards = AverageScalarMeter(100)
@@ -408,7 +411,8 @@ class PPO(object):
 
         self.rl_train_time += (time.time() - _t)
         return a_losses, c_losses, b_losses, entropies, kls, grad_norms
-    
+
+    # TODO move all of this logging to an utils\misc folder
     def _write_video(self, frames, output_loc, frame_rate):
         writer = imageio.get_writer(output_loc, mode='I', fps=frame_rate)
         # out = cv2.VideoWriter(output_loc, self.fourcc, frame_rate, (240, 360))
@@ -422,6 +426,34 @@ class PPO(object):
         # out.release()
         # cv2.destroyAllWindows()
 
+    def _write_ft(self, data, output_loc):
+        # todo convert it to gif with same rate as video
+        # todo split into 2 plot, 1 for the fore a
+        import matplotlib.pyplot as plt
+        plt.figure(figsize=(8, 6))
+        plt.plot(np.array(data)[:,:3])
+        plt.xlabel('time')
+        plt.ylabel('force')
+        plt.savefig(f'{output_loc}_force.png')
+        plt.close()
+        plt.figure(figsize=(8, 6))
+        plt.plot(np.array(data)[:, 3:])
+        plt.xlabel('time')
+        plt.ylabel('torque')
+        plt.savefig(f'{output_loc}_torque.png')
+        plt.close()
+
+        # fig, ax = plt.subplots()
+        #
+        # def animate(i):
+        #     ax.clear()
+        #     force = ax.plot(np.array(data)[:i*5, :3])
+        #     return force
+        #
+        # from matplotlib.animation import FuncAnimation, PillowWriter
+        # ani = FuncAnimation(fig, animate, repeat=False, interval=30, frames=len(data)//5)
+        # ani.save(f'{output_loc}_force.gif', dpi=50, writer=PillowWriter(fps=30))
+
     def log_video(self):
         if ((self.it - self.last_recording_it) >= self.log_video_every):
             self.env.start_recording()
@@ -430,7 +462,6 @@ class PPO(object):
 
         frames = self.env.get_complete_frames()
         if len(frames) > 0:
-            print(len(frames))
             self.env.pause_recording()
             video_dir = os.path.join(self.output_dir, 'videos')
             if not os.path.exists(video_dir):
@@ -438,11 +469,27 @@ class PPO(object):
             self._write_video(frames, f"{video_dir}/{self.it:05d}.mp4", frame_rate=30)
             print("LOGGING VIDEO")
 
+    def log_ft(self):
+        if ((self.it - self.last_recording_it_ft) >= self.log_ft_every):
+            self.env.start_recording_ft()
+            print("START FT RECORDING")
+            self.last_recording_it_ft = self.it
+
+        frames = self.env.get_ft_frames()
+        if len(frames) > 0:
+            self.env.pause_recording_ft()
+            ft_dir = os.path.join(self.output_dir, 'ft')
+            if not os.path.exists(ft_dir):
+                os.makedirs(ft_dir)
+            self._write_ft(frames, f"{ft_dir}/{self.it:05d}")
+            print("LOGGING FT")
+
     def play_steps(self):
         
         record_frame = False
         for n in range(self.horizon_length):
             self.log_video()
+            self.log_ft()
             self.it += 1
             res_dict = self.model_act(self.obs)
             # collect o_t
@@ -454,23 +501,6 @@ class PPO(object):
             # do env step
             actions = torch.clamp(res_dict['actions'], -1.0, 1.0)
             self.obs, rewards, self.dones, infos = self.env.step(actions)
-
-            # if record_frame:
-            #     self.gif_frames.append(self.env.capture_frame())
-            #     # add frame to GIF
-            #     if len(self.gif_frames) == self.gif_save_length:
-            #         frame_array = np.array([f["color"] for f in self.gif_frames])[
-            #             None
-            #         ]  # add batch axis
-            #         self.writer.add_video(
-            #             "rollout_gif",
-            #             frame_array,
-            #             global_step=self.agent_steps,
-            #             dataformats="NTHWC",
-            #             fps=20,
-            #         )
-            #         self.writer.flush()
-            #         self.gif_frames.clear()
 
             rewards = rewards.unsqueeze(1)
             # update dones and rewards after env step

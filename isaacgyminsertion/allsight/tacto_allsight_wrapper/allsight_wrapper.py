@@ -8,7 +8,6 @@ from scipy.spatial.transform import Rotation as R
 
 from isaacgyminsertion.allsight.tacto import Renderer as tRenderer  #, Sensor as tSensor
 
-
 # helper functions
 def euler2matrix(angles=[0, 0, 0], translation=[0, 0, 0], xyz="xyz", degrees=False):
     r = R.from_euler(xyz, angles, degrees=degrees)

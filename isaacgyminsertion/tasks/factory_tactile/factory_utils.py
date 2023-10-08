@@ -45,6 +45,81 @@ def quat2euler2(quat):
     euler = matrix_to_euler_xyz(M)
     return euler
 
+
+
+def euler_angles_to_matrix(euler_angles: torch.Tensor, convention: str) -> torch.Tensor:
+    """
+    https://pytorch3d.readthedocs.io/en/latest/modules/transforms.html#pytorch3d.transforms.euler_angles_to_matrix
+    Convert rotations given as Euler angles in radians to rotation matrices.
+    Args:
+        euler_angles: Euler angles in radians as tensor of shape (..., 3).
+        convention: Convention string of three uppercase letters from
+            {"X", "Y", and "Z"}.
+    Returns:
+        Rotation matrices as tensor of shape (..., 3, 3).
+    """
+    if euler_angles.dim() == 0 or euler_angles.shape[-1] != 3:
+        raise ValueError("Invalid input euler angles.")
+    if len(convention) != 3:
+        raise ValueError("Convention must have 3 letters.")
+    if convention[1] in (convention[0], convention[2]):
+        raise ValueError(f"Invalid convention {convention}.")
+    for letter in convention:
+        if letter not in ("X", "Y", "Z"):
+            raise ValueError(f"Invalid letter {letter} in convention string.")
+    matrices = [
+        _axis_angle_rotation(c, e)
+        for c, e in zip(convention, torch.unbind(euler_angles, -1))
+    ]
+    # return functools.reduce(torch.matmul, matrices)
+    return matrices[0] @ matrices[1] @ matrices[2]
+
+
+def _axis_angle_rotation(axis: str, angle: torch.Tensor) -> torch.Tensor:
+    """
+    https://pytorch3d.readthedocs.io/en/latest/_modules/pytorch3d/transforms/rotation_conversions.html
+    Return the rotation matrices for one of the rotations about an axis
+    of which Euler angles describe, for each value of the angle given.
+    Args:
+        axis: Axis label "X" or "Y or "Z".
+        angle: any shape tensor of Euler angles in radians
+    Returns:
+        Rotation matrices as tensor of shape (..., 3, 3).
+    """
+
+    cos = torch.cos(angle)
+    sin = torch.sin(angle)
+    one = torch.ones_like(angle)
+    zero = torch.zeros_like(angle)
+
+    if axis == "X":
+        R_flat = (one, zero, zero, zero, cos, -sin, zero, sin, cos)
+    elif axis == "Y":
+        R_flat = (cos, zero, sin, zero, one, zero, -sin, zero, cos)
+    elif axis == "Z":
+        R_flat = (cos, -sin, zero, sin, cos, zero, zero, zero, one)
+    else:
+        raise ValueError("letter must be either X, Y or Z.")
+
+    return torch.stack(R_flat, -1).reshape(angle.shape + (3, 3))
+
+
+def xyzquat_to_tf_numpy(position_quat: np.ndarray) -> np.ndarray:
+    """
+    convert [x, y, z, qx, qy, qz, qw] to 4 x 4 transformation matrices
+    """
+    # try:
+    position_quat = np.atleast_2d(position_quat)  # (N, 7)
+    N = position_quat.shape[0]
+    T = np.zeros((N, 4, 4))
+    T[:, 0:3, 0:3] = R.from_quat(position_quat[:, 3:]).as_matrix()
+    T[:, :3, 3] = position_quat[:, :3]
+    T[:, 3, 3] = 1
+    # except ValueError:
+    #     print("Zero quat error!")
+    # return T.squeeze()
+    return T
+
 # pose vector: [position(3), quaternion(4)] = [x, y, z, q1, q2, q3, q0]
 # pose matrix (SE3): [[R, p], [0^T, 1]]
 # (7, ) or (N, 7) -> (4, 4) or (N, 4, 4)

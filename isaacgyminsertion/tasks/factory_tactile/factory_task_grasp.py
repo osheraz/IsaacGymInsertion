@@ -253,17 +253,67 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             #                                                             (keypoint_offset + self.bolt_tip_pos_local))[1]
 
         # print('here 5 1 3 3 3 5')
-        if update_tactile:
-            left_finger_pose = pose_vec_to_mat(torch.cat((self.left_finger_pos,
-                                                          self.left_finger_quat), axis=1)).cpu().numpy()
-            right_finger_pose = pose_vec_to_mat(torch.cat((self.right_finger_pos,
-                                                           self.right_finger_quat), axis=1)).cpu().numpy()
-            middle_finger_pose = pose_vec_to_mat(torch.cat((self.middle_finger_pos,
-                                                            self.middle_finger_quat), axis=1)).cpu().numpy()
-            object_pose = pose_vec_to_mat(torch.cat((self.plug_pos, self.plug_quat), axis=1)).cpu().numpy()
+        if update_tactile and self.cfg_env.env.tactile:
+            # left_finger_pose = pose_vec_to_mat(torch.cat((self.left_finger_pos,
+            #                                               self.left_finger_quat), axis=1)).cpu().numpy()
+            # right_finger_pose = pose_vec_to_mat(torch.cat((self.right_finger_pos,
+            #                                                self.right_finger_quat), axis=1)).cpu().numpy()
+            # middle_finger_pose = pose_vec_to_mat(torch.cat((self.middle_finger_pos,
+            #                                                 self.middle_finger_quat), axis=1)).cpu().numpy()
+            # object_pose = pose_vec_to_mat(torch.cat((self.plug_pos, self.plug_quat), axis=1)).cpu().numpy()
 
-            # print(left_finger_pose.shape, right_finger_pose.shape, middle_finger_pose.shape, object_pose.shape)
-            self._update_tactile(left_finger_pose, right_finger_pose, middle_finger_pose, object_pose)
+            left_allsight_poses = torch.cat((self.left_finger_pos, self.left_finger_quat), dim=-1)
+            right_allsight_poses = torch.cat((self.right_finger_pos, self.right_finger_quat), dim=-1)
+            middle_allsight_poses = torch.cat((self.middle_finger_pos, self.middle_finger_quat), dim=-1)
+            object_poses = torch.cat((self.plug_pos, self.plug_quat), dim=-1)
+
+            tf = np.eye(4)
+            tf[0:3, 0:3] = euler_angles_to_matrix(
+                euler_angles=torch.tensor([[0, 90, 0]]), convention="XYZ"
+            ).numpy()
+
+            left_finger_poses = xyzquat_to_tf_numpy(left_allsight_poses.cpu().numpy())
+            left_finger_poses = left_finger_poses @ np.array(
+                np.linalg.inv(
+                    [
+                        [0.0, -1.0, 0.0, 0.0],
+                        [0.0, 0.0, 1.0, 0.0],
+                        [-1.0, 0.0, 0.0, 0.0],
+                        [0.0, 0.0, 0.0, 1.0],
+                    ]
+                )
+            )
+            left_finger_poses = left_finger_poses @ tf
+
+            right_finger_poses = xyzquat_to_tf_numpy(right_allsight_poses.cpu().numpy())
+            right_finger_poses = right_finger_poses @ np.array(
+                np.linalg.inv(
+                    [
+                        [0.0, -1.0, 0.0, 0.0],
+                        [0.0, 0.0, 1.0, 0.0],
+                        [-1.0, 0.0, 0.0, 0.0],
+                        [0.0, 0.0, 0.0, 1.0],
+                    ]
+                )
+            )
+            right_finger_poses = right_finger_poses @ tf
+
+            middle_finger_poses = xyzquat_to_tf_numpy(middle_allsight_poses.cpu().numpy())
+            middle_finger_poses = middle_finger_poses @ np.array(
+                np.linalg.inv(
+                    [
+                        [0.0, -1.0, 0.0, 0.0],
+                        [0.0, 0.0, 1.0, 0.0],
+                        [-1.0, 0.0, 0.0, 0.0],
+                        [0.0, 0.0, 0.0, 1.0],
+                    ]
+                )
+            )
+            middle_finger_poses = middle_finger_poses @ tf
+
+            object_pose = xyzquat_to_tf_numpy(object_poses.cpu().numpy())
+
+            self._update_tactile(left_finger_poses, right_finger_poses, middle_finger_poses, object_pose)
 
             # groups = 8 if self.num_envs > 8 else 1
             # offset = np.ceil(self.num_envs / groups).astype(int)
@@ -327,11 +377,19 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             #     self.tactile_imgs = torch.tensor(imgs, dtype=torch.float32, device=self.device)
 
     def _update_tactile(self, left_finger_pose, right_finger_pose, middle_finger_pose, object_pose,
-                        offset=None, queue=None, display_viz=False):
+                        offset=None, queue=None, display_viz=True):
 
         tactile_imgs_list, height_maps = [], []  # only for display.
 
         for e in range(self.num_envs):
+
+            # plug_file = self.asset_info_insertion[self.envs_asset[e]['subassembly'] ][self.envs_asset[e]['components'][0]]['urdf_path']
+            # plug_file += '_subdiv_3x.obj' if 'rectangular' in plug_file else '.obj'
+            # mesh_root = os.path.join(os.path.dirname(__file__), '..', '..', '..', 'assets', 'factory', 'mesh',
+            #                          'factory_insertion')
+            # self.tactile_handles.append([allsight_renderer(self.cfg_tactile,
+            #                                                os.path.join(mesh_root, plug_file), randomize=False,
+            #                                                finger_idx=i) for i in range(len(self.fingertips))])
 
             self.tactile_handles[e][0].update_pose_given_sim_pose(left_finger_pose[e], object_pose[e])
             self.tactile_handles[e][1].update_pose_given_sim_pose(right_finger_pose[e], object_pose[e])
@@ -344,7 +402,6 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                 resized_img = cv2.resize(tactile_img, (self.cfg_tactile.decoder.width,
                                                        self.cfg_tactile.decoder.height), interpolation=cv2.INTER_AREA)
                 self.tactile_imgs[e, n] = torch_jit_utils.img_transform(resized_img).to(self.device).permute(1, 2, 0)
-                self.depth_maps[e, n] = torch.from_numpy(height_map).to(self.device)
                 tactile_imgs_per_env.append(tactile_img)
                 height_maps_per_env.append(height_map)
 

@@ -10,8 +10,8 @@ physics_engine: ${..physics_engine}
 
 env:
     numEnvs: ${resolve_default:128,${...num_envs}}
-    numStates: 22 # 62
-    numObservations: 74 # 84
+    numStates: 56 # 62
+    numObservations: 130 # 84
     numActions: 6 # [position, ori]
     numTargets: 6 # [position, ori]
 
@@ -68,8 +68,9 @@ randomize:
 
 
 rl:
-    pos_action_scale: [0.01, 0.01, 0.01]
-    rot_action_scale: [0.01, 0.01, 0.01]
+    pos_action_scale: [0.03, 0.03, 0.03]
+    rot_action_scale: [0.03, 0.03, 0.03]
+
     force_action_scale: [1.0, 1.0, 1.0]
     torque_action_scale: [1.0, 1.0, 1.0]
     

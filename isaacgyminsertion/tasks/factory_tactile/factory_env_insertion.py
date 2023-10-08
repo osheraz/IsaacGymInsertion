@@ -63,7 +63,14 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
         self.refresh_base_tensors()  # defined in superclass
         self.refresh_env_tensors()
 
-        
+        # defining video recording params, todo: where do we put this?
+        self.record_now = False
+        self.record_now_ft = False
+        self.complete_video_frames = None
+        self.complete_ft_frames = None
+
+        self.video_frames = []
+        self.ft_frames = []
 
     def _get_env_yaml_params(self):
         """Initialize instance variables from YAML files."""
@@ -169,6 +176,7 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
         table_pose.p.z = self.cfg_base.env.table_height * 0.5
         table_pose.r = gymapi.Quat(0.0, 0.0, 0.0, 1.0)
 
+        self.envs_asset = {}
         self.envs = []
         self.kuka_handles = []
         self.plug_handles = []
@@ -346,18 +354,17 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
                                             gymapi.Vec3(0, 0, 0))
 
             # add Tactile modules for the tips
-            plug_file = self.asset_info_insertion[subassembly][components[0]]['urdf_path']
-            plug_file += '_subdiv_3x.obj' if 'rectangular' in plug_file else '.obj'
-            mesh_root = os.path.join(os.path.dirname(__file__), '..', '..', '..', 'assets', 'factory', 'mesh',
-                                     'factory_insertion')
-            self.tactile_handles.append([allsight_renderer(self.cfg_tactile,
-                                                           os.path.join(mesh_root, plug_file), randomize=False,
-                                                           finger_idx=i) for i in range(len(self.fingertips))])
+            self.envs_asset[i] = {'subassembly': subassembly, 'components': components}
+            if self.cfg_env.env.tactile:
+                plug_file = self.asset_info_insertion[subassembly][components[0]]['urdf_path']
+                plug_file += '_subdiv_3x.obj' if 'rectangular' in plug_file else '.obj'
+                mesh_root = os.path.join(os.path.dirname(__file__), '..', '..', '..', 'assets', 'factory', 'mesh',
+                                         'factory_insertion')
+                self.tactile_handles.append([allsight_renderer(self.cfg_tactile,
+                                                               os.path.join(mesh_root, plug_file), randomize=False,
+                                                               finger_idx=i) for i in range(len(self.fingertips))])
             if self.cfg_env.env.aggregate_mode:
                 self.gym.end_aggregate(env_ptr)
-
-
-            
 
 
         # Get indices
@@ -435,6 +442,8 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
                                                               dim=1)
         self.plug_com_angvel = self.plug_angvel  # always equal
 
+        self.socket_contact_force = self.contact_force[:, self.socket_actor_id_env, :3]
+
     def refresh_env_tensors(self):
         """Refresh tensors."""
         # NOTE: Tensor refresh functions should be called once per step, before setters.
@@ -471,23 +480,39 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
             self.video_frame = self.gym.get_camera_image(self.sim, self.envs[0], self.rendering_camera,
                                                             gymapi.IMAGE_COLOR)
             self.video_frame = self.video_frame.reshape((self.camera_props.height, self.camera_props.width, 4))
-            # print(self.video_frame.shape)
             self.video_frames.append(self.video_frame)
+
+        if self.record_now_ft and self.complete_ft_frames is not None and len(self.complete_ft_frames) == 0:
+            self.ft_frames.append(0.1 * self.ft_sensor_tensor.cpu().numpy().squeeze())
 
     def start_recording(self):
         self.complete_video_frames = None
         self.record_now = True
+
+    def start_recording_ft(self):
+        self.complete_ft_frames = None
+        self.record_now_ft = True
 
     def pause_recording(self):
         self.complete_video_frames = []
         self.video_frames = []
         self.record_now = False
 
+    def pause_recording_ft(self):
+        self.complete_ft_frames = []
+        self.ft_frames = []
+        self.record_now_ft = False
+
     def get_complete_frames(self):
         if self.complete_video_frames is None:
             return []
         return self.complete_video_frames
-    
+
+    def get_ft_frames(self):
+        if self.complete_ft_frames is None:
+            return []
+        return self.complete_ft_frames
+
     # def start_recording_eval(self):
     #     self.complete_video_frames_eval = None
     #     self.record_eval_now = True
