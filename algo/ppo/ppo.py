@@ -103,7 +103,7 @@ class PPO(object):
         self.model.to(self.device)
 
         self.running_mean_std = RunningMeanStd(self.obs_shape).to(self.device)
-        self.priv_mean_std = RunningMeanStd(self.priv_info_dim).to(self.device)
+        self.priv_mean_std = RunningMeanStd((self.priv_info_dim,)).to(self.device)
 
         self.value_mean_std = RunningMeanStd((1,)).to(self.device)
         # ---- Output Dir ----
@@ -443,6 +443,17 @@ class PPO(object):
         plt.savefig(f'{output_loc}_torque.png')
         plt.close()
 
+        fig, ax = plt.subplots()
+
+        def animate(i):
+            ax.clear()
+            force = ax.plot(np.array(data)[:i*5, :3])
+            return force
+
+        from matplotlib.animation import FuncAnimation, PillowWriter
+        ani = FuncAnimation(fig, animate, repeat=False, interval=30, frames=len(data)//5)
+        ani.save(f'{output_loc}_force.gif', dpi=50, writer=PillowWriter(fps=30))
+
     def log_video(self):
         if ((self.it - self.last_recording_it) >= self.log_video_every):
             self.env.start_recording()
@@ -451,7 +462,6 @@ class PPO(object):
 
         frames = self.env.get_complete_frames()
         if len(frames) > 0:
-            print(len(frames))
             self.env.pause_recording()
             video_dir = os.path.join(self.output_dir, 'videos')
             if not os.path.exists(video_dir):
@@ -467,7 +477,6 @@ class PPO(object):
 
         frames = self.env.get_ft_frames()
         if len(frames) > 0:
-            print(len(frames))
             self.env.pause_recording_ft()
             ft_dir = os.path.join(self.output_dir, 'ft')
             if not os.path.exists(ft_dir):
