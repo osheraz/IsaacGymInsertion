@@ -443,16 +443,16 @@ class PPO(object):
         plt.savefig(f'{output_loc}_torque.png')
         plt.close()
 
-        fig, ax = plt.subplots()
-
-        def animate(i):
-            ax.clear()
-            force = ax.plot(np.array(data)[:i*5, :3])
-            return force
-
-        from matplotlib.animation import FuncAnimation, PillowWriter
-        ani = FuncAnimation(fig, animate, repeat=False, interval=30, frames=len(data)//5)
-        ani.save(f'{output_loc}_force.gif', dpi=50, writer=PillowWriter(fps=30))
+        # fig, ax = plt.subplots()
+        #
+        # def animate(i):
+        #     ax.clear()
+        #     force = ax.plot(np.array(data)[:i*5, :3])
+        #     return force
+        #
+        # from matplotlib.animation import FuncAnimation, PillowWriter
+        # ani = FuncAnimation(fig, animate, repeat=False, interval=30, frames=len(data)//5)
+        # ani.save(f'{output_loc}_force.gif', dpi=50, writer=PillowWriter(fps=30))
 
     def log_video(self):
         if ((self.it - self.last_recording_it) >= self.log_video_every):

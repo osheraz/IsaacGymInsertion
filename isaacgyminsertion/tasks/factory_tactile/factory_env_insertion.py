@@ -176,6 +176,7 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
         table_pose.p.z = self.cfg_base.env.table_height * 0.5
         table_pose.r = gymapi.Quat(0.0, 0.0, 0.0, 1.0)
 
+        self.envs_asset = {}
         self.envs = []
         self.kuka_handles = []
         self.plug_handles = []
@@ -353,18 +354,16 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
                                             gymapi.Vec3(0, 0, 0))
 
             # add Tactile modules for the tips
+            self.envs_asset[i] = {'subassembly': subassembly, 'components': components}
             plug_file = self.asset_info_insertion[subassembly][components[0]]['urdf_path']
             plug_file += '_subdiv_3x.obj' if 'rectangular' in plug_file else '.obj'
             mesh_root = os.path.join(os.path.dirname(__file__), '..', '..', '..', 'assets', 'factory', 'mesh',
                                      'factory_insertion')
-            # self.tactile_handles.append([allsight_renderer(self.cfg_tactile,
-            #                                                os.path.join(mesh_root, plug_file), randomize=False,
-            #                                                finger_idx=i) for i in range(len(self.fingertips))])
+            self.tactile_handles.append([allsight_renderer(self.cfg_tactile,
+                                                           os.path.join(mesh_root, plug_file), randomize=False,
+                                                           finger_idx=i) for i in range(len(self.fingertips))])
             if self.cfg_env.env.aggregate_mode:
                 self.gym.end_aggregate(env_ptr)
-
-
-            
 
 
         # Get indices

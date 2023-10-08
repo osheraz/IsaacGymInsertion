@@ -37,7 +37,7 @@ Only the environment is provided; training a successful RL policy is an open res
 import hydra
 import omegaconf
 import time
-
+import os
 import torch
 
 from isaacgym import gymapi, gymtorch
@@ -49,6 +49,7 @@ from isaacgyminsertion.tasks.factory_tactile.factory_utils import *
 from isaacgyminsertion.utils import torch_jit_utils
 from multiprocessing import Process, Queue, Manager
 import cv2
+# from isaacgyminsertion.allsight.experiments.allsight_render import allsight_renderer
 
 torch.set_printoptions(sci_mode=False)
 
@@ -121,9 +122,9 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         # Keep track of history
         self.arm_joint_queue = torch.zeros((self.num_envs, self.cfg_task.env.numObsHist, 7),
-                                                    dtype=torch.float, device=self.device)
+                                           dtype=torch.float, device=self.device)
         self.arm_vel_queue = torch.zeros((self.num_envs, self.cfg_task.env.numObsHist, 7),
-                                                    dtype=torch.float, device=self.device)
+                                         dtype=torch.float, device=self.device)
         self.actions_queue = torch.zeros((self.num_envs, self.cfg_task.env.numObsHist, self.num_actions),
                                          dtype=torch.float, device=self.device)
         self.targets_queue = torch.zeros((self.num_envs, self.cfg_task.env.numObsHist, self.num_actions),
@@ -220,26 +221,67 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                                                                        self.identity_quat,
                                                                        keypoint_offset.repeat(self.num_envs, 1))[1]
 
-            # for idx, keypoint_offset in enumerate(self.keypoint_offsets):
-            #     self.keypoints_nut[:, idx] = torch_jit_utils.tf_combine(self.nut_quat,
-            #                                                             self.nut_pos,
-            #                                                             self.identity_quat,
-            #                                                             (keypoint_offset + self.nut_base_pos_local))[1]
-            #     self.keypoints_bolt[:, idx] = torch_jit_utils.tf_combine(self.bolt_quat,
-            #                                                             self.bolt_pos,
-            #                                                             self.identity_quat,
-            #                                                             (keypoint_offset + self.bolt_tip_pos_local))[1]
-
         if update_tactile:
-            left_finger_pose = pose_vec_to_mat(torch.cat((self.left_finger_pos,
-                                                          self.left_finger_quat), axis=1)).cpu().numpy()
-            right_finger_pose = pose_vec_to_mat(torch.cat((self.right_finger_pos,
-                                                           self.right_finger_quat), axis=1)).cpu().numpy()
-            middle_finger_pose = pose_vec_to_mat(torch.cat((self.middle_finger_pos,
-                                                            self.middle_finger_quat), axis=1)).cpu().numpy()
-            object_pose = pose_vec_to_mat(torch.cat((self.plug_pos, self.plug_quat), axis=1)).cpu().numpy()
+            # left_finger_pose = pose_vec_to_mat(torch.cat((self.left_finger_pos,
+            #                                               self.left_finger_quat), axis=1)).cpu().numpy()
+            # right_finger_pose = pose_vec_to_mat(torch.cat((self.right_finger_pos,
+            #                                                self.right_finger_quat), axis=1)).cpu().numpy()
+            # middle_finger_pose = pose_vec_to_mat(torch.cat((self.middle_finger_pos,
+            #                                                 self.middle_finger_quat), axis=1)).cpu().numpy()
+            # object_pose = pose_vec_to_mat(torch.cat((self.plug_pos, self.plug_quat), axis=1)).cpu().numpy()
 
-            self._update_tactile(left_finger_pose, right_finger_pose, middle_finger_pose, object_pose)
+            left_allsight_poses = torch.cat((self.left_finger_pos, self.left_finger_quat), dim=-1)
+            right_allsight_poses = torch.cat((self.right_finger_pos, self.right_finger_quat), dim=-1)
+            middle_allsight_poses = torch.cat((self.middle_finger_pos, self.middle_finger_quat), dim=-1)
+            object_poses = torch.cat((self.plug_pos, self.plug_quat), dim=-1)
+
+            tf = np.eye(4)
+            tf[0:3, 0:3] = euler_angles_to_matrix(
+                euler_angles=torch.tensor([[0, 90, 0]]), convention="XYZ"
+            ).numpy()
+
+            left_finger_poses = xyzquat_to_tf_numpy(left_allsight_poses.cpu().numpy())
+            left_finger_poses = left_finger_poses @ np.array(
+                np.linalg.inv(
+                    [
+                        [0.0, -1.0, 0.0, 0.0],
+                        [0.0, 0.0, 1.0, 0.0],
+                        [-1.0, 0.0, 0.0, 0.0],
+                        [0.0, 0.0, 0.0, 1.0],
+                    ]
+                )
+            )
+            left_finger_poses = left_finger_poses @ tf
+
+            right_finger_poses = xyzquat_to_tf_numpy(right_allsight_poses.cpu().numpy())
+            right_finger_poses = right_finger_poses @ np.array(
+                np.linalg.inv(
+                    [
+                        [0.0, -1.0, 0.0, 0.0],
+                        [0.0, 0.0, 1.0, 0.0],
+                        [-1.0, 0.0, 0.0, 0.0],
+                        [0.0, 0.0, 0.0, 1.0],
+                    ]
+                )
+            )
+            right_finger_poses = right_finger_poses @ tf
+
+            middle_finger_poses = xyzquat_to_tf_numpy(middle_allsight_poses.cpu().numpy())
+            middle_finger_poses = middle_finger_poses @ np.array(
+                np.linalg.inv(
+                    [
+                        [0.0, -1.0, 0.0, 0.0],
+                        [0.0, 0.0, 1.0, 0.0],
+                        [-1.0, 0.0, 0.0, 0.0],
+                        [0.0, 0.0, 0.0, 1.0],
+                    ]
+                )
+            )
+            middle_finger_poses = middle_finger_poses @ tf
+
+            object_pose = xyzquat_to_tf_numpy(object_poses.cpu().numpy())
+
+            self._update_tactile(left_finger_poses, right_finger_poses, middle_finger_poses, object_pose)
 
             # groups = 8 if self.num_envs > 8 else 1
             # offset = np.ceil(self.num_envs / groups).astype(int)
@@ -270,19 +312,27 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             #
             #     for process in processes:
             #         process.join()
-
-            # self.tactile_imgs = torch.tensor(tactile_imgs, dtype=torch.float32, device=self.device)
-            # for queue in results:
-            #     imgs, offest = queue.get()
-            #     print(imgs.shape)
-            #     self.tactile_imgs = torch.tensor(imgs, dtype=torch.float32, device=self.device)
+            #
+            #
+            #     for queue in results:
+            #         imgs, offest = queue.get()
+            #         print(imgs)
+            #         self.tactile_imgs = torch.tensor(imgs, dtype=torch.float32, device=self.device)
 
     def _update_tactile(self, left_finger_pose, right_finger_pose, middle_finger_pose, object_pose,
-                        offset=None, queue=None, display_viz=False):
+                        offset=None, queue=None, display_viz=True):
 
         tactile_imgs_list, height_maps = [], []  # only for display.
 
         for e in range(self.num_envs):
+
+            # plug_file = self.asset_info_insertion[self.envs_asset[e]['subassembly'] ][self.envs_asset[e]['components'][0]]['urdf_path']
+            # plug_file += '_subdiv_3x.obj' if 'rectangular' in plug_file else '.obj'
+            # mesh_root = os.path.join(os.path.dirname(__file__), '..', '..', '..', 'assets', 'factory', 'mesh',
+            #                          'factory_insertion')
+            # self.tactile_handles.append([allsight_renderer(self.cfg_tactile,
+            #                                                os.path.join(mesh_root, plug_file), randomize=False,
+            #                                                finger_idx=i) for i in range(len(self.fingertips))])
 
             self.tactile_handles[e][0].update_pose_given_sim_pose(left_finger_pose[e], object_pose[e])
             self.tactile_handles[e][1].update_pose_given_sim_pose(right_finger_pose[e], object_pose[e])
@@ -349,7 +399,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.goal_noisy_queue[:, 1:] = self.goal_noisy_queue[:, :-1].clone().detach()
         self.goal_noisy_queue[:, 0, :] = torch.cat(self.pose_world_to_robot_base(self.noisy_gripper_goal_pos.clone(),
                                                                                  self.noisy_gripper_goal_quat.clone()),
-                                                                                                                dim=-1)
+                                                   dim=-1)
 
         self._apply_actions_as_ctrl_targets(actions=self.actions,
                                             ctrl_target_gripper_dof_pos=self.ctrl_target_gripper_dof_pos,
@@ -367,7 +417,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         # In this policy, episode length is constant
         is_last_step = (self.progress_buf[0] == self.max_episode_length - 1)
 
-        self._refresh_task_tensors()
+        self._refresh_task_tensors(update_tactile=True)
         self.compute_observations()
         self.compute_reward()
 
@@ -435,10 +485,10 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         obs_tensors = [
             # self.arm_joint_queue.reshape(self.num_envs, -1),
             # self.arm_vel_queue.reshape(self.num_envs, -1),
-            self.eef_queue.reshape(self.num_envs, -1),         # (envs, 7 * hist)
+            self.eef_queue.reshape(self.num_envs, -1),  # (envs, 7 * hist)
             self.goal_noisy_queue.reshape(self.num_envs, -1),  # (envs, 7 * hist)
-            self.actions_queue.reshape(self.num_envs, -1),     # (envs, 6 * hist)
-            self.targets_queue.reshape(self.num_envs, -1),     # (envs, 6 * hist)
+            self.actions_queue.reshape(self.num_envs, -1),  # (envs, 6 * hist)
+            self.targets_queue.reshape(self.num_envs, -1),  # (envs, 6 * hist)
         ]  #
 
         # Define state (for teacher)
@@ -450,29 +500,30 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         left_tip_pose_wrt_robot = self.pose_world_to_robot_base(self.left_finger_pos, self.left_finger_quat)
         right_tip_pose_wrt_robot = self.pose_world_to_robot_base(self.right_finger_pos, self.right_finger_quat)
         middle_tip_pose_wrt_robot = self.pose_world_to_robot_base(self.middle_finger_pos, self.middle_finger_quat)
-        tip_midpoint_pose_wrt_robot = self.pose_world_to_robot_base(self.fingertip_midpoint_pos, self.fingertip_midpoint_quat)
+        tip_midpoint_pose_wrt_robot = self.pose_world_to_robot_base(self.fingertip_midpoint_pos,
+                                                                    self.fingertip_midpoint_quat)
 
         state_tensors = [
-            left_tip_pose_wrt_robot[0],        # 3
-            left_tip_pose_wrt_robot[1],        # 4
-            right_tip_pose_wrt_robot[0],       # 3
-            right_tip_pose_wrt_robot[1],       # 4
-            middle_tip_pose_wrt_robot[0],      # 3
-            middle_tip_pose_wrt_robot[1],      # 4
-            tip_midpoint_pose_wrt_robot[0],    # 3
-            tip_midpoint_pose_wrt_robot[1],    # 4
-            socket_tip_wrt_robot[0],           # 3
-            socket_tip_wrt_robot[1],           # 4
-            plug_bottom_wrt_robot[0],          # 3
-            plug_bottom_wrt_robot[1],          # 4
-            physics_params,                    # 2
-            self.left_finger_force.clone(),    # 3
-            self.right_finger_force.clone(),   # 3
+            left_tip_pose_wrt_robot[0],  # 3
+            left_tip_pose_wrt_robot[1],  # 4
+            right_tip_pose_wrt_robot[0],  # 3
+            right_tip_pose_wrt_robot[1],  # 4
+            middle_tip_pose_wrt_robot[0],  # 3
+            middle_tip_pose_wrt_robot[1],  # 4
+            tip_midpoint_pose_wrt_robot[0],  # 3
+            tip_midpoint_pose_wrt_robot[1],  # 4
+            socket_tip_wrt_robot[0],  # 3
+            socket_tip_wrt_robot[1],  # 4
+            plug_bottom_wrt_robot[0],  # 3
+            plug_bottom_wrt_robot[1],  # 4
+            physics_params,  # 2
+            self.left_finger_force.clone(),  # 3
+            self.right_finger_force.clone(),  # 3
             self.middle_finger_force.clone(),  # 3
             self.socket_contact_force.clone()  # 3
         ]
 
-        self.obs_buf = torch.cat(obs_tensors, dim=-1)       # shape = (num_envs, num_observations)
+        self.obs_buf = torch.cat(obs_tensors, dim=-1)  # shape = (num_envs, num_observations)
         self.states_buf = torch.cat(state_tensors, dim=-1)  # shape = (num_envs, num_states)
 
         return self.obs_buf  # shape = (num_envs, num_observations)

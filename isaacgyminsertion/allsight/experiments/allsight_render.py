@@ -89,9 +89,11 @@ class allsight_renderer:
         if obj_path is not None:
 
             self.obj_loader = object_loader(obj_path)
-            # self.obj_loader.set_object_pose(pose=obj_pose)
             obj_trimesh = trimesh.load(obj_path)
-            self.renderer.add_object(obj_trimesh, "object")
+            obj_trimesh.apply_scale(1.02)
+            self.obj_mesh = obj_trimesh
+            obj_euler = R.from_quat([0.0, 0.0, 0.0, 1.0]).as_euler("xyz", degrees=False)
+            self.renderer.add_object(obj_trimesh, "object", orientation=obj_euler)
 
         self.press_depth = 0.001
         self.randomize = randomize
