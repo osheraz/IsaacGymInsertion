@@ -28,6 +28,7 @@ env:
     record_ft: True
     record_video_every: 1000
     record_ft_every: 1000
+    tactile: False
     # Subassembly options:
     # {round_peg_hole_4mm_tight, round_peg_hole_4mm_loose,
     # round_peg_hole_8mm_tight, round_peg_hole_8mm_loose,

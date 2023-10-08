@@ -221,7 +221,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                                                                        self.identity_quat,
                                                                        keypoint_offset.repeat(self.num_envs, 1))[1]
 
-        if update_tactile:
+        if update_tactile and self.cfg_env.env.tactile:
             # left_finger_pose = pose_vec_to_mat(torch.cat((self.left_finger_pos,
             #                                               self.left_finger_quat), axis=1)).cpu().numpy()
             # right_finger_pose = pose_vec_to_mat(torch.cat((self.right_finger_pos,
