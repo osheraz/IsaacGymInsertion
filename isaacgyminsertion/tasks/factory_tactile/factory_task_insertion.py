@@ -107,6 +107,8 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.plug_grasp_quat_local = torch.tensor([0.0, 0.0, 0.0, 1.0], device=self.device).unsqueeze(0).repeat(
             self.num_envs, 1)
 
+        self.plug_tip_pos_local = self.plug_heights * torch.tensor([0.0, 0.0, 1.0], device=self.device).repeat(
+            (self.num_envs, 1))
         self.socket_tip_pos_local = self.socket_heights * torch.tensor([0.0, 0.0, 1.0], device=self.device).repeat(
             (self.num_envs, 1))
 
@@ -151,7 +153,8 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         )
 
         self.ft_queue = torch.zeros((self.num_envs, self.ft_hist_len, 6), device=self.device, dtype=torch.float)
-        self.gt_extrinsic_contact = torch.zeros((self.num_envs, self.extrinsic_contact_gt[0].pointcloud_obj.shape[0]),
+        if self.cfg_env.env.compute_contact_gt:
+            self.gt_extrinsic_contact = torch.zeros((self.num_envs, self.extrinsic_contact_gt[0].pointcloud_obj.shape[0]),
                                            device=self.device, dtype=torch.float)
 
 
@@ -216,15 +219,18 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             self.socket_tip_pos_local)
 
         # Compute pos of keypoints on gripper, socket, and plug in world frame
+        
+        socket_tip_pos_local = self.socket_tip_pos_local.clone()
+        socket_tip_pos_local[:, 2] -= self.socket_heights.view(-1)
         for idx, keypoint_offset in enumerate(self.keypoint_offsets):
             self.keypoints_plug[:, idx] = torch_jit_utils.tf_combine(self.plug_quat,
                                                                      self.plug_pos,
                                                                      self.identity_quat,
-                                                                     keypoint_offset.repeat(self.num_envs, 1))[1]
+                                                                     (keypoint_offset * self.plug_heights))[1]
             self.keypoints_socket[:, idx] = torch_jit_utils.tf_combine(self.socket_quat,
                                                                        self.socket_pos,
                                                                        self.identity_quat,
-                                                                       keypoint_offset.repeat(self.num_envs, 1))[1]
+                                                                       (keypoint_offset * self.plug_heights) + socket_tip_pos_local)[1]
 
         if update_tactile and self.cfg_env.env.tactile:
             # left_finger_pose = pose_vec_to_mat(torch.cat((self.left_finger_pos,
@@ -430,37 +436,76 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             # draw axes on target object
             self.gym.clear_lines(self.viewer)
             self.gym.refresh_rigid_body_state_tensor(self.sim)
+            
+            rotate_vec = lambda q, x: quat_apply(q, to_torch(x, device=self.device) * 0.2).cpu().numpy()
+            
+            for i in range(1):
+                keypoints = self.keypoints_plug[i].clone().cpu().numpy()
+                quat = self.plug_quat[i, :]
+                # print(keypoints)
 
-            for i in range(self.num_envs):
-                targetx = (self.socket_tip[i] + quat_apply(self.socket_quat[i],
-                                                           to_torch([1, 0, 0], device=self.device) * 0.2)).cpu().numpy()
-                targety = (self.socket_tip[i] + quat_apply(self.socket_quat[i],
-                                                           to_torch([0, 1, 0], device=self.device) * 0.2)).cpu().numpy()
-                targetz = (self.socket_tip[i] + quat_apply(self.socket_quat[i],
-                                                           to_torch([0, 0, 1], device=self.device) * 0.2)).cpu().numpy()
+                for j in range(self.cfg_task.rl.num_keypoints):
+                    ob = keypoints[j]
+                    targetx = ob + rotate_vec(quat, [1, 0, 0])
+                    targety = ob + rotate_vec(quat, [0, 1, 0])
+                    targetz = ob + rotate_vec(quat, [0, 0, 1])
+                    # print(ob)
+                    # print(targetx)
+                    # print((ob + rotate_vec(quat, [1, 0, 0]))[0], (ob + rotate_vec(quat, [0, 1, 0]))[1], (ob + rotate_vec(quat, [0, 0, 1]))[2])
+                    self.gym.add_lines(self.viewer, self.envs[i], 1, [ob[0], ob[1], ob[2], targetx[0], targetx[1], targetx[2]], [0.85, 0.1, 0.1])
+                    self.gym.add_lines(self.viewer, self.envs[i], 1, [ob[0], ob[1], ob[2], targety[0], targety[1], targety[2]], [0.85, 0.1, 0.1])
+                    self.gym.add_lines(self.viewer, self.envs[i], 1, [ob[0], ob[1], ob[2], targetz[0], targetz[1], targetz[2]], [0.85, 0.1, 0.1])
 
-                p0 = self.socket_tip[i].cpu().numpy()
-                self.gym.add_lines(self.viewer, self.envs[i], 1,
-                                   [p0[0], p0[1], p0[2], targetx[0], targetx[1], targetx[2]], [0.85, 0.1, 0.1])
-                self.gym.add_lines(self.viewer, self.envs[i], 1,
-                                   [p0[0], p0[1], p0[2], targety[0], targety[1], targety[2]], [0.1, 0.85, 0.1])
-                self.gym.add_lines(self.viewer, self.envs[i], 1,
-                                   [p0[0], p0[1], p0[2], targetz[0], targetz[1], targetz[2]], [0.1, 0.1, 0.85])
+            for i in range(1):
+                keypoints = self.keypoints_socket[i].clone().cpu().numpy()
+                quat = self.socket_quat[i, :]
+                # print(keypoints)
 
-                objectx = (self.plug_com_pos[i] + quat_apply(self.plug_quat[i], to_torch([1, 0, 0],
-                                                                                         device=self.device) * 0.2)).cpu().numpy()
-                objecty = (self.plug_com_pos[i] + quat_apply(self.plug_quat[i], to_torch([0, 1, 0],
-                                                                                         device=self.device) * 0.2)).cpu().numpy()
-                objectz = (self.plug_com_pos[i] + quat_apply(self.plug_quat[i], to_torch([0, 0, 1],
-                                                                                         device=self.device) * 0.2)).cpu().numpy()
+                for j in range(self.cfg_task.rl.num_keypoints):
+                    ob = keypoints[j]
+                    targetx = ob + rotate_vec(quat, [1, 0, 0])
+                    targety = ob + rotate_vec(quat, [0, 1, 0])
+                    targetz = ob + rotate_vec(quat, [0, 0, 1])
+                    # print(ob)
+                    # print(targetx)
+                    # print((ob + rotate_vec(quat, [1, 0, 0]))[0], (ob + rotate_vec(quat, [0, 1, 0]))[1], (ob + rotate_vec(quat, [0, 0, 1]))[2])
+                    self.gym.add_lines(self.viewer, self.envs[i], 1, [ob[0], ob[1], ob[2], targetx[0], targetx[1], targetx[2]], [0.1, 0.85, 0.1])
+                    self.gym.add_lines(self.viewer, self.envs[i], 1, [ob[0], ob[1], ob[2], targety[0], targety[1], targety[2]], [0.1, 0.85, 0.1])
+                    self.gym.add_lines(self.viewer, self.envs[i], 1, [ob[0], ob[1], ob[2], targetz[0], targetz[1], targetz[2]], [0.1, 0.85, 0.1])
 
-                p0 = self.plug_com_pos[i].cpu().numpy()
-                self.gym.add_lines(self.viewer, self.envs[i], 1,
-                                   [p0[0], p0[1], p0[2], objectx[0], objectx[1], objectx[2]], [0.85, 0.1, 0.1])
-                self.gym.add_lines(self.viewer, self.envs[i], 1,
-                                   [p0[0], p0[1], p0[2], objecty[0], objecty[1], objecty[2]], [0.1, 0.85, 0.1])
-                self.gym.add_lines(self.viewer, self.envs[i], 1,
-                                   [p0[0], p0[1], p0[2], objectz[0], objectz[1], objectz[2]], [0.1, 0.1, 0.85])
+
+                # targetx = (self.socket_tip[i] + quat_apply(self.socket_quat[i],
+                #                                            to_torch([1, 0, 0], device=self.device) * 0.2)).cpu().numpy()
+                # targety = (self.socket_tip[i] + quat_apply(self.socket_quat[i],
+                #                                            to_torch([0, 1, 0], device=self.device) * 0.2)).cpu().numpy()
+                # targetz = (self.socket_tip[i] + quat_apply(self.socket_quat[i],
+                #                                            to_torch([0, 0, 1], device=self.device) * 0.2)).cpu().numpy()
+                
+                # p0 = self.socket_tip[i].cpu().numpy()
+                # self.gym.add_lines(self.viewer, self.envs[i], 1,
+                #                    [p0[0], p0[1], p0[2], targetx[0], targetx[1], targetx[2]], [0.85, 0.1, 0.1])
+                # self.gym.add_lines(self.viewer, self.envs[i], 1,
+                #                    [p0[0], p0[1], p0[2], targety[0], targety[1], targety[2]], [0.1, 0.85, 0.1])
+                # self.gym.add_lines(self.viewer, self.envs[i], 1,
+                #                    [p0[0], p0[1], p0[2], targetz[0], targetz[1], targetz[2]], [0.1, 0.1, 0.85])
+
+                # objectx = (self.plug_com_pos[i] + quat_apply(self.plug_quat[i], to_torch([1, 0, 0],
+                #                                                                          device=self.device) * 0.2)).cpu().numpy()
+                # objecty = (self.plug_com_pos[i] + quat_apply(self.plug_quat[i], to_torch([0, 1, 0],
+                #                                                                          device=self.device) * 0.2)).cpu().numpy()
+                # objectz = (self.plug_com_pos[i] + quat_apply(self.plug_quat[i], to_torch([0, 0, 1],
+                #                                                                          device=self.device) * 0.2)).cpu().numpy()
+
+                # p0 = self.plug_com_pos[i].cpu().numpy()
+                # self.gym.add_lines(self.viewer, self.envs[i], 1,
+                #                    [p0[0], p0[1], p0[2], objectx[0], objectx[1], objectx[2]], [0.85, 0.1, 0.1])
+                # self.gym.add_lines(self.viewer, self.envs[i], 1,
+                #                    [p0[0], p0[1], p0[2], objecty[0], objecty[1], objecty[2]], [0.1, 0.85, 0.1])
+                # self.gym.add_lines(self.viewer, self.envs[i], 1,
+                #                    [p0[0], p0[1], p0[2], objectz[0], objectz[1], objectz[2]], [0.1, 0.1, 0.85])
+
+                # self.keypoint_offsets
+                # pass
 
         self._render_headless()
 
@@ -1078,7 +1123,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         """Get uniformly-spaced keypoints along a line of unit length, centered at 0."""
 
         keypoint_offsets = torch.zeros((num_keypoints, 3), device=self.device)
-        keypoint_offsets[:, -1] = torch.linspace(0.0, 1.0, num_keypoints, device=self.device) - 0.5
+        keypoint_offsets[:, -1] = torch.linspace(0.0, 1.0, num_keypoints, device=self.device) # - 0.5
         return keypoint_offsets
 
     def _get_keypoint_dist(self):
@@ -1203,3 +1248,6 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.obs_dict['tactile_hist'] = self.tactile_queue.to(self.rl_device)
         self.obs_dict['ft_hist'] = self.ft_queue.to(self.rl_device)
         return self.obs_dict
+
+    def keypoints_distance_reward(self):
+        pass

@@ -43,7 +43,7 @@ ppo:
   max_agent_steps: 1500000000
 
   # rma setting
-  priv_info: False
+  priv_info: True
   extrin_adapt: False
   tactile_info: False
   ft_info: False
