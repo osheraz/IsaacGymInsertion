@@ -154,20 +154,13 @@ class PPO(object):
         writer = SummaryWriter(self.tb_dif)
         self.writer = writer
 
-        # ---- Rollout GIFs ----
-        self.gif_frame_counter = 0
-        self.gif_save_every_n = 7500
-        self.gif_save_length = 300
-        self.gif_frames = []
-
         # ---- Rollout Videos ----
         self.it = 0
         self.log_video_every = self.env.cfg_env.env.record_video_every
         self.log_ft_every = self.env.cfg_env.env.record_ft_every
 
         self.last_recording_it = 0
-        self.last_recording_it_ft =0
-        # self.fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # Use 'XVID' for .avi format
+        self.last_recording_it_ft = 0
 
         self.episode_rewards = AverageScalarMeter(100)
         self.episode_lengths = AverageScalarMeter(100)
@@ -212,6 +205,7 @@ class PPO(object):
         self.writer.add_scalar('info/e_clip', self.e_clip, self.agent_steps)
         self.writer.add_scalar('info/kl', torch.mean(torch.stack(kls)).item(), self.agent_steps)
         self.writer.add_scalar("info/grad_norms", torch.mean(torch.stack(grad_norms)).item(), self.agent_steps)
+
         for k, v in self.extra_info.items():
             self.writer.add_scalar(f'{k}', v, self.agent_steps)
 
@@ -238,8 +232,6 @@ class PPO(object):
         input_dict = {
             'obs': processed_obs,
             'priv_info': processed_priv,
-            # 'ft_hist': obs_dict['ft_hist'],
-            # 'tactile_hist': obs_dict['tactile_hist']
         }
         res_dict = self.model.act(input_dict)
         res_dict['values'] = self.value_mean_std(res_dict['values'], True)
@@ -250,6 +242,7 @@ class PPO(object):
         _last_t = time.time()
         self.obs = self.env.reset()
         self.agent_steps = self.batch_size
+
         while self.agent_steps < self.max_agent_steps:
             self.epoch_num += 1
             a_losses, c_losses, b_losses, entropies, kls, grad_norms = self.train_epoch()
@@ -486,7 +479,6 @@ class PPO(object):
 
     def play_steps(self):
         
-        record_frame = False
         for n in range(self.horizon_length):
             self.log_video()
             self.log_ft()

@@ -25,9 +25,9 @@ ppo:
   learning_rate: 5e-3
   kl_threshold: 0.02
   # PPO batch collection
-  horizon_length: 24 # 64 , 8
-  mini_epochs: 4 # 8
-  minibatch_size: 6 # batch size = num_envs * horizon_length; minibatch_size = batch_size / num_minibatches
+  horizon_length: 64 # 64 , 8
+  mini_epochs: 8 # 8
+  minibatch_size: 512 # batch size = num_envs * horizon_length; minibatch_size = batch_size / num_minibatches
   # PPO loss setting
   clip_value: True
   critic_coef: 4
@@ -43,7 +43,7 @@ ppo:
   max_agent_steps: 1500000000
 
   # rma setting
-  priv_info: False
+  priv_info: True
   extrin_adapt: False
   tactile_info: False
   ft_info: False
