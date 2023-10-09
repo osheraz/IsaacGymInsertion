@@ -26,8 +26,8 @@ env:
     plug_friction: 0.99
     record_video: True
     record_ft: True
-    record_video_every: 200
-    record_ft_every: 200
+    record_video_every: 1500
+    record_ft_every: 1500
     tactile: False
     tactile_display_viz: False
     compute_contact_gt: False
