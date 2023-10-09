@@ -10,7 +10,8 @@ import numpy as np
 from isaacgyminsertion.allsight.experiments.utils.object_loader import object_loader
 from isaacgyminsertion.allsight.tacto.renderer import euler2matrix
 import cv2
-from isaacgyminsertion.allsight.experiments.utils.pose import pose_from_vertex_normal, generate_SE3_pose_single_vertex_normal
+from isaacgyminsertion.allsight.experiments.utils.pose import pose_from_vertex_normal, \
+    generate_SE3_pose_single_vertex_normal
 from scipy.spatial.transform import Rotation as R
 import os
 import trimesh
@@ -22,6 +23,7 @@ from isaacgyminsertion.allsight.tacto_allsight_wrapper import allsight_wrapper
 
 DEBUG = False
 from dataclasses import dataclass
+
 
 def circle_mask(size=(224, 224), border=0):
     """
@@ -45,6 +47,7 @@ def matrix2trans(matrix):
     translation = matrix[:3, 3]
     return translation, euler
 
+
 class allsight_renderer:
     def __init__(
             self,
@@ -66,6 +69,7 @@ class allsight_renderer:
         # Create renderer
         self.zrange = 0.002
 
+        self.subtract_bg = True
         leds = 'white'
         path_to_refs = os.path.join(os.path.dirname(__file__), "../")
         bg = cv2.imread(os.path.join(path_to_refs, f"experiments/conf/ref/ref_frame_{leds}15.jpg"))
@@ -80,14 +84,15 @@ class allsight_renderer:
 
         self.cam_dist = cfg.cam_dist
         self.pixmm = cfg.pixmm
+        self.mask = circle_mask(size=(self.render_config.tacto.width, self.render_config.tacto.height))
 
         if not DEBUG:
-            _, self.bg_depth = self.renderer.render()
+            self.bg_img, self.bg_depth = self.renderer.render()
             self.bg_depth = self.bg_depth[0]
+            self.bg_img = self.bg_img[0]
             self.bg_depth_pix = self.correct_pyrender_height_map(self.bg_depth)
 
         if obj_path is not None:
-
             self.obj_loader = object_loader(obj_path)
             obj_trimesh = trimesh.load(obj_path)
             obj_trimesh.apply_scale(1.7)
@@ -147,7 +152,6 @@ class allsight_renderer:
         cam_pose = self.gel2cam(gel_pose)
         cam_pose = self.add_press(cam_pose)
 
-
         self.renderer.update_camera_pose_from_matrix(self.fix_transform(cam_pose))
 
         # self.renderer.update_camera_pose_from_matrix(cam_pose)
@@ -165,6 +169,8 @@ class allsight_renderer:
 
         # concatenate colors horizontally (axis=1)
         color = np.concatenate(colors, axis=1)
+        if self.subtract_bg:
+            color = (255 * color).astype(np.uint8)
 
         if self.show_depth:
             # concatenate depths horizontally (axis=1)
@@ -270,8 +276,9 @@ class allsight_renderer:
             depth[j] = self.renderer.depth0[j] - depth[j]
 
         color, depth = color[0], depth[0]
-        mask = circle_mask(size=(self.render_config.tacto.width, self.render_config.tacto.height))
-        color[mask == 0] = 0
+        if self.subtract_bg:
+            color = self._subtract_bg(color, self.bg_img) * self.mask
+        # color[mask == 0] = 0
 
         diff_depth = (self.bg_depth) - depth
         contact_mask = diff_depth > np.abs(self.press_depth * 0.2)
@@ -482,6 +489,14 @@ class allsight_renderer:
 
         return heightmaps, contactMasks, images, camposes, gelposes
 
+    def _subtract_bg(self, img1, img2, offset=0.5):
+        img1 = np.int32(img1)
+        img2 = np.int32(img2)
+        diff = img1 - img2
+        diff = diff / 255.0 + offset
+        return diff
+
+
 import matplotlib.pyplot as plt
 
 
@@ -504,7 +519,6 @@ import matplotlib.pyplot as plt
 
 @hydra.main(config_path="conf", config_name="test")
 def main(cfg: DictConfig) -> None:
-
     import os
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
     obj_model = 'cube'
@@ -523,10 +537,9 @@ def main(cfg: DictConfig) -> None:
     vertix_idxs = np.random.choice(1000, size=100)  # [159]
 
     for vertix_idx in vertix_idxs:
-
         allsight_render.update_pose_given_point(vertix_idx,
-                                               press_depth,
-                                               shear_mag=0.0)
+                                                press_depth,
+                                                shear_mag=0.0)
 
         tactile_img, height_map, contact_mask = allsight_render.render()
 
@@ -546,10 +559,10 @@ def main(cfg: DictConfig) -> None:
         # )
 
         images.append(Image.fromarray(tactile_img))
-    # images[0].save(
-    #     "augmentations.gif", save_all=True, append_images=images, duration=200, loop=0
-    # )
-    #     plt.imshow(tactile_img)
+        # images[0].save(
+        #     "augmentations.gif", save_all=True, append_images=images, duration=200, loop=0
+        # )
+        #     plt.imshow(tactile_img)
         allsight_render.updateGUI([tactile_img], [height_map])
         # plt.pause(0.1)
 

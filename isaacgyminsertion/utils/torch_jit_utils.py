@@ -46,19 +46,14 @@ inv_normalize = transforms.Normalize(
 )
 
 img_transform = transforms.Compose([
-    transforms.ToPILImage(),
+    # transforms.ToPILImage(),
     # transforms.Resize((im_size, im_size)),
     transforms.ToTensor(),
     transforms.Normalize([0.485, 0.456, 0.406],
                          [0.229, 0.224, 0.225])
 ])
 
-def _subtract_bg(img1, img2, offset=0.5):
-    img1 = np.int32(img1)
-    img2 = np.int32(img2)
-    diff = img1 - img2
-    diff = diff / 255.0 + offset
-    return diff
+
 
 def to_torch(x, dtype=torch.float, device='cuda:0', requires_grad=False):
     return torch.tensor(x, dtype=dtype, device=device, requires_grad=requires_grad)

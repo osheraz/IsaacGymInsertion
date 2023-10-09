@@ -49,6 +49,7 @@ from isaacgyminsertion.tasks.factory_tactile.factory_utils import *
 from isaacgyminsertion.utils import torch_jit_utils
 from multiprocessing import Process, Queue, Manager
 import cv2
+
 # from isaacgyminsertion.allsight.experiments.allsight_render import allsight_renderer
 
 
@@ -76,7 +77,6 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         if self.cfg_base.mode.export_scene:
             self.export_scene(label='kuka_task_insertion')
-
 
     def _get_task_yaml_params(self):
         """Initialize instance variables from YAML files."""
@@ -153,10 +153,11 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         )
 
         self.ft_queue = torch.zeros((self.num_envs, self.ft_hist_len, 6), device=self.device, dtype=torch.float)
-        if self.cfg_env.env.compute_contact_gt:
-            self.gt_extrinsic_contact = torch.zeros((self.num_envs, self.extrinsic_contact_gt[0].pointcloud_obj.shape[0]),
-                                           device=self.device, dtype=torch.float)
 
+        if self.cfg_env.env.compute_contact_gt:
+            self.gt_extrinsic_contact = torch.zeros(
+                (self.num_envs, self.extrinsic_contact_gt[0].pointcloud_obj.shape[0]),
+                device=self.device, dtype=torch.float)
 
     def _refresh_task_tensors(self, update_tactile=False):
         """Refresh tensors."""
@@ -331,7 +332,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             #         self.tactile_imgs = torch.tensor(imgs, dtype=torch.float32, device=self.device)
 
     def _update_tactile(self, left_finger_pose, right_finger_pose, middle_finger_pose, object_pose,
-                        offset=None, queue=None, display_viz=True):
+                        offset=None, queue=None):
 
         tactile_imgs_list, height_maps = [], []  # only for display.
 
@@ -364,7 +365,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         # self.tactile_imgs = torch.tensor(tactile_imgs_list, dtype=torch.float32, device=self.device)
 
-        if display_viz:
+        if self.cfg_env.env.tactile_display_viz and self.cfg_env.env.tactile:
             env_to_show = 0
             self.tactile_handles[env_to_show][0].updateGUI(tactile_imgs_list[env_to_show],
                                                            height_maps[env_to_show])
@@ -596,17 +597,18 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         """Compute reward at current timestep."""
 
         keypoint_reward = self._get_keypoint_dist()
-        action_penalty = torch.norm(self.actions, p=2, dim=-1) * self.cfg_task.rl.action_penalty_scale
+        action_penalty = torch.norm(self.actions, p=2, dim=-1)
         plug_ori_penalty = torch.norm(self.plug_quat - self.identity_quat, p=2, dim=-1)
         is_plug_oriented = plug_ori_penalty < self.cfg_task.rl.orientation_threshold
 
         self.dist_plug_socket = torch.norm(self.plug_pos - self.socket_pos, p=2, dim=-1)
 
         self.rew_buf[:] = keypoint_reward * self.cfg_task.rl.keypoint_reward_scale \
-                        #   + plug_ori_penalty * self.cfg_task.rl.orientation_penalty_scale
-        #   + action_penalty * self.cfg_task.rl.action_penalty_scale \
+                          + plug_ori_penalty * self.cfg_task.rl.orientation_penalty_scale + \
+                          + action_penalty * self.cfg_task.rl.action_penalty_scale +\
+                          + self.dist_plug_socket * self.cfg_task.rl.dist_penalty_scale
 
-        # print(keypoint_reward[0], self.rew_buf[0])
+
 
         is_plug_engaged_w_socket = self._check_plug_engaged_w_socket()
 
@@ -614,7 +616,6 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                                                                     self.cfg_task.rl.success_height_thresh)
 
         is_plug_inserted_in_socket = self._check_plug_inserted_in_socket()
-        # print(is_plug_inserted_in_socket[0])
         self.time_complete_task[self.time_complete_task == 0] = (is_plug_inserted_in_socket * self.progress_buf)[
             self.time_complete_task == 0
             ]
@@ -622,27 +623,26 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         # In this policy, episode length is constant across all envs todo why?
         is_last_step = (self.progress_buf[0] == self.max_episode_length - 1)
 
-        # if is_last_step:
-        #     # engagement_reward_scale = self._get_engagement_reward_scale(is_plug_engaged_w_socket,
-        #     #                                                             self.cfg_task.rl.success_height_thresh)
-        #     # self.rew_buf[:] += (engagement_reward_scale * self.cfg_task.rl.engagement_bonus)
+        if is_last_step:
+            engagement_reward_scale = self._get_engagement_reward_scale(is_plug_engaged_w_socket,
+                                                                        self.cfg_task.rl.success_height_thresh)
+            self.rew_buf[:] += (engagement_reward_scale * self.cfg_task.rl.engagement_bonus)
 
-        #     # self.rew_buf[:] += is_plug_inserted_in_socket * self.cfg_task.rl.success_bonus
+            self.rew_buf[:] += is_plug_inserted_in_socket * self.cfg_task.rl.success_bonus
 
-        #     self.extras['successes'] += torch.mean(is_plug_inserted_in_socket.float())
-        #     self.extras["engaged_w_socket"] = torch.mean(is_plug_engaged_w_socket.float())
-        #     self.extras["plug_oriented"] = torch.mean(is_plug_oriented.float())
-        #     self.extras["successes"] = torch.mean(is_plug_inserted_in_socket.float())
-        #     self.extras["dist_plug_socket"] = torch.mean(self.dist_plug_socket)
-        #     self.extras["keypoint_reward"] = torch.mean(keypoint_reward.abs())
-        #     self.extras["action_penalty"] = torch.mean(action_penalty)
-        #     self.extras["mug_quat_penalty"] = torch.mean(plug_ori_penalty)
-        #     self.extras["steps"] = torch.mean(self.progress_buf.float())
-        #     self.extras["mean_time_complete_task"] = torch.mean(
-        #         self.time_complete_task.float()
-        #     )
-        #     a = self.time_complete_task.float() * is_plug_inserted_in_socket
-        #     self.extras["time_success_task"] = a.sum() / torch.where(a > 0)[0].shape[0]
+            self.extras["engaged_w_socket"] = torch.mean(is_plug_engaged_w_socket.float())
+            self.extras["plug_oriented"] = torch.mean(is_plug_oriented.float())
+            self.extras["successes"] = torch.mean(is_plug_inserted_in_socket.float())
+            self.extras["dist_plug_socket"] = torch.mean(self.dist_plug_socket)
+            self.extras["keypoint_reward"] = torch.mean(keypoint_reward.abs())
+            self.extras["action_penalty"] = torch.mean(action_penalty)
+            self.extras["mug_quat_penalty"] = torch.mean(plug_ori_penalty)
+            self.extras["steps"] = torch.mean(self.progress_buf.float())
+            self.extras["mean_time_complete_task"] = torch.mean(
+                self.time_complete_task.float()
+            )
+            a = self.time_complete_task.float() * is_plug_inserted_in_socket
+            self.extras["time_success_task"] = a.sum() / torch.where(a > 0)[0].shape[0]
 
         # TODO update reward function to reset at insertion
 
@@ -667,6 +667,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         # print('max episode length', self.reset_buf)
 
         # check is object is grasped and reset if not
+
         # d = torch.norm(self.fingertip_midpoint_pos - self.plug_com_pos, p=2, dim=-1)
         roll, pitch, _ = get_euler_xyz(self.plug_quat.clone())
         roll[roll > np.pi] -= 2 * np.pi
@@ -685,10 +686,10 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         # print('plug is too far', self.reset_buf)
 
     def _reset_environment(self, env_ids):
-        
-        random_init_idx = torch.randint(0, self.total_init_poses, size=(len(env_ids), ))
+
+        random_init_idx = torch.randint(0, self.total_init_poses, size=(len(env_ids),))
         # self.env_to_grasp[env_ids] = random_init_idx
-        
+
         kuka_dof_pos = self.init_dof_pos[random_init_idx]
         # print(kuka_dof_pos.shape)
         self._reset_kuka(env_ids, new_pose=kuka_dof_pos)
@@ -786,7 +787,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         # dof_pos at grasp pose tensor([[-0.0047,  0.2375,  0.0203, -1.2496, -0.0070,  1.6475, -1.5514,  0.6907,
         #   1.8478,  0.1660, -0.6892,  1.8515,  0.1625,  1.8333,  0.1740]]),
 
-        self.dof_pos[env_ids, :] = new_pose.to(device=self.device) #.repeat((len(env_ids), 1))
+        self.dof_pos[env_ids, :] = new_pose.to(device=self.device)  # .repeat((len(env_ids), 1))
 
         # dont play with these joints (no actuation here)#
         # self.dof_pos[
@@ -858,8 +859,9 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         plug_pose = new_pose['plug_pose']
         plug_quat = new_pose['plug_quat']
 
-        self.root_pos[env_ids, self.plug_actor_id_env, :] = plug_pose.to(device=self.device) # .repeat(len(env_ids), 1)
-        self.root_quat[env_ids, self.plug_actor_id_env, :] = plug_quat.to(device=self.device) # .repeat(len(env_ids), 1)
+        self.root_pos[env_ids, self.plug_actor_id_env, :] = plug_pose.to(device=self.device)  # .repeat(len(env_ids), 1)
+        self.root_quat[env_ids, self.plug_actor_id_env, :] = plug_quat.to(
+            device=self.device)  # .repeat(len(env_ids), 1)
 
         # Stabilize plug
         self.root_linvel[env_ids, self.plug_actor_id_env] = 0.0
@@ -892,8 +894,10 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         socket_pose = new_pose['socket_pose']
         socket_quat = new_pose['socket_quat']
 
-        self.root_pos[env_ids, self.socket_actor_id_env, :] = socket_pose.to(device=self.device) #.repeat(len(env_ids), 1)
-        self.root_quat[env_ids, self.socket_actor_id_env, :] = socket_quat.to(device=self.device) #.repeat(len(env_ids), 1)
+        self.root_pos[env_ids, self.socket_actor_id_env, :] = socket_pose.to(
+            device=self.device)  # .repeat(len(env_ids), 1)
+        self.root_quat[env_ids, self.socket_actor_id_env, :] = socket_quat.to(
+            device=self.device)  # .repeat(len(env_ids), 1)
 
         # Stabilize socket
         self.root_linvel[env_ids, self.socket_actor_id_env] = 0.0

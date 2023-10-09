@@ -68,6 +68,7 @@ randomize:
 
 
 rl:
+
     pos_action_scale: [0.001, 0.001, 0.001]
     rot_action_scale: [0.001, 0.001, 0.001]
 
@@ -86,6 +87,7 @@ rl:
     keypoint_reward_scale: -5.0  # scale on keypoint-based reward
     action_penalty_scale: -0.0  # scale on action penalty
     orientation_penalty_scale: -0.1
+    dist_penalty_scale: -0.0
 
     max_episode_length: 750 # 8192  # terminate episode after this number of timesteps (failure)
 
