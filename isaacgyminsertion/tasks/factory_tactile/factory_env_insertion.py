@@ -47,6 +47,90 @@ from isaacgyminsertion.tasks.factory_tactile.factory_schema_config_env import Fa
 from isaacgyminsertion.allsight.experiments.allsight_render import allsight_renderer
 from isaacgyminsertion.allsight.experiments.digit_render import digit_renderer
 import isaacgyminsertion.tasks.factory_tactile.factory_control as fc
+import trimesh
+import open3d as o3d
+from scipy.spatial.transform import Rotation as R
+
+
+class ExtrinsicContact:
+    def __init__(
+            self,
+            mesh_obj,
+            mesh_socket,
+            obj_scale,
+            socket_scale,
+            socket_pos,
+    ) -> None:
+        self.object_trimesh = trimesh.load(mesh_obj)
+        self.object_trimesh = self.object_trimesh.apply_scale(obj_scale)
+        T = np.eye(4)
+        T[0:3, 0:3] = R.from_euler("xyz", [0, 0, 90], degrees=True).as_matrix()
+        self.object_trimesh = self.object_trimesh.apply_transform(T)
+
+        self.socket_trimesh = trimesh.load(mesh_socket)
+        self.socket_trimesh = self.socket_trimesh.apply_scale(socket_scale)
+        T = np.eye(4)
+        T[0:3, -1] = socket_pos
+        self.socket_trimesh.apply_transform(T)
+
+        self.socket = o3d.t.geometry.RaycastingScene()
+        self.socket.add_triangles(
+            o3d.t.geometry.TriangleMesh.from_legacy(self.socket_trimesh.as_open3d)
+        )
+
+        import pyvista as pv
+        # Create a PyVista mesh from the trimesh object
+        mesh = pv.PolyData(self.object_trimesh.vertices, self.object_trimesh.faces)
+        self.pointcloud_obj = mesh.points
+        self.n_points = self.pointcloud_obj.shape[0]
+
+        self.gt_extrinsic_contact = torch.zeros((1, self.n_points))
+
+    def _xyzquat_to_tf_numpy(self, position_quat: np.ndarray) -> np.ndarray:
+        """
+        convert [x, y, z, qx, qy, qz, qw] to 4 x 4 transformation matrices
+        """
+        # try:
+        position_quat = np.atleast_2d(position_quat)  # (N, 7)
+        N = position_quat.shape[0]
+        T = np.zeros((N, 4, 4))
+        T[:, 0:3, 0:3] = R.from_quat(position_quat[:, 3:]).as_matrix()
+        T[:, :3, 3] = position_quat[:, :3]
+        T[:, 3, 3] = 1
+        # except ValueError:
+        #     print("Zero quat error!")
+        return T.squeeze()
+
+    def reset_extrinsic_contact(self):
+        self.gt_extrinsic_contact *= 0
+        self.step = 0
+
+    def get_extrinsic_contact(self, obj_pos, obj_quat):
+        object_poses = torch.cat((obj_pos, obj_quat), dim=1)
+        object_poses = self._xyzquat_to_tf_numpy(object_poses.cpu().numpy())
+
+        object_pc_i = trimesh.points.PointCloud(self.pointcloud_obj.copy())
+        object_pc_i.apply_transform(object_poses)
+        coords = np.array(object_pc_i.vertices)
+
+        d = self.socket.compute_distance(
+            o3d.core.Tensor.from_numpy(coords.astype(np.float32))
+        ).numpy()
+
+        c = 0.008
+        d = d.flatten()
+        idx_2 = np.where(d > c)[0]
+        d[idx_2] = c
+        d = np.clip(d, 0.0, c)
+
+        d = 1.0 - d / c
+        d = np.clip(d, 0.0, 1.0)
+        d[d > 0.1] = 1.0
+        d = d.reshape((1, self.n_points))
+
+        self.gt_extrinsic_contact = torch.tensor(d, dtype=torch.float32)
+
+        return self.gt_extrinsic_contact
 
 
 class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
@@ -204,7 +288,7 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
         self.socket_depths = []
 
         self.asset_indices = []
-
+        self.extrinsic_contact_gt = []
         # Create wrist and fingertip force sensors
         sensor_pose = gymapi.Transform()
         # for ft_handle in self.fingertip_handles:
@@ -212,14 +296,13 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
         wrist_ft_handle = self.gym.find_asset_rigid_body_index(kuka_asset, 'iiwa7_link_7')
         self.gym.create_asset_force_sensor(kuka_asset, wrist_ft_handle, sensor_pose)
         from tqdm import tqdm
+
         for i in tqdm(range(self.num_envs)):
 
             # sample random subassemblies
             j = np.random.randint(0, len(self.cfg_env.env.desired_subassemblies))
 
             env_ptr = self.gym.create_env(self.sim, lower, upper, num_per_row)
-
-            
 
             # compute aggregate size
             num_kuka_bodies = self.gym.get_asset_rigid_body_count(kuka_asset)
@@ -351,21 +434,34 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
                 self.rendering_camera = self.gym.create_camera_sensor(env_ptr, self.camera_props)
                 print('CAMERA:', self.rendering_camera)
                 self.gym.set_camera_location(self.rendering_camera, env_ptr, gymapi.Vec3(1.5, 1, 3.0),
-                                            gymapi.Vec3(0, 0, 0))
+                                             gymapi.Vec3(0, 0, 0))
 
             # add Tactile modules for the tips
             self.envs_asset[i] = {'subassembly': subassembly, 'components': components}
+            plug_file = self.asset_info_insertion[subassembly][components[0]]['urdf_path']
+            plug_file += '_subdiv_3x.obj' if 'rectangular' in plug_file else '.obj'
+            socket_file = self.asset_info_insertion[subassembly][components[0]]['urdf_path']
+            socket_file += '_subdiv_3x.obj' if 'rectangular' in plug_file else '.obj'
+
+            mesh_root = os.path.join(os.path.dirname(__file__), '..', '..', '..', 'assets', 'factory', 'mesh',
+                                     'factory_insertion')
+
             if self.cfg_env.env.tactile:
-                plug_file = self.asset_info_insertion[subassembly][components[0]]['urdf_path']
-                plug_file += '_subdiv_3x.obj' if 'rectangular' in plug_file else '.obj'
-                mesh_root = os.path.join(os.path.dirname(__file__), '..', '..', '..', 'assets', 'factory', 'mesh',
-                                         'factory_insertion')
                 self.tactile_handles.append([allsight_renderer(self.cfg_tactile,
                                                                os.path.join(mesh_root, plug_file), randomize=False,
                                                                finger_idx=i) for i in range(len(self.fingertips))])
+            if self.cfg_env.env.compute_contact_gt:
+                socket_pos = [0, 0, self.cfg_base.env.table_height]
+                self.extrinsic_contact_gt.append(ExtrinsicContact(mesh_obj=os.path.join(mesh_root, plug_file),
+                                                                  mesh_socket=os.path.join(mesh_root, socket_file),
+                                                                  obj_scale=1.0,
+                                                                  socket_scale=0.75,
+                                                                  socket_pos=socket_pos
+                                                                  )
+                                                 )
+
             if self.cfg_env.env.aggregate_mode:
                 self.gym.end_aggregate(env_ptr)
-
 
         # Get indices
         self.num_actors = int(actor_count / self.num_envs)  # per env
@@ -390,7 +486,7 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
         self.hand_body_id_env = self.gym.find_actor_rigid_body_index(env_ptr, kuka_handle, 'gripper_base_link',
                                                                      gymapi.DOMAIN_ENV)
         self.wrist_body_id_env = self.gym.find_actor_rigid_body_index(env_ptr, kuka_handle, 'iiwa7_link_7',
-                                                                     gymapi.DOMAIN_ENV)
+                                                                      gymapi.DOMAIN_ENV)
 
         self.left_finger_body_id_env = self.gym.find_actor_rigid_body_index(env_ptr, kuka_handle, 'finger_1_3',
                                                                             gymapi.DOMAIN_ENV)
@@ -466,19 +562,19 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
                                                      quat=self.socket_quat,
                                                      offset=self.socket_heights,
                                                      device=self.device)
-        
+
     ### start code for logging videos while training ###
     # record camera (does not matter if headless)
     def _render_headless(self):
         if self.record_now and self.complete_video_frames is not None and len(self.complete_video_frames) == 0:
-        # bx, by, bz = self.root_states[0, 0], self.root_states[0, 1], self.root_states[0, 2]
-            bx, by, bz = -0.0012, -0.0093,  0.4335 # self.root_pos[0, self.plug_actor_id_env, 0], self.root_pos[0, self.plug_actor_id_env, 1], self.root_pos[0, self.plug_actor_id_env, 2]
+            # bx, by, bz = self.root_states[0, 0], self.root_states[0, 1], self.root_states[0, 2]
+            bx, by, bz = -0.0012, -0.0093, 0.4335  # self.root_pos[0, self.plug_actor_id_env, 0], self.root_pos[0, self.plug_actor_id_env, 1], self.root_pos[0, self.plug_actor_id_env, 2]
             # bx, by, bz = 0, 1, 0
-            
+
             self.gym.set_camera_location(self.rendering_camera, self.envs[0], gymapi.Vec3(bx - 0.2, by, bz),
-                                            gymapi.Vec3(bx, by, bz))
+                                         gymapi.Vec3(bx, by, bz))
             self.video_frame = self.gym.get_camera_image(self.sim, self.envs[0], self.rendering_camera,
-                                                            gymapi.IMAGE_COLOR)
+                                                         gymapi.IMAGE_COLOR)
             self.video_frame = self.video_frame.reshape((self.camera_props.height, self.camera_props.width, 4))
             self.video_frames.append(self.video_frame)
 

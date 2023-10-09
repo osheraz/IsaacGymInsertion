@@ -8,7 +8,7 @@ experiment: ''
 num_envs: 5 #''
 
 # seed - set to -1 to choose random seed
-seed: 41
+seed: 42
 # set to True for deterministic performance
 torch_deterministic: False
 
