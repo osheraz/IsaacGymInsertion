@@ -82,7 +82,7 @@ class allsight_renderer:
         self.pixmm = cfg.pixmm
 
         if not DEBUG:
-            _, self.bg_depth = self.renderer.render()
+            self.bg_img, self.bg_depth = self.renderer.render()
             self.bg_depth = self.bg_depth[0]
             self.bg_depth_pix = self.correct_pyrender_height_map(self.bg_depth)
 
@@ -271,6 +271,7 @@ class allsight_renderer:
 
         color, depth = color[0], depth[0]
         mask = circle_mask(size=(self.render_config.tacto.width, self.render_config.tacto.height))
+        color = self._subtract_bg(color, self.bg_img)
         color[mask == 0] = 0
 
         diff_depth = (self.bg_depth) - depth
@@ -482,6 +483,12 @@ class allsight_renderer:
 
         return heightmaps, contactMasks, images, camposes, gelposes
 
+    def _subtract_bg(self, img1, img2, offset=0.5):
+        img1 = np.int32(img1)
+        img2 = np.int32(img2)
+        diff = img1 - img2
+        diff = diff / 255.0 + offset
+        return diff
 import matplotlib.pyplot as plt
 
 

@@ -628,7 +628,6 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
             self.rew_buf[:] += is_plug_inserted_in_socket * self.cfg_task.rl.success_bonus
 
-            self.extras['successes'] += torch.mean(is_plug_inserted_in_socket.float())
             self.extras["engaged_w_socket"] = torch.mean(is_plug_engaged_w_socket.float())
             self.extras["plug_oriented"] = torch.mean(is_plug_oriented.float())
             self.extras["successes"] = torch.mean(is_plug_inserted_in_socket.float())
@@ -666,7 +665,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         # print('max episode length', self.reset_buf)
 
         # check is object is grasped and reset if not
-        d = torch.norm(self.fingertip_midpoint_pos - self.plug_pos, p=2, dim=-1)
+        d = torch.norm(self.fingertip_midpoint_pos - self.plug_com_pos, p=2, dim=-1)
         is_not_grasped = d >= self.cfg_task.env.plug_grasp_threshold
         self.reset_buf[is_not_grasped] = 1
 
