@@ -424,6 +424,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         self.progress_buf[:] += 1
         self.randomize_buf[:] += 1
+        # print('progress_buf', self.progress_buf[0])
 
         # In this policy, episode length is constant
         is_last_step = (self.progress_buf[0] == self.max_episode_length - 1)
@@ -602,7 +603,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.dist_plug_socket = torch.norm(self.plug_pos - self.socket_pos, p=2, dim=-1)
 
         self.rew_buf[:] = keypoint_reward * self.cfg_task.rl.keypoint_reward_scale \
-                          + plug_ori_penalty * self.cfg_task.rl.orientation_penalty_scale
+                        #   + plug_ori_penalty * self.cfg_task.rl.orientation_penalty_scale
         #   + action_penalty * self.cfg_task.rl.action_penalty_scale \
 
         # print(keypoint_reward[0], self.rew_buf[0])
@@ -666,11 +667,15 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         # print('max episode length', self.reset_buf)
 
         # check is object is grasped and reset if not
-        d = torch.norm(self.fingertip_midpoint_pos - self.plug_pos, p=2, dim=-1)
+        # d = torch.norm(self.fingertip_midpoint_pos - self.plug_com_pos, p=2, dim=-1)
+        roll, pitch, _ = get_euler_xyz(self.plug_quat.clone())
+        roll[roll > np.pi] -= 2 * np.pi
+        pitch[pitch > np.pi] -= 2 * np.pi
+        d = (torch.abs(roll) > 0.25) | (torch.abs(pitch) > 0.25)
         is_not_grasped = d >= self.cfg_task.env.plug_grasp_threshold
         self.reset_buf[is_not_grasped] = 1
 
-        # print('object is grasped', self.reset_buf)
+        # print('object is grasped', d, self.cfg_task.env.plug_grasp_threshold, self.reset_buf)
 
         # If plug is too far from socket pos
         self.reset_buf[:] = torch.where(self.dist_plug_socket > self.cfg_task.rl.far_error_thresh,
@@ -712,7 +717,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self._reset_environment(env_ids)
 
         self._zero_velocities(env_ids)
-        self._refresh_task_tensors()
+        self._refresh_task_tensors(update_tactile=True)
 
         # # Move arm to grasp pose
         # self._move_arm_to_desired_pose(env_ids, self.plug_grasp_pos.clone(),
@@ -751,10 +756,12 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         #                                sim_steps=self.cfg_task.env.num_gripper_move_sim_steps)
         # self._refresh_task_tensors()
 
+        # print("#########reset##############", env_ids)
         if self.cfg_env.env.record_video and 0 in env_ids:
             if self.complete_video_frames is None:
                 self.complete_video_frames = []
             else:
+                # print('Saving video')
                 self.complete_video_frames = self.video_frames[:]
             self.video_frames = []
 
@@ -988,9 +995,9 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
     def _set_viewer_params(self):
         """Set viewer parameters."""
-
-        cam_pos = gymapi.Vec3(-1.0, -1.0, 1.0)
-        cam_target = gymapi.Vec3(0.0, 0.0, 0.5)
+        bx, by, bz = -0.0012, -0.0093, 0.4335
+        cam_pos = gymapi.Vec3(bx - 0.2, by - 0.2, bz + 0.2)
+        cam_target = gymapi.Vec3(bx, by, bz)
         self.gym.viewer_camera_look_at(self.viewer, None, cam_pos, cam_target)
 
     def _apply_actions_as_ctrl_targets(self, actions, ctrl_target_gripper_dof_pos, do_scale):

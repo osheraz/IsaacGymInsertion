@@ -90,7 +90,7 @@ class allsight_renderer:
 
             self.obj_loader = object_loader(obj_path)
             obj_trimesh = trimesh.load(obj_path)
-            obj_trimesh.apply_scale(1.02)
+            obj_trimesh.apply_scale(1.7)
             self.obj_mesh = obj_trimesh
             obj_euler = R.from_quat([0.0, 0.0, 0.0, 1.0]).as_euler("xyz", degrees=False)
             self.renderer.add_object(obj_trimesh, "object", orientation=obj_euler)
