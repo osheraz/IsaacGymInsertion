@@ -35,7 +35,7 @@ env:
     socket_pos_obs_noise: [ 0.001, 0.001, 0.0 ]
     socket_rot_obs_noise: [ 0.0, 0.0, 0.0 ]
     socket_base_height: 0.003
-    plug_grasp_threshold: 0.03
+    plug_grasp_threshold: 0.07
 
 sim:
     disable_gravity: True
@@ -68,8 +68,9 @@ randomize:
 
 
 rl:
-    pos_action_scale: [0.01, 0.01, 0.01]
-    rot_action_scale: [0.01, 0.01, 0.01]
+
+    pos_action_scale: [0.001, 0.001, 0.001]
+    rot_action_scale: [0.001, 0.001, 0.001]
 
     force_action_scale: [1.0, 1.0, 1.0]
     torque_action_scale: [1.0, 1.0, 1.0]
@@ -88,8 +89,7 @@ rl:
     orientation_penalty_scale: -0.1
     dist_penalty_scale: -0.0
 
-
-    max_episode_length: 256 # 8192  # terminate episode after this number of timesteps (failure)
+    max_episode_length: 100 # 8192  # terminate episode after this number of timesteps (failure)
 
     orientation_threshold: 0.1
     far_error_thresh: 0.100  # threshold above which plug is considered too far from bolt

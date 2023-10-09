@@ -137,8 +137,8 @@ class PPO(object):
         # ---- PPO Collect Param ----
         self.horizon_length = self.ppo_config['horizon_length']
         self.batch_size = self.horizon_length * self.num_actors
-        self.minibatch_size = self.ppo_config['minibatch_size']
         self.mini_epochs_num = self.ppo_config['mini_epochs']
+        self.minibatch_size = self.batch_size // self.mini_epochs_num  # self.ppo_config['minibatch_size']
         assert self.batch_size % self.minibatch_size == 0 or full_config.test
 
         # ---- scheduler ----
@@ -162,9 +162,9 @@ class PPO(object):
         self.last_recording_it = 0
         self.last_recording_it_ft = 0
 
-        self.episode_rewards = AverageScalarMeter(100)
-        self.episode_lengths = AverageScalarMeter(100)
-        self.episode_success = AverageScalarMeter(100)
+        self.episode_rewards = AverageScalarMeter(10)
+        self.episode_lengths = AverageScalarMeter(10)
+        self.episode_success = AverageScalarMeter(10)
 
         self.obs = None
         self.epoch_num = 0
@@ -478,10 +478,11 @@ class PPO(object):
             print("LOGGING FT")
 
     def play_steps(self):
-        
+
         for n in range(self.horizon_length):
             self.log_video()
             self.log_ft()
+            # print(f"it: {self.it}")
             self.it += 1
             res_dict = self.model_act(self.obs)
             # collect o_t

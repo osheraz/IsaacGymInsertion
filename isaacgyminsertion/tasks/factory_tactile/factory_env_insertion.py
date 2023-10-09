@@ -394,6 +394,8 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
             socket_shape_props[0].compliance = 0.0  # default = 0.0
             socket_shape_props[0].thickness = 0.0  # default = 0.0
             self.gym.set_actor_rigid_shape_properties(env_ptr, socket_handle, socket_shape_props)
+            # self.gym.set_actor_scale(env_ptr, socket_handle, 5)
+
 
             table_shape_props = self.gym.get_actor_rigid_shape_properties(env_ptr, table_handle)
             table_shape_props[0].friction = self.cfg_base.env.table_friction
@@ -566,16 +568,21 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
     ### start code for logging videos while training ###
     # record camera (does not matter if headless)
     def _render_headless(self):
+        # if self.record_now:
+        #     # print('should record soon..')
+        #     if self.complete_video_frames is not None:
+        #         print(len(self.complete_video_frames))
         if self.record_now and self.complete_video_frames is not None and len(self.complete_video_frames) == 0:
             # bx, by, bz = self.root_states[0, 0], self.root_states[0, 1], self.root_states[0, 2]
             bx, by, bz = -0.0012, -0.0093, 0.4335  # self.root_pos[0, self.plug_actor_id_env, 0], self.root_pos[0, self.plug_actor_id_env, 1], self.root_pos[0, self.plug_actor_id_env, 2]
             # bx, by, bz = 0, 1, 0
 
-            self.gym.set_camera_location(self.rendering_camera, self.envs[0], gymapi.Vec3(bx - 0.2, by, bz),
+            self.gym.set_camera_location(self.rendering_camera, self.envs[0], gymapi.Vec3(bx - 0.2, by - 0.2, bz+0.2),
                                          gymapi.Vec3(bx, by, bz))
             self.video_frame = self.gym.get_camera_image(self.sim, self.envs[0], self.rendering_camera,
                                                          gymapi.IMAGE_COLOR)
             self.video_frame = self.video_frame.reshape((self.camera_props.height, self.camera_props.width, 4))
+            # print('video frame shape', self.video_frame.shape)
             self.video_frames.append(self.video_frame)
 
         if self.record_now_ft and self.complete_ft_frames is not None and len(self.complete_ft_frames) == 0:

@@ -340,10 +340,10 @@ class FactoryBaseTactile(VecTask, FactoryABCBase):
         self.gym.refresh_mass_matrix_tensors(self.sim)
         self.gym.refresh_force_sensor_tensor(self.sim)
         if self.record_now:
-            self.gym.fetch_results(self.sim, True)
             self.gym.step_graphics(self.sim)
+            self.gym.fetch_results(self.sim, True)
             self.gym.render_all_camera_sensors(self.sim)
-            self.gym.start_access_image_tensors(self.sim)
+            # self.gym.start_access_image_tensors(self.sim)
 
         # Privileged
         self.finger_midpoint_pos = (self.left_finger_pos + self.right_finger_pos + self.middle_finger_pos) * (1 / 3)
