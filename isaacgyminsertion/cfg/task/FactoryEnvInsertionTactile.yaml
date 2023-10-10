@@ -27,10 +27,10 @@ env:
 
     record_video: True
     record_ft: True
-    record_video_every: 200 # DOUBLE MAX EPISODE LENGTH
-    record_ft_every: 200
-    tactile: True
-    tactile_display_viz: True
+    record_video_every: 400 # DOUBLE MAX EPISODE LENGTH
+    record_ft_every: 400
+    tactile: False
+    tactile_display_viz: False
     compute_contact_gt: False
 
     # Subassembly options:

@@ -60,6 +60,7 @@ class ExtrinsicContact:
             obj_scale,
             socket_scale,
             socket_pos,
+            num_points = 50
     ) -> None:
         self.object_trimesh = trimesh.load(mesh_obj)
         self.object_trimesh = self.object_trimesh.apply_scale(obj_scale)
@@ -80,9 +81,12 @@ class ExtrinsicContact:
 
         import pyvista as pv
         # Create a PyVista mesh from the trimesh object
+        # Randomly sample X points from the mesh's point cloud
         mesh = pv.PolyData(self.object_trimesh.vertices, self.object_trimesh.faces)
-        self.pointcloud_obj = mesh.points
-        self.n_points = self.pointcloud_obj.shape[0]
+        sampled_indices = np.random.choice(mesh.n_points, num_points, replace=False)
+        sampled_points = mesh.points[sampled_indices]
+        self.pointcloud_obj = sampled_points
+        self.n_points = sampled_points. shape[0]
 
         self.gt_extrinsic_contact = torch.zeros((1, self.n_points))
 
@@ -105,7 +109,7 @@ class ExtrinsicContact:
         self.gt_extrinsic_contact *= 0
         self.step = 0
 
-    def get_extrinsic_contact(self, obj_pos, obj_quat):
+    def get_extrinsic_contact(self, obj_pos, obj_quat, socket_pos):
         object_poses = torch.cat((obj_pos, obj_quat), dim=1)
         object_poses = self._xyzquat_to_tf_numpy(object_poses.cpu().numpy())
 
@@ -113,6 +117,14 @@ class ExtrinsicContact:
         object_pc_i.apply_transform(object_poses)
         coords = np.array(object_pc_i.vertices)
 
+        T = np.eye(4)
+        T[0:3, -1] = socket_pos.cpu().numpy()
+        self.socket_trimesh.apply_transform(T)
+
+        self.socket = o3d.t.geometry.RaycastingScene()
+        self.socket.add_triangles(
+            o3d.t.geometry.TriangleMesh.from_legacy(self.socket_trimesh.as_open3d)
+        )
         d = self.socket.compute_distance(
             o3d.core.Tensor.from_numpy(coords.astype(np.float32))
         ).numpy()
@@ -192,7 +204,7 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
 
     def _import_env_assets(self):
         """Set plug and socket asset options. Import assets."""
-
+        self.plug_files, self.socket_files = [], []
         urdf_root = os.path.join(os.path.dirname(__file__), '..', '..', '..', 'assets', 'factory', 'urdf')
 
         plug_options = gymapi.AssetOptions()
@@ -242,6 +254,10 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
             socket_asset = self.gym.load_asset(self.sim, urdf_root, socket_file, socket_options)
             plug_assets.append(plug_asset)
             socket_assets.append(socket_asset)
+
+            # Save URDF file paths (for loading appropriate meshes during SAPU and SDF-Based Reward calculations)
+            self.plug_files.append(os.path.join(urdf_root, plug_file))
+            self.socket_files.append(os.path.join(urdf_root, socket_file))
 
         return plug_assets, socket_assets
 
@@ -450,14 +466,14 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
 
             if self.cfg_env.env.tactile:
                 self.tactile_handles.append([allsight_renderer(self.cfg_tactile,
-                                                               os.path.join(mesh_root, plug_file), randomize=False,
+                                                               os.path.join(mesh_root, plug_file), randomize=True,
                                                                finger_idx=i) for i in range(len(self.fingertips))])
             if self.cfg_env.env.compute_contact_gt:
                 socket_pos = [0, 0, self.cfg_base.env.table_height]
                 self.extrinsic_contact_gt.append(ExtrinsicContact(mesh_obj=os.path.join(mesh_root, plug_file),
                                                                   mesh_socket=os.path.join(mesh_root, socket_file),
                                                                   obj_scale=1.0,
-                                                                  socket_scale=0.75,
+                                                                  socket_scale=1.0,
                                                                   socket_pos=socket_pos
                                                                   )
                                                  )

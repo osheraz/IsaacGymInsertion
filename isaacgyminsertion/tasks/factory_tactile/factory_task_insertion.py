@@ -227,11 +227,11 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             self.keypoints_plug[:, idx] = torch_jit_utils.tf_combine(self.plug_quat,
                                                                      self.plug_pos,
                                                                      self.identity_quat,
-                                                                     (keypoint_offset * self.plug_heights))[1]
+                                                                     (keypoint_offset * self.socket_heights))[1]
             self.keypoints_socket[:, idx] = torch_jit_utils.tf_combine(self.socket_quat,
                                                                        self.socket_pos,
                                                                        self.identity_quat,
-                                                                       (keypoint_offset * self.plug_heights) + socket_tip_pos_local)[1]
+                                                                       (keypoint_offset * self.socket_heights) + socket_tip_pos_local)[1]
 
         if update_tactile and self.cfg_env.env.tactile:
             # left_finger_pose = pose_vec_to_mat(torch.cat((self.left_finger_pos,
@@ -441,7 +441,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             
             rotate_vec = lambda q, x: quat_apply(q, to_torch(x, device=self.device) * 0.2).cpu().numpy()
             
-            for i in range(1):
+            for i in range(self.num_envs):
                 keypoints = self.keypoints_plug[i].clone().cpu().numpy()
                 quat = self.plug_quat[i, :]
                 # print(keypoints)
@@ -458,7 +458,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                     self.gym.add_lines(self.viewer, self.envs[i], 1, [ob[0], ob[1], ob[2], targety[0], targety[1], targety[2]], [0.85, 0.1, 0.1])
                     self.gym.add_lines(self.viewer, self.envs[i], 1, [ob[0], ob[1], ob[2], targetz[0], targetz[1], targetz[2]], [0.85, 0.1, 0.1])
 
-            for i in range(1):
+            for i in range(self.num_envs):
                 keypoints = self.keypoints_socket[i].clone().cpu().numpy()
                 quat = self.socket_quat[i, :]
                 # print(keypoints)
@@ -558,7 +558,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         if self.cfg_env.env.compute_contact_gt:
             for e in range(self.num_envs):
                 self.gt_extrinsic_contact[e] = self.extrinsic_contact_gt[e].get_extrinsic_contact(
-                    obj_pos=self.plug_pos, obj_quat=self.plug_quat
+                    obj_pos=self.plug_pos, obj_quat=self.plug_quat, socket_pos=self.socket_pos
                 )
             # todo should be added to priv.
 
@@ -607,7 +607,6 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                           + plug_ori_penalty * self.cfg_task.rl.orientation_penalty_scale + \
                           + action_penalty * self.cfg_task.rl.action_penalty_scale +\
                           + self.dist_plug_socket * self.cfg_task.rl.dist_penalty_scale
-
 
 
         is_plug_engaged_w_socket = self._check_plug_engaged_w_socket()

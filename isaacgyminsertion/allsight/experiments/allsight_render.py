@@ -63,8 +63,13 @@ class allsight_renderer:
         self.render_config = cfg
         self.show_depth = True
         self.finger_idx = finger_idx
+
         if randomize:
-            bg_id = random.randint(0, 9)
+            bg_id = random.randint(12, 19)
+            obj_scale = 0.01 * random.randint(135, 150)
+        else:
+            bg_id = 15
+            obj_scale = 1.5
 
         # Create renderer
         self.zrange = 0.002
@@ -72,7 +77,7 @@ class allsight_renderer:
         self.subtract_bg = True
         leds = 'white'
         path_to_refs = os.path.join(os.path.dirname(__file__), "../")
-        bg = cv2.imread(os.path.join(path_to_refs, f"experiments/conf/ref/ref_frame_{leds}15.jpg"))
+        bg = cv2.imread(os.path.join(path_to_refs, f"experiments/conf/ref/ref_frame_{leds}{bg_id}.jpg"))
         conf_path = os.path.join(path_to_refs, f"experiments/conf/sensor/config_allsight_{leds}.yml")
 
         self.renderer = allsight_wrapper.Renderer(
@@ -95,13 +100,13 @@ class allsight_renderer:
         if obj_path is not None:
             self.obj_loader = object_loader(obj_path)
             obj_trimesh = trimesh.load(obj_path)
-            obj_trimesh.apply_scale(1.7)
+            obj_trimesh.apply_scale(obj_scale)
             self.obj_mesh = obj_trimesh
             obj_euler = R.from_quat([0.0, 0.0, 0.0, 1.0]).as_euler("xyz", degrees=False)
             self.renderer.add_object(obj_trimesh, "object", orientation=obj_euler)
 
         self.press_depth = 0.001
-        self.randomize = randomize
+        self.randomize_light = False # TODO
 
     def get_background(self, frame="gel"):
         """
@@ -283,12 +288,12 @@ class allsight_renderer:
         diff_depth = (self.bg_depth) - depth
         contact_mask = diff_depth > np.abs(self.press_depth * 0.2)
 
-        gel_depth = depth  # self.correct_pyrender_height_map(depth)  # pix in gel frame
+        gel_depth = depth
 
         # cam_depth = self.correct_image_height_map(gel_depth) #  pix in gel frame
         # assert np.allclose(cam_depth, depth), "Conversion to pixels is incorrect"
 
-        if self.randomize:
+        if self.randomize_light:
             self.renderer.randomize_light()
 
         return color, gel_depth, contact_mask

@@ -82,19 +82,19 @@ rl:
     clamp_rot_thresh: 1.0e-6
 
     num_keypoints: 4  # number of keypoints used in reward
-    keypoint_scale: 0.5  # length of line of keypoints
+    keypoint_scale: 1.0  # length of line of keypoints
 
     keypoint_reward_scale: -5.0  # scale on keypoint-based reward
     action_penalty_scale: -0.0  # scale on action penalty
     orientation_penalty_scale: -0.1
     dist_penalty_scale: -0.0
 
-    max_episode_length: 100 # 8192  # terminate episode after this number of timesteps (failure)
+    max_episode_length: 200 # 8192  # terminate episode after this number of timesteps (failure)
 
     orientation_threshold: 0.1
     far_error_thresh: 0.100  # threshold above which plug is considered too far from bolt
     close_error_thresh: 0.1  # threshold below which plug is considered close enough to bolt
-    success_bonus: 0.0  # bonus if plug is close enough to base of bolt shank
+    success_bonus: 1.0  # bonus if plug is close enough to base of bolt shank
 
     # Success bonus
     success_height_thresh: 0.003  # threshold distance below which plug is considered successfully inserted
