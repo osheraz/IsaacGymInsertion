@@ -89,9 +89,11 @@ class ExtrinsicAdapt(object):
         self.priv_mean_std = RunningMeanStd(self.priv_info_dim).to(self.device)
         self.priv_mean_std.eval()
 
+        # Currently ft is not supported
         self.ft_mean_std = RunningMeanStd((self.ft_seq_length, 32)).to(self.device)
         self.ft_mean_std.train()
-        # tactile is already normalized to imagenet values. (check task)
+
+        # tactile is already normalized in task.
 
         # ---- Output Dir ----
         self.output_dir = output_dir
@@ -212,8 +214,8 @@ class ExtrinsicAdapt(object):
         cprint('careful, using non-strict matching', 'red', attrs=['bold'])
         self.model.load_state_dict(checkpoint['model'], strict=False)
         self.running_mean_std.load_state_dict(checkpoint['running_mean_std'])
+        self.priv_mean_std.load_state_dict(checkpoint['priv_mean_std'])
         # self.ft_mean_std.load_state_dict(checkpoint['ft_mean_std'])
-        # self.priv_mean_std.load_state_dict(checkpoint['priv_mean_std'])
 
     def restore_test(self, fn):
         if not fn:

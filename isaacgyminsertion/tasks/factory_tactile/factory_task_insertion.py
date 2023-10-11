@@ -227,11 +227,11 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             self.keypoints_plug[:, idx] = torch_jit_utils.tf_combine(self.plug_quat,
                                                                      self.plug_pos,
                                                                      self.identity_quat,
-                                                                     (keypoint_offset * self.socket_heights*2))[1]
+                                                                     (keypoint_offset * self.socket_heights))[1]
             self.keypoints_socket[:, idx] = torch_jit_utils.tf_combine(self.socket_quat,
                                                                        self.socket_pos,
                                                                        self.identity_quat,
-                                                                       (keypoint_offset * self.socket_heights*2) + socket_tip_pos_local)[1]
+                                                                       (keypoint_offset * self.socket_heights) + socket_tip_pos_local)[1]
 
         if update_tactile and self.cfg_env.env.tactile:
             # left_finger_pose = pose_vec_to_mat(torch.cat((self.left_finger_pos,
@@ -587,7 +587,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         if self.cfg_env.env.compute_contact_gt:
             for e in range(self.num_envs):
                 self.gt_extrinsic_contact[e] = self.extrinsic_contact_gt[e].get_extrinsic_contact(
-                    obj_pos=self.plug_pos, obj_quat=self.plug_quat
+                    obj_pos=self.plug_pos, obj_quat=self.plug_quat, socket_pos=self.socket_pos
                 )
             # todo should be added to priv.
         
@@ -645,8 +645,6 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                         #   + action_penalty * self.cfg_task.rl.action_penalty_scale \
                         #   + self.dist_plug_socket * self.cfg_task.rl.dist_penalty_scale
         # print('reward', self.rew_buf[0])
-
-        
 
         is_plug_engaged_w_socket = self._check_plug_engaged_w_socket()
         engaged_env_ids = is_plug_engaged_w_socket.nonzero()

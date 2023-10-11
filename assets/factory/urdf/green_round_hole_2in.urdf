@@ -1,0 +1,18 @@
+<?xml version="1.0"?>
+<robot name="factory_round_peg_16mm_loose">
+    <link name="factory_round_peg_16mm_loose">
+        <visual>
+            <origin xyz="0 0 0" rpy="1.57079632679 0 0"/>
+            <geometry>
+                <mesh filename="../mesh/factory_insertion/2inNewShamrockBox.obj"/>
+            </geometry>
+        </visual>
+        <collision>
+         <origin xyz="0 0 0" rpy="1.57079632679 0 0"/>
+            <geometry>
+                <mesh filename="../mesh/factory_insertion/2inNewShamrockBox.obj"/>
+            </geometry>
+            <!-- sdf resolution="256" -->
+        </collision>
+    </link>
+</robot>

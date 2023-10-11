@@ -80,29 +80,34 @@ class ActorCritic(nn.Module):
 
             if self.priv_info_stage2:
                 # ---- tactile Decoder ----
-                # Dims of latent have to be the same? |z_t - z'_t|
-                # todo add assert options for only ft or only tactile (latent size)
+                # Dims of latent have to be the same |z_t - z'_t|
                 if self.tactile_info:
                     path_checkpoint = None
                     if kwargs.pop('tactile_pretrained'):
+                        # we should think about decoupling this problem and pretraining a decoder
                         import os
                         current_file = os.path.abspath(__file__)
                         self.root_dir = os.path.abspath(
                             os.path.join(current_file, "..", "..", "..", "..", "..")
                         )
                         path_checkpoint = kwargs.pop("checkpoint_tactile")
-                    tactile_decoder_embed_dim = kwargs.pop('tactile_decoder_embed_dim')
-                    self.tactile_decoder = load_tactile_resnet(tactile_decoder_embed_dim, self.root_dir,
-                                                               path_checkpoint)
 
+                    # load a simple tactile decoder
+                    tactile_decoder_embed_dim = kwargs.pop('tactile_decoder_embed_dim')
+                    self.tactile_decoder = load_tactile_resnet(tactile_decoder_embed_dim,
+                                                               self.root_dir,
+                                                               path_checkpoint,
+                                                               pre_trained=kwargs.pop('tactile_pretrained'))
+
+                    # add tactile mlp to the decoded features
                     self.tactile_units = kwargs.pop("tactile_units")
                     tactile_input_shape = kwargs.pop("tactile_input_shape")
-
                     self.tactile_mlp = MLP(
                         units=self.tactile_units, input_size=tactile_input_shape
                     )
 
                 if self.ft_info:
+                    assert 'ft is not supported yet, force rendering is currently ambiguous'
                     self.ft_units = kwargs.pop("ft_units")
                     ft_input_shape = kwargs.pop("ft_input_shape")
                     # self.ft_mlp = MLP(
@@ -155,9 +160,12 @@ class ActorCritic(nn.Module):
         extrin, extrin_gt = None, None
         if self.priv_info:
             if self.priv_info_stage2:
-                extrin_ft = self.ft_adapt_tconv(obs_dict['ft_hist'])
+                # currently ft is useless.
+                # extrin_ft = self.ft_adapt_tconv(obs_dict['ft_hist'])
                 extrin_tactile = self._tactile_encode(obs_dict['tactile_hist'])
-                extrin = torch.cat([extrin_tactile, extrin_ft], dim=-1)
+                # extrin = torch.cat([extrin_tactile, extrin_ft], dim=-1)
+
+                extrin = extrin_tactile
                 # during supervised training, extrin has gt label
                 extrin_gt = self.env_mlp(obs_dict['priv_info']) if 'priv_info' in obs_dict else extrin
                 extrin_gt = torch.tanh(extrin_gt)  # Why tanh?
@@ -195,7 +203,7 @@ class ActorCritic(nn.Module):
     # @torch.no_grad()
     def _tactile_encode(self, images):
 
-        #                   E, T, W, H, C           E, T, C, W, H
+        #                E, T,(finger) W, H, C  ->   E, T, C, W, H
         left_seq = images[:, :, 0, :, :, :].permute(0, 1, 4, 2, 3)
         right_seq = images[:, :, 1, :, :, :].permute(0, 1, 4, 2, 3)
         mid_seq = images[:, :, 2, :, :, :].permute(0, 1, 4, 2, 3)
