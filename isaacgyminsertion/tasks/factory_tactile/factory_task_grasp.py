@@ -814,7 +814,7 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         valid_env_ids = env_ids[cond.nonzero()]
 
         # TODO: move this to a separate function
-        if valid_env_ids.shape[0] > 0:
+        if valid_env_ids.shape[0] > 0 and False:
             socket_pos = self.root_pos[valid_env_ids, self.socket_actor_id_env, :].clone().cpu().numpy()
             socket_quat = self.root_quat[valid_env_ids, self.socket_actor_id_env, :].clone().cpu().numpy()
             plug_pos = self.root_pos[valid_env_ids, self.plug_actor_id_env, :].clone().cpu().numpy()

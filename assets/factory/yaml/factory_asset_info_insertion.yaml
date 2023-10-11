@@ -238,6 +238,20 @@ rectangular_peg_hole_16mm_loose:
         density: 8000.0
         friction: 0.5
 
+yellow_round_peg_2in:
+    round_peg_2in:
+        urdf_path: 'yellow_round_peg_2in'
+        diameter: 0.0508
+        length: 0.0762
+        density: 700.0
+        friction: 0.5
+    round_hole_16mm:
+        urdf_path: 'green_round_hole_2in'
+        diameter: 0.05105
+        height: 0.0381
+        density: 8000.0
+        friction: 0.5
+
 bnc:
     bnc_plug:
         urdf_path: 'factory_bnc_plug'

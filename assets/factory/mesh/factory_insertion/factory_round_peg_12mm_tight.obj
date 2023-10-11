@@ -1,6 +1,5 @@
 mtllib factory_round_peg_12mm_tight.mtl
 g Round Peg
-usemtl 0.980392_0.713725_0.003922_0.000000_0.000000
 o mesh0
 v 0 3.6721e-19 0.05 
 v 0.00549177 0.000239776 0.05 

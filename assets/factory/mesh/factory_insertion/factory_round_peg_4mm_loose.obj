@@ -1,6 +1,5 @@
 mtllib factory_round_peg_4mm_loose.mtl
 g Round Peg
-usemtl 0.980392_0.713725_0.003922_0.000000_0.000000
 o mesh0
 v 0 1.22097e-19 0.05 
 v 0.00149258 6.51674e-05 0.05 
