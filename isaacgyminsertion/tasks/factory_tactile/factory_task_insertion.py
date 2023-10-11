@@ -227,11 +227,11 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             self.keypoints_plug[:, idx] = torch_jit_utils.tf_combine(self.plug_quat,
                                                                      self.plug_pos,
                                                                      self.identity_quat,
-                                                                     (keypoint_offset * self.plug_heights))[1]
+                                                                     (keypoint_offset * self.socket_heights*2))[1]
             self.keypoints_socket[:, idx] = torch_jit_utils.tf_combine(self.socket_quat,
                                                                        self.socket_pos,
                                                                        self.identity_quat,
-                                                                       (keypoint_offset * self.plug_heights) + socket_tip_pos_local)[1]
+                                                                       (keypoint_offset * self.socket_heights*2) + socket_tip_pos_local)[1]
 
         if update_tactile and self.cfg_env.env.tactile:
             # left_finger_pose = pose_vec_to_mat(torch.cat((self.left_finger_pos,
@@ -382,6 +382,8 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             self.reset_idx(env_ids)
 
         self.actions = actions.clone().to(self.device)  # shape = (num_envs, num_actions); values = [-1, 1]
+        # self.actions[:, :6] = 0.  # shape = (num_envs, num_actions); values = [-1, 1]
+        # self.actions[:, 1] = -0.1  # shape = (num_envs, num_actions); values = [-1, 1]
         # print('actions', self.actions)
         delta_targets = torch.cat([
             self.actions[:, :3] @ torch.diag(torch.tensor(self.cfg_task.rl.pos_action_scale, device=self.device)),  # 3
@@ -434,14 +436,14 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.compute_observations()
         self.compute_reward()
 
-        if self.viewer and True:
+        if self.viewer or True:
             # draw axes on target object
             self.gym.clear_lines(self.viewer)
             self.gym.refresh_rigid_body_state_tensor(self.sim)
             
             rotate_vec = lambda q, x: quat_apply(q, to_torch(x, device=self.device) * 0.2).cpu().numpy()
-            
-            for i in range(1):
+            num_envs = 1
+            for i in range(num_envs):
                 keypoints = self.keypoints_plug[i].clone().cpu().numpy()
                 quat = self.plug_quat[i, :]
                 # print(keypoints)
@@ -458,7 +460,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                     self.gym.add_lines(self.viewer, self.envs[i], 1, [ob[0], ob[1], ob[2], targety[0], targety[1], targety[2]], [0.85, 0.1, 0.1])
                     self.gym.add_lines(self.viewer, self.envs[i], 1, [ob[0], ob[1], ob[2], targetz[0], targetz[1], targetz[2]], [0.85, 0.1, 0.1])
 
-            for i in range(1):
+            for i in range(num_envs):
                 keypoints = self.keypoints_socket[i].clone().cpu().numpy()
                 quat = self.socket_quat[i, :]
                 # print(keypoints)
@@ -476,38 +478,64 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                     self.gym.add_lines(self.viewer, self.envs[i], 1, [ob[0], ob[1], ob[2], targetz[0], targetz[1], targetz[2]], [0.1, 0.85, 0.1])
 
 
-                # targetx = (self.socket_tip[i] + quat_apply(self.socket_quat[i],
-                #                                            to_torch([1, 0, 0], device=self.device) * 0.2)).cpu().numpy()
-                # targety = (self.socket_tip[i] + quat_apply(self.socket_quat[i],
-                #                                            to_torch([0, 1, 0], device=self.device) * 0.2)).cpu().numpy()
-                # targetz = (self.socket_tip[i] + quat_apply(self.socket_quat[i],
-                #                                            to_torch([0, 0, 1], device=self.device) * 0.2)).cpu().numpy()
+            #     # targetx = (self.socket_tip[i] + quat_apply(self.socket_quat[i],
+            #     #                                            to_torch([1, 0, 0], device=self.device) * 0.2)).cpu().numpy()
+            #     # targety = (self.socket_tip[i] + quat_apply(self.socket_quat[i],
+            #     #                                            to_torch([0, 1, 0], device=self.device) * 0.2)).cpu().numpy()
+            #     # targetz = (self.socket_tip[i] + quat_apply(self.socket_quat[i],
+            #     #                                            to_torch([0, 0, 1], device=self.device) * 0.2)).cpu().numpy()
                 
-                # p0 = self.socket_tip[i].cpu().numpy()
-                # self.gym.add_lines(self.viewer, self.envs[i], 1,
-                #                    [p0[0], p0[1], p0[2], targetx[0], targetx[1], targetx[2]], [0.85, 0.1, 0.1])
-                # self.gym.add_lines(self.viewer, self.envs[i], 1,
-                #                    [p0[0], p0[1], p0[2], targety[0], targety[1], targety[2]], [0.1, 0.85, 0.1])
-                # self.gym.add_lines(self.viewer, self.envs[i], 1,
-                #                    [p0[0], p0[1], p0[2], targetz[0], targetz[1], targetz[2]], [0.1, 0.1, 0.85])
+            #     # p0 = self.socket_tip[i].cpu().numpy()
+            #     # self.gym.add_lines(self.viewer, self.envs[i], 1,
+            #     #                    [p0[0], p0[1], p0[2], targetx[0], targetx[1], targetx[2]], [0.85, 0.1, 0.1])
+            #     # self.gym.add_lines(self.viewer, self.envs[i], 1,
+            #     #                    [p0[0], p0[1], p0[2], targety[0], targety[1], targety[2]], [0.1, 0.85, 0.1])
+            #     # self.gym.add_lines(self.viewer, self.envs[i], 1,
+            #     #                    [p0[0], p0[1], p0[2], targetz[0], targetz[1], targetz[2]], [0.1, 0.1, 0.85])
 
-                # objectx = (self.plug_com_pos[i] + quat_apply(self.plug_quat[i], to_torch([1, 0, 0],
-                #                                                                          device=self.device) * 0.2)).cpu().numpy()
-                # objecty = (self.plug_com_pos[i] + quat_apply(self.plug_quat[i], to_torch([0, 1, 0],
-                #                                                                          device=self.device) * 0.2)).cpu().numpy()
-                # objectz = (self.plug_com_pos[i] + quat_apply(self.plug_quat[i], to_torch([0, 0, 1],
-                #                                                                          device=self.device) * 0.2)).cpu().numpy()
+            #     # objectx = (self.plug_com_pos[i] + quat_apply(self.plug_quat[i], to_torch([1, 0, 0],
+            #     #                                                                          device=self.device) * 0.2)).cpu().numpy()
+            #     # objecty = (self.plug_com_pos[i] + quat_apply(self.plug_quat[i], to_torch([0, 1, 0],
+            #     #                                                                          device=self.device) * 0.2)).cpu().numpy()
+            #     # objectz = (self.plug_com_pos[i] + quat_apply(self.plug_quat[i], to_torch([0, 0, 1],
+            #     #                                                                          device=self.device) * 0.2)).cpu().numpy()
 
-                # p0 = self.plug_com_pos[i].cpu().numpy()
-                # self.gym.add_lines(self.viewer, self.envs[i], 1,
-                #                    [p0[0], p0[1], p0[2], objectx[0], objectx[1], objectx[2]], [0.85, 0.1, 0.1])
-                # self.gym.add_lines(self.viewer, self.envs[i], 1,
-                #                    [p0[0], p0[1], p0[2], objecty[0], objecty[1], objecty[2]], [0.1, 0.85, 0.1])
-                # self.gym.add_lines(self.viewer, self.envs[i], 1,
-                #                    [p0[0], p0[1], p0[2], objectz[0], objectz[1], objectz[2]], [0.1, 0.1, 0.85])
+            #     # p0 = self.plug_com_pos[i].cpu().numpy()
+            #     # self.gym.add_lines(self.viewer, self.envs[i], 1,
+            #     #                    [p0[0], p0[1], p0[2], objectx[0], objectx[1], objectx[2]], [0.85, 0.1, 0.1])
+            #     # self.gym.add_lines(self.viewer, self.envs[i], 1,
+            #     #                    [p0[0], p0[1], p0[2], objecty[0], objecty[1], objecty[2]], [0.1, 0.85, 0.1])
+            #     # self.gym.add_lines(self.viewer, self.envs[i], 1,
+            #     #                    [p0[0], p0[1], p0[2], objectz[0], objectz[1], objectz[2]], [0.1, 0.1, 0.85])
 
-                # self.keypoint_offsets
-                # pass
+            #     # self.keypoint_offsets
+            #     # pass
+
+            # for i in range(num_envs):
+            #     ob = self.plug_pos[i].cpu().numpy()
+            #     quat = self.plug_quat[i, :]
+
+            #     targetx = ob + rotate_vec(quat, [1, 0, 0])
+            #     targety = ob + rotate_vec(quat, [0, 1, 0])
+            #     targetz = ob + rotate_vec(quat, [0, 0, 1])
+
+            #     self.gym.add_lines(self.viewer, self.envs[i], 1, [ob[0], ob[1], ob[2], targetx[0], targetx[1], targetx[2]], [0.85, 0.1, 0.1])
+            #     # self.gym.add_lines(self.viewer, self.envs[i], 1, [ob[0], ob[1], ob[2], targety[0], targety[1], targety[2]], [0.85, 0.1, 0.1])
+            #     # self.gym.add_lines(self.viewer, self.envs[i], 1, [ob[0], ob[1], ob[2], targetz[0], targetz[1], targetz[2]], [0.85, 0.1, 0.1])
+
+            # for i in range(num_envs):
+            #     ob = self.socket_tip[i].cpu().numpy()
+            #     quat = self.socket_quat[i, :]
+
+            #     targetx = ob + rotate_vec(quat, [1, 0, 0])
+            #     targety = ob + rotate_vec(quat, [0, 1, 0])
+            #     targetz = ob + rotate_vec(quat, [0, 0, 1])
+
+            #     self.gym.add_lines(self.viewer, self.envs[i], 1, [ob[0], ob[1], ob[2], targetx[0], targetx[1], targetx[2]], [0.1, 0.85, 0.1])
+            #     # self.gym.add_lines(self.viewer, self.envs[i], 1, [ob[0], ob[1], ob[2], targety[0], targety[1], targety[2]], [0.85, 0.1, 0.1])
+            #     # self.gym.add_lines(self.viewer, self.envs[i], 1, [ob[0], ob[1], ob[2], targetz[0], targetz[1], targetz[2]], [0.85, 0.1, 0.1])
+
+
 
         self._render_headless()
 
@@ -535,10 +563,11 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         # Define observations (for actor)
         obs_tensors = [
-            # self.arm_joint_queue.reshape(self.num_envs, -1),
+            self.arm_joint_queue.reshape(self.num_envs, -1), # 7 * hist
             # self.arm_vel_queue.reshape(self.num_envs, -1),
             self.eef_queue.reshape(self.num_envs, -1),  # (envs, 7 * hist)
             self.goal_noisy_queue.reshape(self.num_envs, -1),  # (envs, 7 * hist)
+
             self.actions_queue.reshape(self.num_envs, -1),  # (envs, 6 * hist)
             self.targets_queue.reshape(self.num_envs, -1),  # (envs, 6 * hist)
         ]  #
@@ -561,7 +590,8 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                     obj_pos=self.plug_pos, obj_quat=self.plug_quat
                 )
             # todo should be added to priv.
-
+        
+        normalize_forces = lambda x: (torch.clamp(torch.norm(x, dim=-1), 0, 100)/100).view(-1, 1)
         state_tensors = [
             left_tip_pose_wrt_robot[0],  # 3
             left_tip_pose_wrt_robot[1],  # 4
@@ -576,11 +606,16 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             plug_bottom_wrt_robot[0],  # 3
             plug_bottom_wrt_robot[1],  # 4
             physics_params,  # 2
-            self.left_finger_force.clone(),  # 3
-            self.right_finger_force.clone(),  # 3
-            self.middle_finger_force.clone(),  # 3
-            self.socket_contact_force.clone()  # 3
+            # TODO: change this to binary contact
+            normalize_forces(self.left_finger_force.clone()),  # 1
+            normalize_forces(self.right_finger_force.clone()),  # 1
+            normalize_forces(self.middle_finger_force.clone()),  # 1
+            # self.socket_contact_force.clone()  # 3
+
+            # TODO: add object shapes -- maybe as a point net model?
+            self.plug_heights,  # 1
         ]
+
 
         self.obs_buf = torch.cat(obs_tensors, dim=-1)  # shape = (num_envs, num_observations)
         self.states_buf = torch.cat(state_tensors, dim=-1)  # shape = (num_envs, num_states)
@@ -590,8 +625,8 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
     def compute_reward(self):
         """Detect successes and failures. Update reward and reset buffers."""
 
-        self._update_rew_buf()
         self._update_reset_buf()
+        self._update_rew_buf()
 
     def _update_rew_buf(self):
         """Compute reward at current timestep."""
@@ -601,38 +636,48 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         plug_ori_penalty = torch.norm(self.plug_quat - self.identity_quat, p=2, dim=-1)
         is_plug_oriented = plug_ori_penalty < self.cfg_task.rl.orientation_threshold
 
-        self.dist_plug_socket = torch.norm(self.plug_pos - self.socket_pos, p=2, dim=-1)
+        keypoint_r =  keypoint_reward * -0.2
+        dist_reset = (self.dist_plug_socket > 0.03) * -2.
+        
 
-        self.rew_buf[:] = keypoint_reward * self.cfg_task.rl.keypoint_reward_scale \
-                          + plug_ori_penalty * self.cfg_task.rl.orientation_penalty_scale + \
-                          + action_penalty * self.cfg_task.rl.action_penalty_scale +\
-                          + self.dist_plug_socket * self.cfg_task.rl.dist_penalty_scale
+        # self.rew_buf[:] = 
+                        #   + plug_ori_penalty * self.cfg_task.rl.orientation_penalty_scale + \
+                        #   + action_penalty * self.cfg_task.rl.action_penalty_scale \
+                        #   + self.dist_plug_socket * self.cfg_task.rl.dist_penalty_scale
+        # print('reward', self.rew_buf[0])
 
-
+        
 
         is_plug_engaged_w_socket = self._check_plug_engaged_w_socket()
+        engaged_env_ids = is_plug_engaged_w_socket.nonzero()
+
+            
+
+        # engagement_reward_scale = self._get_engagement_reward_scale(is_plug_engaged_w_socket,
+        #                                                             self.cfg_task.rl.success_height_thresh)
+
+        # is_plug_inserted_in_socket = self._check_plug_inserted_in_socket()
+        # self.time_complete_task[self.time_complete_task == 0] = (is_plug_inserted_in_socket * self.progress_buf)[
+        #     self.time_complete_task == 0
+        #     ]
 
         engagement_reward_scale = self._get_engagement_reward_scale(is_plug_engaged_w_socket,
                                                                     self.cfg_task.rl.success_height_thresh)
+        
+        # engagement_reward = engagement_reward_scale * self.cfg_task.rl.engagement_bonus
+        # if len(engaged_env_ids) > 0:
+        #     print(keypoint_r[engaged_env_ids], dist_reset[engaged_env_ids], engagement_reward[engaged_env_ids])
 
-        is_plug_inserted_in_socket = self._check_plug_inserted_in_socket()
-        self.time_complete_task[self.time_complete_task == 0] = (is_plug_inserted_in_socket * self.progress_buf)[
-            self.time_complete_task == 0
-            ]
-
+        # print('engagement_reward_scale', (engagement_reward_scale * self.cfg_task.rl.engagement_bonus))
+        self.rew_buf[:] = keypoint_r + dist_reset + (engagement_reward_scale * self.cfg_task.rl.engagement_bonus)
+        # print('reward', self.rew_buf[0])
+        # self.rew_buf[:] += is_plug_inserted_in_socket * self.cfg_task.rl.success_bonus
         # In this policy, episode length is constant across all envs todo why?
         is_last_step = (self.progress_buf[0] == self.max_episode_length - 1)
-
         if is_last_step:
-            engagement_reward_scale = self._get_engagement_reward_scale(is_plug_engaged_w_socket,
-                                                                        self.cfg_task.rl.success_height_thresh)
-            self.rew_buf[:] += (engagement_reward_scale * self.cfg_task.rl.engagement_bonus)
-
-            self.rew_buf[:] += is_plug_inserted_in_socket * self.cfg_task.rl.success_bonus
-
             self.extras["engaged_w_socket"] = torch.mean(is_plug_engaged_w_socket.float())
             self.extras["plug_oriented"] = torch.mean(is_plug_oriented.float())
-            self.extras["successes"] = torch.mean(is_plug_inserted_in_socket.float())
+            # self.extras["successes"] = torch.mean(is_plug_inserted_in_socket.float())
             self.extras["dist_plug_socket"] = torch.mean(self.dist_plug_socket)
             self.extras["keypoint_reward"] = torch.mean(keypoint_reward.abs())
             self.extras["action_penalty"] = torch.mean(action_penalty)
@@ -641,8 +686,8 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             self.extras["mean_time_complete_task"] = torch.mean(
                 self.time_complete_task.float()
             )
-            a = self.time_complete_task.float() * is_plug_inserted_in_socket
-            self.extras["time_success_task"] = a.sum() / torch.where(a > 0)[0].shape[0]
+            # a = self.time_complete_task.float() * is_plug_inserted_in_socket
+            # self.extras["time_success_task"] = a.sum() / torch.where(a > 0)[0].shape[0]
 
         # TODO update reward function to reset at insertion
 
@@ -679,11 +724,13 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         # print('object is grasped', d, self.cfg_task.env.plug_grasp_threshold, self.reset_buf)
 
         # If plug is too far from socket pos
-        self.reset_buf[:] = torch.where(self.dist_plug_socket > self.cfg_task.rl.far_error_thresh,
+        self.dist_plug_socket = torch.norm(self.plug_pos - self.socket_pos, p=2, dim=-1)
+        self.reset_buf[:] = torch.where(self.dist_plug_socket > 0.03, #  self.cfg_task.rl.far_error_thresh,
                                         torch.ones_like(self.reset_buf),
                                         self.reset_buf)
-
         # print('plug is too far', self.reset_buf)
+
+        # self.reset_buf[:] = self._check_plug_inserted_in_socket() * self.reset_buf
 
     def _reset_environment(self, env_ids):
 
@@ -699,6 +746,9 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         plug_pos = self.init_plug_pos[random_init_idx]
         plug_quat = self.init_plug_quat[random_init_idx]
 
+        if 0 in env_ids:
+            self.init_plug_pos_cam[0, :] = plug_pos[0, :]
+
         object_pose = {
             'socket_pose': socket_pos,
             'socket_quat': socket_quat,
@@ -709,10 +759,11 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
     def reset_idx(self, env_ids):
         """Reset specified environments."""
-
+        # self.test_plot = []
         if self.randomize:
             self.apply_randomizations(self.randomization_params)
 
+        # self.rew_buf[:] = 0
         # self._reset_kuka(env_ids)
         # self._reset_object(env_ids)
         self._reset_environment(env_ids)
@@ -984,6 +1035,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.reset_buf[env_ids] = 0
         self.progress_buf[env_ids] = 0
         self.time_complete_task = torch.zeros_like(self.progress_buf)
+        self.rew_buf[env_ids] = 0
 
         # Reset history
         self.ft_queue[env_ids] = 0
@@ -1140,7 +1192,6 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
     def _get_keypoint_dist(self):
         """Get keypoint distances."""
 
-        # print(self.keypoints_plug[0], self.keypoints_socket[0])
 
         keypoint_dist = torch.sum(torch.norm(self.keypoints_socket - self.keypoints_plug, p=2, dim=-1), dim=-1)
         return keypoint_dist
@@ -1182,7 +1233,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         keypoint_dist = torch.norm(self.keypoints_socket - self.keypoints_plug, p=2, dim=-1)
 
-        is_plug_close_to_socket = torch.where(torch.sum(keypoint_dist, dim=-1) < self.cfg_task.rl.close_error_thresh,
+        is_plug_close_to_socket = torch.where(torch.sum(keypoint_dist, dim=-1) < self.cfg_task.rl.close_error_thresh, # 1 cm
                                               torch.ones_like(self.progress_buf),
                                               torch.zeros_like(self.progress_buf))
 
@@ -1193,7 +1244,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         # Check if plug is within threshold distance of assembled state
         is_plug_below_insertion_height = (
-                self.plug_pos[:, 2] < self.socket_pos[:, 2] + self.cfg_task.rl.success_height_thresh
+                self.plug_pos[:, 2] < (self.socket_pos[:, 2] + self.socket_heights.view(-1))
         )
 
         # Check if plug is close to socket
@@ -1215,13 +1266,14 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         # NOTE: In assembled state, plug origin is coincident with socket origin;
         # thus plug pos must be offset to compute actual pos of base of plug
         is_plug_below_engagement_height = (
-                self.plug_pos[:, 2] + self.cfg_task.env.socket_base_height < self.socket_tip[:, 2]
+                (self.plug_pos[:, 2]) < self.socket_tip[:, 2]
         )
 
         # Check if plug is close to socket
         # NOTE: This check addresses edge case where base of plug is below top of socket,
         # but plug is outside socket
-        is_plug_close_to_socket = self._check_plug_close_to_socket()
+        is_plug_close_to_socket = torch.norm(self.plug_pos[:, :2] - self.socket_tip[:, :2], p=2, dim=-1) < 0.005 # self._check_plug_close_to_socket()
+        # print(is_plug_below_engagement_height[0], is_plug_close_to_socket[0])
 
         # Combine both checks
         is_plug_engaged_w_socket = torch.logical_and(
@@ -1243,7 +1295,6 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         # NOTE: Edge case: if success_height_thresh is greater than 0.1,
         # denominator could be negative
         reward_scale[engaged_idx] = 1.0 / ((height_dist - success_height_thresh) + 0.1)
-
         return reward_scale
 
     def step(self, actions):

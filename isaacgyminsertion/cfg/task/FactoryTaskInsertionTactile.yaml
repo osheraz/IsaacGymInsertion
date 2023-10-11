@@ -10,8 +10,8 @@ physics_engine: ${..physics_engine}
 
 env:
     numEnvs: ${resolve_default:128,${...num_envs}}
-    numStates: 56 # 62
-    numObservations: 130 # 84
+    numObservations: 165 
+    numStates: 48 # 62
     numActions: 6 # [position, ori]
     numTargets: 6 # [position, ori]
 
@@ -69,7 +69,7 @@ randomize:
 
 rl:
 
-    pos_action_scale: [0.001, 0.001, 0.001]
+    pos_action_scale: [0.00, 0.000, 0.01]
     rot_action_scale: [0.001, 0.001, 0.001]
 
     force_action_scale: [1.0, 1.0, 1.0]
@@ -89,17 +89,16 @@ rl:
     orientation_penalty_scale: -0.1
     dist_penalty_scale: -0.0
 
-    max_episode_length: 750 # 8192  # terminate episode after this number of timesteps (failure)
+    max_episode_length: 500 # 8192  # terminate episode after this number of timesteps (failure)
 
     orientation_threshold: 0.1
     far_error_thresh: 0.100  # threshold above which plug is considered too far from bolt
-    close_error_thresh: 0.1  # threshold below which plug is considered close enough to bolt
-    success_bonus: 0.0  # bonus if plug is close enough to base of bolt shank
+    close_error_thresh: 0.01  # threshold below which plug is considered close enough to bolt
+    success_bonus: 1.0  # bonus if plug is close enough to base of bolt shank
 
     # Success bonus
     success_height_thresh: 0.003  # threshold distance below which plug is considered successfully inserted
-    engagement_bonus: 10.0  # bonus if plug is engaged (partially inserted) with socket
-
+    engagement_bonus: 0.005 # bonus if plug is engaged (partially inserted) with socket
 
 
 ctrl:

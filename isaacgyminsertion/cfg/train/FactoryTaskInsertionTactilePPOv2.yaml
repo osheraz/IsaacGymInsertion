@@ -25,7 +25,7 @@ ppo:
   learning_rate: 5e-3
   kl_threshold: 0.02
   # PPO batch collection
-  horizon_length: 24 # 64 , 8
+  horizon_length: 32 # 64 , 8
   mini_epochs: 8 # 8
   minibatch_size: 24 # batch size = num_envs * horizon_length; minibatch_size = batch_size / num_minibatches
 
@@ -40,7 +40,7 @@ ppo:
   grad_norm: 1.0
   # snapshot setting
   save_best_after: 0
-  save_frequency: 500
+  save_frequency: 300
   max_agent_steps: 1500000000
 
   # rma setting

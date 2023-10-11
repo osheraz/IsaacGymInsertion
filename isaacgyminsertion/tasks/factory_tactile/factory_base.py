@@ -47,6 +47,7 @@ from isaacgyminsertion.tasks.base.vec_task import VecTask
 import isaacgyminsertion.tasks.factory_tactile.factory_control as fc
 from isaacgyminsertion.tasks.factory_tactile.factory_schema_class_base import FactoryABCBase
 from isaacgyminsertion.tasks.factory_tactile.factory_schema_config_base import FactorySchemaConfigBase
+from matplotlib import pyplot as plt
 
 
 class FactoryBaseTactile(VecTask, FactoryABCBase):
@@ -243,6 +244,8 @@ class FactoryBaseTactile(VecTask, FactoryABCBase):
         # self.ft_sensor_tensor = self.ft_sensors.view(self.num_envs, (len(self.fingertip_handles) + 1) * 6)
         self.ft_sensor_tensor = self.ft_sensors.view(self.num_envs, 1 * 6)
 
+        
+
         self.arm_dof_pos = self.dof_pos[:, 0:7]
         self.arm_dof_vel = self.dof_vel[:, 0:7]
         self.arm_mass_matrix = self.mass_matrix[:, 0:7, 0:7]  # for kuka arm (not gripper)
@@ -295,6 +298,8 @@ class FactoryBaseTactile(VecTask, FactoryABCBase):
         self.fingertip_midpoint_quat = self.fingertip_centered_quat  # always equal
         self.fingertip_midpoint_linvel = self.fingertip_centered_linvel.detach().clone()  # initial value
 
+        self.init_plug_pos_cam = torch.zeros((1, 3), device=self.device)
+
         # From sum of angular velocities
         # (https://physics.stackexchange.com/questions/547698/understanding-addition-of-angular-velocity),
         # angular velocity of midpoint w.r.t. world is equal to sum of
@@ -326,6 +331,8 @@ class FactoryBaseTactile(VecTask, FactoryABCBase):
 
         self.identity_quat = torch.tensor([0.0, 0.0, 0.0, 1.0], device=self.device).unsqueeze(0).repeat(self.num_envs,
                                                                                                         1)
+        
+        # self.test_plot = []
 
     def refresh_base_tensors(self):
         """Refresh tensors."""
@@ -343,7 +350,14 @@ class FactoryBaseTactile(VecTask, FactoryABCBase):
             self.gym.step_graphics(self.sim)
             self.gym.fetch_results(self.sim, True)
             self.gym.render_all_camera_sensors(self.sim)
-            # self.gym.start_access_image_tensors(self.sim)
+            self.gym.start_access_image_tensors(self.sim)
+
+        # self.test_plot.append(self.socket_contact_force[0, 2].item())
+        # # if len(self.test_plot) > 100:
+        # plt.plot(self.test_plot[:])
+        # plt.pause(0.00001)
+        # plt.clf()
+
 
         # Privileged
         self.finger_midpoint_pos = (self.left_finger_pos + self.right_finger_pos + self.middle_finger_pos) * (1 / 3)

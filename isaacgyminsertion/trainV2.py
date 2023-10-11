@@ -91,7 +91,8 @@ def run(cfg: DictConfig):
     #     video_length=100,
     # )
 
-    output_dif = os.path.join('outputs', cfg.train.ppo.output_name)
+    output_dif = os.path.join('outputs', str(datetime.now().strftime("%m-%d-%y")))
+    output_dif = os.path.join(output_dif, str(datetime.now().strftime("%H-%M-%S")))
     os.makedirs(output_dif, exist_ok=True)
     agent = eval(cfg.train.algo)(envs, output_dif, full_config=cfg)
 

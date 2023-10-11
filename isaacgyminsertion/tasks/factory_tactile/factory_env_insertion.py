@@ -215,7 +215,7 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
 
         socket_options = gymapi.AssetOptions()
         socket_options.flip_visual_attachments = False
-        socket_options.fix_base_link = True
+        socket_options.fix_base_link = False
         socket_options.thickness = 0.0  # default = 0.02
         socket_options.armature = 0.0  # default = 0.0
         socket_options.use_physx_armature = True
@@ -237,7 +237,7 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
             plug_file = self.asset_info_insertion[subassembly][components[0]]['urdf_path'] + '.urdf'
             socket_file = self.asset_info_insertion[subassembly][components[1]]['urdf_path'] + '.urdf'
             plug_options.density = self.asset_info_insertion[subassembly][components[0]]['density']
-            socket_options.density = self.asset_info_insertion[subassembly][components[1]]['density']
+            socket_options.density = 1000 * self.asset_info_insertion[subassembly][components[1]]['density']
             plug_asset = self.gym.load_asset(self.sim, urdf_root, plug_file, plug_options)
             socket_asset = self.gym.load_asset(self.sim, urdf_root, socket_file, socket_options)
             plug_assets.append(plug_asset)
@@ -433,9 +433,14 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
                 self.camera_props = gymapi.CameraProperties()
                 self.camera_props.width = 1280
                 self.camera_props.height = 720
-                self.rendering_camera = self.gym.create_camera_sensor(env_ptr, self.camera_props)
-                print('CAMERA:', self.rendering_camera)
-                self.gym.set_camera_location(self.rendering_camera, env_ptr, gymapi.Vec3(1.5, 1, 3.0),
+                self.rendering_camera1 = self.gym.create_camera_sensor(env_ptr, self.camera_props)
+                print('CAMERA:', self.rendering_camera1)
+                self.gym.set_camera_location(self.rendering_camera1, env_ptr, gymapi.Vec3(1.5, 1, 3.0),
+                                             gymapi.Vec3(0, 0, 0))
+                
+                self.rendering_camera2 = self.gym.create_camera_sensor(env_ptr, self.camera_props)
+                print('CAMERA:', self.rendering_camera2)
+                self.gym.set_camera_location(self.rendering_camera2, env_ptr, gymapi.Vec3(1.5, 1, 3.0),
                                              gymapi.Vec3(0, 0, 0))
 
             # add Tactile modules for the tips
@@ -487,7 +492,7 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
                                                                        gymapi.DOMAIN_ENV)
         self.hand_body_id_env = self.gym.find_actor_rigid_body_index(env_ptr, kuka_handle, 'gripper_base_link',
                                                                      gymapi.DOMAIN_ENV)
-        self.wrist_body_id_env = self.gym.find_actor_rigid_body_index(env_ptr, kuka_handle, 'iiwa7_link_7',
+        self.wrist_body_id_env = self.gym.find_actor_rigid_body_index(env_ptr, kuka_handle, 'dummy_ft_link',
                                                                       gymapi.DOMAIN_ENV)
 
         self.left_finger_body_id_env = self.gym.find_actor_rigid_body_index(env_ptr, kuka_handle, 'finger_1_3',
@@ -574,16 +579,24 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
         #         print(len(self.complete_video_frames))
         if self.record_now and self.complete_video_frames is not None and len(self.complete_video_frames) == 0:
             # bx, by, bz = self.root_states[0, 0], self.root_states[0, 1], self.root_states[0, 2]
-            bx, by, bz = -0.0012, -0.0093, 0.4335  # self.root_pos[0, self.plug_actor_id_env, 0], self.root_pos[0, self.plug_actor_id_env, 1], self.root_pos[0, self.plug_actor_id_env, 2]
+            # bx, by, bz = -0.0012, -0.0093, 0.4335  # self.root_pos[0, self.plug_actor_id_env, 0], self.root_pos[0, self.plug_actor_id_env, 1], self.root_pos[0, self.plug_actor_id_env, 2]
             # bx, by, bz = 0, 1, 0
+            bx, by, bz = self.init_plug_pos_cam[0, 0], self.init_plug_pos_cam[0, 1], self.init_plug_pos_cam[0, 2]
 
-            self.gym.set_camera_location(self.rendering_camera, self.envs[0], gymapi.Vec3(bx - 0.2, by - 0.2, bz+0.2),
+            self.gym.set_camera_location(self.rendering_camera1, self.envs[0], gymapi.Vec3(bx - 0.1, by - 0.1, bz+0.1),
                                          gymapi.Vec3(bx, by, bz))
-            self.video_frame = self.gym.get_camera_image(self.sim, self.envs[0], self.rendering_camera,
+            self.video_frame1 = self.gym.get_camera_image(self.sim, self.envs[0], self.rendering_camera1,
                                                          gymapi.IMAGE_COLOR)
-            self.video_frame = self.video_frame.reshape((self.camera_props.height, self.camera_props.width, 4))
+            self.video_frame1 = self.video_frame1.reshape((self.camera_props.height, self.camera_props.width, 4))
+
+            self.gym.set_camera_location(self.rendering_camera2, self.envs[0], gymapi.Vec3(bx - 0.1, by + 0.1, bz+0.1),
+                                         gymapi.Vec3(bx, by, bz))
+            self.video_frame2 = self.gym.get_camera_image(self.sim, self.envs[0], self.rendering_camera2,
+                                                         gymapi.IMAGE_COLOR)
+            self.video_frame2 = self.video_frame2.reshape((self.camera_props.height, self.camera_props.width, 4))
+
             # print('video frame shape', self.video_frame.shape)
-            self.video_frames.append(self.video_frame)
+            self.video_frames.append(np.concatenate((self.video_frame1, self.video_frame2), axis=1))
 
         if self.record_now_ft and self.complete_ft_frames is not None and len(self.complete_ft_frames) == 0:
             self.ft_frames.append(0.1 * self.ft_sensor_tensor[:1].cpu().numpy().squeeze())
