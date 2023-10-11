@@ -165,7 +165,7 @@ class ActorCritic(nn.Module):
                 obs = torch.cat([obs, extrin], dim=-1)
             else:
                 extrin = self.env_mlp(obs_dict['priv_info'])
-                extrin = torch.tanh(extrin)
+                extrin = torch.tanh(extrin) # layer normalize instead?
                 obs = torch.cat([obs, extrin], dim=-1)
 
         x = self.actor_mlp(obs)
@@ -176,8 +176,7 @@ class ActorCritic(nn.Module):
 
     def forward(self, input_dict):
         prev_actions = input_dict.get('prev_actions', None)
-        rst = self._actor_critic(input_dict)
-        mu, logstd, value, extrin, extrin_gt = rst
+        mu, logstd, value, extrin, extrin_gt = self._actor_critic(input_dict)
         sigma = torch.exp(logstd)
         distr = torch.distributions.Normal(mu, sigma)
         entropy = distr.entropy().sum(dim=-1)

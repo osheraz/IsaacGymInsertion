@@ -255,7 +255,7 @@ class PPO(object):
                           f'Last FPS: {last_fps:.1f} | ' \
                           f'Collect Time: {self.data_collect_time / 60:.1f} min | ' \
                           f'Train RL Time: {self.rl_train_time / 60:.1f} min | ' \
-                          f'Current Best: {self.best_rewards:.2f}'
+                          f'Mean Reward: {self.best_rewards:.2f}'
             print(info_string)
 
             self.write_stats(a_losses, c_losses, b_losses, entropies, kls, grad_norms)
@@ -273,11 +273,12 @@ class PPO(object):
                 if self.epoch_num % self.save_freq == 0:
                     self.save(os.path.join(self.nn_dir, checkpoint_name))
                     self.save(os.path.join(self.nn_dir, 'last'))
-
-            if mean_rewards > self.best_rewards and self.epoch_num >= self.save_best_after:
-                print(f'save current best reward: {mean_rewards:.2f}')
-                self.best_rewards = mean_rewards
-                self.save(os.path.join(self.nn_dir, 'best'))
+            
+            self.best_rewards = mean_rewards
+            # if mean_rewards > self.best_rewards and self.epoch_num >= self.save_best_after:
+            #     print(f'save current best reward: {mean_rewards:.2f}')
+            #     self.best_rewards = mean_rewards
+            #     self.save(os.path.join(self.nn_dir, 'best'))
 
         print('max steps achieved')
 
@@ -424,8 +425,9 @@ class PPO(object):
         # todo split into 2 plot, 1 for the fore a
         import matplotlib.pyplot as plt
         plt.figure(figsize=(8, 6))
-        plt.plot(np.array(data)[:,:3])
+        plt.plot(np.array(data)[:, :3])
         plt.xlabel('time')
+        plt.ylim([-0.25, 0.25])
         plt.ylabel('force')
         plt.savefig(f'{output_loc}_force.png')
         plt.close()
@@ -436,31 +438,52 @@ class PPO(object):
         plt.savefig(f'{output_loc}_torque.png')
         plt.close()
 
-        # fig, ax = plt.subplots()
-        #
-        # def animate(i):
-        #     ax.clear()
-        #     force = ax.plot(np.array(data)[:i*5, :3])
-        #     return force
-        #
-        # from matplotlib.animation import FuncAnimation, PillowWriter
-        # ani = FuncAnimation(fig, animate, repeat=False, interval=30, frames=len(data)//5)
-        # ani.save(f'{output_loc}_force.gif', dpi=50, writer=PillowWriter(fps=30))
 
     def log_video(self):
-        if ((self.it - self.last_recording_it) >= self.log_video_every):
+        if self.it == 0:
             self.env.start_recording()
             print("START RECORDING")
             self.last_recording_it = self.it
+            self.env.start_recording_ft()
+            print("START FT RECORDING")
+            self.last_recording_it_ft = self.it
+            return
 
         frames = self.env.get_complete_frames()
+        ft_frames = self.env.get_ft_frames()
         if len(frames) > 0:
             self.env.pause_recording()
-            video_dir = os.path.join(self.output_dir, 'videos')
+            self.env.pause_recording_ft()
+
+            if len(frames) < 20:
+                self.env.start_recording()
+                print("START RECORDING")
+                self.last_recording_it = self.it
+                self.env.start_recording_ft()
+                print("START FT RECORDING")
+                self.last_recording_it_ft = self.it
+                return
+            video_dir = os.path.join(self.output_dir, 'videos1')
             if not os.path.exists(video_dir):
                 os.makedirs(video_dir)
             self._write_video(frames, f"{video_dir}/{self.it:05d}.mp4", frame_rate=30)
             print("LOGGING VIDEO")
+
+            ft_dir = os.path.join(self.output_dir, 'ft')
+            if not os.path.exists(ft_dir):
+                os.makedirs(ft_dir)
+            self._write_ft(ft_frames, f"{ft_dir}/{self.it:05d}")
+            # self.create_line_and_image_animation(frames, ft_frames, f"{ft_dir}/{self.it:05d}_line.mp4")
+            
+            print("LOGGING FT")
+
+            self.env.start_recording()
+            print("START RECORDING")
+            self.last_recording_it = self.it
+
+            self.env.start_recording_ft()
+            print("START FT RECORDING")
+            self.last_recording_it_ft = self.it
 
     def log_ft(self):
         if ((self.it - self.last_recording_it_ft) >= self.log_ft_every):
@@ -481,7 +504,7 @@ class PPO(object):
 
         for n in range(self.horizon_length):
             self.log_video()
-            self.log_ft()
+            # self.log_ft()
             # print(f"it: {self.it}")
             self.it += 1
             res_dict = self.model_act(self.obs)
