@@ -69,7 +69,7 @@ randomize:
 
 rl:
 
-    pos_action_scale: [0.00, 0.000, 0.01]
+    pos_action_scale: [0.001, 0.001, 0.001]
     rot_action_scale: [0.001, 0.001, 0.001]
 
     force_action_scale: [1.0, 1.0, 1.0]

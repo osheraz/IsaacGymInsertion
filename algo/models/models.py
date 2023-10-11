@@ -1,7 +1,7 @@
 # --------------------------------------------------------
 # TODO
 # https://arxiv.org/abs/todo
-# Copyright (c) 2023 Osher Azulay
+# Copyright (c) 2023 Osher & Dhruv & friends?
 # Licensed under The MIT License [see LICENSE for details]
 # --------------------------------------------------------
 # --------------------------------------------------------
@@ -82,12 +82,12 @@ class ActorCritic(nn.Module):
                 # ---- tactile Decoder ----
                 # Dims of latent have to be the same |z_t - z'_t|
                 if self.tactile_info:
-                    path_checkpoint = None
-                    if kwargs.pop('tactile_pretrained'):
+                    path_checkpoint, root_dir = None, None
+                    if False: #kwargs.pop('tactile_pretrained'):
                         # we should think about decoupling this problem and pretraining a decoder
                         import os
                         current_file = os.path.abspath(__file__)
-                        self.root_dir = os.path.abspath(
+                        root_dir = os.path.abspath(
                             os.path.join(current_file, "..", "..", "..", "..", "..")
                         )
                         path_checkpoint = kwargs.pop("checkpoint_tactile")
@@ -95,9 +95,9 @@ class ActorCritic(nn.Module):
                     # load a simple tactile decoder
                     tactile_decoder_embed_dim = kwargs.pop('tactile_decoder_embed_dim')
                     self.tactile_decoder = load_tactile_resnet(tactile_decoder_embed_dim,
-                                                               self.root_dir,
+                                                               root_dir,
                                                                path_checkpoint,
-                                                               pre_trained=kwargs.pop('tactile_pretrained'))
+                                                               )
 
                     # add tactile mlp to the decoded features
                     self.tactile_units = kwargs.pop("tactile_units")
@@ -208,9 +208,9 @@ class ActorCritic(nn.Module):
         right_seq = images[:, :, 1, :, :, :].permute(0, 1, 4, 2, 3)
         mid_seq = images[:, :, 2, :, :, :].permute(0, 1, 4, 2, 3)
 
-        emb_left = self.tactile_decoder(left_seq).unsqueeze(1)
-        emb_right = self.tactile_decoder(right_seq).unsqueeze(1)
-        emb_bottom = self.tactile_decoder(mid_seq).unsqueeze(1)
+        emb_left = self.tactile_decoder(left_seq)
+        emb_right = self.tactile_decoder(right_seq)
+        emb_bottom = self.tactile_decoder(mid_seq)
 
         tactile_embeddings = torch.cat((emb_left, emb_right, emb_bottom), dim=-1)
         tac_emb = self.tactile_mlp(tactile_embeddings)
@@ -222,7 +222,7 @@ def load_tactile_resnet(tactile_decoder_embed_dim, root_dir, path_checkpoint, pr
     import algo.models.convnets.resnets as resnet
     import os
 
-    tactile_decoder = resnet.resnet18(False, False, num_classes=tactile_decoder_embed_dim)
+    tactile_decoder = resnet.resnet18(False, False, num_classes=tactile_decoder_embed_dim // 3)
 
     if pre_trained:
         tactile_decoder.load_state_dict(os.path.join(root_dir, path_checkpoint))

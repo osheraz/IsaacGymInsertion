@@ -51,8 +51,7 @@ class ExtrinsicAdapt(object):
         # ---- Tactile Info ---
         self.tactile_info = self.ppo_config["tactile_info"]
         tactile_seq_length = self.ppo_config["tactile_seq_length"]
-        self.tactile_info_embed_dim = self.network_config.tactile_mlp.units[-1]
-        self.tactile_info_dim = self.tactile_info_embed_dim * 3
+        self.tactile_info_dim = self.network_config.tactile_mlp.units[0]
         # ---- ft Info ---
         self.ft_info = self.ppo_config["ft_info"]
         self.ft_seq_length = self.ppo_config["ft_seq_length"]
@@ -90,7 +89,7 @@ class ExtrinsicAdapt(object):
         self.priv_mean_std.eval()
 
         # Currently ft is not supported
-        self.ft_mean_std = RunningMeanStd((self.ft_seq_length, 32)).to(self.device)
+        self.ft_mean_std = RunningMeanStd((self.ft_seq_length, 6)).to(self.device)
         self.ft_mean_std.train()
 
         # tactile is already normalized in task.
