@@ -115,7 +115,7 @@ class ExtrinsicAdapt(object):
         # ---- Optim ----
         adapt_params = []
         for name, p in self.model.named_parameters():
-            if 'tactile_decoder' in name or 'tactile_mlp' in name or 'ft_adapt_tconv' in name:
+            if 'tactile_decoder' in name or 'tactile_mlp' in name:# or 'ft_adapt_tconv' in name:
                 adapt_params.append(p)
             else:
                 p.requires_grad = False
