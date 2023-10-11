@@ -82,7 +82,7 @@ rl:
     clamp_rot_thresh: 1.0e-6
 
     num_keypoints: 4  # number of keypoints used in reward
-    keypoint_scale: 0.5  # length of line of keypoints
+    keypoint_scale: 1.0  # length of line of keypoints
 
     keypoint_reward_scale: -5.0  # scale on keypoint-based reward
     action_penalty_scale: -0.0  # scale on action penalty
