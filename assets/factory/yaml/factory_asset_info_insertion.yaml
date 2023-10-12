@@ -252,6 +252,20 @@ yellow_round_peg_2in:
         density: 8000.0
         friction: 0.5
 
+red_round_peg_15in:
+    round_peg_2in:
+        urdf_path: 'red_round_peg_15in'
+        diameter: 0.0381
+        length: 0.0762
+        density: 5000.0
+        friction: 0.5
+    round_hole_2in:
+        urdf_path: 'green_round_hole_2in'
+        diameter: 0.05105
+        height: 0.01905 # actually the hole is 0.0381, but I bury half into the table
+        density: 8000.0
+        friction: 0.5
+
 bnc:
     bnc_plug:
         urdf_path: 'factory_bnc_plug'
