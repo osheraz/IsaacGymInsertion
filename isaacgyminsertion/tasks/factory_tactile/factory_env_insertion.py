@@ -227,7 +227,7 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
 
         socket_options = gymapi.AssetOptions()
         socket_options.flip_visual_attachments = False
-        socket_options.fix_base_link = False
+        socket_options.fix_base_link = True
         socket_options.thickness = 0.0  # default = 0.02
         socket_options.armature = 0.0  # default = 0.0
         socket_options.use_physx_armature = True
@@ -249,7 +249,7 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
             plug_file = self.asset_info_insertion[subassembly][components[0]]['urdf_path'] + '.urdf'
             socket_file = self.asset_info_insertion[subassembly][components[1]]['urdf_path'] + '.urdf'
             plug_options.density = self.asset_info_insertion[subassembly][components[0]]['density']
-            socket_options.density = 1000 * self.asset_info_insertion[subassembly][components[1]]['density']
+            socket_options.density = self.asset_info_insertion[subassembly][components[1]]['density']
             plug_asset = self.gym.load_asset(self.sim, urdf_root, plug_file, plug_options)
             socket_asset = self.gym.load_asset(self.sim, urdf_root, socket_file, socket_options)
             plug_assets.append(plug_asset)

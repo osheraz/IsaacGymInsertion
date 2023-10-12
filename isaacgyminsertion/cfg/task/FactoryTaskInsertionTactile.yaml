@@ -68,9 +68,8 @@ randomize:
 
 
 rl:
-
-    pos_action_scale: [0.00, 0.000, 0.01]
-    rot_action_scale: [0.001, 0.001, 0.001]
+    pos_action_scale: [0.005, 0.005, 0.005]
+    rot_action_scale: [0.01, 0.01, 0.01]
 
     force_action_scale: [1.0, 1.0, 1.0]
     torque_action_scale: [1.0, 1.0, 1.0]
@@ -82,7 +81,7 @@ rl:
     clamp_rot_thresh: 1.0e-6
 
     num_keypoints: 4  # number of keypoints used in reward
-    keypoint_scale: 0.5  # length of line of keypoints
+    keypoint_scale: 1.0  # length of line of keypoints
 
     keypoint_reward_scale: -5.0  # scale on keypoint-based reward
     action_penalty_scale: -0.0  # scale on action penalty

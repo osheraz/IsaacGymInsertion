@@ -56,6 +56,7 @@ from isaacgyminsertion.allsight.experiments.allsight_render import allsight_rend
 torch.set_printoptions(sci_mode=False)
 
 
+
 class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
     def __init__(self, cfg, rl_device, sim_device, graphics_device_id, headless, virtual_screen_capture, force_render):
@@ -749,7 +750,6 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         priv_depth = self.depth_maps.clone()
 
 
-        # print("here 2")
         # # Move arm to grasp pose
         plug_pos_noise = (2 * (torch.randn((len(env_ids), 3), device=self.device) - 0.5)) * 0.002
         # plug_pos_noise[:, 2] /= 0.002
@@ -759,42 +759,25 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self._zero_velocities(env_ids)
         self._refresh_task_tensors(update_tactile=False)
 
-        # print("here 3")
         # # Grasp ~ todo not sure if add randomization is needed
         self._close_gripper(env_ids, self.cfg_task.env.num_gripper_close_sim_steps)
         self._refresh_task_tensors(update_tactile=False)
         self._zero_velocities(env_ids)
 
-        # print("here 4")
         # # Lift
         self._lift_gripper(env_ids, self.ctrl_target_gripper_dof_pos)
         self._refresh_task_tensors(update_tactile=False)
         self._zero_velocities(env_ids)
 
-        # print("here 5")
         # # Move arm above the socket
         above_socket_pos_noise = (2 * (torch.randn((len(env_ids), 3), device=self.device) - 0.5)) * 0.005
         above_socket_pos_noise[:, 2] = 0
-        # print("here 5 1")
         self._move_arm_to_desired_pose(env_ids, self.above_socket_pos.clone() + above_socket_pos_noise,
                                        sim_steps=self.cfg_task.env.num_gripper_move_sim_steps * 2)
-        # print("here 5 2")
         self._refresh_task_tensors(update_tactile=False)
-        # print("here 5 3")
         self._zero_velocities(env_ids)
-        # # print("here 5 4")
-        # print('depth sum', torch.sum((self.depth_maps - priv_depth), dim=(2, 3)))
-        # print('depth sum', torch.sum(torch.sum((self.depth_maps - priv_depth), dim=(2, 3)) > 0.005, dim=1) == 3)
 
-
-        # dof_pos at grasp pose tensor([[-0.0047,  0.2375,  0.0203, -1.2496, -0.0070,  1.6475, -1.5514,  0.6907,
-        #   1.8478,  0.1660, -0.6892,  1.8515,  0.1625,  1.8333,  0.1740]]),
-        # plug pose at grasp pose tensor([[-0.0012, -0.0093,  0.4335]])
-        # plug quat at grasp pose tensor([[-0.0709,  0.0626,  0.0375,  0.9948]])
-
-        # _ = input('enter to continue')
         # Insert
-        # print("here 6")
         socket_pos_noise = (2 * (torch.randn((len(env_ids), 3), device=self.device) - 0.5)) * 0.0
         socket_pos_noise[:, :] = 0
         self._move_arm_to_desired_pose(env_ids, self.socket_pos.clone() + socket_pos_noise,
@@ -802,12 +785,9 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self._refresh_task_tensors(update_tactile=True)
         self._zero_velocities(env_ids)
 
-        # print("here 7")
         roll, pitch, yaw = get_euler_xyz(self.plug_quat)
         roll[roll > np.pi] -= 2 * np.pi
         pitch[pitch > np.pi] -= 2 * np.pi
-
-        print(abs(roll * 180 / np.pi), abs(pitch * 180 / np.pi), torch.sum((self.depth_maps - priv_depth), dim=(2, 3)))
 
         cond = (abs(roll * 180 / np.pi) < 8) & (abs(pitch * 180 / np.pi) < 8) & (torch.sum(torch.sum((self.depth_maps - priv_depth), dim=(2, 3)) >= 0.001, dim=1) == 3)
         # print(cond)
