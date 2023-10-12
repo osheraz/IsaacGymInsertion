@@ -33,9 +33,9 @@ num_subscenes: 4 # Splits the simulation into N physics scenes and runs each one
 
 # RLGames Arguments
 # test - if set, run policy in inference mode (requires setting checkpoint to load)
-test: True
+test: False
 # used to set checkpoint path
-checkpoint: 'outputs/10-11-23/22-55-41/stage1_nn/last.pth'
+checkpoint: ''
 # used to set decoder checkpoint path
 checkpoint_tactile: ''
 # set sigma when restoring network

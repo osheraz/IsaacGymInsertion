@@ -753,7 +753,7 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         # # Move arm to grasp pose
         plug_pos_noise = (2 * (torch.randn((len(env_ids), 3), device=self.device) - 0.5)) * 0.002
         # plug_pos_noise[:, 2] /= 0.002
-        plug_pos_noise[:, 2] = 0.0
+        plug_pos_noise[:, 2] = 0.025
         self._move_arm_to_desired_pose(env_ids, self.plug_grasp_pos.clone() + plug_pos_noise,
                                        sim_steps=self.cfg_task.env.num_gripper_move_sim_steps*2)
         self._zero_velocities(env_ids)
@@ -762,7 +762,7 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         # print("here 3")
         # # Grasp ~ todo not sure if add randomization is needed
         self._close_gripper(env_ids, self.cfg_task.env.num_gripper_close_sim_steps)
-        self._refresh_task_tensors(update_tactile=False)
+        self._refresh_task_tensors(update_tactile=True)
         self._zero_velocities(env_ids)
 
         # print("here 4")

@@ -2,13 +2,13 @@
 <robot name="factory_round_peg_16mm_loose">
     <link name="factory_round_peg_16mm_loose">
         <visual>
-            <origin xyz="0 0 0.0254" rpy="1.57079632679 0 1.57079632679"/>
+         <!--origin xyz="0 0 0.0254" rpy="1.57079632679 0 1.57079632679"-->
             <geometry>
                 <mesh filename="../mesh/factory_insertion/red_round_peg_15in.obj"/>
             </geometry>
         </visual>
         <collision>
-         <origin xyz="0 0 0.0254" rpy="1.57079632679 0 1.57079632679"/>
+         <!--origin xyz="0 0 0.0254" rpy="1.57079632679 0 1.57079632679"-->
             <geometry>
                 <mesh filename="../mesh/factory_insertion/red_round_peg_15in.obj"/>
             </geometry>

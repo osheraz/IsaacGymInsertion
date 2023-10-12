@@ -14,7 +14,7 @@ env:
     env_name: 'FactoryEnvInsertionTactile'
     aggregate_mode: True
 
-    desired_subassemblies: ['red_round_peg_15in']
+    desired_subassemblies: ['yellow_round_peg_2in']
 #                            'round_peg_hole_8mm_loose', round_peg_hole_16mm_loose
 #                            'round_peg_hole_12mm_loose',
 #                            'round_peg_hole_4mm_loose',yellow_round_peg_2in, red_round_peg_15in
