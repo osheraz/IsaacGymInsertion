@@ -14,10 +14,10 @@ env:
     env_name: 'FactoryEnvInsertionTactile'
     aggregate_mode: True
 
-    desired_subassemblies: ['round_peg_hole_16mm_loose']
+    desired_subassemblies: ['yellow_round_peg_2in']
 #                            'round_peg_hole_8mm_loose', round_peg_hole_16mm_loose
 #                            'round_peg_hole_12mm_loose',
-#                            'round_peg_hole_4mm_loose',yellow_round_peg_2in
+#                            'round_peg_hole_4mm_loose',yellow_round_peg_2in, red_round_peg_15in
 #                            'rectangular_peg_hole_4mm_loose',
 #                            'rectangular_peg_hole_8mm_loose',
 #                            'rectangular_peg_hole_12mm_loose',
@@ -29,8 +29,8 @@ env:
     record_ft: True
     record_video_every: 1000
     record_ft_every: 1000
-    tactile: False
-    tactile_display_viz: False
+    tactile: True
+    tactile_display_viz: True
     compute_contact_gt: False
 
     # Subassembly options:
@@ -90,13 +90,13 @@ randomize:
                         # schedule: "linear"  # "linear" will scale the current random sample by `min(current num steps, schedule_steps) / schedule_steps`
                         # schedule_steps: 30000
             plug:
-                scale:
-                    range: [ 0.97, 1.0 ]
-                    operation: "scaling"
-                    distribution: "uniform"
-                    setup_only: True # Property will only be randomized once before simulation is started. See Domain Randomization Documentation for more info.
-                    # schedule: "linear"  # "linear" will scale the current random sample by ``min(current num steps, schedule_steps) / schedule_steps`
-                    # schedule_steps: 30000
+#                scale:
+#                    range: [ 0.97, 1.0 ]
+#                    operation: "scaling"
+#                    distribution: "uniform"
+#                    setup_only: True # Property will only be randomized once before simulation is started. See Domain Randomization Documentation for more info.
+#                    # schedule: "linear"  # "linear" will scale the current random sample by ``min(current num steps, schedule_steps) / schedule_steps`
+#                    # schedule_steps: 30000
                 rigid_body_properties:
                     mass:
                         range: [ 0.7, 1.3 ]

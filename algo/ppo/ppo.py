@@ -69,16 +69,15 @@ class PPO(object):
         # ---- Tactile Info ---
         self.tactile_info = self.ppo_config["tactile_info"]
         tactile_seq_length = self.ppo_config["tactile_seq_length"]
-        self.tactile_info_embed_dim = self.network_config.tactile_mlp.units[-1]
-        self.tactile_info_dim = self.tactile_info_embed_dim * 3
+        self.tactile_info_dim = self.network_config.tactile_mlp.units[0]
         # ---- ft Info ---
         self.ft_info = self.ppo_config["ft_info"]
         self.ft_seq_length = self.ppo_config["ft_seq_length"]
         self.ft_input_dim = self.ppo_config["ft_input_dim"]
         self.ft_info_dim = self.ft_input_dim * self.ft_seq_length
         # ---- Priv Info ----
-        self.priv_info_dim = self.ppo_config['priv_info_dim']
         self.priv_info = self.ppo_config['priv_info']
+        self.priv_info_dim = self.ppo_config['priv_info_dim']
         self.extrin_adapt = self.ppo_config['extrin_adapt']
         self.priv_info_embed_dim = self.network_config.priv_mlp.units[-1]
         # ---- Model ----

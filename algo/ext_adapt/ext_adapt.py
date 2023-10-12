@@ -51,8 +51,7 @@ class ExtrinsicAdapt(object):
         # ---- Tactile Info ---
         self.tactile_info = self.ppo_config["tactile_info"]
         tactile_seq_length = self.ppo_config["tactile_seq_length"]
-        self.tactile_info_embed_dim = self.network_config.tactile_mlp.units[-1]
-        self.tactile_info_dim = self.tactile_info_embed_dim * 3
+        self.tactile_info_dim = self.network_config.tactile_mlp.units[0]
         # ---- ft Info ---
         self.ft_info = self.ppo_config["ft_info"]
         self.ft_seq_length = self.ppo_config["ft_seq_length"]
@@ -90,7 +89,7 @@ class ExtrinsicAdapt(object):
         self.priv_mean_std.eval()
 
         # Currently ft is not supported
-        self.ft_mean_std = RunningMeanStd((self.ft_seq_length, 32)).to(self.device)
+        self.ft_mean_std = RunningMeanStd((self.ft_seq_length, 6)).to(self.device)
         self.ft_mean_std.train()
 
         # tactile is already normalized in task.
@@ -116,7 +115,7 @@ class ExtrinsicAdapt(object):
         # ---- Optim ----
         adapt_params = []
         for name, p in self.model.named_parameters():
-            if 'tactile_decoder' in name or 'tactile_mlp' in name or 'ft_adapt_tconv' in name:
+            if 'tactile_decoder' in name or 'tactile_mlp' in name:# or 'ft_adapt_tconv' in name:
                 adapt_params.append(p)
             else:
                 p.requires_grad = False
@@ -186,21 +185,22 @@ class ExtrinsicAdapt(object):
 
             self.log_tensorboard()
 
-            if self.agent_steps % 1e8 == 0:
+            if self.agent_steps % 500 == 0:
                 self.save(os.path.join(self.nn_dir, f'{self.agent_steps // 1e8}00m'))
                 self.save(os.path.join(self.nn_dir, f'last'))
 
             mean_rewards = self.mean_eps_reward.get_mean()
-            if mean_rewards > self.best_rewards:
-                self.save(os.path.join(self.nn_dir, f'best'))
-                self.best_rewards = mean_rewards
+            self.best_rewards = mean_rewards
+            # if mean_rewards > self.best_rewards:
+            #     self.save(os.path.join(self.nn_dir, f'best'))
+            #     self.best_rewards = mean_rewards
 
             all_fps = self.agent_steps / (time.time() - _t)
             last_fps = self.batch_size / (time.time() - _last_t)
             _last_t = time.time()
             info_string = f'Agent Steps: {int(self.agent_steps // 1e6):04}M | FPS: {all_fps:.1f} | ' \
                           f'Last FPS: {last_fps:.1f} | ' \
-                          f'Current Best: {self.best_rewards:.2f}'
+                          f'Mean Best: {self.best_rewards:.2f}'
             cprint(info_string)
 
     def log_tensorboard(self):

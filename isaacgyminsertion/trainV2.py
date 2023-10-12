@@ -36,7 +36,7 @@ from typing import Optional
 from termcolor import cprint
 
 from algo.ppo.ppo import PPO
-# from algo.ext_adapt.padapt import ProprioAdapt
+from algo.ext_adapt.ext_adapt import ExtrinsicAdapt
 from isaacgyminsertion.tasks import isaacgym_task_map
 from isaacgyminsertion.utils.reformat import omegaconf_to_dict, print_dict
 from isaacgyminsertion.utils.utils import set_np_formatting, set_seed

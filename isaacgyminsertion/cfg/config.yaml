@@ -36,7 +36,7 @@ num_subscenes: 4 # Splits the simulation into N physics scenes and runs each one
 test: False
 # used to set checkpoint path
 checkpoint: ''
-# used to set vae checkpoint path
+# used to set decoder checkpoint path
 checkpoint_tactile: ''
 # set sigma when restoring network
 sigma: ''

@@ -66,7 +66,7 @@ class allsight_renderer:
 
         if randomize:
             bg_id = random.randint(12, 19)
-            obj_scale = 0.01 * random.randint(135, 150)
+            obj_scale = 0.01 * random.randint(115, 130)
         else:
             bg_id = 15
             obj_scale = 1.5
