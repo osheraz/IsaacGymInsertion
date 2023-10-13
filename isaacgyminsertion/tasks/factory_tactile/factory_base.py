@@ -108,7 +108,7 @@ class FactoryBaseTactile(VecTask, FactoryABCBase):
 
     def _initialize_grasp_poses(self):
         # TODO: add this path to the config file
-        self.initial_grasp_poses = np.load('initial_grasp_data/init_grasp1.npz')
+        self.initial_grasp_poses = np.load('initial_grasp_data/init_grasp4.npz')
         self.total_init_poses = self.initial_grasp_poses['socket_pos'].shape[0]
         self.init_socket_pos = torch.zeros((self.total_init_poses, 3))
         self.init_socket_quat = torch.zeros((self.total_init_poses, 4))

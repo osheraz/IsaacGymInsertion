@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
-<robot name="factory_round_peg_16mm_loose">
-    <link name="factory_round_peg_16mm_loose">
+<robot name="green_round_peg_16mm_loose">
+    <link name="green_round_peg_16mm_loose">
         <visual>
             <!--origin xyz="0 0 0.01905" rpy="0 1.57079632679 0"-->
             <geometry>
@@ -12,7 +12,7 @@
             <geometry>
                 <mesh filename="../mesh/factory_insertion/2inNewShamrockBox.obj"/>
             </geometry>
-            <!-- sdf resolution="256" -->
+            <sdf resolution="256" />
         </collision>
     </link>
 </robot>

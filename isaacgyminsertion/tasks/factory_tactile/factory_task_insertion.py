@@ -723,7 +723,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         # If plug is too far from socket pos
         self.dist_plug_socket = torch.norm(self.plug_pos - self.socket_pos, p=2, dim=-1)
-        self.reset_buf[:] = torch.where(self.dist_plug_socket > 0.03, #  self.cfg_task.rl.far_error_thresh,
+        self.reset_buf[:] = torch.where(self.dist_plug_socket > 0.1, #  self.cfg_task.rl.far_error_thresh,
                                         torch.ones_like(self.reset_buf),
                                         self.reset_buf)
         # print('plug is too far', self.reset_buf)

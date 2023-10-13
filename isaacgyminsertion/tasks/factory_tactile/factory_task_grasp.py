@@ -82,7 +82,7 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         # TODO: where do I put the counter?
         self.save_ctr = 0
-        self.total_grasps = 2000
+        self.total_grasps = 50
         self.pbar = tqdm(total = self.total_grasps)
         self.total_init_grasp_count = 0
 
@@ -113,7 +113,7 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
     def _acquire_task_tensors(self):
         """Acquire tensors."""
 
-        self.plug_grasp_pos_local = self.plug_heights * 0.5 * torch.tensor([0.0, 0.0, 1.0], device=self.device).repeat(
+        self.plug_grasp_pos_local = self.plug_heights * 0.75 * torch.tensor([0.0, 0.0, 1.0], device=self.device).repeat(
             (self.num_envs, 1))
         self.plug_grasp_quat_local = torch.tensor([0.0, 0.0, 0.0, 1.0], device=self.device).unsqueeze(0).repeat(
             self.num_envs, 1)
@@ -742,8 +742,6 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         self._reset_kuka(env_ids)
         self._reset_object(env_ids)
-
-        # print("here 1")
         
         self._zero_velocities(env_ids)
         self._refresh_task_tensors(update_tactile=True)
@@ -751,16 +749,18 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
 
         # # Move arm to grasp pose
-        plug_pos_noise = (2 * (torch.randn((len(env_ids), 3), device=self.device) - 0.5)) * 0.002
+        plug_pos_noise = (2 * (torch.randn((len(env_ids), 3), device=self.device) - 0.5)) * 0.002 # this x,y noise is for grasp variation.
         # plug_pos_noise[:, 2] /= 0.002
-        plug_pos_noise[:, 2] = 0.025
+        plug_pos_noise[:, 2] = 0.002
         self._move_arm_to_desired_pose(env_ids, self.plug_grasp_pos.clone() + plug_pos_noise,
                                        sim_steps=self.cfg_task.env.num_gripper_move_sim_steps*2)
         self._zero_velocities(env_ids)
         self._refresh_task_tensors(update_tactile=False)
 
         # # Grasp ~ todo not sure if add randomization is needed
-        self._close_gripper(env_ids, self.cfg_task.env.num_gripper_close_sim_steps)
+        # self.disable_gravity()
+        self._close_gripper(env_ids, self.cfg_task.env.num_gripper_close_sim_steps*2)
+        # self.enable_gravity(gravity_mag=abs(self.cfg_base.sim.gravity[2]))
         self._refresh_task_tensors(update_tactile=True)
         self._zero_velocities(env_ids)
 
@@ -771,7 +771,7 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         # # Move arm above the socket
         above_socket_pos_noise = (2 * (torch.randn((len(env_ids), 3), device=self.device) - 0.5)) * 0.005
-        above_socket_pos_noise[:, 2] = 0
+        above_socket_pos_noise[:, :] = 0
         self._move_arm_to_desired_pose(env_ids, self.above_socket_pos.clone() + above_socket_pos_noise,
                                        sim_steps=self.cfg_task.env.num_gripper_move_sim_steps * 2)
         self._refresh_task_tensors(update_tactile=False)
@@ -782,26 +782,26 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         socket_pos_noise[:, :] = 0
         self._move_arm_to_desired_pose(env_ids, self.socket_pos.clone() + socket_pos_noise,
                                        sim_steps=self.cfg_task.env.num_gripper_move_sim_steps//2)
-        self._refresh_task_tensors(update_tactile=True)
+        self._refresh_task_tensors(update_tactile=False)
         self._zero_velocities(env_ids)
 
         roll, pitch, yaw = get_euler_xyz(self.plug_quat)
         roll[roll > np.pi] -= 2 * np.pi
         pitch[pitch > np.pi] -= 2 * np.pi
 
-        cond = (abs(roll * 180 / np.pi) < 8) & (abs(pitch * 180 / np.pi) < 8) & (torch.sum(torch.sum((self.depth_maps - priv_depth), dim=(2, 3)) >= 0.001, dim=1) == 3)
-        # print(cond)
+        cond = (abs(roll * 180 / np.pi) < 8) & (abs(pitch * 180 / np.pi) < 8) # & (torch.sum(torch.sum((self.depth_maps - priv_depth), dim=(2, 3)) >= 0.001, dim=1) == 3)
         valid_env_ids = env_ids[cond.nonzero()]
 
+        print(len(valid_env_ids))
         # TODO: move this to a separate function
-        if valid_env_ids.shape[0] > 0 and False:
+        if valid_env_ids.shape[0] > 0:
             socket_pos = self.root_pos[valid_env_ids, self.socket_actor_id_env, :].clone().cpu().numpy()
             socket_quat = self.root_quat[valid_env_ids, self.socket_actor_id_env, :].clone().cpu().numpy()
             plug_pos = self.root_pos[valid_env_ids, self.plug_actor_id_env, :].clone().cpu().numpy()
             plug_quat = self.root_quat[valid_env_ids, self.plug_actor_id_env, :].clone().cpu().numpy()
             dof_pos = self.dof_pos[valid_env_ids, :].clone().cpu().numpy()
             output_dir = './outputs/debug'
-            file_name = 'init_grasp1'
+            file_name = 'init_grasp3'
             init_grasp_folder = os.path.join(output_dir, file_name)
             if not os.path.exists(init_grasp_folder):
                 os.makedirs(init_grasp_folder)
@@ -949,6 +949,7 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         socket_noise_xy = 2 * (torch.rand((self.num_envs, 2), dtype=torch.float32, device=self.device) - 0.5)  # [-1, 1]
         socket_noise_xy = socket_noise_xy @ torch.diag(
             torch.tensor(self.cfg_task.randomize.socket_pos_xy_noise, device=self.device))
+        
 
         self.root_pos[env_ids, self.socket_actor_id_env, 0] = self.cfg_task.randomize.socket_pos_xy_initial[0] \
                                                             + socket_noise_xy[env_ids, 0]
@@ -1000,7 +1001,6 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             self.ctrl_target_fingertip_centered_quat[env_ids] = desired_rot[env_ids]
 
         # Step sim and render
-        # print('here 5 1 3')
         for sim_id in range(sim_steps):
             # print(sim_id, sim_steps)
             self._simulate_and_refresh()
@@ -1008,7 +1008,6 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             # NOTE: midpoint is calculated based on the midpoint between the actual gripper finger pos,
             # and centered is calculated with the assumption that the gripper fingers are perfectly closed at center.
             # since the fingertips are underactuated, thus we cant know the true pose
-            # print('here 5 1 3 1')
             pos_error, axis_angle_error = fc.get_pose_error(
                 fingertip_midpoint_pos=self.fingertip_centered_pos,
                 fingertip_midpoint_quat=self.fingertip_centered_quat,
@@ -1188,12 +1187,12 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
     def _move_gripper_to_dof_pos(self, env_ids, gripper_dof_pos, sim_steps=20):
         """Move gripper fingers to specified DOF position using controller."""
 
-        delta_hand_pose = torch.zeros((self.num_envs, self.cfg_task.env.numActions),
-                                      device=self.device)  # no arm motion
-        self._apply_actions_as_ctrl_targets(delta_hand_pose, gripper_dof_pos, do_scale=False)
 
         # Step sim
         for _ in range(sim_steps):
+            delta_hand_pose = torch.zeros((self.num_envs, self.cfg_task.env.numActions),
+                                        device=self.device)  # no arm motion
+            self._apply_actions_as_ctrl_targets(delta_hand_pose, gripper_dof_pos, do_scale=False)
             self._simulate_and_refresh()
 
     def _lift_gripper(self, env_ids, gripper_dof_pos, lift_distance=0.2, sim_steps=20):

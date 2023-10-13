@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
-<robot name="factory_round_peg_16mm_loose">
-    <link name="factory_round_peg_16mm_loose">
+<robot name="yellow_round_peg_16mm_loose">
+    <link name="yellow_round_peg_16mm_loose">
         <visual>
             <geometry>
                 <mesh filename="../mesh/factory_insertion/yellow_round_peg_2in.obj"/>
@@ -10,7 +10,7 @@
             <geometry>
                 <mesh filename="../mesh/factory_insertion/yellow_round_peg_2in.obj"/>
             </geometry>
-            <!-- sdf resolution="256" -->
+            <sdf resolution="512" />
         </collision>
     </link>
 </robot>
