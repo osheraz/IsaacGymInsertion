@@ -493,10 +493,11 @@
         <color rgba=".9 .9 .9 1"/>
       </material>
     </visual>
-    <collision>
-      <geometry>
-        <mesh filename="../../urdf/kuka_openhand_description/meshes/allsight/allsight_fine01.obj"/>
-      </geometry>
+     <collision>
+            <origin xyz="0.014 0 0" rpy="0 -1.57079632679 0"/>
+            <geometry>
+                   <cylinder radius="0.012" length="0.028" />
+            </geometry>
     </collision>
   </link>
 
@@ -575,10 +576,11 @@
         <color rgba=".9 .9 .9 1"/>
       </material>
     </visual>
-    <collision>
-      <geometry>
-        <mesh filename="../../urdf/kuka_openhand_description/meshes/allsight/allsight_fine01.obj"/>
-      </geometry>
+     <collision>
+            <origin xyz="0.014 0 0" rpy="0 -1.57079632679 0"/>
+            <geometry>
+                   <cylinder radius="0.012" length="0.028" />
+            </geometry>
     </collision>
   </link>
 
@@ -627,10 +629,11 @@
         <color rgba=".9 .9 .9 1"/>
       </material>
     </visual>
-    <collision>
-      <geometry>
-        <mesh filename="../../urdf/kuka_openhand_description/meshes/allsight/allsight_fine01.obj"/>
-      </geometry>
+     <collision>
+            <origin xyz="0.014 0 0" rpy="0 -1.57079632679 0"/>
+            <geometry>
+                   <cylinder radius="0.012" length="0.028" />
+            </geometry>
     </collision>
   </link>
 

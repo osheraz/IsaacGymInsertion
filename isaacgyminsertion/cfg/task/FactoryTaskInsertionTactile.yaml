@@ -24,7 +24,7 @@ env:
         distal_open: 0.0
         distal_close: 0.0
         proximal_open: 1.0
-        proximal_close: 2.0
+        proximal_close: 2.4
         base_angle: 0.7
         tactile_finger: [ 'finger_1_3', 'finger_2_3', 'finger_3_3' ] # left, right middle
 

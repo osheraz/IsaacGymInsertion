@@ -166,7 +166,7 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         self.ft_queue = torch.zeros((self.num_envs, self.ft_hist_len, 6), device=self.device, dtype=torch.float)
 
-    def _refresh_task_tensors(self, update_tactile=False):
+    def _refresh_task_tensors(self, update_tactile=True):
         """Refresh tensors."""
 
         # print('here 5 1 3 3 3 1')
@@ -254,11 +254,11 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         # print('here 5 1 3 3 3 5')
         if update_tactile and self.cfg_env.env.tactile:
-            # left_finger_pose = pose_vec_to_mat(torch.cat((self.left_finger_pos,
+            # left_finger_poses = pose_vec_to_mat(torch.cat((self.left_finger_pos,
             #                                               self.left_finger_quat), axis=1)).cpu().numpy()
-            # right_finger_pose = pose_vec_to_mat(torch.cat((self.right_finger_pos,
+            # right_finger_poses = pose_vec_to_mat(torch.cat((self.right_finger_pos,
             #                                                self.right_finger_quat), axis=1)).cpu().numpy()
-            # middle_finger_pose = pose_vec_to_mat(torch.cat((self.middle_finger_pos,
+            # middle_finger_poses = pose_vec_to_mat(torch.cat((self.middle_finger_pos,
             #                                                 self.middle_finger_quat), axis=1)).cpu().numpy()
             # object_pose = pose_vec_to_mat(torch.cat((self.plug_pos, self.plug_quat), axis=1)).cpu().numpy()
 
@@ -269,46 +269,46 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
             tf = np.eye(4)
             tf[0:3, 0:3] = euler_angles_to_matrix(
-                euler_angles=torch.tensor([[0, 90, 0]]), convention="XYZ"
+                euler_angles=torch.tensor([[0, 0, 0]]), convention="XYZ"
             ).numpy()
 
             left_finger_poses = xyzquat_to_tf_numpy(left_allsight_poses.cpu().numpy())
-            left_finger_poses = left_finger_poses @ np.array(
-                np.linalg.inv(
-                    [
-                        [0.0, -1.0, 0.0, 0.0],
-                        [0.0, 0.0, 1.0, 0.0],
-                        [-1.0, 0.0, 0.0, 0.0],
-                        [0.0, 0.0, 0.0, 1.0],
-                    ]
-                )
-            )
+            # left_finger_poses = left_finger_poses @ np.array(
+            #     np.linalg.inv(
+            #         [
+            #             [0.0, -1.0, 0.0, 0.0],
+            #             [0.0, 0.0, 1.0, 0.0],
+            #             [-1.0, 0.0, 0.0, 0.0],
+            #             [0.0, 0.0, 0.0, 1.0],
+            #         ]
+            #     )
+            # )
             left_finger_poses = left_finger_poses @ tf
 
             right_finger_poses = xyzquat_to_tf_numpy(right_allsight_poses.cpu().numpy())
-            right_finger_poses = right_finger_poses @ np.array(
-                np.linalg.inv(
-                    [
-                        [0.0, -1.0, 0.0, 0.0],
-                        [0.0, 0.0, 1.0, 0.0],
-                        [-1.0, 0.0, 0.0, 0.0],
-                        [0.0, 0.0, 0.0, 1.0],
-                    ]
-                )
-            )
+            # right_finger_poses = right_finger_poses @ np.array(
+            #     np.linalg.inv(
+            #         [
+            #             [0.0, -1.0, 0.0, 0.0],
+            #             [0.0, 0.0, 1.0, 0.0],
+            #             [-1.0, 0.0, 0.0, 0.0],
+            #             [0.0, 0.0, 0.0, 1.0],
+            #         ]
+            #     )
+            # )
             right_finger_poses = right_finger_poses @ tf
 
             middle_finger_poses = xyzquat_to_tf_numpy(middle_allsight_poses.cpu().numpy())
-            middle_finger_poses = middle_finger_poses @ np.array(
-                np.linalg.inv(
-                    [
-                        [0.0, -1.0, 0.0, 0.0],
-                        [0.0, 0.0, 1.0, 0.0],
-                        [-1.0, 0.0, 0.0, 0.0],
-                        [0.0, 0.0, 0.0, 1.0],
-                    ]
-                )
-            )
+            # middle_finger_poses = middle_finger_poses @ np.array(
+            #     np.linalg.inv(
+            #         [
+            #             [0.0, -1.0, 0.0, 0.0],
+            #             [0.0, 0.0, 1.0, 0.0],
+            #             [-1.0, 0.0, 0.0, 0.0],
+            #             [0.0, 0.0, 0.0, 1.0],
+            #         ]
+            #     )
+            # )
             middle_finger_poses = middle_finger_poses @ tf
 
             object_pose = xyzquat_to_tf_numpy(object_poses.cpu().numpy())
@@ -418,83 +418,6 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         if queue is not None:
             queue.put((tactile_imgs_list, offset))
 
-    def _update_tactile1(self, tactile_handles, left_finger_pose, right_finger_pose, middle_finger_pose, object_pose, offset=None, queue=None, display_viz=False):
-
-        # tactile_handles = []
-        # # print('here before')
-        # tactile_handles.extend([allsight_renderer(self.cfg_tactile,
-        #                                                    os.path.join(self.mesh_root, self.plug_file), randomize=False,
-        #                                                    finger_idx=i) for i in range(len(self.fingertips))])
-        
-        # # print('here')
-        # tactile_imgs_list, height_maps = [], []  # only for display.
-        left = np.zeros((len(object_pose), self.cfg_tactile.decoder.width, self.cfg_tactile.decoder.height, 3))
-        right = np.zeros((len(object_pose), self.cfg_tactile.decoder.width, self.cfg_tactile.decoder.height, 3))
-        middle = np.zeros((len(object_pose), self.cfg_tactile.decoder.width, self.cfg_tactile.decoder.height, 3))
-        left_depth = np.zeros((len(object_pose), self.cfg_tactile.decoder.width, self.cfg_tactile.decoder.height))
-        # print('left depth shape', left_depth.shape)
-        right_depth = np.zeros((len(object_pose), self.cfg_tactile.decoder.width, self.cfg_tactile.decoder.height))
-        middle_depth = np.zeros((len(object_pose), self.cfg_tactile.decoder.width, self.cfg_tactile.decoder.height))
-
-        print(object_pose.shape, left_finger_pose.shape)
-        for i in range(len(object_pose)):
-            tactile_handles[i][0].update_pose_given_sim_pose(left_finger_pose[i], object_pose[i])
-            # # print('here b')
-            left_tactile_img, left_depth_map, _ = tactile_handles[i][0].render(object_pose[i])
-            # print(left_tactile_img.shape)
-            left_tactile_img = cv2.resize(left_tactile_img, (self.cfg_tactile.decoder.width, self.cfg_tactile.decoder.height), interpolation=cv2.INTER_AREA)
-            # print(left_tactile_img.shape)
-            # # print('here af', left_depth_map.shape)
-            left[i] = left_tactile_img
-            left_depth[i] = cv2.resize(left_depth_map, (self.cfg_tactile.decoder.width, self.cfg_tactile.decoder.height), interpolation=cv2.INTER_AREA)
-            
-            tactile_handles[i][1].update_pose_given_sim_pose(right_finger_pose[i], object_pose[i])
-            right_tactile_img, right_depth_map, _ = tactile_handles[i][1].render(object_pose[i])
-            right_tactile_img = cv2.resize(right_tactile_img, (self.cfg_tactile.decoder.width, self.cfg_tactile.decoder.height), interpolation=cv2.INTER_AREA)
-            right[i] = right_tactile_img
-            right_depth[i] = cv2.resize(right_depth_map, (self.cfg_tactile.decoder.width, self.cfg_tactile.decoder.height), interpolation=cv2.INTER_AREA)
-
-            tactile_handles[i][2].update_pose_given_sim_pose(middle_finger_pose[i], object_pose[i])
-            middle_tactile_img, middle_depth_map, _ = tactile_handles[i][2].render(object_pose[i])
-            middle_tactile_img = cv2.resize(middle_tactile_img, (self.cfg_tactile.decoder.width, self.cfg_tactile.decoder.height), interpolation=cv2.INTER_AREA)
-            middle[i] = middle_tactile_img
-            middle_depth[i] = cv2.resize(middle_depth_map, (self.cfg_tactile.decoder.width, self.cfg_tactile.decoder.height), interpolation=cv2.INTER_AREA)
-
-        queue.put((left, right, middle, left_depth, right_depth, middle_depth, offset))
-
-        # for i in range(len(tactile_handles)):
-        #     tactile_handles[i].renderer.r.delete()
-
-
-        # for e in range(self.num_envs):
-        #     self.tactile_handles[e][0].update_pose_given_sim_pose(left_finger_pose[e], object_pose[e])
-        #     self.tactile_handles[e][1].update_pose_given_sim_pose(right_finger_pose[e], object_pose[e])
-        #     self.tactile_handles[e][2].update_pose_given_sim_pose(middle_finger_pose[e], object_pose[e])
-
-        #     tactile_imgs_per_env, height_maps_per_env = [], []
-
-        #     for n in range(3):
-        #         tactile_img, height_map, _ = self.tactile_handles[e][n].render(object_pose[e])
-        #         resized_img = cv2.resize(tactile_img, (self.cfg_tactile.decoder.width,
-        #                                                self.cfg_tactile.decoder.height), interpolation=cv2.INTER_AREA)
-        #         self.tactile_imgs[e, n] = torch_jit_utils.img_transform(resized_img).to(self.device).permute(1, 2, 0)
-        #         self.depth_maps[e, n] = torch.tensor(height_map).to(self.device)
-
-        #         tactile_imgs_per_env.append(tactile_img)
-        #         height_maps_per_env.append(height_map)
-
-        #     height_maps.append(height_maps_per_env)
-        #     tactile_imgs_list.append(tactile_imgs_per_env)
-
-        # # self.tactile_imgs = torch.tensor(tactile_imgs_list, dtype=torch.float32, device=self.device)
-
-        # if display_viz:
-        #     env_to_show = 0
-        #     self.tactile_handles[env_to_show][0].updateGUI(tactile_imgs_list[env_to_show],
-        #                                                    height_maps[env_to_show])
-
-        # if queue is not None:
-        #     queue.put((tactile_imgs_list, offset))
 
     def pre_physics_step(self, actions):
         """Reset environments. Apply actions from policy as position/rotation targets, force/torque targets, and/or PD gains."""
@@ -745,7 +668,7 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         # print("here 1")
         
         self._zero_velocities(env_ids)
-        self._refresh_task_tensors(update_tactile=True)
+        self._refresh_task_tensors(update_tactile=False)
         priv_depth = self.depth_maps.clone()
 
 
