@@ -269,7 +269,7 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
             tf = np.eye(4)
             tf[0:3, 0:3] = euler_angles_to_matrix(
-                euler_angles=torch.tensor([[0, 0, 0]]), convention="XYZ"
+                euler_angles=torch.tensor([[3.14159265359, 0, 0]]), convention="XYZ"
             ).numpy()
 
             left_finger_poses = xyzquat_to_tf_numpy(left_allsight_poses.cpu().numpy())

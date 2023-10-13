@@ -249,46 +249,19 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
             tf = np.eye(4)
             tf[0:3, 0:3] = euler_angles_to_matrix(
-                euler_angles=torch.tensor([[0, 90, 0]]), convention="XYZ"
+                euler_angles=torch.tensor([[3.14159265359, 0, 0]]), convention="XYZ"
             ).numpy()
 
             left_finger_poses = xyzquat_to_tf_numpy(left_allsight_poses.cpu().numpy())
-            left_finger_poses = left_finger_poses @ np.array(
-                np.linalg.inv(
-                    [
-                        [0.0, -1.0, 0.0, 0.0],
-                        [0.0, 0.0, 1.0, 0.0],
-                        [-1.0, 0.0, 0.0, 0.0],
-                        [0.0, 0.0, 0.0, 1.0],
-                    ]
-                )
-            )
+
             left_finger_poses = left_finger_poses @ tf
 
             right_finger_poses = xyzquat_to_tf_numpy(right_allsight_poses.cpu().numpy())
-            right_finger_poses = right_finger_poses @ np.array(
-                np.linalg.inv(
-                    [
-                        [0.0, -1.0, 0.0, 0.0],
-                        [0.0, 0.0, 1.0, 0.0],
-                        [-1.0, 0.0, 0.0, 0.0],
-                        [0.0, 0.0, 0.0, 1.0],
-                    ]
-                )
-            )
+
             right_finger_poses = right_finger_poses @ tf
 
             middle_finger_poses = xyzquat_to_tf_numpy(middle_allsight_poses.cpu().numpy())
-            middle_finger_poses = middle_finger_poses @ np.array(
-                np.linalg.inv(
-                    [
-                        [0.0, -1.0, 0.0, 0.0],
-                        [0.0, 0.0, 1.0, 0.0],
-                        [-1.0, 0.0, 0.0, 0.0],
-                        [0.0, 0.0, 0.0, 1.0],
-                    ]
-                )
-            )
+
             middle_finger_poses = middle_finger_poses @ tf
 
             object_pose = xyzquat_to_tf_numpy(object_poses.cpu().numpy())
