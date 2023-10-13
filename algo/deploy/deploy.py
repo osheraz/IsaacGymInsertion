@@ -1,94 +1,165 @@
 # --------------------------------------------------------
-# In-Hand Object Rotation via Rapid Motor Adaptation
-# https://arxiv.org/abs/2210.04887
-# Copyright (c) 2022 Haozhi Qi
+# now its our turn.
+# https://arxiv.org/abs/todo
+# Copyright (c) 2023 Osher & Co.
 # Licensed under The MIT License [see LICENSE for details]
 # --------------------------------------------------------
 
+
 import numpy as np
-import os
-from hora.algo.models.models import ActorCritic
-from hora.algo.models.running_mean_std import RunningMeanStd
+import rospy
+
+from algo.models.models import ActorCritic
+from algo.models.running_mean_std import RunningMeanStd
 import torch
-from hora.utils.misc import tprint
-
-
-def _obs_allegro2hora(obses):
-    obs_index = obses[0:4]
-    obs_middle = obses[4:8]
-    obs_ring = obses[8:12]
-    obs_thumb = obses[12:16]
-    obses = np.concatenate([obs_index, obs_thumb, obs_middle, obs_ring]).astype(np.float32)
-    return obses
-
-
-def _action_hora2allegro(actions):
-    cmd_act = actions.copy()
-    cmd_act[[4, 5, 6, 7]] = actions[[8, 9, 10, 11]]
-    cmd_act[[12, 13, 14, 15]] = actions[[4, 5, 6, 7]]
-    cmd_act[[8, 9, 10, 11]] = actions[[12, 13, 14, 15]]
-    return cmd_act
+import os
+import hydra
 
 
 class HardwarePlayer(object):
-    def __init__(self, config):
-        self.action_scale = 1 / 24
-        self.actions_num = 16
-        self.device = 'cuda'
+    def __init__(self, output_dir, full_config):
 
-        obs_shape = (96,)
+        self.action_scale = full_config.task.rl.pos_action_scale
+        self.action_scale = full_config.task.rl.rot_action_scale
+
+        self.device = full_config["rl_device"]
+        # ------
+        self.network_config = full_config.train.network
+        self.ppo_config = full_config.train.ppo
+        self.env_config = full_config.task.env
+        self.full_config = full_config
+        # ---- build environment ----
+        self.obs_shape = (self.env_config.numObservations,)
+        self.num_actions = self.env_config.numActions
+        self.num_targets = self.env_config.numTargets
+
+        # ---- Tactile Info ---
+        self.tactile_info = self.ppo_config.tactile_info
+        self.tactile_seq_length = self.ppo_config.tactile_seq_length
+        self.tactile_info_dim = self.network_config.tactile_mlp.units[0]
+        # ---- ft Info --- TODO currently we dont use ft
+        self.ft_info = self.ppo_config.ft_info
+        self.ft_seq_length = self.ppo_config.ft_seq_length
+        self.ft_input_dim = self.ppo_config.ft_input_dim
+        self.ft_info_dim = self.ft_input_dim * self.ft_seq_length
+        # ---- Priv Info ----
+        self.priv_info = self.ppo_config.priv_info
+        self.priv_info_dim = self.ppo_config.priv_info_dim
+        self.extrin_adapt = self.ppo_config.extrin_adapt
+
         net_config = {
-            'actions_num': self.actions_num,
-            'input_shape': obs_shape,
-            'actor_units': [512, 256, 128],
-            'priv_mlp_units': [256, 128, 8],
+            'actor_units': self.network_config.mlp.units,
+            'actions_num': self.num_actions,
+            'priv_mlp_units': self.network_config.priv_mlp.units,
+            'input_shape': self.obs_shape,
+            'extrin_adapt': True,
+            'priv_info_dim': self.priv_info_dim,
             'priv_info': True,
-            'proprio_adapt': True,
-            'priv_info_dim': 9,
+            "tactile_info": self.tactile_info,
+            "tactile_input_shape": self.tactile_info_dim,
+            "ft_input_shape": self.ft_info_dim,
+            "ft_info": self.ft_info,
+            "tactile_units": self.network_config.tactile_mlp.units,
+            "tactile_decoder_embed_dim": self.network_config.tactile_mlp.units[0],
+            "ft_units": self.network_config.ft_mlp.units,
         }
 
         self.model = ActorCritic(net_config)
         self.model.to(self.device)
         self.model.eval()
-        self.running_mean_std = RunningMeanStd(obs_shape).to(self.device)
+
+        self.running_mean_std = RunningMeanStd(self.obs_shape).to(self.device)
         self.running_mean_std.eval()
-        self.sa_mean_std = RunningMeanStd((30, 32)).to(self.device)
-        self.sa_mean_std.eval()
-        # hand setting
-        self.init_pose = [
-            0.0627, 1.2923, 0.3383, 0.1088, 0.0724, 1.1983, 0.1551, 0.1499,
-            0.1343, 1.1736, 0.5355, 0.2164, 1.1202, 1.1374, 0.8535, -0.0852,
-        ]
-        self.allegro_dof_lower = torch.from_numpy(np.array([
-            -0.4700, -0.1960, -0.1740, -0.2270, 0.2630, -0.1050, -0.1890, -0.1620,
-            -0.4700, -0.1960, -0.1740, -0.2270, -0.4700, -0.1960, -0.1740, -0.2270
-        ])).to(self.device)
-        self.allegro_dof_upper = torch.from_numpy(np.array([
-            0.4700, 1.6100, 1.7090, 1.6180, 1.3960, 1.1630, 1.6440, 1.7190,
-            0.4700, 1.6100, 1.7090, 1.6180, 0.4700, 1.6100, 1.7090, 1.6180
-        ])).to(self.device)
+
+        # ---- Output Dir ----
+        self.output_dir = output_dir
+        self.dp_dir = os.path.join(self.output_dir, 'deploy')
+        os.makedirs(self.dp_dir, exist_ok=True)
+
+        tactile_info_path = '../allsight/experiments/conf/test.yaml'  # relative to Gym's Hydra search path (cfg dir)
+        self.cfg_tactile = hydra.compose(config_name=tactile_info_path)['']['']['']['allsight']['experiments']['conf']
+
+        asset_info_path = '../../assets/factory/yaml/factory_asset_info_insertion.yaml'  # relative to Gym's Hydra search path (cfg dir)
+        self.asset_info_insertion = hydra.compose(config_name=asset_info_path)
+        self.asset_info_insertion = self.asset_info_insertion['']['']['']['']['']['']['assets']['factory'][
+            'yaml']  # strip superfluous nesting
+
+    def _create_asset_info(self, i):
+
+        subassembly = self.full_config.env.desired_subassemblies[i]
+        components = list(self.asset_info_insertion[subassembly])
+        rospy.logwarn('Parameters load for: {} --- >  {}'.format(components[0], components[1]))
+
+        self.plug_height = self.asset_info_insertion[subassembly][components[0]]['length']
+        self.socket_height = self.asset_info_insertion[subassembly][components[1]]['height']
+        if any('rectangular' in sub for sub in components):
+            self.plug_depth = self.asset_info_insertion[subassembly][components[0]]['width']
+            self.plug_width = self.asset_info_insertion[subassembly][components[0]]['depth']
+            self.socket_width = self.asset_info_insertion[subassembly][components[1]]['width']
+            self.socket_depth = self.asset_info_insertion[subassembly][components[1]]['depth']
+        else:
+            self.plug_width = self.asset_info_insertion[subassembly][components[0]]['diameter']
+            self.socket_width = self.asset_info_insertion[subassembly][components[1]]['diameter']
+
+    def _acquire_task_tensors(self):
+        """Acquire tensors."""
+
+        self.plug_grasp_pos_local = self.plug_height * 0.5 * torch.tensor([0.0, 0.0, 1.0],
+                                                                          device=self.device).unsqueeze(0)
+        self.plug_grasp_quat_local = torch.tensor([0.0, 0.0, 0.0, 1.0], device=self.device).unsqueeze(0)
+
+        self.plug_tip_pos_local = self.plug_height * torch.tensor([0.0, 0.0, 1.0], device=self.device).unsqueeze(0)
+        self.socket_tip_pos_local = self.socket_height * torch.tensor([0.0, 0.0, 1.0], device=self.device).unsqueeze(0)
+
+        self.actions = torch.zeros((1, self.num_actions), device=self.device)
+        self.targets = torch.zeros((1, self.env_config.numTargets), device=self.device)
+        self.prev_targets = torch.zeros((1, self.env_config.numTargets), dtype=torch.float, device=self.device)
+
+        # Keep track of history
+        self.arm_joint_queue = torch.zeros((1, self.env_config.numObsHist, 7), dtype=torch.float, device=self.device)
+        self.arm_vel_queue = torch.zeros((1, self.env_config.numObsHist, 7), dtype=torch.float, device=self.device)
+        self.actions_queue = torch.zeros((1, self.env_config.numObsHist, self.num_actions),
+                                         dtype=torch.float, device=self.device)
+        self.targets_queue = torch.zeros((1, self.env_config.numObsHist, self.num_targets),
+                                         dtype=torch.float, device=self.device)
+        self.eef_queue = torch.zeros((1, self.env_config.numObsHist, 7),
+                                     dtype=torch.float, device=self.device)
+        self.goal_noisy_queue = torch.zeros((1, self.env_config.numObsHist, 7),
+                                            dtype=torch.float, device=self.device)
+
+        # tactile buffers
+        self.tactile_imgs = torch.zeros(
+            (1, 3,  # left, right, bottom
+             self.cfg_tactile.decoder.width, self.cfg_tactile.decoder.height, 3),
+            device=self.device,
+            dtype=torch.float,
+        )
+        # Way too big tensor.
+        self.tactile_queue = torch.zeros(
+            (1, self.tactile_seq_length, 3,  # left, right, bottom
+             self.cfg_tactile.decoder.width, self.cfg_tactile.decoder.height, 3),
+            device=self.device,
+            dtype=torch.float,
+        )
+
+        self.ft_queue = torch.zeros((1, self.ft_seq_length, 6), device=self.device, dtype=torch.float)
 
     def deploy(self):
-        import rospy
-        from hora.algo.deploy.robots.allegro import Allegro
+        from algo.deploy.env.env import ExperimentEnv
         # try to set up rospy
-        rospy.init_node('example')
-        allegro = Allegro(hand_topic_prefix='allegroHand_0')
+        rospy.init_node('DeployEnv')
+        env = ExperimentEnv()
+        rospy.logwarn('sda')
         # Wait for connections.
         rospy.sleep(0.5)
 
-        hz = 20
+        hz = 60
         ros_rate = rospy.Rate(hz)
 
-        # command to the initial position
-        for t in range(hz * 4):
-            tprint(f'setup {t} / {hz * 4}')
-            allegro.command_joint_position(self.init_pose)
-            obses, _ = allegro.poll_joint_position(wait=True)
-            ros_rate.sleep()
+        # TODO command to the initial position
+        env.move_to_init_state()
 
-        obses, _ = allegro.poll_joint_position(wait=True)
-        obses = _obs_allegro2hora(obses)
+        obses = env.get_obs()
         # hardware deployment buffer
         obs_buf = torch.from_numpy(np.zeros((1, 16 * 3 * 2)).astype(np.float32)).cuda()
         proprio_hist_buf = torch.from_numpy(np.zeros((1, 30, 16 * 2)).astype(np.float32)).cuda()
@@ -98,11 +169,11 @@ class HardwarePlayer(object):
 
         obses = torch.from_numpy(obses.astype(np.float32)).cuda()
         prev_target = obses[None].clone()
-        cur_obs_buf = unscale(obses, self.allegro_dof_lower, self.allegro_dof_upper)[None]
+        cur_obs_buf = unscale(obses, self.env_dof_lower, self.env_dof_upper)[None]
 
         for i in range(3):
-            obs_buf[:, i*16+0:i*16+16] = cur_obs_buf.clone()  # joint position
-            obs_buf[:, i*16+16:i*16+32] = prev_target.clone()  # current target (obs_t-1 + s * act_t-1)
+            obs_buf[:, i * 16 + 0:i * 16 + 16] = cur_obs_buf.clone()  # joint position
+            obs_buf[:, i * 16 + 16:i * 16 + 32] = prev_target.clone()  # current target (obs_t-1 + s * act_t-1)
 
         proprio_hist_buf[:, :, :16] = cur_obs_buf.clone()
         proprio_hist_buf[:, :, 16:32] = prev_target.clone()
@@ -117,19 +188,17 @@ class HardwarePlayer(object):
             action = torch.clamp(action, -1.0, 1.0)
 
             target = prev_target + self.action_scale * action
-            target = torch.clip(target, self.allegro_dof_lower, self.allegro_dof_upper)
+            target = torch.clip(target, self.env_dof_lower, self.env_dof_upper)
             prev_target = target.clone()
             # interact with the hardware
             commands = target.cpu().numpy()[0]
-            commands = _action_hora2allegro(commands)
-            allegro.command_joint_position(commands)
+            env.command_joint_position(commands)
             ros_rate.sleep()  # keep 20 Hz command
             # get o_{t+1}
-            obses, torques = allegro.poll_joint_position(wait=True)
-            obses = _obs_allegro2hora(obses)
+            obses, torques = env.poll_joint_position(wait=True)
             obses = torch.from_numpy(obses.astype(np.float32)).cuda()
 
-            cur_obs_buf = unscale(obses, self.allegro_dof_lower, self.allegro_dof_upper)[None]
+            cur_obs_buf = unscale(obses, self.env_dof_lower, self.env_dof_upper)[None]
             prev_obs_buf = obs_buf[:, 32:].clone()
             obs_buf[:, :64] = prev_obs_buf
             obs_buf[:, 64:80] = cur_obs_buf.clone()
