@@ -367,21 +367,11 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.targets = self.prev_targets + delta_targets
 
         # update the queue
-        self.arm_joint_queue[:, 1:] = self.arm_joint_queue[:, :-1].clone().detach()
-        self.arm_joint_queue[:, 0, :] = self.arm_dof_pos.clone()
-
-        self.arm_vel_queue[:, 1:] = self.arm_vel_queue[:, :-1].clone().detach()
-        self.arm_vel_queue[:, 0, :] = self.arm_dof_vel.clone()
-
         self.actions_queue[:, 1:] = self.actions_queue[:, :-1].clone().detach()
         self.actions_queue[:, 0, :] = self.actions
 
         self.targets_queue[:, 1:] = self.targets_queue[:, :-1].clone().detach()
         self.targets_queue[:, 0, :] = self.targets
-
-        self.eef_queue[:, 1:] = self.eef_queue[:, :-1].clone().detach()
-        self.eef_queue[:, 0, :] = torch.cat(self.pose_world_to_robot_base(self.fingertip_centered_pos.clone(),
-                                                                          self.fingertip_centered_quat.clone()), dim=-1)
 
         self.goal_noisy_queue[:, 1:] = self.goal_noisy_queue[:, :-1].clone().detach()
         self.goal_noisy_queue[:, 0, :] = torch.cat(self.pose_world_to_robot_base(self.noisy_gripper_goal_pos.clone(),
@@ -509,11 +499,20 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             #     # self.gym.add_lines(self.viewer, self.envs[i], 1, [ob[0], ob[1], ob[2], targetz[0], targetz[1], targetz[2]], [0.85, 0.1, 0.1])
 
 
-
         self._render_headless()
 
     def compute_observations(self):
         """Compute observations."""
+        # update the queue
+        self.arm_joint_queue[:, 1:] = self.arm_joint_queue[:, :-1].clone().detach()
+        self.arm_joint_queue[:, 0, :] = self.arm_dof_pos.clone()
+
+        self.arm_vel_queue[:, 1:] = self.arm_vel_queue[:, :-1].clone().detach()
+        self.arm_vel_queue[:, 0, :] = self.arm_dof_vel.clone()
+
+        self.eef_queue[:, 1:] = self.eef_queue[:, :-1].clone().detach()
+        self.eef_queue[:, 0, :] = torch.cat(self.pose_world_to_robot_base(self.fingertip_centered_pos.clone(),
+                                                                          self.fingertip_centered_quat.clone()), dim=-1)
 
         # Compute tactile
         self.tactile_queue[:, 1:] = self.tactile_queue[:, :-1].clone().detach()
