@@ -5,6 +5,7 @@ from hand import Hand
 from openhand_env import OpenhandEnv
 from robots import RobotWithFtEnv
 
+
 class ExperimentEnv:
     """ Superclass for all Robots environments.
     """
@@ -32,7 +33,6 @@ class ExperimentEnv:
                 }
 
     def get_info_for_control(self):
-
         pos, quat = self.arm.get_ee_pose()
         joints = self.arm.move_manipulator.joint_values()
         jacob = self.arm.move_manipulator.get_jacobian_matrix()
@@ -43,26 +43,21 @@ class ExperimentEnv:
                 }
 
     def get_frames(self):
-
         left, right, bottom = self.tactile.get_frames()
 
         return left, right, bottom
 
     def get_ft(self):
-
         ft = self.arm.robotiq_wrench_filtered_state
 
         return ft
 
     def move_to_init_state(self):
-
         pass
 
-
     def grasp_object(self):
-
         pass
 
     def move_to_joint_values(self, values):
-
-        pass
+        result = self.arm.set_trajectory_joints(values)
+        assert result == False, 'Failed to apply action'

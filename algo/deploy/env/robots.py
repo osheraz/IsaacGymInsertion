@@ -215,9 +215,9 @@ class RobotWithFtEnv():
 
     def set_trajectory_joints(self, positions_array):
 
-        self.move_manipulator.joint_traj(positions_array)
+        result = self.move_manipulator.joint_traj(positions_array)
 
-        return True
+        return result
 
     def get_ee_pose(self, rot_as_euler=False, as_message=False):
         """
