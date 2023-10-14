@@ -16,6 +16,7 @@ import os
 import hydra
 import cv2
 from isaacgyminsertion.utils import torch_jit_utils
+import isaacgyminsertion.tasks.factory_tactile.factory_control as fc
 
 
 class HardwarePlayer(object):
@@ -198,8 +199,12 @@ class HardwarePlayer(object):
         self.arm_joint_queue[:, 1:] = self.arm_joint_queue[:, :-1].clone().detach()
         self.arm_joint_queue[:, 0, :] = torch.tensor(arm_joints, device=self.device, dtype=torch.float)
 
+        self.fingertip_centered_pos = torch.tensor(ee_pose[:3], device=self.device, dtype=torch.float)
+        self.fingertip_centered_quat = torch.tensor(ee_pose[3:], device=self.device, dtype=torch.float)
+
         self.eef_queue[:, 1:] = self.eef_queue[:, :-1].clone().detach()
-        self.eef_queue[:, 0, :] = torch.tensor(ee_pose, device=self.device, dtype=torch.float)
+        self.eef_queue[:, 0, :] = torch.cat((self.fingertip_centered_pos.clone(),
+                                             self.fingertip_centered_quat.clone()), dim=-1)
 
         left = cv2.resize(left, (self.cfg_tactile.decoder.width, self.cfg_tactile.decoder.height),
                           interpolation=cv2.INTER_AREA)
@@ -257,11 +262,69 @@ class HardwarePlayer(object):
         self.goal_noisy_queue[:, 0, :] = torch.cat((self.noisy_gripper_goal_pos.clone(),
                                                     self.noisy_gripper_goal_quat.clone()),
                                                    dim=-1)
-        # Apply the action ?
+
+        self.apply_action(actions)
+
+    def apply_action(self, actions, do_scale=True):
+
+        # Apply the action
         actions = torch.clamp(actions, -1.0, 1.0)
-        self.env.apply_action(actions)
+        # Interpret actions as target pos displacements and set pos target
+        pos_actions = actions[:, 0:3]
+        if do_scale:
+            pos_actions = pos_actions @ torch.diag(torch.tensor(self.pos_scale, device=self.device))
+        self.ctrl_target_fingertip_centered_pos = self.fingertip_centered_pos + pos_actions
+
+        # Interpret actions as target rot (axis-angle) displacements
+        rot_actions = actions[:, 3:6]
+        if do_scale:
+            rot_actions = rot_actions @ torch.diag(torch.tensor(self.rot_scale, device=self.device))
+
+        # Convert to quat and set rot target
+        angle = torch.norm(rot_actions, p=2, dim=-1)
+        axis = rot_actions / angle.unsqueeze(-1)
+        rot_actions_quat = torch_jit_utils.quat_from_angle_axis(angle, axis)
+        if self.full_config.task.rl.clamp_rot:
+            rot_actions_quat = torch.where(angle.unsqueeze(-1).repeat(1, 4) > self.cfg_task.rl.clamp_rot_thresh,
+                                           rot_actions_quat,
+                                           torch.tensor([0.0, 0.0, 0.0, 1.0], device=self.device))
+        self.ctrl_target_fingertip_centered_quat = torch_jit_utils.quat_mul(rot_actions_quat,
+                                                                            self.fingertip_centered_quat)
+
+        self.generate_ctrl_signals()
+
+    def generate_ctrl_signals(self):
+
+        ctrl_info = self.env.get_info_for_control()
+
+        fingertip_centered_jacobian_tf = torch.tensor(ctrl_info['jacob'],
+                                                      device=self.device).unsqueeze(0)
+
+        arm_dof_pos = torch.tensor(ctrl_info['joints'], device=self.device).unsqueeze(0)
+
+        cfg_ctrl = {'num_envs': 1,
+                    'jacobian_type': 'geometric'}
+
+        self.ctrl_target_dof_pos = fc.compute_dof_pos_target(
+            cfg_ctrl=cfg_ctrl,
+            arm_dof_pos=arm_dof_pos,
+            fingertip_midpoint_pos=self.fingertip_centered_pos,
+            fingertip_midpoint_quat=self.fingertip_centered_quat,
+            jacobian=fingertip_centered_jacobian_tf,
+            ctrl_target_fingertip_midpoint_pos=self.ctrl_target_fingertip_centered_pos,
+            ctrl_target_fingertip_midpoint_quat=self.ctrl_target_fingertip_centered_quat,
+            ctrl_target_gripper_dof_pos=0,
+            device=self.device).squeeze(0)
+
+        self.env.move_to_joint_values(self.ctrl_target_dof_pos.cpu().detach().numpy().tolist())
+
+    def restore(self, fn):
+        checkpoint = torch.load(fn)
+        self.running_mean_std.load_state_dict(checkpoint['running_mean_std'])
+        self.model.load_state_dict(checkpoint['model'])
 
     def deploy(self):
+
         from algo.deploy.env.env import ExperimentEnv
         # try to set up rospy
         rospy.init_node('DeployEnv')
@@ -275,6 +338,7 @@ class HardwarePlayer(object):
         ros_rate = rospy.Rate(hz)
 
         self.env.move_to_init_state()
+        self.env.grasp_object()
 
         # TODO index the real objects
         self._create_asset_info(1)
@@ -299,9 +363,6 @@ class HardwarePlayer(object):
             action = self.model.act_inference(input_dict)
             self.update_and_apply_action(action)
 
-            obs = self.compute_observations()
+            ros_rate.sleep()
 
-    def restore(self, fn):
-        checkpoint = torch.load(fn)
-        self.running_mean_std.load_state_dict(checkpoint['running_mean_std'])
-        self.model.load_state_dict(checkpoint['model'])
+            obs = self.compute_observations()

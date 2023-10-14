@@ -213,16 +213,7 @@ class RobotWithFtEnv():
         result = self.set_ee_pose(req_pose, wait=wait)
         return result
 
-    def set_trajectory_joints(self, initial_qpos):
-
-        positions_array = [None] * 7
-        positions_array[0] = initial_qpos["iiwa7_joint_1"]
-        positions_array[1] = initial_qpos["iiwa7_joint_2"]
-        positions_array[2] = initial_qpos["iiwa7_joint_3"]
-        positions_array[3] = initial_qpos["iiwa7_joint_4"]
-        positions_array[4] = initial_qpos["iiwa7_joint_5"]
-        positions_array[5] = initial_qpos["iiwa7_joint_6"]
-        positions_array[7] = initial_qpos["iiwa7_joint_7"]
+    def set_trajectory_joints(self, positions_array):
 
         self.move_manipulator.joint_traj(positions_array)
 

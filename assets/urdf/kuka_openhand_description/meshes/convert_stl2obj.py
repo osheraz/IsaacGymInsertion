@@ -2,7 +2,7 @@ import os
 import argparse 
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--folder', type=str, default="./")
+parser.add_argument('--folder', type=str, default="./allsight")
 args = parser.parse_args()
 
 import glob, os
