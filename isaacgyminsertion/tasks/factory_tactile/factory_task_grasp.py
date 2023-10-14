@@ -82,7 +82,7 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         # TODO: where do I put the counter?
         self.save_ctr = 0
-        self.total_grasps = 50
+        self.total_grasps = 3000
         self.pbar = tqdm(total = self.total_grasps)
         self.total_init_grasp_count = 0
 
@@ -167,7 +167,7 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         self.ft_queue = torch.zeros((self.num_envs, self.ft_hist_len, 6), device=self.device, dtype=torch.float)
 
-    def _refresh_task_tensors(self, update_tactile=True):
+    def _refresh_task_tensors(self, update_tactile=False):
         """Refresh tensors."""
 
         # print('here 5 1 3 3 3 1')
@@ -667,7 +667,7 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self._reset_object(env_ids)
         
         self._zero_velocities(env_ids)
-        self._refresh_task_tensors(update_tactile=False)
+        self._refresh_task_tensors(update_tactile=True)
         priv_depth = self.depth_maps.clone()
 
 
@@ -684,7 +684,7 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         # self.disable_gravity()
         self._close_gripper(env_ids, self.cfg_task.env.num_gripper_close_sim_steps*2)
         # self.enable_gravity(gravity_mag=abs(self.cfg_base.sim.gravity[2]))
-        self._refresh_task_tensors(update_tactile=True)
+        self._refresh_task_tensors(update_tactile=False)
         self._zero_velocities(env_ids)
 
         # # Lift
@@ -705,15 +705,17 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         socket_pos_noise[:, :] = 0
         self._move_arm_to_desired_pose(env_ids, self.socket_pos.clone() + socket_pos_noise,
                                        sim_steps=self.cfg_task.env.num_gripper_move_sim_steps//2)
-        self._refresh_task_tensors(update_tactile=False)
+        self._refresh_task_tensors(update_tactile=True)
         self._zero_velocities(env_ids)
 
         roll, pitch, yaw = get_euler_xyz(self.plug_quat)
         roll[roll > np.pi] -= 2 * np.pi
         pitch[pitch > np.pi] -= 2 * np.pi
 
-        cond = (abs(roll * 180 / np.pi) < 8) & (abs(pitch * 180 / np.pi) < 8) # & (torch.sum(torch.sum((self.depth_maps - priv_depth), dim=(2, 3)) >= 0.001, dim=1) == 3)
+        cond = (abs(roll * 180 / np.pi) < 8) & (abs(pitch * 180 / np.pi) < 8) & (torch.sum(torch.sum((self.depth_maps - priv_depth), dim=(2, 3)) >= 0.001, dim=1) == 3)
         valid_env_ids = env_ids[cond.nonzero()]
+
+        print(torch.sum((self.depth_maps - priv_depth), dim=(2, 3)))
 
         print(len(valid_env_ids))
         # TODO: move this to a separate function

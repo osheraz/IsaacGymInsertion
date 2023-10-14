@@ -57,7 +57,7 @@ randomize:
     fingertip_midpoint_rot_noise: [0.3, 0.3, 1]  # noise on rotation
     
     plug_pos_xy_initial: [0.0, 0.23]  # initial XY position of plug on table
-    plug_pos_xy_noise: [0.05, 0.05] # noise on plug position
+    plug_pos_xy_noise: [0.1, 0.05] # noise on plug position
 
     plug_noise_pos_in_gripper: [0.0, 0.0, 0.0]  # noise on plug position within gripper
     plug_noise_rot_in_gripper: 0.0  # noise on plug rotation within gripper

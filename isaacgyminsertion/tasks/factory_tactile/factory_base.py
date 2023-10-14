@@ -108,7 +108,10 @@ class FactoryBaseTactile(VecTask, FactoryABCBase):
 
     def _initialize_grasp_poses(self):
         # TODO: add this path to the config file
-        self.initial_grasp_poses = np.load('initial_grasp_data/init_grasp4.npz')
+        try:
+            self.initial_grasp_poses = np.load('initial_grasp_data/init_grasp1.npz')
+        except:
+            return
         self.total_init_poses = self.initial_grasp_poses['socket_pos'].shape[0]
         self.init_socket_pos = torch.zeros((self.total_init_poses, 3))
         self.init_socket_quat = torch.zeros((self.total_init_poses, 4))
@@ -257,27 +260,27 @@ class FactoryBaseTactile(VecTask, FactoryABCBase):
         self.hand_quat = self.body_quat[:, self.hand_body_id_env, 0:4]
         self.hand_linvel = self.body_linvel[:, self.hand_body_id_env, 0:3]
         self.hand_angvel = self.body_angvel[:, self.hand_body_id_env, 0:3]
-        self.hand_jacobian = self.jacobian[:, self.hand_body_id_env - 1, 0:6, 0:7]  # minus 1 because base is fixed
+        self.hand_jacobian = self.jacobian[:, self.hand_body_id_env - self.robot_base_body_id_env- 1, 0:6, 0:7]  # minus 1 because base is fixed
 
         self.left_finger_pos = self.body_pos[:, self.left_finger_body_id_env, 0:3]
         self.left_finger_quat = self.body_quat[:, self.left_finger_body_id_env, 0:4]
         self.left_finger_linvel = self.body_linvel[:, self.left_finger_body_id_env, 0:3]
         self.left_finger_angvel = self.body_angvel[:, self.left_finger_body_id_env, 0:3]
-        self.left_finger_jacobian = self.jacobian[:, self.left_finger_body_id_env - 1, 0:6,
+        self.left_finger_jacobian = self.jacobian[:, self.left_finger_body_id_env - self.robot_base_body_id_env- 1, 0:6,
                                     0:7]  # minus 1 because base is fixed
 
         self.right_finger_pos = self.body_pos[:, self.right_finger_body_id_env, 0:3]
         self.right_finger_quat = self.body_quat[:, self.right_finger_body_id_env, 0:4]
         self.right_finger_linvel = self.body_linvel[:, self.right_finger_body_id_env, 0:3]
         self.right_finger_angvel = self.body_angvel[:, self.right_finger_body_id_env, 0:3]
-        self.right_finger_jacobian = self.jacobian[:, self.right_finger_body_id_env - 1, 0:6,
+        self.right_finger_jacobian = self.jacobian[:, self.right_finger_body_id_env - self.robot_base_body_id_env- 1, 0:6,
                                      0:7]  # minus 1 because base is fixed
 
         self.middle_finger_pos = self.body_pos[:, self.middle_finger_body_id_env, 0:3]
         self.middle_finger_quat = self.body_quat[:, self.middle_finger_body_id_env, 0:4]
         self.middle_finger_linvel = self.body_linvel[:, self.middle_finger_body_id_env, 0:3]
         self.middle_finger_angvel = self.body_angvel[:, self.middle_finger_body_id_env, 0:3]
-        self.middle_finger_jacobian = self.jacobian[:, self.middle_finger_body_id_env - 1, 0:6,
+        self.middle_finger_jacobian = self.jacobian[:, self.middle_finger_body_id_env - self.robot_base_body_id_env- 1, 0:6,
                                       0:7]  # minus 1 because base is fixed
 
         self.left_finger_force = self.contact_force[:, self.left_finger_body_id_env, 0:3]
@@ -291,7 +294,7 @@ class FactoryBaseTactile(VecTask, FactoryABCBase):
         self.fingertip_centered_quat = self.body_quat[:, self.fingertip_centered_body_id_env, 0:4]
         self.fingertip_centered_linvel = self.body_linvel[:, self.fingertip_centered_body_id_env, 0:3]
         self.fingertip_centered_angvel = self.body_angvel[:, self.fingertip_centered_body_id_env, 0:3]
-        self.fingertip_centered_jacobian = self.jacobian[:, self.fingertip_centered_body_id_env - 1, 0:6,
+        self.fingertip_centered_jacobian = self.jacobian[:, self.fingertip_centered_body_id_env - self.robot_base_body_id_env- 1, 0:6,
                                            0:7]  # minus 1 because base is fixed
 
         self.fingertip_midpoint_pos = self.fingertip_centered_pos.detach().clone()  # initial value
