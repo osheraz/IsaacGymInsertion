@@ -30,7 +30,7 @@ env:
     record_video_every: 1000
     record_ft_every: 1000
     tactile: True
-    tactile_display_viz: True
+    tactile_display_viz: False
     compute_contact_gt: False
 
     # Subassembly options:

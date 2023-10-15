@@ -82,10 +82,9 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         # TODO: where do I put the counter?
         self.save_ctr = 0
-        self.total_grasps = 3000
+        self.total_grasps = 2000
         self.pbar = tqdm(total = self.total_grasps)
         self.total_init_grasp_count = 0
-
 
         
 
@@ -378,7 +377,7 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             #     self.tactile_imgs = torch.tensor(imgs, dtype=torch.float32, device=self.device)
 
     def _update_tactile(self, left_finger_pose, right_finger_pose, middle_finger_pose, object_pose,
-                        offset=None, queue=None, display_viz=True):
+                        offset=None, queue=None, display_viz=False):
 
         tactile_imgs_list, height_maps = [], []  # only for display.
 
@@ -402,7 +401,9 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                 tactile_img, height_map, _ = self.tactile_handles[e][n].render(object_pose[e])
                 resized_img = cv2.resize(tactile_img, (self.cfg_tactile.decoder.width,
                                                        self.cfg_tactile.decoder.height), interpolation=cv2.INTER_AREA)
+                # resized_depth
                 self.tactile_imgs[e, n] = torch_jit_utils.img_transform(resized_img).to(self.device).permute(1, 2, 0)
+                self.depth_maps[e, n] = torch.tensor(height_map).to(self.device)
                 tactile_imgs_per_env.append(tactile_img)
                 height_maps_per_env.append(height_map)
 
@@ -674,8 +675,10 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         # # Move arm to grasp pose
         plug_pos_noise = (2 * (torch.randn((len(env_ids), 3), device=self.device) - 0.5)) * 0.002 # this x,y noise is for grasp variation.
         # plug_pos_noise[:, 2] /= 0.002
-        plug_pos_noise[:, 2] = 0.002
-        self._move_arm_to_desired_pose(env_ids, self.plug_grasp_pos.clone() + plug_pos_noise,
+        plug_pos_noise[:, 2] = 0.0010 # (0.001 * (torch.randn((len(env_ids), 3), device=self.device) + 0.0015)) # tested without this noise, = 0.0020
+        first_plug_pose = self.plug_grasp_pos.clone()
+        first_plug_pose[:, 0] -= 0.01
+        self._move_arm_to_desired_pose(env_ids, first_plug_pose + plug_pos_noise,
                                        sim_steps=self.cfg_task.env.num_gripper_move_sim_steps*2)
         self._zero_velocities(env_ids)
         self._refresh_task_tensors(update_tactile=False)
@@ -695,27 +698,38 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         # # Move arm above the socket
         above_socket_pos_noise = (2 * (torch.randn((len(env_ids), 3), device=self.device) - 0.5)) * 0.005
         above_socket_pos_noise[:, :] = 0
-        self._move_arm_to_desired_pose(env_ids, self.above_socket_pos.clone() + above_socket_pos_noise,
-                                       sim_steps=self.cfg_task.env.num_gripper_move_sim_steps * 2)
-        self._refresh_task_tensors(update_tactile=False)
-        self._zero_velocities(env_ids)
-
-        # Insert
-        socket_pos_noise = (2 * (torch.randn((len(env_ids), 3), device=self.device) - 0.5)) * 0.0
-        socket_pos_noise[:, :] = 0
-        self._move_arm_to_desired_pose(env_ids, self.socket_pos.clone() + socket_pos_noise,
-                                       sim_steps=self.cfg_task.env.num_gripper_move_sim_steps//2)
+        self._move_arm_to_desired_pose(env_ids, self.above_socket_pos.clone() + above_socket_pos_noise, sim_steps=self.cfg_task.env.num_gripper_move_sim_steps * 2)
         self._refresh_task_tensors(update_tactile=True)
         self._zero_velocities(env_ids)
+
+        # first_plug_pose[:, 2] += 0.0005
+        # self._move_arm_to_desired_pose(env_ids, first_plug_pose, sim_steps=self.cfg_task.env.num_gripper_move_sim_steps)
+        # self._zero_velocities(env_ids)
+        # self._refresh_task_tensors(update_tactile=False)
+
+        # above_socket_pos_noise = (2 * (torch.randn((len(env_ids), 3), device=self.device) - 0.5)) * 0.005
+        # above_socket_pos_noise[:, :] = 0
+        # self._move_arm_to_desired_pose(env_ids, self.above_socket_pos.clone() + above_socket_pos_noise, sim_steps=self.cfg_task.env.num_gripper_move_sim_steps * 2)
+        # self._zero_velocities(env_ids)
+        # self._refresh_task_tensors(update_tactile=True)
+
+        # Insert
+        # socket_pos_noise = (2 * (torch.randn((len(env_ids), 3), device=self.device) - 0.5)) * 0.0
+        # socket_pos_noise[:, :] = 0
+        # self._move_arm_to_desired_pose(env_ids, self.socket_pos.clone() + socket_pos_noise,
+        #                                sim_steps=self.cfg_task.env.num_gripper_move_sim_steps//2)
+        # self._refresh_task_tensors(update_tactile=True)
+        # self._zero_velocities(env_ids)
 
         roll, pitch, yaw = get_euler_xyz(self.plug_quat)
         roll[roll > np.pi] -= 2 * np.pi
         pitch[pitch > np.pi] -= 2 * np.pi
 
-        cond = (abs(roll * 180 / np.pi) < 8) & (abs(pitch * 180 / np.pi) < 8) & (torch.sum(torch.sum((self.depth_maps - priv_depth), dim=(2, 3)) >= 0.001, dim=1) == 3)
+        cond = (abs(roll * 180 / np.pi) < 8) & (abs(pitch * 180 / np.pi) < 8) 
+        print(cond)
+        cond &= (torch.sum(torch.sum((self.depth_maps - priv_depth), dim=(2, 3)) >= 0.0, dim=1) == 3)
+        print(torch.sum((self.depth_maps - priv_depth), dim=(2, 3)), cond)
         valid_env_ids = env_ids[cond.nonzero()]
-
-        print(torch.sum((self.depth_maps - priv_depth), dim=(2, 3)))
 
         print(len(valid_env_ids))
         # TODO: move this to a separate function
@@ -725,8 +739,9 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             plug_pos = self.root_pos[valid_env_ids, self.plug_actor_id_env, :].clone().cpu().numpy()
             plug_quat = self.root_quat[valid_env_ids, self.plug_actor_id_env, :].clone().cpu().numpy()
             dof_pos = self.dof_pos[valid_env_ids, :].clone().cpu().numpy()
+            print(dof_pos[:, :, 6:], dof_pos.shape)
             output_dir = './outputs/debug'
-            file_name = 'init_grasp3'
+            file_name = self.grasps_folder
             init_grasp_folder = os.path.join(output_dir, file_name)
             if not os.path.exists(init_grasp_folder):
                 os.makedirs(init_grasp_folder)

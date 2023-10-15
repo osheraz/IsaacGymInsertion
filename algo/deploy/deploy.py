@@ -14,13 +14,15 @@ from algo.models.running_mean_std import RunningMeanStd
 import torch
 import os
 import hydra
+import cv2
+from isaacgyminsertion.utils import torch_jit_utils
 
 
 class HardwarePlayer(object):
     def __init__(self, output_dir, full_config):
 
-        self.action_scale = full_config.task.rl.pos_action_scale
-        self.action_scale = full_config.task.rl.rot_action_scale
+        self.pos_scale = full_config.task.rl.pos_action_scale
+        self.rot_scale = full_config.task.rl.rot_action_scale
 
         self.device = full_config["rl_device"]
         # ------
@@ -104,6 +106,11 @@ class HardwarePlayer(object):
     def _acquire_task_tensors(self):
         """Acquire tensors."""
 
+        self.gripper_normal_quat = torch.tensor([-1 / 2 ** 0.5, -1 / 2 ** 0.5, 0.0, 0.0], device=self.device).unsqueeze(
+            0)
+
+        self.identity_quat = torch.tensor([0.0, 0.0, 0.0, 1.0], device=self.device).unsqueeze(0)
+
         self.plug_grasp_pos_local = self.plug_height * 0.5 * torch.tensor([0.0, 0.0, 1.0],
                                                                           device=self.device).unsqueeze(0)
         self.plug_grasp_quat_local = torch.tensor([0.0, 0.0, 0.0, 1.0], device=self.device).unsqueeze(0)
@@ -144,74 +151,157 @@ class HardwarePlayer(object):
 
         self.ft_queue = torch.zeros((1, self.ft_seq_length, 6), device=self.device, dtype=torch.float)
 
+        self.obs_buf = torch.zeros((1, self.obs_shape[0]), device=self.device, dtype=torch.float)
+
+    def _set_socket_pose(self, pos):
+
+        self.socket_pos = torch.tensor(pos, device=self.device).unsqueeze(0)
+
+    def _update_socket_pose(self):
+
+        # TODO verify that everything is w.r.t robot base..
+
+        socket_obs_pos_noise = 2 * (
+                torch.rand((1, 3), dtype=torch.float32, device=self.device)
+                - 0.5
+        )
+        socket_obs_pos_noise = socket_obs_pos_noise @ torch.diag(
+            torch.tensor(
+                self.full_config.task.env.deploy.socket_pos_obs_noise,
+                dtype=torch.float32,
+                device=self.device,
+            )
+        )
+
+        self.noisy_socket_pos = torch.zeros_like(
+            self.socket_pos, dtype=torch.float32, device=self.device
+        )
+
+        self.noisy_socket_pos[:, 0] = self.socket_pos[:, 0] + socket_obs_pos_noise[:, 0]
+        self.noisy_socket_pos[:, 1] = self.socket_pos[:, 1] + socket_obs_pos_noise[:, 1]
+        self.noisy_socket_pos[:, 2] = self.socket_pos[:, 2] + socket_obs_pos_noise[:, 2]
+
+        self.noisy_gripper_goal_quat, self.noisy_gripper_goal_pos = torch_jit_utils.tf_combine(
+            self.identity_quat,
+            self.noisy_socket_pos,
+            self.gripper_normal_quat,
+            self.socket_tip_pos_local)
+
+    def compute_observations(self):
+
+        obses = self.env.get_obs()
+        arm_joints = obses['joints']
+        ee_pose = obses['ee_pose']
+        left, right, bottom = obses['frames']
+        ft = obses['ft']
+
+        self.arm_joint_queue[:, 1:] = self.arm_joint_queue[:, :-1].clone().detach()
+        self.arm_joint_queue[:, 0, :] = torch.tensor(arm_joints, device=self.device, dtype=torch.float)
+
+        self.eef_queue[:, 1:] = self.eef_queue[:, :-1].clone().detach()
+        self.eef_queue[:, 0, :] = torch.tensor(ee_pose, device=self.device, dtype=torch.float)
+
+        left = cv2.resize(left, (self.cfg_tactile.decoder.width, self.cfg_tactile.decoder.height),
+                          interpolation=cv2.INTER_AREA)
+        right = cv2.resize(right, (self.cfg_tactile.decoder.width, self.cfg_tactile.decoder.height),
+                           interpolation=cv2.INTER_AREA)
+        bottom = cv2.resize(bottom, (self.cfg_tactile.decoder.width, self.cfg_tactile.decoder.height),
+                            interpolation=cv2.INTER_AREA)
+
+        self.tactile_imgs[1, 0] = torch_jit_utils.img_transform(left).to(self.device).permute(1, 2, 0)
+        self.tactile_imgs[1, 1] = torch_jit_utils.img_transform(right).to(self.device).permute(1, 2, 0)
+        self.tactile_imgs[1, 2] = torch_jit_utils.img_transform(bottom).to(self.device).permute(1, 2, 0)
+
+        self.tactile_queue[:, 1:] = self.tactile_queue[:, :-1].clone().detach()
+        self.tactile_queue[:, 0, :] = self.tactile_imgs
+
+        self.ft_queue[:, 1:] = self.ft_queue[:, :-1].clone().detach()
+        self.ft_queue[:, 0, :] = torch.tensor(ft, device=self.device, dtype=torch.float)
+
+        obs_tensors = [
+            self.arm_joint_queue.reshape(1, -1),  # 7 * hist
+            # self.arm_vel_queue.reshape(1, -1),
+            self.eef_queue.reshape(1, -1),  # (envs, 7 * hist)
+            self.goal_noisy_queue.reshape(1, -1),  # (envs, 7 * hist)
+            self.actions_queue.reshape(1, -1),  # (envs, 6 * hist)
+            self.targets_queue.reshape(1, -1),  # (envs, 6 * hist)
+        ]
+
+        self.obs_buf = torch.cat(obs_tensors, dim=-1)
+
+        return self.obs_buf
+
+    def update_and_apply_action(self, actions):
+
+        self.actions = actions.clone().to(self.device)
+
+        delta_targets = torch.cat([
+            self.actions[:, :3] @ torch.diag(torch.tensor(self.pos_scale, device=self.device)),  # 3
+            self.actions[:, 3:6] @ torch.diag(torch.tensor(self.rot_scale, device=self.device))  # 3
+        ], dim=-1).clone()
+
+        # Update targets
+        self.targets = self.prev_targets + delta_targets
+
+        # update the queue
+        self.actions_queue[:, 1:] = self.actions_queue[:, :-1].clone().detach()
+        self.actions_queue[:, 0, :] = self.actions
+
+        self.targets_queue[:, 1:] = self.targets_queue[:, :-1].clone().detach()
+        self.targets_queue[:, 0, :] = self.targets
+        self.prev_targets[:] = self.targets.clone()
+
+        # some-like taking a new socket pose measurement
+        self._update_socket_pose()
+        self.goal_noisy_queue[:, 1:] = self.goal_noisy_queue[:, :-1].clone().detach()
+        self.goal_noisy_queue[:, 0, :] = torch.cat((self.noisy_gripper_goal_pos.clone(),
+                                                    self.noisy_gripper_goal_quat.clone()),
+                                                   dim=-1)
+        # Apply the action ?
+        actions = torch.clamp(actions, -1.0, 1.0)
+        self.env.apply_action(actions)
+
     def deploy(self):
         from algo.deploy.env.env import ExperimentEnv
         # try to set up rospy
         rospy.init_node('DeployEnv')
-        env = ExperimentEnv()
-        rospy.logwarn('sda')
+        self.env = ExperimentEnv()
+        rospy.logwarn('Finished setting the env, lets play.')
+
         # Wait for connections.
         rospy.sleep(0.5)
 
         hz = 60
         ros_rate = rospy.Rate(hz)
 
-        # TODO command to the initial position
-        env.move_to_init_state()
+        self.env.move_to_init_state()
 
-        obses = env.get_obs()
-        # hardware deployment buffer
-        obs_buf = torch.from_numpy(np.zeros((1, 16 * 3 * 2)).astype(np.float32)).cuda()
-        proprio_hist_buf = torch.from_numpy(np.zeros((1, 30, 16 * 2)).astype(np.float32)).cuda()
+        # TODO index the real objects
+        self._create_asset_info(1)
+        self._acquire_task_tensors()
+        true_pose = [0, 0, 0]
+        self._set_socket_pose(pos=true_pose)
 
-        def unscale(x, lower, upper):
-            return (2.0 * x - upper - lower) / (upper - lower)
+        obs = self.compute_observations()
 
-        obses = torch.from_numpy(obses.astype(np.float32)).cuda()
-        prev_target = obses[None].clone()
-        cur_obs_buf = unscale(obses, self.env_dof_lower, self.env_dof_upper)[None]
-
-        for i in range(3):
-            obs_buf[:, i * 16 + 0:i * 16 + 16] = cur_obs_buf.clone()  # joint position
-            obs_buf[:, i * 16 + 16:i * 16 + 32] = prev_target.clone()  # current target (obs_t-1 + s * act_t-1)
-
-        proprio_hist_buf[:, :, :16] = cur_obs_buf.clone()
-        proprio_hist_buf[:, :, 16:32] = prev_target.clone()
+        # TODO? Should we fill the history buffs?
+        for i in range(self.env_config.numObsHist):
+            pass
 
         while True:
-            obs = self.running_mean_std(obs_buf.clone())
+            obs = self.running_mean_std(obs.clone())
+
             input_dict = {
                 'obs': obs,
-                'proprio_hist': self.sa_mean_std(proprio_hist_buf.clone()),
+                'tactile_hist': self.tactile_queue,
             }
+
             action = self.model.act_inference(input_dict)
-            action = torch.clamp(action, -1.0, 1.0)
+            self.update_and_apply_action(action)
 
-            target = prev_target + self.action_scale * action
-            target = torch.clip(target, self.env_dof_lower, self.env_dof_upper)
-            prev_target = target.clone()
-            # interact with the hardware
-            commands = target.cpu().numpy()[0]
-            env.command_joint_position(commands)
-            ros_rate.sleep()  # keep 20 Hz command
-            # get o_{t+1}
-            obses, torques = env.poll_joint_position(wait=True)
-            obses = torch.from_numpy(obses.astype(np.float32)).cuda()
-
-            cur_obs_buf = unscale(obses, self.env_dof_lower, self.env_dof_upper)[None]
-            prev_obs_buf = obs_buf[:, 32:].clone()
-            obs_buf[:, :64] = prev_obs_buf
-            obs_buf[:, 64:80] = cur_obs_buf.clone()
-            obs_buf[:, 80:96] = target.clone()
-
-            priv_proprio_buf = proprio_hist_buf[:, 1:30, :].clone()
-            cur_proprio_buf = torch.cat([
-                cur_obs_buf, target.clone()
-            ], dim=-1)[:, None]
-            proprio_hist_buf[:] = torch.cat([priv_proprio_buf, cur_proprio_buf], dim=1)
+            obs = self.compute_observations()
 
     def restore(self, fn):
         checkpoint = torch.load(fn)
         self.running_mean_std.load_state_dict(checkpoint['running_mean_std'])
         self.model.load_state_dict(checkpoint['model'])
-        self.sa_mean_std.load_state_dict(checkpoint['sa_mean_std'])

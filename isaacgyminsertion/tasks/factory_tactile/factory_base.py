@@ -57,6 +57,7 @@ class FactoryBaseTactile(VecTask, FactoryABCBase):
 
         self.cfg = cfg
         self.cfg['headless'] = headless
+        self.grasps_folder = 'init_grasps5'
 
         self._get_base_yaml_params()
 
@@ -72,7 +73,8 @@ class FactoryBaseTactile(VecTask, FactoryABCBase):
         self.record_now = False
         self.complete_video_frames = None
         self.video_frames = []
-        
+
+
 
     def _get_base_yaml_params(self):
         """Initialize instance variables from YAML files."""
@@ -99,19 +101,21 @@ class FactoryBaseTactile(VecTask, FactoryABCBase):
                                       graphics_device=self.graphics_device_id,
                                       physics_engine=self.physics_engine,
                                       sim_params=self.sim_params)
+        self._initialize_grasp_poses()
         self._create_ground_plane()
         self.create_envs()  # defined in subclass
-        self._initialize_grasp_poses()
         # If randomizing, apply once immediately on startup before the fist sim step
         if self.randomize:
             self.apply_randomizations(self.randomization_params)
+        
 
     def _initialize_grasp_poses(self):
         # TODO: add this path to the config file
         try:
-            self.initial_grasp_poses = np.load('initial_grasp_data/init_grasp1.npz')
+            self.initial_grasp_poses = np.load(f'initial_grasp_data/{self.grasps_folder}.npz')
         except:
             return
+        
         self.total_init_poses = self.initial_grasp_poses['socket_pos'].shape[0]
         self.init_socket_pos = torch.zeros((self.total_init_poses, 3))
         self.init_socket_quat = torch.zeros((self.total_init_poses, 4))
