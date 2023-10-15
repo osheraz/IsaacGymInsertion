@@ -1,7 +1,7 @@
 # --------------------------------------------------------
-# In-Hand Object Rotation via Rapid Motor Adaptation
-# https://arxiv.org/abs/2210.04887
-# Copyright (c) 2022 Haozhi Qi
+# ?
+# https://arxiv.org/abs/todo
+# Copyright (c) 2022 Osher & Co
 # Licensed under The MIT License [see LICENSE for details]
 # --------------------------------------------------------
 # Based on: IsaacGymEnvs
@@ -11,11 +11,12 @@
 # --------------------------------------------------------
 
 import hydra
-
+import os
+from datetime import datetime
 from omegaconf import DictConfig, OmegaConf
-from hora.utils.misc import set_np_formatting, set_seed
+from isaacgyminsertion.utils.misc import set_np_formatting, set_seed
 # noinspection PyUnresolvedReferences
-from hora.algo.deploy.deploy import HardwarePlayer
+from algo.deploy.deploy import HardwarePlayer
 
 
 # ---- OmegaConf & Hydra Config
@@ -28,14 +29,17 @@ OmegaConf.register_new_resolver('if', lambda pred, a, b: a if pred else b)
 OmegaConf.register_new_resolver('resolve_default', lambda default, arg: default if arg == '' else arg)
 
 
-@hydra.main(config_name='config', config_path='configs')
+@hydra.main(config_name="config", config_path="./cfg")
 def main(config: DictConfig):
+
     set_np_formatting()
     config.seed = set_seed(config.seed)
-    agent = HardwarePlayer(config)
+    output_dif = os.path.join('outputs', str(datetime.now().strftime("%m-%d-%y")))
+    output_dif = os.path.join(output_dif, str(datetime.now().strftime("%H-%M-%S")))
+    os.makedirs(output_dif, exist_ok=True)
+    agent = HardwarePlayer(output_dif, config)
     agent.restore(config.checkpoint)
     agent.deploy()
-
 
 if __name__ == '__main__':
     main()

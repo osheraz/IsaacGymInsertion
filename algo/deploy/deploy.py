@@ -16,43 +16,41 @@ import os
 import hydra
 import cv2
 from isaacgyminsertion.utils import torch_jit_utils
+import isaacgyminsertion.tasks.factory_tactile.factory_control as fc
 
 
 class HardwarePlayer(object):
     def __init__(self, output_dir, full_config):
 
-        self.pos_scale = full_config.task.rl.pos_action_scale
-        self.rot_scale = full_config.task.rl.rot_action_scale
+        self.deploy_config = full_config.deploy
 
+        self.pos_scale = self.deploy_config.rl.pos_action_scale
+        self.rot_scale = self.deploy_config.rl.rot_action_scale
         self.device = full_config["rl_device"]
-        # ------
-        self.network_config = full_config.train.network
-        self.ppo_config = full_config.train.ppo
-        self.env_config = full_config.task.env
-        self.full_config = full_config
+
         # ---- build environment ----
-        self.obs_shape = (self.env_config.numObservations,)
-        self.num_actions = self.env_config.numActions
-        self.num_targets = self.env_config.numTargets
+        self.obs_shape = (self.deploy_config.env.numObservations,)
+        self.num_actions = self.deploy_config.env.numActions
+        self.num_targets = self.deploy_config.env.numTargets
 
         # ---- Tactile Info ---
-        self.tactile_info = self.ppo_config.tactile_info
-        self.tactile_seq_length = self.ppo_config.tactile_seq_length
-        self.tactile_info_dim = self.network_config.tactile_mlp.units[0]
-        # ---- ft Info --- TODO currently we dont use ft
-        self.ft_info = self.ppo_config.ft_info
-        self.ft_seq_length = self.ppo_config.ft_seq_length
-        self.ft_input_dim = self.ppo_config.ft_input_dim
+        self.tactile_info = self.deploy_config.ppo.tactile_info
+        self.tactile_seq_length = self.deploy_config.ppo.tactile_seq_length
+        self.tactile_info_dim = self.deploy_config.network.tactile_mlp.units[0]
+        # ---- ft Info --- currently ft isn't supported
+        self.ft_info = self.deploy_config.ppo.ft_info
+        self.ft_seq_length = self.deploy_config.ppo.ft_seq_length
+        self.ft_input_dim = self.deploy_config.ppo.ft_input_dim
         self.ft_info_dim = self.ft_input_dim * self.ft_seq_length
         # ---- Priv Info ----
-        self.priv_info = self.ppo_config.priv_info
-        self.priv_info_dim = self.ppo_config.priv_info_dim
-        self.extrin_adapt = self.ppo_config.extrin_adapt
+        self.priv_info = self.deploy_config.ppo.priv_info
+        self.priv_info_dim = self.deploy_config.ppo.priv_info_dim
+        self.extrin_adapt = self.deploy_config.ppo.extrin_adapt
 
         net_config = {
-            'actor_units': self.network_config.mlp.units,
+            'actor_units': self.deploy_config.network.mlp.units,
             'actions_num': self.num_actions,
-            'priv_mlp_units': self.network_config.priv_mlp.units,
+            'priv_mlp_units': self.deploy_config.network.priv_mlp.units,
             'input_shape': self.obs_shape,
             'extrin_adapt': True,
             'priv_info_dim': self.priv_info_dim,
@@ -61,9 +59,9 @@ class HardwarePlayer(object):
             "tactile_input_shape": self.tactile_info_dim,
             "ft_input_shape": self.ft_info_dim,
             "ft_info": self.ft_info,
-            "tactile_units": self.network_config.tactile_mlp.units,
-            "tactile_decoder_embed_dim": self.network_config.tactile_mlp.units[0],
-            "ft_units": self.network_config.ft_mlp.units,
+            "tactile_units": self.deploy_config.network.tactile_mlp.units,
+            "tactile_decoder_embed_dim": self.deploy_config.network.tactile_mlp.units[0],
+            "ft_units": self.deploy_config.network.ft_mlp.units,
         }
 
         self.model = ActorCritic(net_config)
@@ -88,7 +86,7 @@ class HardwarePlayer(object):
 
     def _create_asset_info(self, i):
 
-        subassembly = self.full_config.env.desired_subassemblies[i]
+        subassembly = self.deploy_config.desired_subassemblies[i]
         components = list(self.asset_info_insertion[subassembly])
         rospy.logwarn('Parameters load for: {} --- >  {}'.format(components[0], components[1]))
 
@@ -119,19 +117,19 @@ class HardwarePlayer(object):
         self.socket_tip_pos_local = self.socket_height * torch.tensor([0.0, 0.0, 1.0], device=self.device).unsqueeze(0)
 
         self.actions = torch.zeros((1, self.num_actions), device=self.device)
-        self.targets = torch.zeros((1, self.env_config.numTargets), device=self.device)
-        self.prev_targets = torch.zeros((1, self.env_config.numTargets), dtype=torch.float, device=self.device)
+        self.targets = torch.zeros((1, self.deploy_config.env.numTargets), device=self.device)
+        self.prev_targets = torch.zeros((1, self.deploy_config.env.numTargets), dtype=torch.float, device=self.device)
 
         # Keep track of history
-        self.arm_joint_queue = torch.zeros((1, self.env_config.numObsHist, 7), dtype=torch.float, device=self.device)
-        self.arm_vel_queue = torch.zeros((1, self.env_config.numObsHist, 7), dtype=torch.float, device=self.device)
-        self.actions_queue = torch.zeros((1, self.env_config.numObsHist, self.num_actions),
+        self.arm_joint_queue = torch.zeros((1, self.deploy_config.env.obs_seq_length, 7), dtype=torch.float, device=self.device)
+        self.arm_vel_queue = torch.zeros((1, self.deploy_config.env.obs_seq_length, 7), dtype=torch.float, device=self.device)
+        self.actions_queue = torch.zeros((1, self.deploy_config.env.obs_seq_length, self.num_actions),
                                          dtype=torch.float, device=self.device)
-        self.targets_queue = torch.zeros((1, self.env_config.numObsHist, self.num_targets),
+        self.targets_queue = torch.zeros((1, self.deploy_config.env.obs_seq_length, self.num_targets),
                                          dtype=torch.float, device=self.device)
-        self.eef_queue = torch.zeros((1, self.env_config.numObsHist, 7),
+        self.eef_queue = torch.zeros((1, self.deploy_config.env.obs_seq_length, 7),
                                      dtype=torch.float, device=self.device)
-        self.goal_noisy_queue = torch.zeros((1, self.env_config.numObsHist, 7),
+        self.goal_noisy_queue = torch.zeros((1, self.deploy_config.env.obs_seq_length, 7),
                                             dtype=torch.float, device=self.device)
 
         # tactile buffers
@@ -167,7 +165,7 @@ class HardwarePlayer(object):
         )
         socket_obs_pos_noise = socket_obs_pos_noise @ torch.diag(
             torch.tensor(
-                self.full_config.task.env.deploy.socket_pos_obs_noise,
+                self.deploy_config.env.socket_pos_obs_noise,
                 dtype=torch.float32,
                 device=self.device,
             )
@@ -198,8 +196,12 @@ class HardwarePlayer(object):
         self.arm_joint_queue[:, 1:] = self.arm_joint_queue[:, :-1].clone().detach()
         self.arm_joint_queue[:, 0, :] = torch.tensor(arm_joints, device=self.device, dtype=torch.float)
 
+        self.fingertip_centered_pos = torch.tensor(ee_pose[:3], device=self.device, dtype=torch.float)
+        self.fingertip_centered_quat = torch.tensor(ee_pose[3:], device=self.device, dtype=torch.float)
+
         self.eef_queue[:, 1:] = self.eef_queue[:, :-1].clone().detach()
-        self.eef_queue[:, 0, :] = torch.tensor(ee_pose, device=self.device, dtype=torch.float)
+        self.eef_queue[:, 0, :] = torch.cat((self.fingertip_centered_pos.clone(),
+                                             self.fingertip_centered_quat.clone()), dim=-1)
 
         left = cv2.resize(left, (self.cfg_tactile.decoder.width, self.cfg_tactile.decoder.height),
                           interpolation=cv2.INTER_AREA)
@@ -257,11 +259,69 @@ class HardwarePlayer(object):
         self.goal_noisy_queue[:, 0, :] = torch.cat((self.noisy_gripper_goal_pos.clone(),
                                                     self.noisy_gripper_goal_quat.clone()),
                                                    dim=-1)
-        # Apply the action ?
+
+        self.apply_action(actions)
+
+    def apply_action(self, actions, do_scale=True):
+
+        # Apply the action
         actions = torch.clamp(actions, -1.0, 1.0)
-        self.env.apply_action(actions)
+        # Interpret actions as target pos displacements and set pos target
+        pos_actions = actions[:, 0:3]
+        if do_scale:
+            pos_actions = pos_actions @ torch.diag(torch.tensor(self.pos_scale, device=self.device))
+        self.ctrl_target_fingertip_centered_pos = self.fingertip_centered_pos + pos_actions
+
+        # Interpret actions as target rot (axis-angle) displacements
+        rot_actions = actions[:, 3:6]
+        if do_scale:
+            rot_actions = rot_actions @ torch.diag(torch.tensor(self.rot_scale, device=self.device))
+
+        # Convert to quat and set rot target
+        angle = torch.norm(rot_actions, p=2, dim=-1)
+        axis = rot_actions / angle.unsqueeze(-1)
+        rot_actions_quat = torch_jit_utils.quat_from_angle_axis(angle, axis)
+        if self.deploy_config.rl.clamp_rot:
+            rot_actions_quat = torch.where(angle.unsqueeze(-1).repeat(1, 4) > self.deploy_config.rl.clamp_rot_thresh,
+                                           rot_actions_quat,
+                                           torch.tensor([0.0, 0.0, 0.0, 1.0], device=self.device))
+        self.ctrl_target_fingertip_centered_quat = torch_jit_utils.quat_mul(rot_actions_quat,
+                                                                            self.fingertip_centered_quat)
+
+        self.generate_ctrl_signals()
+
+    def generate_ctrl_signals(self):
+
+        ctrl_info = self.env.get_info_for_control()
+
+        fingertip_centered_jacobian_tf = torch.tensor(ctrl_info['jacob'],
+                                                      device=self.device).unsqueeze(0)
+
+        arm_dof_pos = torch.tensor(ctrl_info['joints'], device=self.device).unsqueeze(0)
+
+        cfg_ctrl = {'num_envs': 1,
+                    'jacobian_type': 'geometric'}
+
+        self.ctrl_target_dof_pos = fc.compute_dof_pos_target(
+            cfg_ctrl=cfg_ctrl,
+            arm_dof_pos=arm_dof_pos,
+            fingertip_midpoint_pos=self.fingertip_centered_pos,
+            fingertip_midpoint_quat=self.fingertip_centered_quat,
+            jacobian=fingertip_centered_jacobian_tf,
+            ctrl_target_fingertip_midpoint_pos=self.ctrl_target_fingertip_centered_pos,
+            ctrl_target_fingertip_midpoint_quat=self.ctrl_target_fingertip_centered_quat,
+            ctrl_target_gripper_dof_pos=0,
+            device=self.device).squeeze(0)
+
+        self.env.move_to_joint_values(self.ctrl_target_dof_pos.cpu().detach().numpy().tolist())
+
+    def restore(self, fn):
+        checkpoint = torch.load(fn)
+        self.running_mean_std.load_state_dict(checkpoint['running_mean_std'])
+        self.model.load_state_dict(checkpoint['model'])
 
     def deploy(self):
+
         from algo.deploy.env.env import ExperimentEnv
         # try to set up rospy
         rospy.init_node('DeployEnv')
@@ -275,9 +335,12 @@ class HardwarePlayer(object):
         ros_rate = rospy.Rate(hz)
 
         self.env.move_to_init_state()
+        self.env.grasp_object()
+
 
         # TODO index the real objects
-        self._create_asset_info(1)
+
+        self._create_asset_info(object)
         self._acquire_task_tensors()
         true_pose = [0, 0, 0]
         self._set_socket_pose(pos=true_pose)
@@ -285,7 +348,7 @@ class HardwarePlayer(object):
         obs = self.compute_observations()
 
         # TODO? Should we fill the history buffs?
-        for i in range(self.env_config.numObsHist):
+        for i in range(self.deploy_config.env.obs_seq_length):
             pass
 
         while True:
@@ -299,9 +362,6 @@ class HardwarePlayer(object):
             action = self.model.act_inference(input_dict)
             self.update_and_apply_action(action)
 
-            obs = self.compute_observations()
+            ros_rate.sleep()
 
-    def restore(self, fn):
-        checkpoint = torch.load(fn)
-        self.running_mean_std.load_state_dict(checkpoint['running_mean_std'])
-        self.model.load_state_dict(checkpoint['model'])
+            obs = self.compute_observations()

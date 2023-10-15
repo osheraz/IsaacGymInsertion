@@ -5,6 +5,7 @@ from hand import Hand
 from openhand_env import OpenhandEnv
 from robots import RobotWithFtEnv
 
+
 class ExperimentEnv:
     """ Superclass for all Robots environments.
     """
@@ -42,28 +43,21 @@ class ExperimentEnv:
                 }
 
     def get_frames(self):
-
         left, right, bottom = self.tactile.get_frames()
 
         return left, right, bottom
 
     def get_ft(self):
-
         ft = self.arm.robotiq_wrench_filtered_state
 
         return ft
 
     def move_to_init_state(self):
-
         pass
 
-    def apply_action(self, action):
-        # target = prev_target + self.action_scale * action
-        # target = torch.clip(target, self.env_dof_lower, self.env_dof_upper)
-        # prev_target = target.clone()
-        # # interact with the hardware
-        # commands = target.cpu().numpy()[0]
-        # self.env.command_joint_position(commands)
-        # ros_rate.sleep()  # keep 20 Hz command
-
+    def grasp_object(self):
         pass
+
+    def move_to_joint_values(self, values):
+        result = self.arm.set_trajectory_joints(values)
+        assert result == False, 'Failed to apply action'

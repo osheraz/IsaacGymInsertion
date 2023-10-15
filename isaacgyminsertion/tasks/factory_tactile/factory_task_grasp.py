@@ -86,7 +86,6 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.pbar = tqdm(total = self.total_grasps)
         self.total_init_grasp_count = 0
 
-        
 
     def _get_task_yaml_params(self):
         """Initialize instance variables from YAML files."""

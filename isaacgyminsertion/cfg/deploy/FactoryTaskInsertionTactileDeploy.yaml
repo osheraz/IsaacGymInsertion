@@ -1,0 +1,58 @@
+seed: ${..seed}
+algo: ExtrinsicAdapt
+
+load_path: ${..checkpoint} # path to the checkpoint to load
+
+desired_subassemblies: ['yellow_round_peg_2in']
+#                            'round_peg_hole_8mm_loose', round_peg_hole_16mm_loose
+#                            'round_peg_hole_12mm_loose',
+#                            'round_peg_hole_4mm_loose',yellow_round_peg_2in, red_round_peg_15in
+#                            'rectangular_peg_hole_4mm_loose',
+#                            'rectangular_peg_hole_8mm_loose',
+#                            'rectangular_peg_hole_12mm_loose',
+#                            'rectangular_peg_hole_16mm_loose']
+
+record_video: True
+record_ft: True
+tactile_display_viz: True
+
+# taking from training default, allows to over write
+# actually, we should write different config for each observation we test
+rl:
+    pos_action_scale: ${...task.rl.pos_action_scale}
+    rot_action_scale: ${...task.rl.rot_action_scale}
+    clamp_rot: ${...task.rl.clamp_rot}
+    clamp_rot_thresh: ${...task.rl.clamp_rot_thresh}
+
+env:
+  tactile_seq_length: ${...task.env.tactile_history_len}
+  ft_seq_length: ${...task.env.ft_history_len}
+  obs_seq_length: ${...task.env.numObsHist}
+  priv_info_dim: ${...task.env.numStates}
+  numObservations: ${...task.env.numObservations}
+  numActions: ${...task.env.numActions}
+  numTargets: ${...task.env.numTargets}
+  socket_pos_obs_noise: [ 0.001, 0.001, 0.0 ]
+  socket_rot_obs_noise: [ 0.0, 0.0, 0.0 ]
+
+
+ppo:
+  priv_info: True
+  extrin_adapt: True
+  tactile_info: True
+  ft_info: False
+  ft_input_dim: 6
+  tactile_seq_length: ${...task.env.tactile_history_len}
+  ft_seq_length: ${...task.env.ft_history_len}
+  obs_seq_length: ${...task.env.numObsHist}
+  priv_info_dim: ${...task.env.numStates}
+
+network:
+  mlp:
+    units: ${...train.network.mlp.units}
+  priv_mlp:
+    units: ${...train.network.mlp.priv_mlp}
+  tactile_mlp:
+    units: ${...train.network.mlp.tactile_mlp}
+  ft_mlp:
+    units: ${...train.network.mlp.ft_mlp}
