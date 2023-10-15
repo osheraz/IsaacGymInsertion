@@ -24,7 +24,7 @@ class ExperimentEnv:
         ft = self.arm.robotiq_wrench_filtered_state
         left, right, bottom = self.tactile.get_frames()
         pos, quat = self.arm.get_ee_pose()
-        joints = self.arm.move_manipulator.joint_values()
+        joints = self.arm.get_joint_values()
 
         return {'joints': joints,
                 'ee_pose': pos + quat,
@@ -34,8 +34,8 @@ class ExperimentEnv:
 
     def get_info_for_control(self):
         pos, quat = self.arm.get_ee_pose()
-        joints = self.arm.move_manipulator.joint_values()
-        jacob = self.arm.move_manipulator.get_jacobian_matrix()
+        joints = self.arm.get_joint_values()
+        jacob = self.arm.get_jacobian_matrix()
 
         return {'joints': joints,
                 'ee_pose': pos + quat,

@@ -30,33 +30,29 @@ class RobotWithFtEnv():
 
         self.move_manipulator = MoveManipulator()
 
-    def calib_robotiq(self):
+    def wait_env_ready(self):
 
-        rospy.sleep(0.5)
-        msg = ft_srv.sensor_accessorRequest()
-        msg.command = "SET ZRO"
-        suc_zero = True
-        self.robotiq_wrench_filtered_state *= 0
-        for _ in range(5):
-            result = self.ft_zero(msg)
-            rospy.sleep(0.5)
-            if 'Done' not in str(result):
-                suc_zero &= False
-                rospy.logerr('Failed calibrating the F\T')
-            else:
-                suc_zero &= True
-        return suc_zero
+        import time
+
+        for i in range(1):
+            print("WAITING..." + str(i))
+            sys.stdout.flush()
+            time.sleep(1.0)
+
+        print("WAITING...DONE")
 
     def _check_all_systems_ready(self):
         """
         Checks that all the sensors, publishers and other robot systems are
         operational.
         """
-        rospy.logdebug("ManipulatorOpenhandRealEnv check_all_systems_ready...")
+        rospy.logdebug("Manipulator check_all_systems_ready...")
         self._check_arm_joint_state_ready()
         self._check_robotiq_connection()
-        rospy.logdebug("END ManipulatorOpenhandRealEnv _check_all_systems_ready...")
+        rospy.logdebug("END Manipulator _check_all_systems_ready...")
         return True
+
+    ############### Arm related #########################
 
     def _check_arm_joint_state_ready(self):
 
@@ -75,51 +71,8 @@ class RobotWithFtEnv():
                     "Current arm_controller/state not ready yet, retrying for getting laser_scan")
         return self.arm_joint_state
 
-    def _check_robotiq_connection(self):
-
-        self.robotiq_wrench_filtered_state = numpy.array([0, 0, 0, 0, 0, 0])
-        rospy.logdebug(
-            "Waiting for robotiq_force_torque_wrench_filtered to be READY...")
-        while not numpy.sum(self.robotiq_wrench_filtered_state) and not rospy.is_shutdown():
-            try:
-                self.robotiq_wrench_filtered_state = rospy.wait_for_message(
-                    "robotiq_force_torque_wrench_filtered", WrenchStamped, timeout=5.0)
-                self.robotiq_wrench_filtered_state = numpy.array([self.robotiq_wrench_filtered_state.wrench.force.x,
-                                                                  self.robotiq_wrench_filtered_state.wrench.force.y,
-                                                                  self.robotiq_wrench_filtered_state.wrench.force.z,
-                                                                  self.robotiq_wrench_filtered_state.wrench.torque.x,
-                                                                  self.robotiq_wrench_filtered_state.wrench.torque.y,
-                                                                  self.robotiq_wrench_filtered_state.wrench.torque.z])
-                rospy.logdebug(
-                    "Current robotiq_force_torque_wrench_filtered READY=>")
-            except:
-                rospy.logerr(
-                    "Current robotiq_force_torque_wrench_filtered not ready yet, retrying")
-
-        return self.robotiq_wrench_filtered_state
-
-    def wait_env_ready(self):
-
-        import time
-
-        for i in range(1):
-            print("WAITING..." + str(i))
-            sys.stdout.flush()
-            time.sleep(1.0)
-
-        print("WAITING...DONE")
-
     def _joint_state_callback(self, data):
         self.arm_joint_state = data
-
-    def _robotiq_wrench_states_callback(self, data):
-
-        self.robotiq_wrench_filtered_state = numpy.array([data.wrench.force.x,
-                                                          data.wrench.force.y,
-                                                          data.wrench.force.z,
-                                                          data.wrench.torque.x,
-                                                          data.wrench.torque.y,
-                                                          data.wrench.torque.z])
 
     def rotate_pose_by_rpy(self, in_pose, roll, pitch, yaw, wait=True):
         """
@@ -247,3 +200,64 @@ class RobotWithFtEnv():
     def get_ee_rpy(self):
         gripper_rpy = self.move_manipulator.ee_rpy()
         return gripper_rpy
+
+    def get_joint_values(self):
+
+        return self.move_manipulator.joint_values()
+
+    def get_jacobian_matrix(self):
+
+        return self.move_manipulator.get_jacobian_matrix()
+
+    ####################################################
+    ############### FT related #########################
+    def calib_robotiq(self):
+
+        rospy.sleep(0.5)
+        msg = ft_srv.sensor_accessorRequest()
+        msg.command = "SET ZRO"
+        suc_zero = True
+        self.robotiq_wrench_filtered_state *= 0
+        for _ in range(5):
+            result = self.ft_zero(msg)
+            rospy.sleep(0.5)
+            if 'Done' not in str(result):
+                suc_zero &= False
+                rospy.logerr('Failed calibrating the F\T')
+            else:
+                suc_zero &= True
+        return suc_zero
+
+    def _check_robotiq_connection(self):
+
+        self.robotiq_wrench_filtered_state = numpy.array([0, 0, 0, 0, 0, 0])
+        rospy.logdebug(
+            "Waiting for robotiq_force_torque_wrench_filtered to be READY...")
+        while not numpy.sum(self.robotiq_wrench_filtered_state) and not rospy.is_shutdown():
+            try:
+                self.robotiq_wrench_filtered_state = rospy.wait_for_message(
+                    "robotiq_force_torque_wrench_filtered", WrenchStamped, timeout=5.0)
+                self.robotiq_wrench_filtered_state = numpy.array([self.robotiq_wrench_filtered_state.wrench.force.x,
+                                                                  self.robotiq_wrench_filtered_state.wrench.force.y,
+                                                                  self.robotiq_wrench_filtered_state.wrench.force.z,
+                                                                  self.robotiq_wrench_filtered_state.wrench.torque.x,
+                                                                  self.robotiq_wrench_filtered_state.wrench.torque.y,
+                                                                  self.robotiq_wrench_filtered_state.wrench.torque.z])
+                rospy.logdebug(
+                    "Current robotiq_force_torque_wrench_filtered READY=>")
+            except:
+                rospy.logerr(
+                    "Current robotiq_force_torque_wrench_filtered not ready yet, retrying")
+
+        return self.robotiq_wrench_filtered_state
+
+    def _robotiq_wrench_states_callback(self, data):
+
+        self.robotiq_wrench_filtered_state = numpy.array([data.wrench.force.x,
+                                                          data.wrench.force.y,
+                                                          data.wrench.force.z,
+                                                          data.wrench.torque.x,
+                                                          data.wrench.torque.y,
+                                                          data.wrench.torque.z])
+
+    ####################################################
