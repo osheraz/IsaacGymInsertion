@@ -1,9 +1,9 @@
 import numpy
 import rospy
-import tf
-from hand import Hand
-from openhand_env import OpenhandEnv
-from robots import RobotWithFtEnv
+# import tf
+from algo.deploy.env.hand import Hand
+from algo.deploy.env.openhand_env import OpenhandEnv
+from algo.deploy.env.robots import RobotWithFtEnv
 
 
 class ExperimentEnv:
@@ -15,7 +15,7 @@ class ExperimentEnv:
         self.hand = OpenhandEnv()
         self.tactile = Hand()
         self.arm = RobotWithFtEnv()
-        self.listener = tf.TransformListener()
+        # self.listener = tf.TransformListener()
         # (trans_ee, rot_ee) = self.listener.lookupTransform('/base_link', 'end_effector_link', rospy.Time(0))
         rospy.sleep(2)
         self.ready = self.arm.init_success and self.tactile.init_success

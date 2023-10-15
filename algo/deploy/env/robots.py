@@ -9,7 +9,7 @@ import copy
 from robotiq_force_torque_sensor.srv import sensor_accessor
 import robotiq_force_torque_sensor.srv as ft_srv
 from robotiq_force_torque_sensor.msg import *
-from moveit_manipulator import MoveManipulator
+from algo.deploy.env.moveit_manipulator import MoveManipulator
 
 
 class RobotWithFtEnv():
@@ -180,6 +180,7 @@ class RobotWithFtEnv():
         return result
 
     def set_ee_pose(self, pose, wait=True):
+
         # Set up a trajectory message to publish.
         ee_target = geometry_msgs.msg.Pose()
         if isinstance(pose, dict):

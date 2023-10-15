@@ -1,23 +1,7 @@
-import concurrent.futures
-import time
-import torch
-from torchvision import transforms
-import matplotlib
-
-matplotlib.use('TkAgg')  # Use the 'TkAgg' backend
-import matplotlib.pyplot as plt
-
-plt.ion()
-import matplotlib as mpl
-
-mpl.rcParams['font.family'] = 'DejaVu Serif'
-plt.rcParams['font.size'] = 8
-plt.rcParams['axes.linewidth'] = 0
-
 import cv2
 import numpy as np
 
-from finger import Finger
+from algo.deploy.env.finger import Finger
 
 
 class Hand():
@@ -37,6 +21,8 @@ class Hand():
         self.finger_bottom = Finger(dev_name=dev_names[2], serial='/dev/video', fix=fix[2])
         self.init_success = False
 
+        self.left_bg, self.right_bg, self.bottom_bg = self.get_frames()
+
     def init_hand(self):
         """
         Sets stream resolution based on supported streams in Finger.STREAMS
@@ -48,17 +34,23 @@ class Hand():
         self.finger_bottom.connect()
         self.init_success = True
 
-    def get_frames(self):
+    def get_frames(self, diff=True):
         """
         Returns a single image frame for the device
         :param transpose: Show direct output from the image sensor, WxH instead of HxW
         :return: Image frame array
         """
-        frame_left = self.finger_left.get_frame()
-        frame_right = self.finger_right.get_frame()
-        frame_bottom = self.finger_bottom.get_frame()
 
-        return frame_left, frame_right, frame_bottom
+        left = self.finger_left.get_frame()
+        right = self.finger_right.get_frame()
+        bottom = self.finger_bottom.get_frame()
+
+        if diff:
+            left = self._subtract_bg(left, self.left_bg) * self.finger_left.mask_resized
+            right = self._subtract_bg(right, self.right_bg) * self.finger_right.mask_resized
+            bottom = self._subtract_bg(bottom, self.bottom_bg) * self.finger_bottom.mask_resized
+
+        return left, right, bottom
 
     def show_fingers_view(self):
         """
@@ -66,45 +58,31 @@ class Hand():
         :param ref_frame: Specify reference frame to show image difference
         :return: None
         """
+        left_bg, right_bg, bottom_bg = self.get_frames()
 
         while True:
 
             left, right, bottom = self.get_frames()
 
             cv2.imshow("Hand View", np.concatenate((left, right, bottom), axis=1))
-            # cv2.imshow("Finger View Right", right)
-            # cv2.imshow("Finger View Bottom", bottom)
 
-            # diff_abs = raw_image_2_height_map(raw_image, ref_frame)
-            # cv2.imshow('diff abs', diff_abs)
-            #
-            # diff = _diff(raw_image, ref_frame)
-            # cv2.imshow('diff', diff)
+            diff_left = self._subtract_bg(left, left_bg) * self.finger_left.mask_resized
+            diff_right = self._subtract_bg(right, right_bg) * self.finger_right.mask_resized
+            diff_bottom = self._subtract_bg(bottom, bottom_bg) * self.finger_bottom.mask_resized
 
-            # cv2.imshow('red', raw_image[:, :, 2])
-            # cv2.imshow('green', raw_image[:, :, 1])
-            # cv2.imshow('blue', raw_image[:, :, 0])
-
-            # cv2.imshow("2 View {}".format(self.serial), raw_image)
+            cv2.imshow("Hand View\tLeft\tRight\tMiddle", np.concatenate((diff_left, diff_right, diff_bottom), axis=1))
 
             if cv2.waitKey(1) == 27:
                 break
 
         cv2.destroyAllWindows()
 
-    def hand_inference(self, model, model_params, transform, statistics):
-
-        while True:
-
-            left, right, bottom = self.get_frames()
-            # _, ext_img = self.ext_cam.read()
-
-            cv2.imshow("Hand View", np.concatenate((left, right, bottom), axis=1))
-
-            if cv2.waitKey(1) == 27:
-                break
-
-        cv2.destroyAllWindows()
+    def _subtract_bg(self, img1, img2, offset=0.5):
+        img1 = np.int32(img1)
+        img2 = np.int32(img2)
+        diff = img1 - img2
+        diff = diff / 255.0 + offset
+        return diff
 
 
 if __name__ == "__main__":

@@ -1,8 +1,8 @@
 import numpy as np
 import cv2
-from env_utils.img_utils import ContactArea, circle_mask, align_center
-from env_utils.img_utils import center_mask, _diff, ring_mask
-from env_utils.img_utils import _mask, square_cut
+from algo.deploy.env.env_utils.img_utils import ContactArea, circle_mask, align_center
+from algo.deploy.env.env_utils.img_utils import center_mask, _diff, ring_mask
+from algo.deploy.env.env_utils.img_utils import _mask, square_cut
 
 
 class Finger:
@@ -38,6 +38,7 @@ class Finger:
         self.fps = 30
 
         self.mask = circle_mask(fix=fix)
+        self.mask_resized = circle_mask(size=(480, 480), fix=fix)
 
         if self.serial is not None:
             print("Finger object constructed with serial {}".format(self.serial))

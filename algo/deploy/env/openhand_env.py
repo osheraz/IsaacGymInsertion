@@ -1,6 +1,6 @@
 import numpy
 import rospy
-import tf
+# import tf
 from hand_control.srv import close, TargetPos, TargetAngles
 from std_msgs.msg import Float32MultiArray, Bool
 from std_srvs.srv import Empty
@@ -101,7 +101,8 @@ class OpenhandEnv():
         """
         Set ups the TF listener for getting the transforms you ask for.
         """
-        self.listener = tf.TransformListener()
+        pass
+        # self.listener = tf.TransformListener()
 
     def _setup_movement_system(self):
         """

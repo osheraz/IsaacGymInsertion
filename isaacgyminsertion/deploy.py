@@ -10,24 +10,22 @@
 # https://github.com/NVIDIA-Omniverse/IsaacGymEnvs/
 # --------------------------------------------------------
 
-import hydra
 import os
 from datetime import datetime
-from omegaconf import DictConfig, OmegaConf
-from isaacgyminsertion.utils.misc import set_np_formatting, set_seed
 # noinspection PyUnresolvedReferences
+import isaacgym
+import hydra
+from omegaconf import DictConfig, OmegaConf
+
+
+import argparse
+from typing import Optional
+from termcolor import cprint
+from isaacgyminsertion.utils.utils import set_np_formatting, set_seed
 from algo.deploy.deploy import HardwarePlayer
+import warnings
 
-
-# ---- OmegaConf & Hydra Config
-# Resolvers used in hydra configs (see https://omegaconf.readthedocs.io/en/2.1_branch/usage.html#resolvers)
-OmegaConf.register_new_resolver('eq', lambda x, y: x.lower() == y.lower())
-OmegaConf.register_new_resolver('contains', lambda x, y: x.lower() in y.lower())
-OmegaConf.register_new_resolver('if', lambda pred, a, b: a if pred else b)
-# allows us to resolve default arguments which are copied in multiple places in the config.
-# used primarily for num_ensv
-OmegaConf.register_new_resolver('resolve_default', lambda default, arg: default if arg == '' else arg)
-
+warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 @hydra.main(config_name="config", config_path="./cfg")
 def main(config: DictConfig):
@@ -38,7 +36,7 @@ def main(config: DictConfig):
     output_dif = os.path.join(output_dif, str(datetime.now().strftime("%H-%M-%S")))
     os.makedirs(output_dif, exist_ok=True)
     agent = HardwarePlayer(output_dif, config)
-    agent.restore(config.checkpoint)
+    # agent.restore(config.checkpoint)
     agent.deploy()
 
 if __name__ == '__main__':
