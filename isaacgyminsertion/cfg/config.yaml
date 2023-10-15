@@ -63,6 +63,7 @@ headless: False
 defaults:
   - task: FactoryTaskInsertionTactile
   - train: ${task}PPOv2
+  - deploy: ${task}Deploy
   - hydra/job_logging: disabled
   - pbt: no_pbt
 

@@ -211,6 +211,8 @@ class MoveManipulator():
         self.group_variable_values[3] = positions_array[3]
         self.group_variable_values[4] = positions_array[4]
         self.group_variable_values[5] = positions_array[5]
+        self.group_variable_values[6] = positions_array[6]
+
         self.group.set_joint_value_target(self.group_variable_values)
         result = self.execute_trajectory()
 

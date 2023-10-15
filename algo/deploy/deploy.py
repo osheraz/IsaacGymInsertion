@@ -22,38 +22,35 @@ import isaacgyminsertion.tasks.factory_tactile.factory_control as fc
 class HardwarePlayer(object):
     def __init__(self, output_dir, full_config):
 
-        self.pos_scale = full_config.task.rl.pos_action_scale
-        self.rot_scale = full_config.task.rl.rot_action_scale
+        self.deploy_config = full_config.deploy
 
+        self.pos_scale = self.deploy_config.rl.pos_action_scale
+        self.rot_scale = self.deploy_config.rl.rot_action_scale
         self.device = full_config["rl_device"]
-        # ------
-        self.network_config = full_config.train.network
-        self.ppo_config = full_config.train.ppo
-        self.env_config = full_config.task.env
-        self.full_config = full_config
+
         # ---- build environment ----
-        self.obs_shape = (self.env_config.numObservations,)
-        self.num_actions = self.env_config.numActions
-        self.num_targets = self.env_config.numTargets
+        self.obs_shape = (self.deploy_config.env.numObservations,)
+        self.num_actions = self.deploy_config.env.numActions
+        self.num_targets = self.deploy_config.env.numTargets
 
         # ---- Tactile Info ---
-        self.tactile_info = self.ppo_config.tactile_info
-        self.tactile_seq_length = self.ppo_config.tactile_seq_length
-        self.tactile_info_dim = self.network_config.tactile_mlp.units[0]
-        # ---- ft Info --- TODO currently we dont use ft
-        self.ft_info = self.ppo_config.ft_info
-        self.ft_seq_length = self.ppo_config.ft_seq_length
-        self.ft_input_dim = self.ppo_config.ft_input_dim
+        self.tactile_info = self.deploy_config.ppo.tactile_info
+        self.tactile_seq_length = self.deploy_config.ppo.tactile_seq_length
+        self.tactile_info_dim = self.deploy_config.network.tactile_mlp.units[0]
+        # ---- ft Info --- currently ft isn't supported
+        self.ft_info = self.deploy_config.ppo.ft_info
+        self.ft_seq_length = self.deploy_config.ppo.ft_seq_length
+        self.ft_input_dim = self.deploy_config.ppo.ft_input_dim
         self.ft_info_dim = self.ft_input_dim * self.ft_seq_length
         # ---- Priv Info ----
-        self.priv_info = self.ppo_config.priv_info
-        self.priv_info_dim = self.ppo_config.priv_info_dim
-        self.extrin_adapt = self.ppo_config.extrin_adapt
+        self.priv_info = self.deploy_config.ppo.priv_info
+        self.priv_info_dim = self.deploy_config.ppo.priv_info_dim
+        self.extrin_adapt = self.deploy_config.ppo.extrin_adapt
 
         net_config = {
-            'actor_units': self.network_config.mlp.units,
+            'actor_units': self.deploy_config.network.mlp.units,
             'actions_num': self.num_actions,
-            'priv_mlp_units': self.network_config.priv_mlp.units,
+            'priv_mlp_units': self.deploy_config.network.priv_mlp.units,
             'input_shape': self.obs_shape,
             'extrin_adapt': True,
             'priv_info_dim': self.priv_info_dim,
@@ -62,9 +59,9 @@ class HardwarePlayer(object):
             "tactile_input_shape": self.tactile_info_dim,
             "ft_input_shape": self.ft_info_dim,
             "ft_info": self.ft_info,
-            "tactile_units": self.network_config.tactile_mlp.units,
-            "tactile_decoder_embed_dim": self.network_config.tactile_mlp.units[0],
-            "ft_units": self.network_config.ft_mlp.units,
+            "tactile_units": self.deploy_config.network.tactile_mlp.units,
+            "tactile_decoder_embed_dim": self.deploy_config.network.tactile_mlp.units[0],
+            "ft_units": self.deploy_config.network.ft_mlp.units,
         }
 
         self.model = ActorCritic(net_config)
@@ -89,7 +86,7 @@ class HardwarePlayer(object):
 
     def _create_asset_info(self, i):
 
-        subassembly = self.full_config.env.desired_subassemblies[i]
+        subassembly = self.deploy_config.desired_subassemblies[i]
         components = list(self.asset_info_insertion[subassembly])
         rospy.logwarn('Parameters load for: {} --- >  {}'.format(components[0], components[1]))
 
@@ -120,19 +117,19 @@ class HardwarePlayer(object):
         self.socket_tip_pos_local = self.socket_height * torch.tensor([0.0, 0.0, 1.0], device=self.device).unsqueeze(0)
 
         self.actions = torch.zeros((1, self.num_actions), device=self.device)
-        self.targets = torch.zeros((1, self.env_config.numTargets), device=self.device)
-        self.prev_targets = torch.zeros((1, self.env_config.numTargets), dtype=torch.float, device=self.device)
+        self.targets = torch.zeros((1, self.deploy_config.env.numTargets), device=self.device)
+        self.prev_targets = torch.zeros((1, self.deploy_config.env.numTargets), dtype=torch.float, device=self.device)
 
         # Keep track of history
-        self.arm_joint_queue = torch.zeros((1, self.env_config.numObsHist, 7), dtype=torch.float, device=self.device)
-        self.arm_vel_queue = torch.zeros((1, self.env_config.numObsHist, 7), dtype=torch.float, device=self.device)
-        self.actions_queue = torch.zeros((1, self.env_config.numObsHist, self.num_actions),
+        self.arm_joint_queue = torch.zeros((1, self.deploy_config.env.obs_seq_length, 7), dtype=torch.float, device=self.device)
+        self.arm_vel_queue = torch.zeros((1, self.deploy_config.env.obs_seq_length, 7), dtype=torch.float, device=self.device)
+        self.actions_queue = torch.zeros((1, self.deploy_config.env.obs_seq_length, self.num_actions),
                                          dtype=torch.float, device=self.device)
-        self.targets_queue = torch.zeros((1, self.env_config.numObsHist, self.num_targets),
+        self.targets_queue = torch.zeros((1, self.deploy_config.env.obs_seq_length, self.num_targets),
                                          dtype=torch.float, device=self.device)
-        self.eef_queue = torch.zeros((1, self.env_config.numObsHist, 7),
+        self.eef_queue = torch.zeros((1, self.deploy_config.env.obs_seq_length, 7),
                                      dtype=torch.float, device=self.device)
-        self.goal_noisy_queue = torch.zeros((1, self.env_config.numObsHist, 7),
+        self.goal_noisy_queue = torch.zeros((1, self.deploy_config.env.obs_seq_length, 7),
                                             dtype=torch.float, device=self.device)
 
         # tactile buffers
@@ -168,7 +165,7 @@ class HardwarePlayer(object):
         )
         socket_obs_pos_noise = socket_obs_pos_noise @ torch.diag(
             torch.tensor(
-                self.full_config.task.env.deploy.socket_pos_obs_noise,
+                self.deploy_config.env.socket_pos_obs_noise,
                 dtype=torch.float32,
                 device=self.device,
             )
@@ -284,8 +281,8 @@ class HardwarePlayer(object):
         angle = torch.norm(rot_actions, p=2, dim=-1)
         axis = rot_actions / angle.unsqueeze(-1)
         rot_actions_quat = torch_jit_utils.quat_from_angle_axis(angle, axis)
-        if self.full_config.task.rl.clamp_rot:
-            rot_actions_quat = torch.where(angle.unsqueeze(-1).repeat(1, 4) > self.cfg_task.rl.clamp_rot_thresh,
+        if self.deploy_config.rl.clamp_rot:
+            rot_actions_quat = torch.where(angle.unsqueeze(-1).repeat(1, 4) > self.deploy_config.rl.clamp_rot_thresh,
                                            rot_actions_quat,
                                            torch.tensor([0.0, 0.0, 0.0, 1.0], device=self.device))
         self.ctrl_target_fingertip_centered_quat = torch_jit_utils.quat_mul(rot_actions_quat,
@@ -340,8 +337,10 @@ class HardwarePlayer(object):
         self.env.move_to_init_state()
         self.env.grasp_object()
 
+
         # TODO index the real objects
-        self._create_asset_info(1)
+
+        self._create_asset_info(object)
         self._acquire_task_tensors()
         true_pose = [0, 0, 0]
         self._set_socket_pose(pos=true_pose)
@@ -349,7 +348,7 @@ class HardwarePlayer(object):
         obs = self.compute_observations()
 
         # TODO? Should we fill the history buffs?
-        for i in range(self.env_config.numObsHist):
+        for i in range(self.deploy_config.env.obs_seq_length):
             pass
 
         while True:
