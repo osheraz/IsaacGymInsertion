@@ -394,7 +394,7 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
             self.gym.set_actor_rigid_shape_properties(env_ptr, kuka_handle, kuka_shape_props)
 
             plug_shape_props = self.gym.get_actor_rigid_shape_properties(env_ptr, plug_handle)
-            plug_shape_props[0].friction = 10.0 # self.cfg_env.env.plug_friction
+            plug_shape_props[0].friction = 1.0 # self.cfg_env.env.plug_friction
             plug_shape_props[0].rolling_friction = 0.0  # default = 0.0
             plug_shape_props[0].torsion_friction = 0.0  # default = 0.0
             plug_shape_props[0].restitution = 0.0  # default = 0.0

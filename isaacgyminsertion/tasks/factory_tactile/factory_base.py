@@ -57,7 +57,12 @@ class FactoryBaseTactile(VecTask, FactoryABCBase):
 
         self.cfg = cfg
         self.cfg['headless'] = headless
-        self.grasps_folder = 'init_grasps0'
+        
+        # TODO: put these in a config?
+        self.grasps_folder = 'init_grasps1'
+        self.grasps_save_ctr = 0
+        self.total_grasps = 2000
+        self.total_init_grasp_count = 0
 
         self._get_base_yaml_params()
 

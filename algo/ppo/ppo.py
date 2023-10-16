@@ -161,9 +161,9 @@ class PPO(object):
         self.last_recording_it = 0
         self.last_recording_it_ft = 0
 
-        self.episode_rewards = AverageScalarMeter(10)
-        self.episode_lengths = AverageScalarMeter(10)
-        self.episode_success = AverageScalarMeter(10)
+        self.episode_rewards = AverageScalarMeter(50)
+        self.episode_lengths = AverageScalarMeter(50)
+        self.episode_success = AverageScalarMeter(50)
 
         self.obs = None
         self.epoch_num = 0

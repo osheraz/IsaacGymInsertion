@@ -70,7 +70,7 @@ randomize:
 rl:
 
     pos_action_scale: [0.005, 0.005, 0.005]
-    rot_action_scale: [0.01, 0.01, 0.01]
+    rot_action_scale: [0.005, 0.005, 0.005]
 
     force_action_scale: [1.0, 1.0, 1.0]
     torque_action_scale: [1.0, 1.0, 1.0]
@@ -98,7 +98,7 @@ rl:
 
     # Success bonus
     success_height_thresh: 0.003  # threshold distance below which plug is considered successfully inserted
-    engagement_bonus: 0.005 # bonus if plug is engaged (partially inserted) with socket
+    engagement_bonus: 0.01 # bonus if plug is engaged (partially inserted) with socket
 
 
 ctrl:

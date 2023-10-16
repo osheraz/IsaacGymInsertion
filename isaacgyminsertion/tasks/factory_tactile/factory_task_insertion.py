@@ -613,18 +613,25 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         plug_ori_penalty = torch.norm(self.plug_quat - self.identity_quat, p=2, dim=-1)
         is_plug_oriented = plug_ori_penalty < self.cfg_task.rl.orientation_threshold
 
-        keypoint_r =  keypoint_reward * -0.2
-        dist_reset = (self.dist_plug_socket > 0.03) * -2.
-        
+        is_plug_engaged_w_socket = self._check_plug_engaged_w_socket()
+        # engaged_env_ids = is_plug_engaged_w_socket.nonzero()
 
+        keypoint_scale = -0.01
+        early_reset_scale = -5.0
+        engagement_scale = 0.05
+
+        keypoint_r =  keypoint_reward * keypoint_scale
+        dist_reset = (self.far_from_goal_buf  | self.degrasp_buf) * early_reset_scale
+        engagement_reward = self._get_engagement_reward_scale(is_plug_engaged_w_socket,
+                                                                    self.cfg_task.rl.success_height_thresh) * engagement_scale
+        
+        # print(keypoint_r[0], dist_reset[0], engagement_reward[0])
         # self.rew_buf[:] = 
                         #   + plug_ori_penalty * self.cfg_task.rl.orientation_penalty_scale + \
                         #   + action_penalty * self.cfg_task.rl.action_penalty_scale \
                         #   + self.dist_plug_socket * self.cfg_task.rl.dist_penalty_scale
         # print('reward', self.rew_buf[0])
 
-        is_plug_engaged_w_socket = self._check_plug_engaged_w_socket()
-        engaged_env_ids = is_plug_engaged_w_socket.nonzero()
 
             
 
@@ -636,15 +643,14 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         #     self.time_complete_task == 0
         #     ]
 
-        engagement_reward_scale = self._get_engagement_reward_scale(is_plug_engaged_w_socket,
-                                                                    self.cfg_task.rl.success_height_thresh)
         
         # engagement_reward = engagement_reward_scale * self.cfg_task.rl.engagement_bonus
         # if len(engaged_env_ids) > 0:
         #     print(keypoint_r[engaged_env_ids], dist_reset[engaged_env_ids], engagement_reward[engaged_env_ids])
 
         # print('engagement_reward_scale', (engagement_reward_scale * self.cfg_task.rl.engagement_bonus))
-        self.rew_buf[:] = keypoint_r + dist_reset + (engagement_reward_scale * self.cfg_task.rl.engagement_bonus)
+        # print(keypoint_r[0], dist_reset[0], engagement_reward[0])
+        self.rew_buf[:] = keypoint_r + dist_reset + engagement_reward
         # print('reward', self.rew_buf[0])
         # self.rew_buf[:] += is_plug_inserted_in_socket * self.cfg_task.rl.success_bonus
         # In this policy, episode length is constant across all envs todo why?
@@ -693,7 +699,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         roll, pitch, _ = get_euler_xyz(self.plug_quat.clone())
         roll[roll > np.pi] -= 2 * np.pi
         pitch[pitch > np.pi] -= 2 * np.pi
-        self.degrasp_buf[:] = (torch.abs(roll) > 0.25) | (torch.abs(pitch) > 0.25)
+        self.degrasp_buf[:] = (torch.abs(roll) > 0.4) | (torch.abs(pitch) > 0.4)
         # is_not_grasped = d >= self.cfg_task.env.plug_grasp_threshold
         fingertips_plug_dist = (torch.norm(self.left_finger_pos - self.plug_pos, p=2, dim=-1) > 0.12) | (torch.norm(self.right_finger_pos - self.plug_pos, p=2, dim=-1) > 0.12) | (torch.norm(self.middle_finger_pos - self.plug_pos, p=2, dim=-1) > 0.12)
         self.degrasp_buf[:] |= fingertips_plug_dist
@@ -758,11 +764,11 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         # self.gym.simulate(self.sim)
         # self.render()
         # self._zero_velocities(env_ids)
+        self._zero_velocities(env_ids)
         self.refresh_base_tensors()
         self.refresh_env_tensors()
         self._refresh_task_tensors(update_tactile=True)
 
-        self._zero_velocities(env_ids)
         # self.gym.simulate(self.sim)
         # self.render()
 
@@ -846,7 +852,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         # self.dof_pos[env_ids, :]
 
         # self.
-        print('dof_pos at grasp pose',self.gripper_dof_pos)
+        # print('dof_pos at grasp pose',self.gripper_dof_pos)
         # print(self.gripper_dof_pos[0, list(self.dof_dict.values()).index(
         #                     'base_to_finger_1_2') - 7])
         # print(self.gripper_dof_pos[0, list(self.dof_dict.values()).index(

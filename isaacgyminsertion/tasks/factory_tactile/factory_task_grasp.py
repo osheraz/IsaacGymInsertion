@@ -80,11 +80,11 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             self.export_scene(label='kuka_task_insertion')
 
 
-        # TODO: where do I put the counter?
-        self.save_ctr = 0
-        self.total_grasps = 2000
+        # # TODO: where do I put the counter?
+        # self.save_ctr = 0
+        # self.total_grasps = 2000
+        # self.total_init_grasp_count = 0
         self.pbar = tqdm(total = self.total_grasps)
-        self.total_init_grasp_count = 0
 
 
     def _get_task_yaml_params(self):
@@ -674,9 +674,9 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         # # Move arm to grasp pose
         plug_pos_noise = (2 * (torch.randn((len(env_ids), 3), device=self.device) - 0.5)) * 0.002 # this x,y noise is for grasp variation.
         # plug_pos_noise[:, 2] /= 0.002
-        plug_pos_noise[:, 2] = 0.0010 # (0.001 * (torch.randn((len(env_ids), 3), device=self.device) + 0.0015)) # tested without this noise, = 0.0020
+        plug_pos_noise[:, 2] = 0.0025 # (0.001 * (torch.randn((len(env_ids), 3), device=self.device) + 0.0015)) # tested without this noise, = 0.0020
         first_plug_pose = self.plug_grasp_pos.clone()
-        first_plug_pose[:, 0] -= 0.01
+        first_plug_pose[:, 0] -= 0.005
         self._move_arm_to_desired_pose(env_ids, first_plug_pose + plug_pos_noise,
                                        sim_steps=self.cfg_task.env.num_gripper_move_sim_steps*2)
         self._zero_velocities(env_ids)
@@ -696,7 +696,7 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         # # Move arm above the socket
         above_socket_pos_noise = (2 * (torch.randn((len(env_ids), 3), device=self.device) - 0.5)) * 0.005
-        above_socket_pos_noise[:, :] = 0
+        # above_socket_pos_noise[:, :] = 0
         self._move_arm_to_desired_pose(env_ids, self.above_socket_pos.clone() + above_socket_pos_noise, sim_steps=self.cfg_task.env.num_gripper_move_sim_steps * 2)
         self._refresh_task_tensors(update_tactile=True)
         self._zero_velocities(env_ids)
@@ -713,12 +713,12 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         # self._refresh_task_tensors(update_tactile=True)
 
         # Insert
-        # socket_pos_noise = (2 * (torch.randn((len(env_ids), 3), device=self.device) - 0.5)) * 0.0
-        # socket_pos_noise[:, :] = 0
-        # self._move_arm_to_desired_pose(env_ids, self.socket_pos.clone() + socket_pos_noise,
-        #                                sim_steps=self.cfg_task.env.num_gripper_move_sim_steps//2)
-        # self._refresh_task_tensors(update_tactile=True)
-        # self._zero_velocities(env_ids)
+        socket_pos_noise = (2 * (torch.randn((len(env_ids), 3), device=self.device) - 0.5)) * 0.0
+        socket_pos_noise[:, :] = 0
+        self._move_arm_to_desired_pose(env_ids, self.socket_pos.clone() + socket_pos_noise,
+                                       sim_steps=self.cfg_task.env.num_gripper_move_sim_steps//2)
+        self._refresh_task_tensors(update_tactile=True)
+        self._zero_velocities(env_ids)
 
         roll, pitch, yaw = get_euler_xyz(self.plug_quat)
         roll[roll > np.pi] -= 2 * np.pi
@@ -744,10 +744,10 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             init_grasp_folder = os.path.join(output_dir, file_name)
             if not os.path.exists(init_grasp_folder):
                 os.makedirs(init_grasp_folder)
-            save_file = os.path.join(init_grasp_folder, f'data_{self.save_ctr}.npz')   
+            save_file = os.path.join(init_grasp_folder, f'data_{self.grasps_save_ctr}.npz')   
             np.savez_compressed(save_file, socket_pos=socket_pos, socket_quat=socket_quat, plug_pos=plug_pos, plug_quat=plug_quat, dof_pos=dof_pos)
             socket_pos, socket_quat, plug_pos, plug_quat, dof_pos = None, None, None, None, None
-            self.save_ctr += 1
+            self.grasps_save_ctr += 1
             self.total_init_grasp_count += valid_env_ids.shape[0]
             self.pbar.update(valid_env_ids.shape[0])
             if self.total_init_grasp_count >= self.total_grasps:
@@ -758,7 +758,7 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                 plug_quat = np.zeros((self.total_init_grasp_count, 4))
                 dof_pos = np.zeros((self.total_init_grasp_count, 15))
                 last_ptr = 0
-                for i in range(self.save_ctr):
+                for i in range(self.grasps_save_ctr):
                     data = np.load(os.path.join(init_grasp_folder, f'data_{i}.npz'))
                     num_grasps = data['socket_pos'].shape[0]
                     # print(data['socket_pos'].shape, np.squeeze(data['socket_pos'], axis=1).shape)
@@ -769,7 +769,8 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                     dof_pos[last_ptr: last_ptr+num_grasps] = np.squeeze(data['dof_pos'], axis=1)
                     last_ptr += num_grasps
                 
-                np.savez_compressed(os.path.join(output_dir, f'{file_name}.npz'), socket_pos=socket_pos, socket_quat=socket_quat, plug_pos=plug_pos, plug_quat=plug_quat, dof_pos=dof_pos)
+                final_grasps_folder = 'initial_grasp_data'
+                np.savez_compressed(os.path.join(final_grasps_folder, f'{file_name}.npz'), socket_pos=socket_pos, socket_quat=socket_quat, plug_pos=plug_pos, plug_quat=plug_quat, dof_pos=dof_pos)
                 
                 print('done')
                 exit()
