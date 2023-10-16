@@ -173,7 +173,7 @@ class ActorCritic(nn.Module):
                 obs = torch.cat([obs, extrin], dim=-1)
             else:
                 extrin = self.env_mlp(obs_dict['priv_info'])
-                extrin = torch.tanh(extrin) # layer normalize instead?
+                extrin = torch.tanh(extrin) # constraining the projection space (everything in hypersphere of radius 2)
                 obs = torch.cat([obs, extrin], dim=-1)
 
         x = self.actor_mlp(obs)

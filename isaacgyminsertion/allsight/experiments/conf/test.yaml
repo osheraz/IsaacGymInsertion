@@ -6,8 +6,8 @@ hydra:
 # - override hydra/job_logging: disabled
 
 tacto:
-  width: 224 # 224 # 480 | 224
-  height: 224 # 224 # 480 | 224 for the gan
+  width: 64 # 224 # 480 | 224
+  height: 64 # 224 # 480 | 224 for the gan
   visualize_gui: True
 
 decoder:

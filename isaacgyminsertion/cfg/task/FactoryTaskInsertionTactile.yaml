@@ -22,7 +22,7 @@ env:
 
     openhand:
         distal_open: 0.0
-        distal_close: 0.0
+        distal_close: 0.1
         proximal_open: 1.0
         proximal_close: 2.1
         base_angle: 0.7
@@ -56,21 +56,21 @@ randomize:
     fingertip_midpoint_rot_initial: [-3.14159265359, 0.0, 1.57079632679]  # initial rotation of fingertips (Euler)
     fingertip_midpoint_rot_noise: [0.3, 0.3, 1]  # noise on rotation
     
-    plug_pos_xy_initial: [0., -0.1]  # initial XY position of plug on table
-    plug_pos_xy_noise: [0.05, 0.05]  # noise on plug position
+    plug_pos_xy_initial: [0.0, 0.23]  # initial XY position of plug on table
+    plug_pos_xy_noise: [0.1, 0.05] # noise on plug position
 
     plug_noise_pos_in_gripper: [0.0, 0.0, 0.0]  # noise on plug position within gripper
     plug_noise_rot_in_gripper: 0.0  # noise on plug rotation within gripper
     
-    socket_pos_xy_initial: [0.0, 0.0]  # initial XY position of plug on table
-    socket_pos_xy_noise: [0.05, 0.05]  # noise on plug position
 
+    socket_pos_xy_initial: [0.0, 0.0]  # initial XY position of plug on table # round_hole_2in  width = 0.1016, length = 0.09144
+    socket_pos_xy_noise: [0.05, 0.05]  # noise on plug position
 
 
 rl:
 
     pos_action_scale: [0.005, 0.005, 0.005]
-    rot_action_scale: [0.001, 0.001, 0.001]
+    rot_action_scale: [0.005, 0.005, 0.005]
 
     force_action_scale: [1.0, 1.0, 1.0]
     torque_action_scale: [1.0, 1.0, 1.0]
@@ -98,7 +98,7 @@ rl:
 
     # Success bonus
     success_height_thresh: 0.003  # threshold distance below which plug is considered successfully inserted
-    engagement_bonus: 0.005 # bonus if plug is engaged (partially inserted) with socket
+    engagement_bonus: 0.01 # bonus if plug is engaged (partially inserted) with socket
 
 
 ctrl:

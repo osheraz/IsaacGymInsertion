@@ -209,6 +209,10 @@ class ExtrinsicAdapt(object):
         for k, v in self.direct_info.items():
             self.writer.add_scalar(f'{k}/frame', v, self.agent_steps)
 
+    def log_wandb(self):
+        # TODO
+        pass
+
     def restore_train(self, fn):
         checkpoint = torch.load(fn)
         cprint('careful, using non-strict matching', 'red', attrs=['bold'])
