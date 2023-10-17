@@ -14,7 +14,7 @@ env:
     env_name: 'FactoryEnvInsertionTactile'
     aggregate_mode: True
 
-    desired_subassemblies: ['triangle']
+    desired_subassemblies: ['yellow_round_peg_2in']
 #                            'round_peg_hole_8mm_loose', round_peg_hole_16mm_loose, triangle
 #                            'round_peg_hole_12mm_loose',
 #                            'round_peg_hole_4mm_loose',yellow_round_peg_2in, red_round_peg_15in
@@ -29,7 +29,7 @@ env:
     record_ft: True
     record_video_every: 1000
     record_ft_every: 1000
-    tactile: True
+    tactile: False
     tactile_display_viz: False
     compute_contact_gt: False
 

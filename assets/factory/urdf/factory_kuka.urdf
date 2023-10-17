@@ -494,10 +494,15 @@
       </material>
     </visual>
      <collision>
+     <!--
             <origin xyz="0.016 0 0" rpy="0 -1.57079632679 0"/>
             <geometry>
                    <cylinder radius="0.012" length="0.032" />
             </geometry>
+     -->
+           <geometry>
+        <mesh filename="../../urdf/kuka_openhand_description/meshes/allsight/allsight_fine01.obj"/>
+      </geometry>
     </collision>
   </link>
 
@@ -577,10 +582,15 @@
       </material>
     </visual>
      <collision>
+     <!--
             <origin xyz="0.016 0 0" rpy="0 -1.57079632679 0"/>
             <geometry>
                    <cylinder radius="0.012" length="0.032" />
             </geometry>
+     -->
+           <geometry>
+        <mesh filename="../../urdf/kuka_openhand_description/meshes/allsight/allsight_fine01.obj"/>
+      </geometry>
     </collision>
   </link>
 
@@ -630,10 +640,15 @@
       </material>
     </visual>
      <collision>
+     <!--
             <origin xyz="0.016 0 0" rpy="0 -1.57079632679 0"/>
             <geometry>
                    <cylinder radius="0.012" length="0.032" />
             </geometry>
+     -->
+           <geometry>
+        <mesh filename="../../urdf/kuka_openhand_description/meshes/allsight/allsight_fine01.obj"/>
+      </geometry>
     </collision>
   </link>
 
@@ -643,7 +658,7 @@
     <origin rpy="3.14159265359 0 0" xyz="-0.003 -0.034 -0.027"/>
     <parent link="gripper_base_link"/>
     <child link="finger_1_1"/>
-    <limit effort="100" lower="0" upper="1.57079632679" velocity="2"/>
+    <limit effort="2" lower="0" upper="1.57079632679" velocity="2"/>
     <axis xyz="1 0 0"/>
     <dynamics friction="10" damping="10" />
   </joint>
@@ -652,7 +667,7 @@
     <origin rpy="0 0 0" xyz="-0.02 0.00725 0"/>
     <parent link="finger_1_1"/>
     <child link="finger_1_2"/>
-    <limit effort="100" lower="-0.1" upper="3.0" velocity="2"/>
+    <limit effort="2" lower="-0.1" upper="3.0" velocity="2"/>
     <axis xyz="0 0 1"/>
     <dynamics friction="10" damping="10" />
   </joint>
@@ -661,7 +676,7 @@
     <origin rpy="1.57079632679 0 1.57079632679" xyz="0.000800 0.072 0"/>
     <parent link="finger_1_2"/>
     <child link="finger_1_3"/>
-    <limit effort="100" lower="0.0" upper="1.27" velocity="2"/>
+    <limit effort="2" lower="0.0" upper="1.27" velocity="2"/>
     <axis xyz="0 1 0"/>
     <dynamics friction="10" damping="10" />
   </joint>
@@ -670,7 +685,7 @@
     <origin rpy="3.14159265359 0 0" xyz="-0.003 -0.034 0.027"/>
     <parent link="gripper_base_link"/>
     <child link="finger_2_1"/>
-    <limit effort="100" lower="-1.57079632679" upper="0" velocity="2"/>
+    <limit effort="2" lower="-1.57079632679" upper="0" velocity="2"/>
     <axis xyz="1 0 0"/>
     <dynamics friction="10" damping="10" />
   </joint>
@@ -679,7 +694,7 @@
     <origin rpy="0 0 0" xyz="-0.02 0.00725 0"/>
     <parent link="finger_2_1"/>
     <child link="finger_2_2"/>
-    <limit effort="100" lower="-0.1" upper="3.0" velocity="2"/>
+    <limit effort="2" lower="-0.1" upper="3.0" velocity="2"/>
     <axis xyz="0 0 1"/>
     <dynamics friction="10" damping="10" />
   </joint>
@@ -688,7 +703,7 @@
     <origin rpy="0 0 0" xyz="-0.023 0.045 0.000000"/>
     <parent link="gripper_base_link"/>
     <child link="finger_3_2"/>
-    <limit effort="100" lower="-0.1" upper="3.0" velocity="2"/>
+    <limit effort="2" lower="-0.1" upper="3.0" velocity="2"/>
     <axis xyz="0 0 1"/>
     <dynamics friction="10" damping="10" />
   </joint>
@@ -697,7 +712,7 @@
     <origin rpy="1.57079632679 0 1.57079632679" xyz="0.000800 0.072 0"/>
     <parent link="finger_2_2"/>
     <child link="finger_2_3"/>
-    <limit effort="100" lower="0.0" upper="1.27" velocity="2"/>
+    <limit effort="2" lower="0.0" upper="1.27" velocity="2"/>
     <axis xyz="0 1 0"/>
     <dynamics friction="10" damping="10" />
   </joint>
@@ -706,7 +721,7 @@
     <origin rpy="1.57079632679 0 1.57079632679" xyz="0.000800 0.072 0"/>
     <parent link="finger_3_2"/>
     <child link="finger_3_3"/>
-    <limit effort="100" lower="0.0" upper="1.27" velocity="2"/>
+    <limit effort="2" lower="0.0" upper="1.27" velocity="2"/>
     <axis xyz="0 1 0"/>
     <dynamics friction="10" damping="10" />
   </joint>

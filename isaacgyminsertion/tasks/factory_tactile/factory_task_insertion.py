@@ -381,8 +381,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.goal_noisy_queue[:, 0, :] = torch.cat(self.pose_world_to_robot_base(self.noisy_gripper_goal_pos.clone(),
                                                                                  self.noisy_gripper_goal_quat.clone()),
                                                    dim=-1)
-        
-        self._close_gripper(torch.arange(self.num_envs))
+
         self._apply_actions_as_ctrl_targets(actions=self.actions,
                                             ctrl_target_gripper_dof_pos=self.ctrl_target_gripper_dof_pos,
                                             do_scale=True)
@@ -616,7 +615,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         is_plug_engaged_w_socket = self._check_plug_engaged_w_socket()
         # engaged_env_ids = is_plug_engaged_w_socket.nonzero()
 
-        keypoint_scale = -0.01
+        keypoint_scale = -0.2
         early_reset_scale = -5.0
         engagement_scale = 0.05
 
@@ -710,7 +709,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         # If plug is too far from socket pos
         self.dist_plug_socket = torch.norm(self.plug_pos - self.socket_pos, p=2, dim=-1)
-        self.far_from_goal_buf[:] = self.dist_plug_socket > 0.1 #  self.cfg_task.rl.far_error_thresh,
+        self.far_from_goal_buf[:] = self.dist_plug_socket > 0.2 #  self.cfg_task.rl.far_error_thresh,
         self.reset_buf[:] |= self.far_from_goal_buf[:]
         # print('plug is too far', self.reset_buf)
 
@@ -747,7 +746,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             'plug_quat': plug_quat
         }
         self._reset_object(env_ids, new_pose=object_pose)
-
+        self._close_gripper(torch.arange(self.num_envs))
         # self._simulate_and_refresh()
 
     def reset_idx(self, env_ids):
@@ -1156,7 +1155,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         """Fully close gripper using controller. Called outside RL loop (i.e., after last step of episode)."""
 
         gripper_dof_pos = self.gripper_dof_pos.clone()
-        # print(gripper_dof_pos)
+
         gripper_dof_pos[env_ids,
                         list(self.dof_dict.values()).index(
                             'base_to_finger_1_1') - 7] = self.cfg_task.env.openhand.base_angle
@@ -1191,15 +1190,13 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
     def _move_gripper_to_dof_pos(self, env_ids, gripper_dof_pos, sim_steps=20):
         """Move gripper fingers to specified DOF position using controller."""
 
+        delta_hand_pose = torch.zeros((self.num_envs, self.cfg_task.env.numActions),
+                                      device=self.device)  # no arm motion
+        self._apply_actions_as_ctrl_targets(delta_hand_pose, gripper_dof_pos, do_scale=False)
 
         # Step sim
         for _ in range(sim_steps):
-            delta_hand_pose = torch.zeros((self.num_envs, self.cfg_task.env.numActions),
-                                      device=self.device)  # no arm motion
-            self._apply_actions_as_ctrl_targets(delta_hand_pose, gripper_dof_pos, do_scale=False)
-            self.gym.simulate(self.sim)
-            self.render()
-            # self._simulate_and_refresh()
+            self._simulate_and_refresh()
 
     def _lift_gripper(self, env_ids, gripper_dof_pos, lift_distance=0.2, sim_steps=20):
         """Lift gripper by specified distance. Called outside RL loop (i.e., after last step of episode)."""

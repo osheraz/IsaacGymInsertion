@@ -35,7 +35,7 @@ env:
     socket_pos_obs_noise: [ 0.001, 0.001, 0.0 ]
     socket_rot_obs_noise: [ 0.0, 0.0, 0.0 ]
     socket_base_height: 0.003
-    plug_grasp_threshold: 0.07
+    plug_grasp_threshold: 0.01
 
 sim:
     disable_gravity: True
@@ -56,7 +56,7 @@ randomize:
     fingertip_midpoint_rot_initial: [-3.14159265359, 0.0, 1.57079632679]  # initial rotation of fingertips (Euler)
     fingertip_midpoint_rot_noise: [0.3, 0.3, 1]  # noise on rotation
     
-    plug_pos_xy_initial: [0.0, -0.23]  # initial XY position of plug on table
+    plug_pos_xy_initial: [0.0, -0.13]  # initial XY position of plug on table
     plug_pos_xy_noise: [0.1, 0.05] # noise on plug position
 
     plug_noise_pos_in_gripper: [0.0, 0.0, 0.0]  # noise on plug position within gripper

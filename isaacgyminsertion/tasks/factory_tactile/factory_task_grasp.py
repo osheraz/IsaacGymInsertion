@@ -677,14 +677,14 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         plug_pos_noise[:, 2] -= 0.0025 # (0.001 * (torch.randn((len(env_ids), 3), device=self.device) + 0.0015)) # tested without this noise, = 0.0020
         first_plug_pose = self.plug_grasp_pos.clone()
         first_plug_pose[:, 0] -= 0.005
-        self._move_arm_to_desired_pose(env_ids, first_plug_pose + plug_pos_noise,
+        self._move_arm_to_desired_pose(env_ids, first_plug_pose, # + plug_pos_noise,
                                        sim_steps=self.cfg_task.env.num_gripper_move_sim_steps*2)
         self._zero_velocities(env_ids)
         self._refresh_task_tensors(update_tactile=False)
 
         # # Grasp ~ todo not sure if add randomization is needed
         # self.disable_gravity()
-        self._close_gripper(env_ids, self.cfg_task.env.num_gripper_close_sim_steps*2)
+        self._close_gripper(env_ids, self.cfg_task.env.num_gripper_close_sim_steps * 2)
         # self.enable_gravity(gravity_mag=abs(self.cfg_base.sim.gravity[2]))
         self._refresh_task_tensors(update_tactile=False)
         self._zero_velocities(env_ids)
@@ -697,7 +697,7 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         # # Move arm above the socket
         above_socket_pos_noise = (2 * (torch.randn((len(env_ids), 3), device=self.device) - 0.5)) * 0.005
         # above_socket_pos_noise[:, :] = 0
-        self._move_arm_to_desired_pose(env_ids, self.above_socket_pos.clone() + above_socket_pos_noise, sim_steps=self.cfg_task.env.num_gripper_move_sim_steps * 2)
+        self._move_arm_to_desired_pose(env_ids, self.above_socket_pos.clone() + 0 * above_socket_pos_noise, sim_steps=self.cfg_task.env.num_gripper_move_sim_steps * 2)
         self._refresh_task_tensors(update_tactile=True)
         self._zero_velocities(env_ids)
 
@@ -1134,6 +1134,21 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                                         device=self.device)  # no arm motion
             self._apply_actions_as_ctrl_targets(delta_hand_pose, gripper_dof_pos, do_scale=False)
             self._simulate_and_refresh()
+
+
+
+
+    def _check_grasped(self):
+        normalize_forces = lambda x: torch.norm(x, dim=-1) > 0.1
+
+        l1 = normalize_forces(self.left_finger_force.clone()),
+        l2 = normalize_forces(self.right_finger_force.clone()),
+        l3 = normalize_forces(self.middle_finger_force.clone()),
+
+        grasped = torch.norm(self.fingertip_midpoint_pos - self.plug_pos, p=2,
+                             dim=-1) <= self.cfg_task.env.plug_grasp_threshold
+
+        return l1 and l2 and l3
 
     def _lift_gripper(self, env_ids, gripper_dof_pos, lift_distance=0.2, sim_steps=20):
         """Lift gripper by specified distance. Called outside RL loop (i.e., after last step of episode)."""

@@ -10,7 +10,6 @@
             <geometry>
                 <mesh filename="../mesh/factory_insertion/yellow_round_peg_2in.obj"/>
             </geometry>
-            <sdf resolution="256" />
         </collision>
     </link>
 </robot>
