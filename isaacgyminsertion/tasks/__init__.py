@@ -37,4 +37,3 @@ isaacgym_task_map = {
     "FactoryTaskInsertionTactile": FactoryTaskInsertionTactile,
     # "FactoryTaskInsertionTactile": FactoryTaskGraspTactile
 }
-# 
