@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
-<robot name="yellow_round_peg_16mm_loose">
-    <link name="yellow_round_peg_16mm_loose">
+<robot name="yellow_round_peg_2in">
+    <link name="yellow_round_peg_2in">
         <visual>
             <geometry>
                 <mesh filename="../mesh/factory_insertion/yellow_round_peg_2in.obj"/>

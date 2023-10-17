@@ -1,16 +1,16 @@
 <?xml version="1.0"?>
-<robot name="green_round_peg_16mm_loose">
-    <link name="green_round_peg_16mm_loose">
+<robot name="round_hole_2in_sim_loose">
+    <link name="round_hole_2in_sim_loose">
         <visual>
             <!--origin xyz="0 0 0.01905" rpy="0 1.57079632679 0"-->
             <geometry>
-                <mesh filename="../mesh/factory_insertion/2inNewShamrockBox.obj"/>
+                <mesh filename="../mesh/factory_insertion/round_hole_2in_sim_loose.obj" scale="0.00100 0.00100 0.00100"/>
             </geometry>
         </visual>
         <collision>
             <!--origin xyz="0 0 0.01905" rpy="0 1.57079632679 0"-->
             <geometry>
-                <mesh filename="../mesh/factory_insertion/2inNewShamrockBox.obj"/>
+                <mesh filename="../mesh/factory_insertion/round_hole_2in_sim_loose.obj" scale="0.00100 0.00100 0.00100"/>
             </geometry>
             <sdf resolution="256" />
         </collision>

@@ -1,3 +1,4 @@
+##### !/usr/bin/env /home/osher/Desktop/isaacgym/venv/bin/python3
 # --------------------------------------------------------
 # now its our turn.
 # https://arxiv.org/abs/todo
@@ -5,10 +6,7 @@
 # Licensed under The MIT License [see LICENSE for details]
 # --------------------------------------------------------
 
-
-import numpy as np
 import rospy
-
 from algo.models.models import ActorCritic
 from algo.models.running_mean_std import RunningMeanStd
 import torch

@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
-<robot name="factory_round_peg_16mm_loose">
-    <link name="factory_round_peg_16mm_loose">
+<robot name="red_round_peg_15in">
+    <link name="red_round_peg_15in">
         <visual>
          <!--origin xyz="0 0 0.0254" rpy="1.57079632679 0 1.57079632679"-->
             <geometry>

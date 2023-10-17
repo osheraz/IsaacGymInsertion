@@ -1,0 +1,18 @@
+<?xml version="1.0"?>
+<robot name="red_triangle_hole">
+    <link name="red_triangle_hole">
+        <visual>
+            <!--origin xyz="0 0 0.01905" rpy="0 1.57079632679 0"-->
+            <geometry>
+                <mesh filename="../mesh/factory_insertion/red_triangle_hole.obj" scale="0.00100 0.00100 0.00100"/>
+            </geometry>
+        </visual>
+        <collision>
+            <!--origin xyz="0 0 0.01905" rpy="0 1.57079632679 0"-->
+            <geometry>
+                <mesh filename="../mesh/factory_insertion/red_triangle_hole.obj" scale="0.00100 0.00100 0.00100"/>
+            </geometry>
+            <sdf resolution="256" />
+        </collision>
+    </link>
+</robot>

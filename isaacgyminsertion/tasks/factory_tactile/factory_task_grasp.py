@@ -674,7 +674,7 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         # # Move arm to grasp pose
         plug_pos_noise = (2 * (torch.randn((len(env_ids), 3), device=self.device) - 0.5)) * 0.002 # this x,y noise is for grasp variation.
         # plug_pos_noise[:, 2] /= 0.002
-        plug_pos_noise[:, 2] = 0.0025 # (0.001 * (torch.randn((len(env_ids), 3), device=self.device) + 0.0015)) # tested without this noise, = 0.0020
+        plug_pos_noise[:, 2] -= 0.0025 # (0.001 * (torch.randn((len(env_ids), 3), device=self.device) + 0.0015)) # tested without this noise, = 0.0020
         first_plug_pose = self.plug_grasp_pos.clone()
         first_plug_pose[:, 0] -= 0.005
         self._move_arm_to_desired_pose(env_ids, first_plug_pose + plug_pos_noise,
