@@ -23,6 +23,7 @@ from algo.models.running_mean_std import RunningMeanStd
 from isaacgyminsertion.utils.misc import AverageScalarMeter
 from tensorboardX import SummaryWriter
 import torch.distributed as dist
+import imageio
 
 
 class ExtrinsicAdapt(object):
@@ -129,6 +130,14 @@ class ExtrinsicAdapt(object):
         self.step_reward = torch.zeros(batch_size, dtype=torch.float32, device=self.device)
         self.step_length = torch.zeros(batch_size, dtype=torch.float32, device=self.device)
 
+        # ---- Rollout Videos ----
+        self.it = 0
+        self.log_video_every = self.env.cfg_task.env.record_video_every
+        self.log_ft_every = self.env.cfg_task.env.record_ft_every
+
+        self.last_recording_it = 0
+        self.last_recording_it_ft = 0
+
     def set_eval(self):
         self.model.eval()
         self.running_mean_std.eval()
@@ -155,6 +164,8 @@ class ExtrinsicAdapt(object):
         obs_dict = self.env.reset()
         self.agent_steps += self.batch_size
         while self.agent_steps <= 1e9:
+            self.log_video()
+            self.it += 1
             input_dict = {
                 'obs': self.running_mean_std(obs_dict['obs']).detach(),
                 'priv_info': self.priv_mean_std(obs_dict['priv_info']).detach(),
@@ -241,3 +252,80 @@ class ExtrinsicAdapt(object):
         if self.ft_mean_std:
             weights['ft_mean_std'] = self.ft_mean_std.state_dict()
         torch.save(weights, f'{name}.pth')
+
+    def log_video(self):
+        if self.it == 0:
+            self.env.start_recording()
+            print("START RECORDING")
+            self.last_recording_it = self.it
+            self.env.start_recording_ft()
+            print("START FT RECORDING")
+            self.last_recording_it_ft = self.it
+            return
+
+        frames = self.env.get_complete_frames()
+        ft_frames = self.env.get_ft_frames()
+        if len(frames) > 0:
+            self.env.pause_recording()
+            self.env.pause_recording_ft()
+
+            if len(frames) < 20:
+                self.env.start_recording()
+                print("START RECORDING")
+                self.last_recording_it = self.it
+                self.env.start_recording_ft()
+                print("START FT RECORDING")
+                self.last_recording_it_ft = self.it
+                return
+            video_dir = os.path.join(self.output_dir, 'videos1')
+            if not os.path.exists(video_dir):
+                os.makedirs(video_dir)
+            self._write_video(frames, f"{video_dir}/{self.it:05d}.mp4", frame_rate=30)
+            print("LOGGING VIDEO")
+
+            ft_dir = os.path.join(self.output_dir, 'ft')
+            if not os.path.exists(ft_dir):
+                os.makedirs(ft_dir)
+            self._write_ft(ft_frames, f"{ft_dir}/{self.it:05d}")
+            # self.create_line_and_image_animation(frames, ft_frames, f"{ft_dir}/{self.it:05d}_line.mp4")
+
+            print("LOGGING FT")
+
+            self.env.start_recording()
+            print("START RECORDING")
+            self.last_recording_it = self.it
+
+            self.env.start_recording_ft()
+            print("START FT RECORDING")
+            self.last_recording_it_ft = self.it
+
+    def _write_video(self, frames, output_loc, frame_rate):
+        writer = imageio.get_writer(output_loc, mode='I', fps=frame_rate)
+        # out = cv2.VideoWriter(output_loc, self.fourcc, frame_rate, (240, 360))
+        for i in range(len(frames)):
+            frame = np.uint8(frames[i])
+            writer.append_data(frame)
+            # cv2.imshow('frame', frames[i])
+            # cv2.waitKey(0)
+            # out.write(frames[i])
+        writer.close()
+        # out.release()
+        # cv2.destroyAllWindows()
+
+    def _write_ft(self, data, output_loc):
+        # todo convert it to gif with same rate as video
+        # todo split into 2 plot, 1 for the fore a
+        import matplotlib.pyplot as plt
+        plt.figure(figsize=(8, 6))
+        plt.plot(np.array(data)[:, :3])
+        plt.xlabel('time')
+        plt.ylim([-0.25, 0.25])
+        plt.ylabel('force')
+        plt.savefig(f'{output_loc}_force.png')
+        plt.close()
+        plt.figure(figsize=(8, 6))
+        plt.plot(np.array(data)[:, 3:])
+        plt.xlabel('time')
+        plt.ylabel('torque')
+        plt.savefig(f'{output_loc}_torque.png')
+        plt.close()

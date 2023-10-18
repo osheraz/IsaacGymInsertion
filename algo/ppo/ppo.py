@@ -5,12 +5,6 @@
 # Licensed under The MIT License [see LICENSE for details]
 # --------------------------------------------------------
 # --------------------------------------------------------
-# Based on: Perceiving Extrinsic Contacts from Touch Improves Learning Insertion Policies
-# https://arxiv.org/abs/2309.16652
-# Copyright (c) 2023 Carolina Higuera
-# Licensed under The MIT License [see LICENSE for details]
-# --------------------------------------------------------
-# --------------------------------------------------------
 # Based on: In-Hand Object Rotation via Rapid Motor Adaptation
 # https://arxiv.org/abs/2210.04887
 # Copyright (c) 2022 Haozhi Qi
