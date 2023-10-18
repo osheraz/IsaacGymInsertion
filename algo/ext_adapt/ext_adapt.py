@@ -51,8 +51,11 @@ class ExtrinsicAdapt(object):
         self.actions_num = self.action_space.shape[0]
         # ---- Tactile Info ---
         self.tactile_info = self.ppo_config["tactile_info"]
-        tactile_seq_length = self.ppo_config["tactile_seq_length"]
-        self.tactile_info_dim = self.network_config.tactile_mlp.units[0]
+        self.tactile_seq_length = self.network_config.tactile_decoder.tactile_seq_length
+        self.mlp_tactile_info_dim = self.network_config.tactile_mlp.units[0]
+        self.tactile_input_dim = (self.network_config.tactile_decoder.img_width,
+                                  self.network_config.tactile_decoder.img_height,
+                                  self.network_config.tactile_decoder.num_channels)
         # ---- ft Info ---
         self.ft_info = self.ppo_config["ft_info"]
         self.ft_seq_length = self.ppo_config["ft_seq_length"]
@@ -71,13 +74,16 @@ class ExtrinsicAdapt(object):
             'extrin_adapt': self.extrin_adapt,
             'priv_info_dim': self.priv_info_dim,
             'priv_info': self.priv_info,
-            "tactile_info": self.tactile_info,
-            "tactile_input_shape": self.tactile_info_dim,
             "ft_input_shape": self.ft_info_dim,
             "ft_info": self.ft_info,
-            "tactile_units": self.network_config.tactile_mlp.units,
-            "tactile_decoder_embed_dim": self.network_config.tactile_mlp.units[0],
             "ft_units": self.network_config.ft_mlp.units,
+
+            "tactile_info": self.tactile_info,
+            "mlp_tactile_input_shape": self.mlp_tactile_info_dim,
+            'tactile_input_dim': self.tactile_input_dim,
+            "mlp_tactile_units": self.network_config.tactile_mlp.units,
+            'tactile_seq_length': self.tactile_seq_length,
+            "tactile_decoder_embed_dim": self.network_config.tactile_mlp.units[0],
         }
 
         self.model = ActorCritic(net_config)
@@ -169,7 +175,7 @@ class ExtrinsicAdapt(object):
             input_dict = {
                 'obs': self.running_mean_std(obs_dict['obs']).detach(),
                 'priv_info': self.priv_mean_std(obs_dict['priv_info']).detach(),
-                'ft_hist': self.ft_mean_std(obs_dict['ft_hist'].detach()),
+                # 'ft_hist': self.ft_mean_std(obs_dict['ft_hist'].detach()),
                 'tactile_hist': obs_dict['tactile_hist'].detach(),
             }
             mu, _, _, e, e_gt = self.model._actor_critic(input_dict)

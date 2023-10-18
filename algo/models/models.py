@@ -94,14 +94,16 @@ class ActorCritic(nn.Module):
 
                     # load a simple tactile decoder
                     tactile_decoder_embed_dim = kwargs.pop('tactile_decoder_embed_dim')
+                    num_fingers = 3
                     self.tactile_decoder = load_tactile_resnet(tactile_decoder_embed_dim,
+                                                               num_fingers,
                                                                root_dir,
                                                                path_checkpoint,
                                                                )
 
                     # add tactile mlp to the decoded features
-                    self.tactile_units = kwargs.pop("tactile_units")
-                    tactile_input_shape = kwargs.pop("tactile_input_shape")
+                    self.tactile_units = kwargs.pop("mlp_tactile_units")
+                    tactile_input_shape = kwargs.pop("mlp_tactile_input_shape")
                     self.tactile_mlp = MLP(
                         units=self.tactile_units, input_size=tactile_input_shape
                     )
@@ -218,11 +220,11 @@ class ActorCritic(nn.Module):
         return tac_emb
 
 
-def load_tactile_resnet(tactile_decoder_embed_dim, root_dir, path_checkpoint, pre_trained=False):
+def load_tactile_resnet(tactile_decoder_embed_dim, num_fingers, root_dir, path_checkpoint, pre_trained=False):
     import algo.models.convnets.resnets as resnet
     import os
 
-    tactile_decoder = resnet.resnet18(False, False, num_classes=tactile_decoder_embed_dim // 3)
+    tactile_decoder = resnet.resnet18(False, False, num_classes=tactile_decoder_embed_dim // num_fingers)
 
     if pre_trained:
         tactile_decoder.load_state_dict(os.path.join(root_dir, path_checkpoint))

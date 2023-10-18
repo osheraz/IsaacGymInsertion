@@ -25,6 +25,7 @@ import torch.distributed as dist
 import numpy as np
 
 from algo.ppo.experience import ExperienceBuffer
+from algo.ppo.experience import VectorizedExperienceBuffer
 from algo.models.models import ActorCritic
 from algo.models.running_mean_std import RunningMeanStd
 
@@ -62,8 +63,11 @@ class PPO(object):
         self.obs_shape = self.observation_space.shape
         # ---- Tactile Info ---
         self.tactile_info = self.ppo_config["tactile_info"]
-        tactile_seq_length = self.ppo_config["tactile_seq_length"]
-        self.tactile_info_dim = self.network_config.tactile_mlp.units[0]
+        self.tactile_seq_length = self.network_config.tactile_decoder.tactile_seq_length
+        self.tactile_input_dim = (self.network_config.tactile_decoder.img_width,
+                                  self.network_config.tactile_decoder.img_height,
+                                  self.network_config.tactile_decoder.num_channels)
+        self.mlp_tactile_info_dim = self.network_config.tactile_mlp.units[0]
         # ---- ft Info ---
         self.ft_info = self.ppo_config["ft_info"]
         self.ft_seq_length = self.ppo_config["ft_seq_length"]
@@ -78,18 +82,21 @@ class PPO(object):
         net_config = {
             'actor_units': self.network_config.mlp.units,
             'actions_num': self.actions_num,
-            'priv_mlp_units': self.network_config.priv_mlp.units,
             'input_shape': self.obs_shape,
+            'priv_mlp_units': self.network_config.priv_mlp.units,
             'extrin_adapt': self.extrin_adapt,
             'priv_info_dim': self.priv_info_dim,
             'priv_info': self.priv_info,
-            "tactile_info": self.tactile_info,
-            "tactile_input_shape": self.tactile_info_dim,
             "ft_input_shape": self.ft_info_dim,
             "ft_info": self.ft_info,
-            "tactile_units": self.network_config.tactile_mlp.units,
-            "tactile_decoder_embed_dim": self.network_config.tactile_mlp.units[0],
             "ft_units": self.network_config.ft_mlp.units,
+
+            "tactile_info": self.tactile_info,
+            "mlp_tactile_input_shape": self.mlp_tactile_info_dim,
+            "mlp_tactile_units": self.network_config.tactile_mlp.units,
+            'tactile_input_dim': self.tactile_input_dim,
+            'tactile_seq_length': self.tactile_seq_length,
+            "tactile_decoder_embed_dim": self.network_config.tactile_mlp.units[0],
         }
 
         self.model = ActorCritic(net_config)
@@ -169,6 +176,16 @@ class PPO(object):
                                         self.actions_num,
                                         self.priv_info_dim,
                                         self.device,)
+
+        #             'tactile_seq_length': self.tactile_seq_length,
+        if self.ppo_config['save_buffer'] and self.tactile_info:
+            #  obs_shape, priv_shape, tactile_shape, action_shape, capacity, device
+            self.buffer = VectorizedExperienceBuffer(self.obs_shape[0],
+                                                     self.priv_info_dim,
+                                                     (self.tactile_seq_length, *self.tactile_input_dim),
+                                                     self.actions_num,
+                                                     10000,
+                                                     self.device)
 
         batch_size = self.num_actors
         current_rewards_shape = (batch_size, 1)
