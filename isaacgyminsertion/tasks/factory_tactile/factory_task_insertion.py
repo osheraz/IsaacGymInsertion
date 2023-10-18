@@ -619,7 +619,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         early_reset_scale = -5.0
         engagement_scale = 0.05
 
-        keypoint_r =  keypoint_reward * keypoint_scale
+        keypoint_r = keypoint_reward * keypoint_scale
         dist_reset = (self.far_from_goal_buf  | self.degrasp_buf) * early_reset_scale
         engagement_reward = self._get_engagement_reward_scale(is_plug_engaged_w_socket,
                                                                     self.cfg_task.rl.success_height_thresh) * engagement_scale
@@ -632,8 +632,6 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         # print('reward', self.rew_buf[0])
 
 
-            
-
         # engagement_reward_scale = self._get_engagement_reward_scale(is_plug_engaged_w_socket,
         #                                                             self.cfg_task.rl.success_height_thresh)
 
@@ -641,7 +639,6 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         # self.time_complete_task[self.time_complete_task == 0] = (is_plug_inserted_in_socket * self.progress_buf)[
         #     self.time_complete_task == 0
         #     ]
-
         
         # engagement_reward = engagement_reward_scale * self.cfg_task.rl.engagement_bonus
         # if len(engaged_env_ids) > 0:
@@ -651,7 +648,6 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         # print(keypoint_r[0], dist_reset[0], engagement_reward[0])
         self.rew_buf[:] = keypoint_r + dist_reset + engagement_reward
         # print('reward', self.rew_buf[0])
-        # self.rew_buf[:] += is_plug_inserted_in_socket * self.cfg_task.rl.success_bonus
         # In this policy, episode length is constant across all envs todo why?
         is_last_step = (self.progress_buf[0] == self.max_episode_length - 1)
         if is_last_step:
@@ -666,6 +662,10 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             self.extras["mean_time_complete_task"] = torch.mean(
                 self.time_complete_task.float()
             )
+
+            is_plug_inserted_in_socket = self._check_plug_inserted_in_socket()
+            self.rew_buf[:] += is_plug_inserted_in_socket * self.cfg_task.rl.success_bonus
+
             # a = self.time_complete_task.float() * is_plug_inserted_in_socket
             # self.extras["time_success_task"] = a.sum() / torch.where(a > 0)[0].shape[0]
 
@@ -1278,7 +1278,11 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         # Check if plug is close to socket
         # NOTE: This check addresses edge case where plug is within threshold distance of
         # assembled state, but plug is outside socket
-        is_plug_close_to_socket = self._check_plug_close_to_socket()
+        keypoint_dist = torch.norm(self.keypoints_socket - self.keypoints_plug, p=2, dim=-1)
+
+        is_plug_close_to_socket = torch.where(torch.sum(keypoint_dist, dim=-1) < 0.003, #self.cfg_task.rl.close_error_thresh, # 1 cm
+                                              torch.ones_like(self.progress_buf),
+                                              torch.zeros_like(self.progress_buf))
 
         # Combine both checks
         is_plug_inserted_in_socket = torch.logical_and(

@@ -1,0 +1,36 @@
+hydra:
+  run:
+    dir: ./
+
+tacto:
+  width: 64 # 224 # 480 | 224
+  height: 64 # 224 # 480 | 224 for the gan
+  visualize_gui: True
+
+decoder:
+  width: 64
+  height: 64
+
+allsight:
+  urdf_path: "../assets/meshes/allsight.urdf"
+  base_position: [0, 0, 0]
+  base_orientation: [0.0, -0.707106, 0.0, 0.707106] # quaternion from p.getQuaternionFromEuler([0, -pi/2, 0])
+  # base_orientation: [0.0, 0, 0.0, 1] # quaternion from p.getQuaternionFromEuler([0, 0 , 0])
+  use_fixed_base: True
+
+with_bg: True # add background reference frame
+show_depth: True # visualize depth
+show_detect: False # visulize detection work only if true and show_depth true
+
+sensor_dims:
+  base_h: 0.014
+  cyl_r: 0.013
+  cyl_h: 0.013
+
+pixmm : 0.03
+cam_dist : 0.022
+shear_mag : 0.0
+pen :
+  min : 0.00
+  max : 0.00
+randomize : False

@@ -670,11 +670,11 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self._refresh_task_tensors(update_tactile=True)
         priv_depth = self.depth_maps.clone()
 
-
         # # Move arm to grasp pose
+
         plug_pos_noise = (2 * (torch.randn((len(env_ids), 3), device=self.device) - 0.5)) * 0.002 # this x,y noise is for grasp variation.
         # plug_pos_noise[:, 2] /= 0.002
-        plug_pos_noise[:, 2] -= 0.005 # (0.001 * (torch.randn((len(env_ids), 3), device=self.device) + 0.0015)) # tested without this noise, = 0.0020
+        plug_pos_noise[:, 2] = 0 # (0.001 * (torch.randn((len(env_ids), 3), device=self.device) + 0.0015)) # tested without this noise, = 0.0020
         first_plug_pose = self.plug_grasp_pos.clone()
         # first_plug_pose[:, 0] -= 0.005
         self._move_arm_to_desired_pose(env_ids, first_plug_pose, # + plug_pos_noise,
@@ -696,8 +696,9 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         # # Move arm above the socket
         above_socket_pos_noise = (2 * (torch.randn((len(env_ids), 3), device=self.device) - 0.5)) * 0.005
-        # above_socket_pos_noise[:, :] = 0
-        self._move_arm_to_desired_pose(env_ids, self.above_socket_pos.clone() + 0 * above_socket_pos_noise, sim_steps=self.cfg_task.env.num_gripper_move_sim_steps * 2)
+        above_socket_pos_noise[:, 2] = 0
+        self._move_arm_to_desired_pose(env_ids, self.above_socket_pos.clone() + 0 * above_socket_pos_noise,
+                                       sim_steps=self.cfg_task.env.num_gripper_move_sim_steps * 2)
         self._refresh_task_tensors(update_tactile=True)
         self._zero_velocities(env_ids)
 
@@ -715,8 +716,8 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         # Insert
         socket_pos_noise = (2 * (torch.randn((len(env_ids), 3), device=self.device) - 0.5)) * 0.0
         socket_pos_noise[:, :] = 0
-        self._move_arm_to_desired_pose(env_ids, self.socket_pos.clone() + socket_pos_noise,
-                                       sim_steps=self.cfg_task.env.num_gripper_move_sim_steps//2)
+        self._move_arm_to_desired_pose(env_ids, self.socket_tip.clone() + socket_pos_noise, # socket_pos
+                                       sim_steps=self.cfg_task.env.num_gripper_move_sim_steps // 2)
         self._refresh_task_tensors(update_tactile=True)
         self._zero_velocities(env_ids)
 
@@ -796,13 +797,13 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         # dof_pos at grasp pose tensor([[-0.0047,  0.2375,  0.0203, -1.2496, -0.0070,  1.6475, -1.5514,  0.6907,
         #   1.8478,  0.1660, -0.6892,  1.8515,  0.1625,  1.8333,  0.1740]]),
-        
+
         self.dof_pos[env_ids, :7] = torch.tensor(self.cfg_task.randomize.kuka_arm_initial_dof_pos,
                                                  device=self.device).repeat((len(env_ids), 1)) 
         # self.dof_pos[env_ids, :] = torch.tensor([[-0.0047,  0.2375,  0.0203, -1.2496, -0.0070,  1.6475, -1.5514,  0.6907,
         #                                             1.8478,  0.1660, -0.6892,  1.8515,  0.1625,  1.8333,  0.1740]],
         #                                          device=self.device).repeat((len(env_ids), 1))
-        
+
         # dont play with these joints (no actuation here)#
         self.dof_pos[
             env_ids, list(self.dof_dict.values()).index('base_to_finger_1_1')] = self.cfg_task.env.openhand.base_angle

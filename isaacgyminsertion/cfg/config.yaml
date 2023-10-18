@@ -62,6 +62,7 @@ headless: False
 # set default task and default training config based on task
 defaults:
   - task: FactoryTaskInsertionTactile
+  - tactile: ${task}Renderer
   - train: ${task}PPOv2
   - deploy: ${task}Deploy
   - hydra/job_logging: disabled

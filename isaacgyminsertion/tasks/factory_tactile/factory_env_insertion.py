@@ -183,8 +183,11 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
         self.asset_info_insertion = self.asset_info_insertion['']['']['']['']['']['']['assets']['factory'][
             'yaml']  # strip superfluous nesting
 
-        tactile_info_path = '../allsight/experiments/conf/test.yaml'  # relative to Gym's Hydra search path (cfg dir)
-        self.cfg_tactile = hydra.compose(config_name=tactile_info_path)['']['']['']['allsight']['experiments']['conf']
+        # tactile_info_path = '../allsight/experiments/conf/test.yaml'  # relative to Gym's Hydra search path (cfg dir)
+        # self.cfg_tactile = hydra.compose(config_name=tactile_info_path)['']['']['']['allsight']['experiments']['conf']
+
+        tactile_info_path = 'tactile/FactoryTaskInsertionTactileRenderer.yaml'  # relative to Gym's Hydra search path (cfg dir)
+        self.cfg_tactile = hydra.compose(config_name=tactile_info_path)['tactile']
 
         self.randomize = self.cfg_env.randomize.domain_randomize
         self.randomization_params = self.cfg_env.randomize.randomization_params
