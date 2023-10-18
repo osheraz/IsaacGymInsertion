@@ -1,5 +1,5 @@
 seed: ${..seed}
-algo: PPO # ExtrinsicAdapt, PPO
+algo: ExtrinsicAdapt # ExtrinsicAdapt, PPO
 network:
   mlp:
     units: [512, 256, 128]
@@ -45,8 +45,8 @@ ppo:
 
   # rma setting
   priv_info: True
-  extrin_adapt: False
-  tactile_info: False
+  extrin_adapt: True
+  tactile_info: True
   ft_info: False
   tactile_seq_length: ${...task.env.tactile_history_len}
   ft_seq_length: ${...task.env.ft_history_len}

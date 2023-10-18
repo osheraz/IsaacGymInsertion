@@ -169,7 +169,7 @@ class ExtrinsicAdapt(object):
 
             mu = mu.detach()
             mu = torch.clamp(mu, -1.0, 1.0)
-            obs_dict, r, done, info = self.env.step(mu)
+            obs_dict, r, done, info = self.env.step(mu) # online
             self.agent_steps += self.batch_size
 
             # ---- statistics
