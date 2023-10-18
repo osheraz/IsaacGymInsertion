@@ -252,7 +252,7 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             #                                                             (keypoint_offset + self.bolt_tip_pos_local))[1]
 
         # print('here 5 1 3 3 3 5')
-        if update_tactile and self.cfg_env.env.tactile:
+        if update_tactile and self.cfg['env']['tactile']:
             # left_finger_poses = pose_vec_to_mat(torch.cat((self.left_finger_pos,
             #                                               self.left_finger_quat), axis=1)).cpu().numpy()
             # right_finger_poses = pose_vec_to_mat(torch.cat((self.right_finger_pos,
@@ -775,7 +775,7 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                 print('done')
                 exit()
 
-        if self.cfg_env.env.record_video and 0 in env_ids:
+        if self.cfg_task.env.record_video and 0 in env_ids:
             if self.complete_video_frames is None:
                 self.complete_video_frames = []
             else:

@@ -155,8 +155,8 @@ class PPO(object):
 
         # ---- Rollout Videos ----
         self.it = 0
-        self.log_video_every = self.env.cfg_env.env.record_video_every
-        self.log_ft_every = self.env.cfg_env.env.record_ft_every
+        self.log_video_every = self.env.cfg_task.env.record_video_every
+        self.log_ft_every = self.env.cfg_task.env.record_ft_every
 
         self.last_recording_it = 0
         self.last_recording_it_ft = 0

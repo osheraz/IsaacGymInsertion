@@ -5,7 +5,7 @@ task_name: ${task.name}
 experiment: ''
 
 # if set to positive integer, overrides the default number of environments
-num_envs: 2 # ''
+num_envs: 1 # ''
 
 # seed - set to -1 to choose random seed
 seed: 42
@@ -35,7 +35,7 @@ num_subscenes: 4 # Splits the simulation into N physics scenes and runs each one
 # test - if set, run policy in inference mode (requires setting checkpoint to load)
 test: False
 # used to set checkpoint path
-checkpoint: 'outputs/10-17-23/18-19-29/stage1_nn/ep_600_step_0059M_reward_131.99.pth'
+checkpoint: ''
 # used to set decoder checkpoint path
 checkpoint_tactile: ''
 # set sigma when restoring network

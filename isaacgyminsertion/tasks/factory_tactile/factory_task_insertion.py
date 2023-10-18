@@ -158,7 +158,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.degrasp_buf = torch.zeros_like(self.reset_buf)
         self.far_from_goal_buf = torch.zeros_like(self.reset_buf)
 
-        if self.cfg_env.env.compute_contact_gt:
+        if self.cfg_task.env.compute_contact_gt:
             self.gt_extrinsic_contact = torch.zeros(
                 (self.num_envs, self.extrinsic_contact_gt[0].pointcloud_obj.shape[0]),
                 device=self.device, dtype=torch.float)
@@ -237,7 +237,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                                                                        self.identity_quat,
                                                                        (keypoint_offset * self.socket_heights) + socket_tip_pos_local)[1]
 
-        if update_tactile and self.cfg_env.env.tactile:
+        if update_tactile and self.cfg_task.env.tactile:
             # left_finger_pose = pose_vec_to_mat(torch.cat((self.left_finger_pos,
             #                                               self.left_finger_quat), axis=1)).cpu().numpy()
             # right_finger_pose = pose_vec_to_mat(torch.cat((self.right_finger_pos,
@@ -342,7 +342,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         # self.tactile_imgs = torch.tensor(tactile_imgs_list, dtype=torch.float32, device=self.device)
 
-        if self.cfg_env.env.tactile_display_viz and self.cfg_env.env.tactile:
+        if self.cfg_task.env.tactile_display_viz and self.cfg_task.env.tactile:
             env_to_show = 0
             self.tactile_handles[env_to_show][0].updateGUI(tactile_imgs_list[env_to_show],
                                                            height_maps[env_to_show])
@@ -560,7 +560,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         tip_midpoint_pose_wrt_robot = self.pose_world_to_robot_base(self.fingertip_midpoint_pos,
                                                                     self.fingertip_midpoint_quat)
 
-        if self.cfg_env.env.compute_contact_gt:
+        if self.cfg_task.env.compute_contact_gt:
             for e in range(self.num_envs):
                 self.gt_extrinsic_contact[e] = self.extrinsic_contact_gt[e].get_extrinsic_contact(
                     obj_pos=self.plug_pos, obj_quat=self.plug_quat, socket_pos=self.socket_pos
@@ -817,7 +817,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         # self._refresh_task_tensors()
 
         # print("#########reset##############", env_ids)
-        if self.cfg_env.env.record_video and 0 in env_ids:
+        if self.cfg_task.env.record_video and 0 in env_ids:
             if self.complete_video_frames is None:
                 self.complete_video_frames = []
             else:
@@ -825,7 +825,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                 self.complete_video_frames = self.video_frames[:]
             self.video_frames = []
 
-        if self.cfg_env.env.record_ft and 0 in env_ids:
+        if self.cfg_task.env.record_ft and 0 in env_ids:
             if self.complete_ft_frames is None:
                 self.complete_ft_frames = []
             else:

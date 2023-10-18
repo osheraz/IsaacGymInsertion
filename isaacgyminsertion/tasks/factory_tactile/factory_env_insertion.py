@@ -445,7 +445,7 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
             self.table_handles.append(table_handle)
 
             # creating a camera on environment 0
-            if (i == 0) and self.cfg_env.env.record_video:
+            if (i == 0) and self.cfg['env']['record_video']:
                 self.camera_props = gymapi.CameraProperties()
                 self.camera_props.width = 1280
                 self.camera_props.height = 720
@@ -469,11 +469,11 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
             mesh_root = os.path.join(os.path.dirname(__file__), '..', '..', '..', 'assets', 'factory', 'mesh',
                                      'factory_insertion')
 
-            if self.cfg_env.env.tactile:
+            if self.cfg['env']['tactile']:
                 self.tactile_handles.append([allsight_renderer(self.cfg_tactile,
                                                                os.path.join(mesh_root, plug_file), randomize=True,
                                                                finger_idx=i) for i in range(len(self.fingertips))])
-            if self.cfg_env.env.compute_contact_gt:
+            if self.cfg['env']['compute_contact_gt']:
                 socket_pos = [0, 0, self.cfg_base.env.table_height]
                 self.extrinsic_contact_gt.append(ExtrinsicContact(mesh_obj=os.path.join(mesh_root, plug_file),
                                                                   mesh_socket=os.path.join(mesh_root, socket_file),

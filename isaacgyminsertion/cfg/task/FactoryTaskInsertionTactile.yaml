@@ -37,6 +37,15 @@ env:
     socket_base_height: 0.003
     plug_grasp_threshold: 0.01
 
+    tactile: False
+    tactile_display_viz: False
+    compute_contact_gt: False
+
+    record_video: True
+    record_ft: True
+    record_video_every: 1000
+    record_ft_every: 1000
+
 sim:
     disable_gravity: True
 
