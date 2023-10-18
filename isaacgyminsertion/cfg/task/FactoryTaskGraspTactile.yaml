@@ -1,0 +1,146 @@
+# See schema in factory_schema_config_task.py for descriptions of common parameters.
+
+defaults:
+    - FactoryBaseTactile
+    - _self_
+    # - /factory_schema_config_task
+
+name: FactoryTaskInsertionTactile
+physics_engine: ${..physics_engine}
+
+env:
+    numEnvs: ${resolve_default:128,${...num_envs}}
+    numObservations: 165 
+    numStates: 48 # 62
+    numActions: 6 # [position, ori]
+    numTargets: 6 # [position, ori]
+
+    # Should be the same as in EnvPPO
+    numObsHist: 5
+    ft_history_len: 30
+    tactile_history_len: 3
+
+    openhand:
+        distal_open: 0.0
+        distal_close: 0.1
+        proximal_open: 1.0
+        proximal_close: 2.1
+        base_angle: 0.7
+        tactile_finger: [ 'finger_1_3', 'finger_2_3', 'finger_3_3' ] # left, right, middle
+
+    num_gripper_move_sim_steps: 120  # number of timesteps to reserve for moving gripper before first step of episode
+    num_gripper_close_sim_steps: 50  # number of timesteps to reserve for closing gripper onto plug during each reset
+    num_gripper_lift_sim_steps: 25  # number of timesteps to reserve for lift after last step of episode
+
+    socket_pos_obs_noise: [ 0.001, 0.001, 0.0 ]
+    socket_rot_obs_noise: [ 0.0, 0.0, 0.0 ]
+    socket_base_height: 0.003
+    plug_grasp_threshold: 0.01
+
+sim:
+    disable_gravity: True
+
+randomize:
+
+
+    joint_noise: 0.0  # noise on kuka DOF positions [deg]
+    initial_state: random # initialize plugs in random state or goal state {random, goal}
+    
+    plug_bias_y: -0.1   # if random, Y-axis offset of plug during each reset to prevent initial interpenetration with socket
+    plug_bias_z: 0.  # if random, Z-axis offset of plug during each reset to prevent initial interpenetration with ground plane
+    plug_noise_xy: 0.05  # if random, XY-axis noise on plug position during each reset
+
+    kuka_arm_initial_dof_pos: [0.0064, 0.2375,  -0.0075,  -1.2022, 0.0015,  1.6900,  -1.5699]
+    fingertip_midpoint_pos_initial: [0.0, 0.0, 0.1]  # initial position of midpoint between fingertips above table
+    fingertip_midpoint_pos_noise: [0.2, 0.2, 0.1]  # noise on fingertip pos
+    fingertip_midpoint_rot_initial: [-3.14159265359, 0.0, 1.57079632679]  # initial rotation of fingertips (Euler)
+    fingertip_midpoint_rot_noise: [0.3, 0.3, 1]  # noise on rotation
+    
+    plug_pos_xy_initial: [0.0, -0.13]  # initial XY position of plug on table
+    plug_pos_xy_noise: [0.1, 0.05] # noise on plug position
+
+    plug_noise_pos_in_gripper: [0.0, 0.0, 0.0]  # noise on plug position within gripper
+    plug_noise_rot_in_gripper: 0.0  # noise on plug rotation within gripper
+    
+
+    socket_pos_xy_initial: [0.0, 0.0]  # initial XY position of plug on table # round_hole_2in  width = 0.1016, length = 0.09144
+    socket_pos_xy_noise: [0.05, 0.05]  # noise on plug position
+
+
+rl:
+
+    pos_action_scale: [0.005, 0.005, 0.004]
+    rot_action_scale: [0.001, 0.001, 0.001]
+
+    force_action_scale: [1.0, 1.0, 1.0]
+    torque_action_scale: [1.0, 1.0, 1.0]
+    
+    unidirectional_rot: True  # constrain kuka Z-rot to be unidirectional
+    unidirectional_force: False  # constrain kuka Z-force to be unidirectional (useful for debugging)
+
+    clamp_rot: True
+    clamp_rot_thresh: 1.0e-6
+
+    num_keypoints: 4  # number of keypoints used in reward
+    keypoint_scale: 1.0  # length of line of keypoints
+
+    keypoint_reward_scale: -5.0  # scale on keypoint-based reward
+    action_penalty_scale: -0.0  # scale on action penalty
+    orientation_penalty_scale: -0.1
+    dist_penalty_scale: -0.0
+
+    max_episode_length: 500 # 8192  # terminate episode after this number of timesteps (failure)
+
+    orientation_threshold: 0.1
+    far_error_thresh: 0.100  # threshold above which plug is considered too far from bolt
+    close_error_thresh: 0.01  # threshold below which plug is considered close enough to bolt
+    success_bonus: 1.0  # bonus if plug is close enough to base of bolt shank
+
+    # Success bonus
+    success_height_thresh: 0.003  # threshold distance below which plug is considered successfully inserted
+    engagement_bonus: 0.01 # bonus if plug is engaged (partially inserted) with socket
+
+
+ctrl:
+    ctrl_type:  gym_default # {gym_default,
+                               #  joint_space_ik, joint_space_id, 
+                               #  task_space_impedance, operational_space_motion, 
+                               #  open_loop_force, closed_loop_force,
+                               #  hybrid_force_motion}
+    all:
+        jacobian_type: geometric
+        gripper_prop_gains: [100, 100]
+        gripper_deriv_gains: [2, 2]
+    gym_default:
+        ik_method: dls
+        joint_prop_gains: [400, 400, 400, 400, 400, 400, 400]
+        joint_deriv_gains: [80, 80, 80, 80, 80, 80, 80]
+        gripper_prop_gains: [10, 10, 10, 10, 10, 10, 10, 10]
+        gripper_deriv_gains: [0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2]
+    joint_space_ik:
+        ik_method: dls
+        joint_prop_gains: [1, 1, 1, 1, 1, 1, 1]
+        joint_deriv_gains: [0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1]
+    joint_space_id:
+        ik_method: dls
+        joint_prop_gains: [40, 40, 40, 40, 40, 40, 40]
+        joint_deriv_gains: [8, 8, 8, 8, 8, 8, 8]
+    task_space_impedance:
+        motion_ctrl_axes: [1, 1, 1, 1, 1, 1]
+        task_prop_gains: [300, 300, 300, 50, 50, 50]
+        task_deriv_gains: [34, 34, 34, 1.4, 1.4, 1.4]
+    operational_space_motion:
+        motion_ctrl_axes: [1, 1, 1, 1, 1, 1]
+        task_prop_gains: [200, 200, 200, 200, 200, 200]
+        task_deriv_gains: [10, 10, 10, 10, 10, 10]
+    open_loop_force:
+        force_ctrl_axes: [1, 1, 1, 1, 1, 1]
+    closed_loop_force:
+        force_ctrl_axes: [1, 1, 1, 1, 1, 1]
+        wrench_prop_gains: [0.1, 0.1, 0.1, 0.1, 0.1, 0.1]
+    hybrid_force_motion:
+        motion_ctrl_axes: [1, 1, 1, 1, 1, 1]
+        task_prop_gains: [40, 40, 40, 40, 40, 40]
+        task_deriv_gains: [8, 8, 8, 8, 8, 8]
+        force_ctrl_axes: [1, 1, 1, 1, 1, 1]
+        wrench_prop_gains: [0.1, 0.1, 0.1, 0.1, 0.1, 0.1]
