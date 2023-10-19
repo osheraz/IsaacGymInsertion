@@ -17,6 +17,7 @@ import os
 from datetime import datetime
 import json
 import cv2
+import deepdish as dd
 
 
 def transform_op(arr):
@@ -209,59 +210,47 @@ class VectorizedExperienceBuffer:
 
 class DataLogger():
 
-    def __init__(self, conf, dir_path):
+    def __init__(self, object, dir_path):
 
-        self.data_dict = {}
-        self.img_press_dict = {}
-        self.save = conf['save']
-        # Init of the dataset dir paths with the current day and time
-        self.date = datetime.now().strftime("%Y_%m_%d-%I_%M_%S")
-        dir_path = '/home/osher/catkin_ws/src/allsight'
-        self.dataset_path_images = dir_path + "/dataset/{}/{}/images/{}/img_{}".format(conf['gel'], conf['leds'],
-                                                                                       conf['indenter'], self.date)
-        self.dataset_path_data = dir_path + "/dataset/{}/{}/data/{}/data_{}".format(conf['gel'], conf['leds'],
-                                                                                    conf['indenter'], self.date)
-
+        self.buffer = []
+        self.object = object
+        self.batch_size = 100
+        self.id = 0
+        self.dir_name = object + datetime.now().strftime("%Y_%m_%d-%I_%M_%S")
+        os.makedirs(os.path.join(dir_path, self.dir_name), exist_ok=True)
         self.count = 0
-
-        if self.save:
-            if not os.path.exists(self.dataset_path_images): os.mkdir(self.dataset_path_images)
-            if not os.path.exists(self.dataset_path_data): os.mkdir(self.dataset_path_data)
-
-            # create a summary
-            file_path = os.path.join(self.dataset_path_data, 'summary.json')
-            with open(file_path, 'w') as fp:
-                json.dump(conf, fp, indent=3)
 
     def append(self, obs, priv_obs, tactile_img, action, reward, done):
 
-        img_id = f'image{self.count}.jpg'
-        img_path = os.path.join(self.dataset_path_images, img_id)
+        data = {
+            'tactile_img': tactile_img,
+            'obs': obs,
+            'priv_obs': priv_obs,
+            'action': action,
+            'reward': reward,
+            'done': done
+        }
 
-        self.img_press_dict[img_path] = tactile_img
+        self.buffer.append(data.copy())
+        self.count += 1
 
-        self.data_dict[img_id] = {'frame': img_path,
-                                  'obs': obs,
-                                  'priv_obs': priv_obs,
-                                  'action': action,
-                                  'reward': reward,
-                                  'done': done
-                                  }
+        # save each batch_size
+        if len(self.buffer) >= self.batch_size:
 
-        self.count +=1
+            id_str = "{:07d}".format(self.id)
+            outputDir = os.path.join(self.dir_name, id_str)
+            os.makedirs(outputDir, exist_ok=True)
 
-    def save_batch_images(self):
-        # Save images
-        for key in self.img_press_dict.keys():
-            if not cv2.imwrite(key, self.img_press_dict[key]):
-                raise Exception("Could not write image")
+            new_data = {k: [] for k in data.keys()}
+            for d in self.buffer:
+                for k in data.keys():
+                    new_data[k].append(d[k])
 
-        # Clear the dict
-        self.img_press_dict.clear()
+            for k in data.keys():
+                fn_k = "{}_{}.h5".format(id_str, k)
+                outputFn = os.path.join(outputDir, fn_k)
+                dd.io.save(outputFn, new_data[k])
 
-    def save_data_dict(self):
-
-        path = os.path.join(self.dataset_path_data, 'data_{}.json'.format(self.date))
-        if self.save:
-            with open(path, 'w') as json_file:
-                json.dump(self.data_dict, json_file, indent=3)
+            # clear the buffer
+            self.buffer = []
+            self.id += 1

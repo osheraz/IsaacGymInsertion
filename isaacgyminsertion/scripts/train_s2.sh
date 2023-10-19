@@ -7,6 +7,7 @@ array=( $@ )
 len=${#array[@]}
 EXTRA_ARGS=${array[@]:3:$len}
 EXTRA_ARGS_SLUG=${EXTRA_ARGS// /_}
+
 C=outputs/10-18-23/16-49-49/stage1_nn/last.pth
 
 echo extra "${EXTRA_ARGS}"

@@ -179,6 +179,7 @@ class PPO(object):
 
         #             'tactile_seq_length': self.tactile_seq_length,
         if self.ppo_config['save_buffer'] and self.tactile_info:
+            # TODO change to use datalogger
             #  obs_shape, priv_shape, tactile_shape, action_shape, capacity, device
             self.buffer = VectorizedExperienceBuffer(self.obs_shape[0],
                                                      self.priv_info_dim,
