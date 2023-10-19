@@ -50,7 +50,7 @@ import isaacgyminsertion.tasks.factory_tactile.factory_control as fc
 import trimesh
 import open3d as o3d
 from scipy.spatial.transform import Rotation as R
-
+import omegaconf
 
 class ExtrinsicContact:
     def __init__(
@@ -149,7 +149,7 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
 
     def __init__(self, cfg, rl_device, sim_device, graphics_device_id, headless, virtual_screen_capture, force_render):
         """Initialize instance variables. Initialize environment superclass. Acquire tensors."""
-
+        self.cfg = cfg
         self._get_env_yaml_params()
 
         super().__init__(cfg, rl_device, sim_device, graphics_device_id, headless, virtual_screen_capture, force_render)
@@ -183,11 +183,7 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
         self.asset_info_insertion = self.asset_info_insertion['']['']['']['']['']['']['assets']['factory'][
             'yaml']  # strip superfluous nesting
 
-        # tactile_info_path = '../allsight/experiments/conf/test.yaml'  # relative to Gym's Hydra search path (cfg dir)
-        # self.cfg_tactile = hydra.compose(config_name=tactile_info_path)['']['']['']['allsight']['experiments']['conf']
-
-        tactile_info_path = 'tactile/FactoryTaskInsertionTactileRenderer.yaml'  # relative to Gym's Hydra search path (cfg dir)
-        self.cfg_tactile = hydra.compose(config_name=tactile_info_path)['tactile']
+        self.cfg_tactile = omegaconf.OmegaConf.create(self.cfg['tactile'])
 
         self.randomize = self.cfg_env.randomize.domain_randomize
         self.randomization_params = self.cfg_env.randomize.randomization_params

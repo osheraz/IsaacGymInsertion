@@ -52,7 +52,6 @@ def run(cfg: DictConfig):
     if cfg.checkpoint:
         cfg.checkpoint = to_absolute_path(cfg.checkpoint)
 
-    print(cfg.tactile.tacto)
     # set numpy formatting for printing only
     set_np_formatting()
 

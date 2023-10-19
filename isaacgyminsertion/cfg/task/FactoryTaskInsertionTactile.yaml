@@ -8,6 +8,21 @@ defaults:
 name: FactoryTaskInsertionTactile
 physics_engine: ${..physics_engine}
 
+tactile:
+  tacto:
+    width: 64 # 224 # 480 | 224
+    height: 64 # 224 # 480 | 224 for the gan
+    visualize_gui: True
+
+  with_bg: True # add background reference frame
+  show_depth: True # visualize depth
+  show_detect: False # visulize detection work only if true and show_depth true
+
+  decoder:
+    width: 64
+    height: 64
+    num_channels: 1 # 1 (Grayscale), 3 (RGB)
+
 env:
     numEnvs: ${resolve_default:128,${...num_envs}}
     numObservations: 165 
