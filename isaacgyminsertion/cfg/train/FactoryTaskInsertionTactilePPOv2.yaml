@@ -10,11 +10,10 @@ network:
   ft_mlp:
     units: [128, 64, 32]
   tactile_decoder:
-    num_channels: 3
-    num_fingers: 1 # per_finger
-    tactile_seq_length: $ {...task.env.tactile_history_len}
-    img_width: $ {...tactile.decoder.width}
-    img_height: $ {...tactile.decoder.height}
+    num_channels: ${....task.tactile.decoder.num_channels}
+    tactile_seq_length: ${....task.env.tactile_history_len}
+    img_width: ${....task.tactile.decoder.width}
+    img_height: ${....task.tactile.decoder.height}
   tactile_mlp:
     units: [300, 128, 64]
 

@@ -159,6 +159,7 @@ class ResNet(nn.Module):
             block,
             layers,
             num_classes=1000,
+            num_channels=3,
             zero_init_residual=False,
             groups=1,
             width_per_group=64,
@@ -184,7 +185,7 @@ class ResNet(nn.Module):
         self.groups = groups
         self.base_width = width_per_group
         self.conv1 = nn.Conv2d(
-            3, self.inplanes, kernel_size=7, stride=2, padding=3, bias=False
+            num_channels, self.inplanes, kernel_size=7, stride=2, padding=3, bias=False
         )
         self.bn1 = norm_layer(self.inplanes)
         self.relu = nn.ReLU(inplace=True)
@@ -263,12 +264,7 @@ class ResNet(nn.Module):
     def _forward_impl(self, x, x_ref=None):
         # See note [TorchScript super()]
 
-        #         x = [self.spatial_transform(img) for img in x]
-        #         x = torch.stack(x, 0).permute(1, 0, 2, 3)
-        # todo what about ref
-        # x = torch.stack((x, x_ref), axis=2)
-        # x = x[:,:,None,:,:]
-        B, C, T, W, H = x.size()[0], x.size()[1], x.size()[2], x.size()[3], x.size()[4]
+        B, T, C, W, H = x.size()[0], x.size()[1], x.size()[2], x.size()[3], x.size()[4]
         x = x.view([(B * T), C, W, H])
 
         x = self.conv1(x)

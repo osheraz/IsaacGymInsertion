@@ -21,7 +21,7 @@ tactile:
   decoder:
     width: 64
     height: 64
-    num_channels: 1 # 1 (Grayscale), 3 (RGB)
+    num_channels: 3 # 1 (Grayscale), 3 (RGB)
 
 env:
     numEnvs: ${resolve_default:128,${...num_envs}}

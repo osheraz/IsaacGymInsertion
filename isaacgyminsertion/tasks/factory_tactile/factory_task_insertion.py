@@ -139,6 +139,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                                             dtype=torch.float, device=self.device)
         # tactile buffers
         self.num_channels = self.cfg_tactile.decoder.num_channels
+
         self.tactile_imgs = torch.zeros(
             (self.num_envs, len(self.fingertips),  # left, right, bottom
              self.cfg_tactile.decoder.width, self.cfg_tactile.decoder.height, self.num_channels),
