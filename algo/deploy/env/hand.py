@@ -20,8 +20,8 @@ class Hand():
         self.finger_right = Finger(dev_name=dev_names[1], serial='/dev/video', fix=fix[1])
         self.finger_bottom = Finger(dev_name=dev_names[2], serial='/dev/video', fix=fix[2])
         self.init_success = False
-
-        self.left_bg, self.right_bg, self.bottom_bg = self.get_frames()
+        self.init_hand()
+        self.left_bg, self.right_bg, self.bottom_bg = self.get_frames(diff=False)
 
     def init_hand(self):
         """
@@ -91,7 +91,5 @@ if __name__ == "__main__":
     pc_name = os.getlogin()
 
     tactile = Hand()
-
-    tactile.init_hand()
 
     tactile.show_fingers_view()

@@ -1,6 +1,4 @@
-import numpy
 import rospy
-# import tf
 from algo.deploy.env.hand import Hand
 from algo.deploy.env.openhand_env import OpenhandEnv
 from algo.deploy.env.robots import RobotWithFtEnv
@@ -15,8 +13,6 @@ class ExperimentEnv:
         self.hand = OpenhandEnv()
         self.tactile = Hand()
         self.arm = RobotWithFtEnv()
-        # self.listener = tf.TransformListener()
-        # (trans_ee, rot_ee) = self.listener.lookupTransform('/base_link', 'end_effector_link', rospy.Time(0))
         rospy.sleep(2)
         self.ready = self.arm.init_success and self.tactile.init_success
 
@@ -53,11 +49,14 @@ class ExperimentEnv:
         return ft
 
     def move_to_init_state(self):
-        pass
+        self.arm.move_to_init()
+        self.hand.set_gripper_joints_to_init()
 
-    def grasp_object(self):
-        pass
+    def grasp(self, ):
+
+        self.hand.grasp()
 
     def move_to_joint_values(self, values):
         result = self.arm.set_trajectory_joints(values)
         assert result == False, 'Failed to apply action'
+

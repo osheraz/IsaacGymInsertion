@@ -67,6 +67,8 @@ class MoveManipulatorServiceWrap():
 
         self.moveit_move_joints_srv(req)
 
+        return True
+
     def ee_pose(self):
         gripper_pose = self.get_cartesian_pose()
         return gripper_pose.position

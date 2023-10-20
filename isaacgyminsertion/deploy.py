@@ -36,7 +36,7 @@ def main(config: DictConfig):
     output_dif = os.path.join(output_dif, str(datetime.now().strftime("%H-%M-%S")))
     os.makedirs(output_dif, exist_ok=True)
     agent = HardwarePlayer(output_dif, config)
-    # agent.restore(config.checkpoint)
+    # agent.restore(config.checkpoint) TODO need that
     agent.deploy()
 
 if __name__ == '__main__':

@@ -41,6 +41,11 @@ class RobotWithFtEnv():
 
         print("WAITING...DONE")
 
+    def move_to_init(self):
+
+        init_pose = [0.0064, 0.2375, -0.0075, -1.2022, 0.0015, 1.6900, -1.5699]
+        self.move_manipulator.joint_traj(init_pose, wait=True)
+
     def _check_all_systems_ready(self):
         """
         Checks that all the sensors, publishers and other robot systems are

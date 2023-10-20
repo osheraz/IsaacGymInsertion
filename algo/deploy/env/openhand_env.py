@@ -146,6 +146,10 @@ class OpenhandEnv():
         self.gripper_control.init_position()
         return True
 
+    def grasp(self):
+
+        self.gripper_control.grasp()
+
     def _explore_hand(self):
 
         n = 4
