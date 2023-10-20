@@ -38,6 +38,7 @@ class MoveManipulatorServiceWrap():
         res = self.moveit_get_pose_srv()
 
         return res.pose
+
     def scale_vel(self, scale_vel, scale_acc):
         req = VelAndAccRequest()
         req.vel = scale_vel
@@ -71,7 +72,7 @@ class MoveManipulatorServiceWrap():
 
     def ee_pose(self):
         gripper_pose = self.get_cartesian_pose()
-        return gripper_pose.position
+        return gripper_pose
 
     def ee_rpy(self):
         gripper_pose = self.get_cartesian_pose()

@@ -67,13 +67,13 @@ class RobotWithFtEnv():
         while self.arm_joint_state is None and not rospy.is_shutdown():
             try:
                 self.arm_joint_state = rospy.wait_for_message(
-                    "arm_controller/state", JointTrajectoryControllerState, timeout=5.0)
+                    "/iiwa/PositionJointInterface_trajectory_controller/state", JointTrajectoryControllerState, timeout=5.0)
                 rospy.logdebug(
                     "Current arm_controller/state READY=>")
 
             except:
                 rospy.logerr(
-                    "Current arm_controller/state not ready yet, retrying for getting laser_scan")
+                    "Current /iiwa/PositionJointInterface_trajectory_controller/state not ready yet, retrying for getting State")
         return self.arm_joint_state
 
     def _joint_state_callback(self, data):

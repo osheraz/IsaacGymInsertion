@@ -90,7 +90,7 @@ class HardwarePlayer(object):
 
     def _create_asset_info(self):
 
-        subassembly = self.deploy_config.desired_subassemblies
+        subassembly = self.deploy_config.desired_subassemblies[0]
         components = list(self.asset_info_insertion[subassembly])
         rospy.logwarn('Parameters load for: {} --- >  {}'.format(components[0], components[1]))
 
@@ -125,8 +125,10 @@ class HardwarePlayer(object):
         self.prev_targets = torch.zeros((1, self.deploy_config.env.numTargets), dtype=torch.float, device=self.device)
 
         # Keep track of history
-        self.arm_joint_queue = torch.zeros((1, self.deploy_config.env.obs_seq_length, 7), dtype=torch.float, device=self.device)
-        self.arm_vel_queue = torch.zeros((1, self.deploy_config.env.obs_seq_length, 7), dtype=torch.float, device=self.device)
+        self.arm_joint_queue = torch.zeros((1, self.deploy_config.env.obs_seq_length, 7), dtype=torch.float,
+                                           device=self.device)
+        self.arm_vel_queue = torch.zeros((1, self.deploy_config.env.obs_seq_length, 7), dtype=torch.float,
+                                         device=self.device)
         self.actions_queue = torch.zeros((1, self.deploy_config.env.obs_seq_length, self.num_actions),
                                          dtype=torch.float, device=self.device)
         self.targets_queue = torch.zeros((1, self.deploy_config.env.obs_seq_length, self.num_targets),
@@ -187,7 +189,7 @@ class HardwarePlayer(object):
         self.noisy_socket_pos[:, 1] = self.socket_pos[:, 1] + socket_obs_pos_noise[:, 1]
         self.noisy_socket_pos[:, 2] = self.socket_pos[:, 2] + socket_obs_pos_noise[:, 2]
 
-        self.noisy_gripper_goal_quat, self.noisy_gripper_goal_pos = torch_jit_utils.tf_combine(
+        self.noisy_gripper_goal_quat, self.noisy_gripper_goal_pos = torch_jit_utils.tf_combine_deploy(
             self.identity_quat,
             self.noisy_socket_pos,
             self.gripper_normal_quat,
@@ -244,23 +246,28 @@ class HardwarePlayer(object):
     def _move_arm_to_desired_pose(self, desired_pos, desired_rot=None):
         """Move gripper to desired pose."""
 
-        self.ctrl_target_fingertip_centered_pos = desired_pos
+        self.ctrl_target_fingertip_centered_pos = torch.tensor(desired_pos, device=self.device).unsqueeze(0)
 
         if desired_rot is None:
             ctrl_target_fingertip_centered_euler = torch.tensor(self.deploy_config.env.fingertip_midpoint_rot_initial,
-                                                                device=self.device)
+                                                                device=self.device).unsqueeze(0)
 
-            self.ctrl_target_fingertip_centered_quat = torch_jit_utils.quat_from_euler_xyz(
+            self.ctrl_target_fingertip_centered_quat = torch_jit_utils.quat_from_euler_xyz_deploy(
                 ctrl_target_fingertip_centered_euler[:, 0],
                 ctrl_target_fingertip_centered_euler[:, 1],
                 ctrl_target_fingertip_centered_euler[:, 2])
         else:
-            self.ctrl_target_fingertip_centered_quat = desired_rot
+            self.ctrl_target_fingertip_centered_quat = torch.tensor(desired_rot, device=self.device).unsqueeze(0)
 
         cfg_ctrl = {'num_envs': 1,
                     'jacobian_type': 'geometric'}
 
-        pos_error, axis_angle_error = fc.get_pose_error(
+        info = self.env.get_info_for_control()
+        ee_pose = info['ee_pose']
+        self.fingertip_centered_pos = torch.tensor(ee_pose[:3], device=self.device, dtype=torch.float).unsqueeze(0)
+        self.fingertip_centered_quat = torch.tensor(ee_pose[3:], device=self.device, dtype=torch.float).unsqueeze(0)
+
+        pos_error, axis_angle_error = fc.get_pose_error_deploy(
             fingertip_midpoint_pos=self.fingertip_centered_pos,
             fingertip_midpoint_quat=self.fingertip_centered_quat,
             ctrl_target_fingertip_midpoint_pos=self.ctrl_target_fingertip_centered_pos,
@@ -322,13 +329,13 @@ class HardwarePlayer(object):
         # Convert to quat and set rot target
         angle = torch.norm(rot_actions, p=2, dim=-1)
         axis = rot_actions / angle.unsqueeze(-1)
-        rot_actions_quat = torch_jit_utils.quat_from_angle_axis(angle, axis)
+        rot_actions_quat = torch_jit_utils.quat_from_angle_axis_deploy(angle, axis)
         if self.deploy_config.rl.clamp_rot:
             rot_actions_quat = torch.where(angle.unsqueeze(-1).repeat(1, 4) > self.deploy_config.rl.clamp_rot_thresh,
                                            rot_actions_quat,
                                            torch.tensor([0.0, 0.0, 0.0, 1.0], device=self.device))
-        self.ctrl_target_fingertip_centered_quat = torch_jit_utils.quat_mul(rot_actions_quat,
-                                                                            self.fingertip_centered_quat)
+        self.ctrl_target_fingertip_centered_quat = torch_jit_utils.quat_mul_deploy(rot_actions_quat,
+                                                                                   self.fingertip_centered_quat)
 
         self.generate_ctrl_signals()
 
@@ -342,9 +349,11 @@ class HardwarePlayer(object):
         arm_dof_pos = torch.tensor(ctrl_info['joints'], device=self.device).unsqueeze(0)
 
         cfg_ctrl = {'num_envs': 1,
-                    'jacobian_type': 'geometric'}
+                    'jacobian_type': 'geometric',
+                    'ik_method': 'dls'
+                    }
 
-        self.ctrl_target_dof_pos = fc.compute_dof_pos_target(
+        self.ctrl_target_dof_pos = fc.compute_dof_pos_target_deploy(
             cfg_ctrl=cfg_ctrl,
             arm_dof_pos=arm_dof_pos,
             fingertip_midpoint_pos=self.fingertip_centered_pos,
@@ -353,11 +362,11 @@ class HardwarePlayer(object):
             ctrl_target_fingertip_midpoint_pos=self.ctrl_target_fingertip_centered_pos,
             ctrl_target_fingertip_midpoint_quat=self.ctrl_target_fingertip_centered_quat,
             ctrl_target_gripper_dof_pos=0,
-            device=self.device).squeeze(0)
+            device=self.device)
 
-        self.ctrl_target_dof_pos = self.ctrl_target_dof_pos[:,:7]
+        self.ctrl_target_dof_pos = self.ctrl_target_dof_pos[:, :7]
 
-        self.env.move_to_joint_values(self.ctrl_target_dof_pos.cpu().detach().numpy().tolist())
+        self.env.move_to_joint_values(self.ctrl_target_dof_pos.cpu().detach().numpy().squeeze().tolist())
 
     def restore(self, fn):
         checkpoint = torch.load(fn)
@@ -382,12 +391,12 @@ class HardwarePlayer(object):
         self._create_asset_info()
         self._acquire_task_tensors()
 
-        true_socket_pose = [0.4, 0.4, 0.4]
+        true_socket_pose = [0, 0, 0.3]
         self._set_socket_pose(pos=true_socket_pose)
 
-        true_plug_pose = [0.3, 0.3, 0.4]
-        above_plug_pose = true_plug_pose + [0, 0, 0.1]
-        plug_grasp_pose = above_plug_pose + [0, 0, -0.01]
+        true_plug_pose = [0, 0, 0.33]
+        above_plug_pose = [x + y for x, y in zip(true_plug_pose, [0, 0, 0.01])]
+        plug_grasp_pose = [x + y for x, y in zip(above_plug_pose, [0, 0, -0.01])]
 
         self._set_plug_pose(pos=true_plug_pose)
 

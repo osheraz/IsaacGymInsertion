@@ -91,11 +91,33 @@ def quat_mul(a, b):
 
     return quat
 
+def quat_mul_deploy(a, b):
+    assert a.shape == b.shape
+    shape = a.shape
+    a = a.reshape(-1, 4)
+    b = b.reshape(-1, 4)
 
+    x1, y1, z1, w1 = a[:, 0], a[:, 1], a[:, 2], a[:, 3]
+    x2, y2, z2, w2 = b[:, 0], b[:, 1], b[:, 2], b[:, 3]
+    ww = (z1 + x1) * (x2 + y2)
+    yy = (w1 - y1) * (w2 + z2)
+    zz = (w1 + y1) * (w2 - z2)
+    xx = ww + yy + zz
+    qq = 0.5 * (xx + (z1 - x1) * (x2 - y2))
+    w = qq - ww + (z1 - y1) * (y2 - z2)
+    x = qq - xx + (x1 + w1) * (x2 + w2)
+    y = qq - yy + (w1 - x1) * (y2 + z2)
+    z = qq - zz + (z1 + y1) * (w2 - x2)
+
+    quat = torch.stack([x, y, z, w], dim=-1).view(shape)
+
+    return quat
 @torch.jit.script
 def normalize(x, eps: float = 1e-9):
     return x / x.norm(p=2, dim=-1).clamp(min=eps, max=None).unsqueeze(-1)
 
+def normalize_deploy(x, eps: float = 1e-9):
+    return x / x.norm(p=2, dim=-1).clamp(min=eps, max=None).unsqueeze(-1)
 
 @torch.jit.script
 def quat_apply(a, b):
@@ -106,7 +128,13 @@ def quat_apply(a, b):
     t = xyz.cross(b, dim=-1) * 2
     return (b + a[:, 3:] * t + xyz.cross(t, dim=-1)).view(shape)
 
-
+def quat_apply_deploy(a, b):
+    shape = b.shape
+    a = a.reshape(-1, 4)
+    b = b.reshape(-1, 3)
+    xyz = a[:, :3]
+    t = xyz.cross(b, dim=-1) * 2
+    return (b + a[:, 3:] * t + xyz.cross(t, dim=-1)).view(shape)
 @torch.jit.script
 def quat_rotate(q, v):
     shape = q.shape
@@ -139,11 +167,17 @@ def quat_conjugate(a):
     a = a.reshape(-1, 4)
     return torch.cat((-a[:, :3], a[:, -1:]), dim=-1).view(shape)
 
+def quat_conjugate_deploy(a):
+    shape = a.shape
+    a = a.reshape(-1, 4)
+    return torch.cat((-a[:, :3], a[:, -1:]), dim=-1).view(shape)
 
 @torch.jit.script
 def quat_unit(a):
     return normalize(a)
 
+def quat_unit_deploy(a):
+    return normalize_deploy(a)
 
 @torch.jit.script
 def quat_from_angle_axis(angle, axis):
@@ -152,6 +186,11 @@ def quat_from_angle_axis(angle, axis):
     w = theta.cos()
     return quat_unit(torch.cat([xyz, w], dim=-1))
 
+def quat_from_angle_axis_deploy(angle, axis):
+    theta = (angle / 2).unsqueeze(-1)
+    xyz = normalize_deploy(axis) * theta.sin()
+    w = theta.cos()
+    return quat_unit_deploy(torch.cat([xyz, w], dim=-1))
 
 @torch.jit.script
 def normalize_angle(x):
@@ -178,6 +217,8 @@ def tf_vector(q, v):
 def tf_combine(q1, t1, q2, t2):
     return quat_mul(q1, q2), quat_apply(q1, t2) + t1
 
+def tf_combine_deploy(q1, t1, q2, t2):
+    return quat_mul_deploy(q1, q2), quat_apply_deploy(q1, t2) + t1
 
 @torch.jit.script
 def get_basis_vector(q, v):
@@ -241,7 +282,20 @@ def quat_from_euler_xyz(roll, pitch, yaw):
 
     return torch.stack([qx, qy, qz, qw], dim=-1)
 
+def quat_from_euler_xyz_deploy(roll, pitch, yaw):
+    cy = torch.cos(yaw * 0.5)
+    sy = torch.sin(yaw * 0.5)
+    cr = torch.cos(roll * 0.5)
+    sr = torch.sin(roll * 0.5)
+    cp = torch.cos(pitch * 0.5)
+    sp = torch.sin(pitch * 0.5)
 
+    qw = cy * cr * cp + sy * sr * sp
+    qx = cy * sr * cp - sy * cr * sp
+    qy = cy * cr * sp + sy * sr * cp
+    qz = sy * cr * cp - cy * sr * sp
+
+    return torch.stack([qx, qy, qz, qw], dim=-1)
 @torch.jit.script
 def torch_rand_float(lower, upper, shape, device):
     # type: (float, float, Tuple[int, int], str) -> Tensor
