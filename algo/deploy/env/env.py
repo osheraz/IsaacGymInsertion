@@ -1,6 +1,4 @@
-import numpy
 import rospy
-# import tf
 from algo.deploy.env.hand import Hand
 from algo.deploy.env.openhand_env import OpenhandEnv
 from algo.deploy.env.robots import RobotWithFtEnv
@@ -13,15 +11,13 @@ class ExperimentEnv:
     def __init__(self, ):
         rospy.logwarn('Setting up the environment')
         self.hand = OpenhandEnv()
-        self.tactile = Hand()
+        # self.tactile = Hand()
         self.arm = RobotWithFtEnv()
-        # self.listener = tf.TransformListener()
-        # (trans_ee, rot_ee) = self.listener.lookupTransform('/base_link', 'end_effector_link', rospy.Time(0))
         rospy.sleep(2)
-        self.ready = self.arm.init_success and self.tactile.init_success
+        # self.ready = self.arm.init_success and self.tactile.init_success
 
     def get_obs(self):
-        ft = self.arm.robotiq_wrench_filtered_state
+        ft = self.arm.robotiq_wrench_filtered_state.tolist()
         left, right, bottom = self.tactile.get_frames()
         pos, quat = self.arm.get_ee_pose()
         joints = self.arm.get_joint_values()
@@ -35,7 +31,7 @@ class ExperimentEnv:
     def get_info_for_control(self):
         pos, quat = self.arm.get_ee_pose()
         joints = self.arm.get_joint_values()
-        jacob = self.arm.get_jacobian_matrix()
+        jacob = self.arm.get_jacobian_matrix().tolist()
 
         return {'joints': joints,
                 'ee_pose': pos + quat,
@@ -48,16 +44,19 @@ class ExperimentEnv:
         return left, right, bottom
 
     def get_ft(self):
-        ft = self.arm.robotiq_wrench_filtered_state
+        ft = self.arm.robotiq_wrench_filtered_state.tolist()
 
         return ft
 
     def move_to_init_state(self):
-        pass
+        self.arm.move_to_init()
+        self.hand.set_gripper_joints_to_init()
 
-    def grasp_object(self):
-        pass
+    def grasp(self, ):
+
+        self.hand.grasp()
 
     def move_to_joint_values(self, values):
+
         result = self.arm.set_trajectory_joints(values)
-        assert result == False, 'Failed to apply action'
+

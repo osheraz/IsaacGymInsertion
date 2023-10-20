@@ -34,6 +34,7 @@ env:
   numTargets: ${...task.env.numTargets}
   socket_pos_obs_noise: [ 0.001, 0.001, 0.0 ]
   socket_rot_obs_noise: [ 0.0, 0.0, 0.0 ]
+  fingertip_midpoint_rot_initial: [ -3.14159265359, 0.0, 1.57079632679 ]
 
 
 ppo:
@@ -62,7 +63,12 @@ network:
     units: [512, 256, 128]
   priv_mlp:
     units: [256, 128, 64]
-  tactile_mlp:
-    units: [300, 128, 64]
   ft_mlp:
     units: [128, 64, 32]
+  tactile_decoder:
+    num_channels: ${....task.tactile.decoder.num_channels}
+    tactile_seq_length: ${....task.env.tactile_history_len}
+    img_width: ${....task.tactile.decoder.width}
+    img_height: ${....task.tactile.decoder.height}
+  tactile_mlp:
+    units: [300, 128, 64]

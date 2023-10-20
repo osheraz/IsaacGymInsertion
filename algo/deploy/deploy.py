@@ -35,6 +35,10 @@ class HardwarePlayer(object):
         self.tactile_info = self.deploy_config.ppo.tactile_info
         self.tactile_seq_length = self.deploy_config.ppo.tactile_seq_length
         self.tactile_info_dim = self.deploy_config.network.tactile_mlp.units[0]
+        self.mlp_tactile_info_dim = self.deploy_config.network.tactile_mlp.units[0]
+        self.tactile_input_dim = (self.deploy_config.network.tactile_decoder.img_width,
+                                  self.deploy_config.network.tactile_decoder.img_height,
+                                  self.deploy_config.network.tactile_decoder.num_channels)
         # ---- ft Info --- currently ft isn't supported
         self.ft_info = self.deploy_config.ppo.ft_info
         self.ft_seq_length = self.deploy_config.ppo.ft_seq_length
@@ -54,12 +58,14 @@ class HardwarePlayer(object):
             'priv_info_dim': self.priv_info_dim,
             'priv_info': True,
             "tactile_info": self.tactile_info,
-            "tactile_input_shape": self.tactile_info_dim,
+            "mlp_tactile_input_shape": self.mlp_tactile_info_dim,
             "ft_input_shape": self.ft_info_dim,
             "ft_info": self.ft_info,
-            "tactile_units": self.deploy_config.network.tactile_mlp.units,
+            "mlp_tactile_units": self.deploy_config.network.tactile_mlp.units,
             "tactile_decoder_embed_dim": self.deploy_config.network.tactile_mlp.units[0],
             "ft_units": self.deploy_config.network.ft_mlp.units,
+            'tactile_input_dim': self.tactile_input_dim,
+            'tactile_seq_length': self.tactile_seq_length,
         }
 
         self.model = ActorCritic(net_config)
@@ -82,9 +88,9 @@ class HardwarePlayer(object):
         self.asset_info_insertion = self.asset_info_insertion['']['']['']['']['']['']['assets']['factory'][
             'yaml']  # strip superfluous nesting
 
-    def _create_asset_info(self, i):
+    def _create_asset_info(self):
 
-        subassembly = self.deploy_config.desired_subassemblies[i]
+        subassembly = self.deploy_config.desired_subassemblies[0]
         components = list(self.asset_info_insertion[subassembly])
         rospy.logwarn('Parameters load for: {} --- >  {}'.format(components[0], components[1]))
 
@@ -119,8 +125,10 @@ class HardwarePlayer(object):
         self.prev_targets = torch.zeros((1, self.deploy_config.env.numTargets), dtype=torch.float, device=self.device)
 
         # Keep track of history
-        self.arm_joint_queue = torch.zeros((1, self.deploy_config.env.obs_seq_length, 7), dtype=torch.float, device=self.device)
-        self.arm_vel_queue = torch.zeros((1, self.deploy_config.env.obs_seq_length, 7), dtype=torch.float, device=self.device)
+        self.arm_joint_queue = torch.zeros((1, self.deploy_config.env.obs_seq_length, 7), dtype=torch.float,
+                                           device=self.device)
+        self.arm_vel_queue = torch.zeros((1, self.deploy_config.env.obs_seq_length, 7), dtype=torch.float,
+                                         device=self.device)
         self.actions_queue = torch.zeros((1, self.deploy_config.env.obs_seq_length, self.num_actions),
                                          dtype=torch.float, device=self.device)
         self.targets_queue = torch.zeros((1, self.deploy_config.env.obs_seq_length, self.num_targets),
@@ -153,6 +161,10 @@ class HardwarePlayer(object):
 
         self.socket_pos = torch.tensor(pos, device=self.device).unsqueeze(0)
 
+    def _set_plug_pose(self, pos):
+
+        self.plug_pos = torch.tensor(pos, device=self.device).unsqueeze(0)
+
     def _update_socket_pose(self):
 
         # TODO verify that everything is w.r.t robot base..
@@ -177,7 +189,7 @@ class HardwarePlayer(object):
         self.noisy_socket_pos[:, 1] = self.socket_pos[:, 1] + socket_obs_pos_noise[:, 1]
         self.noisy_socket_pos[:, 2] = self.socket_pos[:, 2] + socket_obs_pos_noise[:, 2]
 
-        self.noisy_gripper_goal_quat, self.noisy_gripper_goal_pos = torch_jit_utils.tf_combine(
+        self.noisy_gripper_goal_quat, self.noisy_gripper_goal_pos = torch_jit_utils.tf_combine_deploy(
             self.identity_quat,
             self.noisy_socket_pos,
             self.gripper_normal_quat,
@@ -208,9 +220,9 @@ class HardwarePlayer(object):
         bottom = cv2.resize(bottom, (self.cfg_tactile.decoder.width, self.cfg_tactile.decoder.height),
                             interpolation=cv2.INTER_AREA)
 
-        self.tactile_imgs[1, 0] = torch_jit_utils.img_transform(left).to(self.device).permute(1, 2, 0)
-        self.tactile_imgs[1, 1] = torch_jit_utils.img_transform(right).to(self.device).permute(1, 2, 0)
-        self.tactile_imgs[1, 2] = torch_jit_utils.img_transform(bottom).to(self.device).permute(1, 2, 0)
+        self.tactile_imgs[1, 0] = torch_jit_utils.rgb_transform(left).to(self.device).permute(1, 2, 0)
+        self.tactile_imgs[1, 1] = torch_jit_utils.rgb_transform(right).to(self.device).permute(1, 2, 0)
+        self.tactile_imgs[1, 2] = torch_jit_utils.rgb_transform(bottom).to(self.device).permute(1, 2, 0)
 
         self.tactile_queue[:, 1:] = self.tactile_queue[:, :-1].clone().detach()
         self.tactile_queue[:, 0, :] = self.tactile_imgs
@@ -230,6 +242,44 @@ class HardwarePlayer(object):
         self.obs_buf = torch.cat(obs_tensors, dim=-1)
 
         return self.obs_buf
+
+    def _move_arm_to_desired_pose(self, desired_pos, desired_rot=None):
+        """Move gripper to desired pose."""
+
+        self.ctrl_target_fingertip_centered_pos = torch.tensor(desired_pos, device=self.device).unsqueeze(0)
+
+        if desired_rot is None:
+            ctrl_target_fingertip_centered_euler = torch.tensor(self.deploy_config.env.fingertip_midpoint_rot_initial,
+                                                                device=self.device).unsqueeze(0)
+
+            self.ctrl_target_fingertip_centered_quat = torch_jit_utils.quat_from_euler_xyz_deploy(
+                ctrl_target_fingertip_centered_euler[:, 0],
+                ctrl_target_fingertip_centered_euler[:, 1],
+                ctrl_target_fingertip_centered_euler[:, 2])
+        else:
+            self.ctrl_target_fingertip_centered_quat = torch.tensor(desired_rot, device=self.device).unsqueeze(0)
+
+        cfg_ctrl = {'num_envs': 1,
+                    'jacobian_type': 'geometric'}
+
+        info = self.env.get_info_for_control()
+        ee_pose = info['ee_pose']
+        self.fingertip_centered_pos = torch.tensor(ee_pose[:3], device=self.device, dtype=torch.float).unsqueeze(0)
+        self.fingertip_centered_quat = torch.tensor(ee_pose[3:], device=self.device, dtype=torch.float).unsqueeze(0)
+
+        pos_error, axis_angle_error = fc.get_pose_error_deploy(
+            fingertip_midpoint_pos=self.fingertip_centered_pos,
+            fingertip_midpoint_quat=self.fingertip_centered_quat,
+            ctrl_target_fingertip_midpoint_pos=self.ctrl_target_fingertip_centered_pos,
+            ctrl_target_fingertip_midpoint_quat=self.ctrl_target_fingertip_centered_quat,
+            jacobian_type=cfg_ctrl['jacobian_type'],
+            rot_error_type='axis_angle')
+
+        delta_hand_pose = torch.cat((pos_error, axis_angle_error), dim=-1)
+        actions = torch.zeros((1, self.num_actions), device=self.device)
+        actions[:, :6] = delta_hand_pose
+        # Apply the action, keep fingers in the same status
+        self.apply_action(actions=actions, do_scale=False, do_clamp=False)
 
     def update_and_apply_action(self, actions):
 
@@ -260,10 +310,11 @@ class HardwarePlayer(object):
 
         self.apply_action(actions)
 
-    def apply_action(self, actions, do_scale=True):
+    def apply_action(self, actions, do_scale=True, do_clamp=True):
 
         # Apply the action
-        actions = torch.clamp(actions, -1.0, 1.0)
+        if do_clamp:
+            actions = torch.clamp(actions, -1.0, 1.0)
         # Interpret actions as target pos displacements and set pos target
         pos_actions = actions[:, 0:3]
         if do_scale:
@@ -278,13 +329,13 @@ class HardwarePlayer(object):
         # Convert to quat and set rot target
         angle = torch.norm(rot_actions, p=2, dim=-1)
         axis = rot_actions / angle.unsqueeze(-1)
-        rot_actions_quat = torch_jit_utils.quat_from_angle_axis(angle, axis)
+        rot_actions_quat = torch_jit_utils.quat_from_angle_axis_deploy(angle, axis)
         if self.deploy_config.rl.clamp_rot:
             rot_actions_quat = torch.where(angle.unsqueeze(-1).repeat(1, 4) > self.deploy_config.rl.clamp_rot_thresh,
                                            rot_actions_quat,
                                            torch.tensor([0.0, 0.0, 0.0, 1.0], device=self.device))
-        self.ctrl_target_fingertip_centered_quat = torch_jit_utils.quat_mul(rot_actions_quat,
-                                                                            self.fingertip_centered_quat)
+        self.ctrl_target_fingertip_centered_quat = torch_jit_utils.quat_mul_deploy(rot_actions_quat,
+                                                                                   self.fingertip_centered_quat)
 
         self.generate_ctrl_signals()
 
@@ -298,9 +349,11 @@ class HardwarePlayer(object):
         arm_dof_pos = torch.tensor(ctrl_info['joints'], device=self.device).unsqueeze(0)
 
         cfg_ctrl = {'num_envs': 1,
-                    'jacobian_type': 'geometric'}
+                    'jacobian_type': 'geometric',
+                    'ik_method': 'dls'
+                    }
 
-        self.ctrl_target_dof_pos = fc.compute_dof_pos_target(
+        self.ctrl_target_dof_pos = fc.compute_dof_pos_target_deploy(
             cfg_ctrl=cfg_ctrl,
             arm_dof_pos=arm_dof_pos,
             fingertip_midpoint_pos=self.fingertip_centered_pos,
@@ -309,9 +362,11 @@ class HardwarePlayer(object):
             ctrl_target_fingertip_midpoint_pos=self.ctrl_target_fingertip_centered_pos,
             ctrl_target_fingertip_midpoint_quat=self.ctrl_target_fingertip_centered_quat,
             ctrl_target_gripper_dof_pos=0,
-            device=self.device).squeeze(0)
+            device=self.device)
 
-        self.env.move_to_joint_values(self.ctrl_target_dof_pos.cpu().detach().numpy().tolist())
+        self.ctrl_target_dof_pos = self.ctrl_target_dof_pos[:, :7]
+
+        self.env.move_to_joint_values(self.ctrl_target_dof_pos.cpu().detach().numpy().squeeze().tolist())
 
     def restore(self, fn):
         checkpoint = torch.load(fn)
@@ -321,7 +376,7 @@ class HardwarePlayer(object):
     def deploy(self):
 
         from algo.deploy.env.env import ExperimentEnv
-        # try to set up rospy
+
         rospy.init_node('DeployEnv')
         self.env = ExperimentEnv()
         rospy.logwarn('Finished setting the env, lets play.')
@@ -332,16 +387,23 @@ class HardwarePlayer(object):
         hz = 60
         ros_rate = rospy.Rate(hz)
 
-        self.env.move_to_init_state()
-        self.env.grasp_object()
-
-
         # TODO index the real objects
-
-        self._create_asset_info(object)
+        self._create_asset_info()
         self._acquire_task_tensors()
-        true_pose = [0, 0, 0]
-        self._set_socket_pose(pos=true_pose)
+
+        true_socket_pose = [0, 0, 0.3]
+        self._set_socket_pose(pos=true_socket_pose)
+
+        true_plug_pose = [0, 0, 0.33]
+        above_plug_pose = [x + y for x, y in zip(true_plug_pose, [0, 0, 0.01])]
+        plug_grasp_pose = [x + y for x, y in zip(above_plug_pose, [0, 0, -0.01])]
+
+        self._set_plug_pose(pos=true_plug_pose)
+
+        # Grasp the object
+        self.env.move_to_init_state()
+        self._move_arm_to_desired_pose(plug_grasp_pose)
+        self.env.grasp()
 
         obs = self.compute_observations()
 

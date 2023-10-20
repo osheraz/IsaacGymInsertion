@@ -1,12 +1,23 @@
+#!/usr/bin/python
+
 import rospy
 from moveit_msgs.msg import JointLimits
 import moveit_msgs.msg
 import moveit_commander
 import geometry_msgs.msg
+from tactile_insertion.srv import MoveitJacobian, MoveitMoveJointPosition, MoveitPose, VelAndAcc, MoveitJoints, \
+    MoveitMoveEefPose
+from tactile_insertion.srv import MoveitJacobianResponse, MoveitMoveJointPositionResponse, MoveitPoseResponse, \
+    VelAndAccResponse, MoveitJointsResponse, MoveitMoveEefPoseResponse
+from std_msgs.msg import String
+from std_srvs.srv import Empty, EmptyResponse
+
+import iiwa_msgs.msg
 from std_msgs.msg import Header
 from geometry_msgs.msg import Point, Pose, PoseStamped, Quaternion
 import copy
 import sys
+import numpy as np
 
 
 class MoveManipulator():
@@ -16,9 +27,9 @@ class MoveManipulator():
         moveit_commander.roscpp_initialize(sys.argv)
         arm_group_name = "manipulator"
 
-        self.robot = moveit_commander.RobotCommander("robot_description")
-        self.scene = moveit_commander.PlanningSceneInterface(ns=rospy.get_namespace())
-        self.group = moveit_commander.MoveGroupCommander(arm_group_name, ns=rospy.get_namespace())
+        self.robot = moveit_commander.RobotCommander("/iiwa/robot_description")
+        self.scene = moveit_commander.PlanningSceneInterface(ns='/iiwa')
+        self.group = moveit_commander.MoveGroupCommander(arm_group_name, ns='/iiwa')
         self.planning_frame = self.group.get_planning_frame()
         self.eef_link = self.group.get_end_effector_link()
         self.group_names = self.robot.get_group_names()
@@ -202,7 +213,7 @@ class MoveManipulator():
 
         return pose.pose
 
-    def joint_traj(self, positions_array):
+    def joint_traj(self, positions_array, wait=True):
 
         self.group_variable_values = self.group.get_current_joint_values()
         self.group_variable_values[0] = positions_array[0]
@@ -214,7 +225,7 @@ class MoveManipulator():
         self.group_variable_values[6] = positions_array[6]
 
         self.group.set_joint_value_target(self.group_variable_values)
-        result = self.execute_trajectory()
+        result = self.execute_trajectory(wait)
 
         return result
 
@@ -282,3 +293,91 @@ class MoveManipulator():
 
         self.group.stop()
         self.group.clear_pose_targets()
+
+
+class ServiceWrap:
+    def __init__(self):
+        '''
+        Just wraping everything cuz melodic dont like python3+
+        '''
+
+        self.moveit = MoveManipulator()
+
+    def callback_set_pose(self, req):
+        res = MoveitMoveEefPoseResponse()
+        self.moveit.ee_traj_by_pose_target(req.pose, wait=req.wait)
+        return res
+
+    def callback_set_joints(self, req):
+
+        res = MoveitMoveJointPositionResponse()
+        joints = [req.pos.a1,
+                  req.pos.a2,
+                  req.pos.a3,
+                  req.pos.a4,
+                  req.pos.a5,
+                  req.pos.a6,
+                  req.pos.a7]
+
+        self.moveit.joint_traj(joints, wait=req.wait)
+        return res
+
+    def callback_joints(self, req):
+        res = MoveitJointsResponse()
+        values = self.moveit.joint_values()
+
+        res.pos.a1 = values[0]
+        res.pos.a2 = values[1]
+        res.pos.a3 = values[2]
+        res.pos.a4 = values[3]
+        res.pos.a5 = values[4]
+        res.pos.a6 = values[5]
+        res.pos.a7 = values[6]
+
+        return res
+
+    def callback_jacobian(self, req):
+        res = MoveitJacobianResponse()
+        j = np.array(self.moveit.get_jacobian_matrix()).flatten()
+
+        for i in range(len(j)):
+            res.data[i] = j[i]
+        return res
+
+    def callback_pose(self, req):
+        res = MoveitPoseResponse()
+        p = self.moveit.ee_pose()
+        res.pose = p.pose
+        return res
+
+    def callback_set_vel_acc(self, req):
+        res = VelAndAccResponse()
+        self.moveit.scale_vel(req.vel, req.acc)
+        return res
+
+    def callback_stop_motion(self, req):
+
+        self.moveit.stop_motion()
+
+        return EmptyResponse()
+
+if __name__ == "__main__":
+
+    '''
+    ROS_NAMESPACE=iiwa rosrun tactile_insertion moveit_manipulator.py 
+    '''
+    rospy.init_node('arm_control', anonymous=True)
+
+    rate = rospy.Rate(200)
+    wrap = ServiceWrap()
+
+    rospy.Service("/MoveItMoveJointPosition", MoveitMoveJointPosition, wrap.callback_set_joints)
+    rospy.Service("/MoveItMoveEefPose", MoveitMoveEefPose, wrap.callback_set_pose)
+    rospy.Service("/MoveItJacobian", MoveitJacobian, wrap.callback_jacobian)
+    rospy.Service("/MoveItPose", MoveitPose, wrap.callback_pose)
+    rospy.Service("/MoveItJoints", MoveitJoints, wrap.callback_joints)
+    rospy.Service("/MoveItScaleVelAndAcc", VelAndAcc, wrap.callback_set_vel_acc)
+    rospy.Service("/Stop", Empty, wrap.callback_stop_motion)
+
+    while not rospy.is_shutdown():
+        rate.sleep()

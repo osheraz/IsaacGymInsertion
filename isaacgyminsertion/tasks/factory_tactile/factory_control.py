@@ -212,6 +212,71 @@ def get_pose_error(fingertip_midpoint_pos,
     elif rot_error_type == 'axis_angle':
         return pos_error, axis_angle_error
 
+def compute_dof_pos_target_deploy(cfg_ctrl,
+                           arm_dof_pos,
+                           fingertip_midpoint_pos,
+                           fingertip_midpoint_quat,
+                           jacobian,
+                           ctrl_target_fingertip_midpoint_pos,
+                           ctrl_target_fingertip_midpoint_quat,
+                           ctrl_target_gripper_dof_pos,
+                           device):
+    """Compute Kuka DOF position target to move fingertips towards target pose."""
+
+    ctrl_target_dof_pos = torch.zeros((cfg_ctrl['num_envs'], 7), device=device)
+
+    pos_error, axis_angle_error = get_pose_error_deploy(
+        fingertip_midpoint_pos=fingertip_midpoint_pos,
+        fingertip_midpoint_quat=fingertip_midpoint_quat,
+        ctrl_target_fingertip_midpoint_pos=ctrl_target_fingertip_midpoint_pos,
+        ctrl_target_fingertip_midpoint_quat=ctrl_target_fingertip_midpoint_quat,
+        jacobian_type=cfg_ctrl['jacobian_type'],
+        rot_error_type='axis_angle')
+
+    delta_fingertip_pose = torch.cat((pos_error, axis_angle_error), dim=1)
+    delta_arm_dof_pos = _get_delta_dof_pos(delta_pose=delta_fingertip_pose,
+                                           ik_method=cfg_ctrl['ik_method'],
+                                           jacobian=jacobian,
+                                           device=device)
+
+    ctrl_target_dof_pos[:, 0:7] = arm_dof_pos + delta_arm_dof_pos
+
+    return ctrl_target_dof_pos
+
+def get_pose_error_deploy(fingertip_midpoint_pos,
+                   fingertip_midpoint_quat,
+                   ctrl_target_fingertip_midpoint_pos,
+                   ctrl_target_fingertip_midpoint_quat,
+                   jacobian_type,
+                   rot_error_type):
+    """Compute task-space error between target Openhand fingertip pose and current pose."""
+    # Reference: https://ethz.ch/content/dam/ethz/special-interest/mavt/robotics-n-intelligent-systems/rsl-dam/documents/RobotDynamics2018/RD_HS2018script.pdf
+
+    # Compute pos error
+    pos_error = ctrl_target_fingertip_midpoint_pos - fingertip_midpoint_pos
+
+    # Compute rot error
+    if jacobian_type == 'geometric':  # See example 2.9.8; note use of J_g and transformation between rotation vectors
+        # Compute quat error (i.e., difference quat)
+        # Reference: https://personal.utdallas.edu/~sxb027100/dock/quat.html
+        fingertip_midpoint_quat_norm = torch_utils.quat_mul_deploy(fingertip_midpoint_quat,
+                                                            torch_utils.quat_conjugate_deploy(fingertip_midpoint_quat))[:, 3]  # scalar component
+        fingertip_midpoint_quat_inv = torch_utils.quat_conjugate_deploy(
+            fingertip_midpoint_quat) / fingertip_midpoint_quat_norm.unsqueeze(-1)
+        quat_error = torch_utils.quat_mul_deploy(ctrl_target_fingertip_midpoint_quat, fingertip_midpoint_quat_inv)
+
+        # Convert to axis-angle error
+        axis_angle_error = axis_angle_from_quat(quat_error)
+
+    elif jacobian_type == 'analytic':  # See example 2.9.7; note use of J_a and difference of rotation vectors
+        # Compute axis-angle error
+        axis_angle_error = axis_angle_from_quat(ctrl_target_fingertip_midpoint_quat)\
+                           - axis_angle_from_quat(fingertip_midpoint_quat)
+
+    if rot_error_type == 'quat':
+        return pos_error, quat_error
+    elif rot_error_type == 'axis_angle':
+        return pos_error, axis_angle_error
 
 def _get_wrench_error(left_finger_force,
                       right_finger_force,

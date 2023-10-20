@@ -137,7 +137,7 @@ def _mask(target, size=None):
 
     return img if size is None else cv2.resize(img, size)
 
-def center_mask(size=(640, 480), rad=100, fix=(0,0)):
+def center_mask(size=(640, 480), rad=80, fix=(0,0)):
     """
         used to filter center circular area of a given image,
         corresponding to the AllSight surface area

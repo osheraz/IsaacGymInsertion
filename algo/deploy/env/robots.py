@@ -9,7 +9,7 @@ import copy
 from robotiq_force_torque_sensor.srv import sensor_accessor
 import robotiq_force_torque_sensor.srv as ft_srv
 from robotiq_force_torque_sensor.msg import *
-from algo.deploy.env.moveit_manipulator import MoveManipulator
+from algo.deploy.env.moveit_manipulator_wrap import MoveManipulatorServiceWrap
 
 
 class RobotWithFtEnv():
@@ -28,7 +28,7 @@ class RobotWithFtEnv():
         rospy.Subscriber('/robotiq_force_torque_wrench_filtered_exp', WrenchStamped,
                          self._robotiq_wrench_states_callback)
 
-        self.move_manipulator = MoveManipulator()
+        self.move_manipulator = MoveManipulatorServiceWrap()
 
     def wait_env_ready(self):
 
@@ -40,6 +40,11 @@ class RobotWithFtEnv():
             time.sleep(1.0)
 
         print("WAITING...DONE")
+
+    def move_to_init(self):
+
+        init_pose = [0.0064, 0.2375, -0.0075, -1.2022, 0.0015, 1.6900, -1.5699]
+        self.move_manipulator.joint_traj(init_pose, wait=True)
 
     def _check_all_systems_ready(self):
         """
@@ -62,13 +67,13 @@ class RobotWithFtEnv():
         while self.arm_joint_state is None and not rospy.is_shutdown():
             try:
                 self.arm_joint_state = rospy.wait_for_message(
-                    "arm_controller/state", JointTrajectoryControllerState, timeout=5.0)
+                    "/iiwa/PositionJointInterface_trajectory_controller/state", JointTrajectoryControllerState, timeout=5.0)
                 rospy.logdebug(
                     "Current arm_controller/state READY=>")
 
             except:
                 rospy.logerr(
-                    "Current arm_controller/state not ready yet, retrying for getting laser_scan")
+                    "Current /iiwa/PositionJointInterface_trajectory_controller/state not ready yet, retrying for getting State")
         return self.arm_joint_state
 
     def _joint_state_callback(self, data):
@@ -107,14 +112,14 @@ class RobotWithFtEnv():
 
         action_xyz = action_xyz if isinstance(action_xyz, list) else action_xyz.tolist()
         if len(action_xyz) < 3: action_xyz.append(0.0)  # xy -> xyz
-        ee_target = self.get_ee_pose(as_message=True).pose
+        ee_target = self.get_ee_pose(as_message=True)
         cur_ee_pose = self.get_ee_pose(as_message=True)
 
         if numpy.any(action_theta):
-            roll, pitch, yaw = tf.transformations.euler_from_quaternion((cur_ee_pose.pose.orientation.x,
-                                                                         cur_ee_pose.pose.orientation.y,
-                                                                         cur_ee_pose.pose.orientation.z,
-                                                                         cur_ee_pose.pose.orientation.w))
+            roll, pitch, yaw = tf.transformations.euler_from_quaternion((cur_ee_pose.orientation.x,
+                                                                         cur_ee_pose.orientation.y,
+                                                                         cur_ee_pose.orientation.z,
+                                                                         cur_ee_pose.orientation.w))
             roll = roll + action_theta[0] if action_theta[0] else roll
             pitch = pitch + action_theta[1] if action_theta[1] else pitch
             yaw = yaw + action_theta[2] if action_theta[2] else yaw
@@ -156,20 +161,20 @@ class RobotWithFtEnv():
 
         req_pose = self.get_ee_pose(as_message=True)
 
-        req_pose.pose.position.x = trans[0]
-        req_pose.pose.position.y = trans[1]
-        req_pose.pose.position.z = trans[2]
-        req_pose.pose.orientation.x = rot[0]
-        req_pose.pose.orientation.y = rot[1]
-        req_pose.pose.orientation.z = rot[2]
-        req_pose.pose.orientation.w = rot[3]
+        req_pose.position.x = trans[0]
+        req_pose.position.y = trans[1]
+        req_pose.position.z = trans[2]
+        req_pose.orientation.x = rot[0]
+        req_pose.orientation.y = rot[1]
+        req_pose.orientation.z = rot[2]
+        req_pose.orientation.w = rot[3]
 
         result = self.set_ee_pose(req_pose, wait=wait)
         return result
 
-    def set_trajectory_joints(self, positions_array):
+    def set_trajectory_joints(self, positions_array, wait=True):
 
-        result = self.move_manipulator.joint_traj(positions_array)
+        result = self.move_manipulator.joint_traj(positions_array, wait=wait)
 
         return result
 
@@ -177,7 +182,7 @@ class RobotWithFtEnv():
         """
         """
         if not as_message:
-            gripper_pose = self.move_manipulator.ee_pose().pose
+            gripper_pose = self.move_manipulator.ee_pose()
             x, y, z = gripper_pose.position.x, gripper_pose.position.y, gripper_pose.position.z
 
             if rot_as_euler:
