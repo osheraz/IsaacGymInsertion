@@ -35,7 +35,7 @@ class Finger:
         self.dev_name = dev_name
 
         self.resolution = {"width": 640, "height": 480}
-        self.fps = 30
+        self.fps = 60
 
         self.mask = circle_mask(fix=fix)
         self.mask_resized = circle_mask(size=(480, 480), fix=fix)
@@ -162,9 +162,12 @@ class Finger:
         Returns:
             None
         """
+        from time import time
+
 
         while True:
 
+            start_time = time()
             raw_image = self.get_frame()
 
             cv2.imshow("Finger View {}".format(self.serial), raw_image)
@@ -184,6 +187,9 @@ class Finger:
 
             if cv2.waitKey(1) == 27:
                 break
+
+            print("FPS: ", 1.0 / (time() - start_time))  # FPS = 1 / time to process loop
+
         cv2.destroyAllWindows()
 
     def to_polar(self, image):
@@ -210,9 +216,11 @@ if __name__ == "__main__":
 
     pc_name = os.getlogin()
 
-    device_id = 0 if pc_name == 'roblab20' else 4
-
-    tactile = Finger(dev_name=device_id, serial='/dev/video')
+    device_id = 2
+    # 4 (-3, 5) bottom
+    # 0 (6, 2) right
+    # 2 (0, -12)left
+    tactile = Finger(dev_name=device_id, serial='/dev/video', fix=(0, 0))
 
     tactile.connect()
 

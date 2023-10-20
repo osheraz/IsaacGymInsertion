@@ -6,7 +6,7 @@ from algo.deploy.env.finger import Finger
 
 class Hand():
 
-    def __init__(self, dev_names=None, fix=((0, 0), (0, 0), (0, 0))):
+    def __init__(self, dev_names=None, fix=None):
         """
         Finger Device class for a single Finger
         :param serial: Finger device serial
@@ -15,6 +15,11 @@ class Hand():
 
         if dev_names is None:
             dev_names = [2, 0, 4]
+        if fix is None:
+            fix = [(), (), ()]
+            fix[0] = (0, -12)
+            fix[1] = (6, 2)
+            fix[2] = (-3, 5)
 
         self.finger_left = Finger(dev_name=dev_names[0], serial='/dev/video', fix=fix[0])
         self.finger_right = Finger(dev_name=dev_names[1], serial='/dev/video', fix=fix[1])
@@ -58,13 +63,16 @@ class Hand():
         :param ref_frame: Specify reference frame to show image difference
         :return: None
         """
-        left_bg, right_bg, bottom_bg = self.get_frames()
+        left_bg, right_bg, bottom_bg = self.get_frames(diff=False)
+        from time import time
 
         while True:
 
-            left, right, bottom = self.get_frames()
+            start_time = time()
 
-            cv2.imshow("Hand View", np.concatenate((left, right, bottom), axis=1))
+            left, right, bottom = self.get_frames(diff=False)
+
+            # cv2.imshow("Hand View", np.concatenate((left, right, bottom), axis=1))
 
             diff_left = self._subtract_bg(left, left_bg) * self.finger_left.mask_resized
             diff_right = self._subtract_bg(right, right_bg) * self.finger_right.mask_resized
@@ -74,6 +82,8 @@ class Hand():
 
             if cv2.waitKey(1) == 27:
                 break
+
+            print("FPS: ", 1.0 / (time() - start_time))  # FPS = 1 / time to process loop
 
         cv2.destroyAllWindows()
 
