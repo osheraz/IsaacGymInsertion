@@ -20,6 +20,6 @@ task.env.numObsHist=5 \
 train.algo=PPO \
 train.ppo.priv_info=True \
 train.ppo.extrin_adapt=False \
-train.ppo.tactile_info=False
+train.ppo.tactile_info=False \
 train.ppo.output_name="${CACHE}" \
 ${EXTRA_ARGS}

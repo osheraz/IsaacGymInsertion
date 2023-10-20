@@ -10,7 +10,7 @@ mode:
 
 sim:
     dt: 0.01
-    substeps: 2 # 2
+    substeps: 1 # 2
     up_axis: "z"
     use_gpu_pipeline: ${eq:${...pipeline},"gpu"}
     gravity: [0.0, 0.0, -9.81]

@@ -72,6 +72,8 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         # if self.cfg_task.sim.disable_gravity:
         #     self.disable_gravity()
 
+        self.temp_ctr = 0
+
         if self.viewer is not None:
             self._set_viewer_params()
 
@@ -166,7 +168,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                 (self.num_envs, self.extrinsic_contact_gt[0].pointcloud_obj.shape[0]),
                 device=self.device, dtype=torch.float)
 
-    def _refresh_task_tensors(self, update_tactile=True):
+    def _refresh_task_tensors(self, update_tactile=False):
         """Refresh tensors."""
 
         self.refresh_base_tensors()
@@ -409,7 +411,14 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         # In this policy, episode length is constant
         is_last_step = (self.progress_buf[0] == self.max_episode_length - 1)
 
-        self._refresh_task_tensors(update_tactile=True)
+        update_tactile = False
+        # print(self.temp_ctr % 3)
+        if (self.temp_ctr % 3) == 0:
+            # print('update tactile')
+            update_tactile = True
+        self.temp_ctr += 1
+        
+        self._refresh_task_tensors(update_tactile=update_tactile)
         self.compute_observations()
         self.compute_reward()
 
@@ -672,7 +681,8 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         # if successfully inserted to a certain threshold
         self.success_reset_buf[:] = self._check_plug_inserted_in_socket()
-        # self.reset_buf[:] |= self.success_reset_buf[:]
+        if self.cfg_task.collect_data:
+            self.reset_buf[:] |= self.success_reset_buf[:]
 
         # If max episode length has been reached
         self.timeout_reset_buf[:] = torch.where(self.progress_buf[:] >= self.cfg_task.rl.max_episode_length - 1,
@@ -758,55 +768,6 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.refresh_env_tensors()
         self._refresh_task_tensors(update_tactile=True)
 
-        # self.gym.simulate(self.sim)
-        # self.render()
-
-
-        # self.disable_gravity()
-        # print('disabling gravity')
-        # self._close_gripper(torch.arange(self.num_envs), self.cfg_task.env.num_gripper_close_sim_steps)
-        # self._refresh_task_tensors()
-        # self.enable_gravity(gravity_mag=abs(self.cfg_base.sim.gravity[2]))
-        # print('enabling gravity')
-
-        # # Move arm to grasp pose
-        # self._move_arm_to_desired_pose(env_ids, self.plug_grasp_pos.clone(),
-        #                                sim_steps=self.cfg_task.env.num_gripper_move_sim_steps)
-        # self._zero_velocities(env_ids)
-        # self._refresh_task_tensors()
-
-        # # Grasp ~ todo not sure if add randomization is needed
-        # self._close_gripper(env_ids, self.cfg_task.env.num_gripper_close_sim_steps)
-        # self._refresh_task_tensors()
-        # self._zero_velocities(env_ids)
-
-        # # Lift
-        # self._lift_gripper(env_ids, self.ctrl_target_gripper_dof_pos)
-        # self._refresh_task_tensors()
-        # self._zero_velocities(env_ids)
-
-        # # Move arm above the socket
-        # self._move_arm_to_desired_pose(env_ids, self.above_socket_pos.clone(),
-        #                                sim_steps=self.cfg_task.env.num_gripper_move_sim_steps)
-        # self._refresh_task_tensors()
-
-        # print('arm_dof_pos at grasp pose', self.arm_dof_pos)
-        # print('fingers dof_pos at grasp pose', self.dof_pos[env_ids, :])
-        # print('plug pose at grasp pose', self.root_pos[env_ids, self.plug_actor_id_env, :])
-        # print('plug quat at grasp pose', self.root_quat[env_ids, self.plug_actor_id_env, :])
-
-        # dof_pos at grasp pose tensor([[-0.0047,  0.2375,  0.0203, -1.2496, -0.0070,  1.6475, -1.5514,  0.6907,
-        #   1.8478,  0.1660, -0.6892,  1.8515,  0.1625,  1.8333,  0.1740]]),
-        # plug pose at grasp pose tensor([[-0.0012, -0.0093,  0.4335]])
-        # plug quat at grasp pose tensor([[-0.0709,  0.0626,  0.0375,  0.9948]])
-
-        # _ = input('enter to continue')
-        # Insert
-        # self._move_arm_to_desired_pose(env_ids, self.socket_tip.clone(),
-        #                                sim_steps=self.cfg_task.env.num_gripper_move_sim_steps)
-        # self._refresh_task_tensors()
-
-        # print("#########reset##############", env_ids)
         if self.cfg_task.env.record_video and 0 in env_ids:
             if self.complete_video_frames is None:
                 self.complete_video_frames = []
@@ -1317,7 +1278,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
     def reset(self):
         super().reset()
-        self._refresh_task_tensors()
+        self._refresh_task_tensors(update_tactile=True)
         self.obs_dict['priv_info'] = self.obs_dict['states']
         self.obs_dict['tactile_hist'] = self.tactile_queue.to(self.rl_device)
         self.obs_dict['ft_hist'] = self.ft_queue.to(self.rl_device)
