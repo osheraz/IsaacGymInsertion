@@ -99,7 +99,7 @@ def run(cfg: DictConfig):
     if cfg.test:
         assert cfg.train.load_path
         agent.restore_test(cfg.train.load_path)
-        agent.test()
+        agent.test(collect_data=cfg.collect_data)
         # sim_timer = cfg.task.env.sim_timer
         # num_trials = 3
         # cprint(f"Running simulation for {num_trials} trials", "green", attrs=["bold"])

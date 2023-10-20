@@ -62,15 +62,15 @@ class ActorCritic(nn.Module):
     def __init__(self, kwargs):
         nn.Module.__init__(self)
 
-        actions_num = kwargs.pop('actions_num')
-        input_shape = kwargs.pop('input_shape')
+        actions_num = kwargs['actions_num']
+        input_shape = kwargs['input_shape']
         mlp_input_shape = input_shape[0]
-        self.units = kwargs.pop('actor_units')
+        self.units = kwargs['actor_units']
         out_size = self.units[-1]
-        self.ft_info = kwargs.pop("ft_info")
-        self.tactile_info = kwargs.pop("tactile_info")
+        self.ft_info = kwargs["ft_info"]
+        self.tactile_info = kwargs["tactile_info"]
 
-        self.priv_mlp = kwargs.pop('priv_mlp_units')
+        self.priv_mlp = kwargs['priv_mlp_units']
         self.priv_info = kwargs['priv_info']
         self.priv_info_stage2 = kwargs['extrin_adapt']
 
@@ -83,18 +83,18 @@ class ActorCritic(nn.Module):
                 # Dims of latent have to be the same |z_t - z'_t|
                 if self.tactile_info:
                     path_checkpoint, root_dir = None, None
-                    if False: #kwargs.pop('tactile_pretrained'):
+                    if False: #kwargs['tactile_pretrained')]
                         # we should think about decoupling this problem and pretraining a decoder
                         import os
                         current_file = os.path.abspath(__file__)
                         root_dir = os.path.abspath(
                             os.path.join(current_file, "..", "..", "..", "..", "..")
                         )
-                        path_checkpoint = kwargs.pop("checkpoint_tactile")
+                        path_checkpoint = kwargs["checkpoint_tactile"]
 
                     # load a simple tactile decoder
-                    tactile_decoder_embed_dim = kwargs.pop('tactile_decoder_embed_dim')
-                    tactile_input_dim = kwargs.pop('tactile_input_dim')
+                    tactile_decoder_embed_dim = kwargs['tactile_decoder_embed_dim']
+                    tactile_input_dim = kwargs['tactile_input_dim']
                     num_channels = tactile_input_dim[-1]
                     num_fingers = 3
                     self.tactile_decoder = load_tactile_resnet(tactile_decoder_embed_dim,
@@ -105,16 +105,16 @@ class ActorCritic(nn.Module):
                                                                )
 
                     # add tactile mlp to the decoded features
-                    self.tactile_units = kwargs.pop("mlp_tactile_units")
-                    tactile_input_shape = kwargs.pop("mlp_tactile_input_shape")
+                    self.tactile_units = kwargs["mlp_tactile_units"]
+                    tactile_input_shape = kwargs["mlp_tactile_input_shape"]
                     self.tactile_mlp = MLP(
                         units=self.tactile_units, input_size=tactile_input_shape
                     )
 
                 if self.ft_info:
                     assert 'ft is not supported yet, force rendering is currently ambiguous'
-                    self.ft_units = kwargs.pop("ft_units")
-                    ft_input_shape = kwargs.pop("ft_input_shape")
+                    self.ft_units = kwargs["ft_units"]
+                    ft_input_shape = kwargs["ft_input_shape"]
                     # self.ft_mlp = MLP(
                     #     units=self.ft_units, input_size=ft_input_shape[0]
                     # )
@@ -153,12 +153,12 @@ class ActorCritic(nn.Module):
             'sigmas': sigma,
         }
         return result
-
+    
     @torch.no_grad()
     def act_inference(self, obs_dict):
         # used for testing
-        mu, logstd, value, _, _ = self._actor_critic(obs_dict)
-        return mu
+        mu, logstd, value, latent, _ = self._actor_critic(obs_dict)
+        return mu, latent
 
     def _actor_critic(self, obs_dict):
         obs = obs_dict['obs']
@@ -173,7 +173,7 @@ class ActorCritic(nn.Module):
                 extrin = extrin_tactile
                 # during supervised training, extrin has gt label
                 extrin_gt = self.env_mlp(obs_dict['priv_info']) if 'priv_info' in obs_dict else extrin
-                extrin_gt = torch.tanh(extrin_gt)  # Why tanh?
+                extrin_gt = torch.tanh(extrin_gt)
                 extrin = torch.tanh(extrin)
                 obs = torch.cat([obs, extrin], dim=-1)
             else:

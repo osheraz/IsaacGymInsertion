@@ -34,6 +34,8 @@ num_subscenes: 4 # Splits the simulation into N physics scenes and runs each one
 # RLGames Arguments
 # test - if set, run policy in inference mode (requires setting checkpoint to load)
 test: False
+test_oracle: False
+collect_data: False
 # used to set checkpoint path
 checkpoint: ''
 # used to set decoder checkpoint path

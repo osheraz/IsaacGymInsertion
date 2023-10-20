@@ -159,6 +159,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.timeout_reset_buf = torch.zeros_like(self.reset_buf)
         self.degrasp_buf = torch.zeros_like(self.reset_buf)
         self.far_from_goal_buf = torch.zeros_like(self.reset_buf)
+        self.success_reset_buf = torch.zeros_like(self.reset_buf)
 
         if self.cfg_task.env.compute_contact_gt:
             self.gt_extrinsic_contact = torch.zeros(
@@ -558,16 +559,31 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         ]  #
 
         # Define state (for teacher)
-        mass = [self.gym.get_actor_rigid_body_properties(e, p)[0].mass for e, p in zip(self.envs, self.plug_handles)]
-        friction = [self.gym.get_actor_rigid_shape_properties(e, p)[0].friction for e, p in
+
+        # plug mass
+        plug_mass = [self.gym.get_actor_rigid_body_properties(e, p)[0].mass for e, p in zip(self.envs, self.plug_handles)]
+        # plug friction
+        plug_friction = [self.gym.get_actor_rigid_shape_properties(e, p)[0].friction for e, p in
                     zip(self.envs, self.plug_handles)]
-        physics_params = torch.transpose(to_torch([mass, friction]), 0, 1)
+        # socket friction
+        socket_friction = [self.gym.get_actor_rigid_shape_properties(e, p)[0].friction for e, p in zip(self.envs, self.socket_handles)]
+
+        # fingertip frictions
+        left_finger_friction = []
+        right_finger_friction = []
+        middle_finger_friction = []
+        for e, p in zip(self.envs, self.kuka_handles):
+            props = self.gym.get_actor_rigid_shape_properties(e, p)
+            left_finger_friction.append(props[self.left_finger_id].friction)
+            right_finger_friction.append(props[self.right_finger_id].friction)
+            middle_finger_friction.append(props[self.middle_finger_id].friction)
+        
+        physics_params = torch.transpose(to_torch([plug_mass, plug_friction, socket_friction, left_finger_friction, right_finger_friction, middle_finger_friction]), 0, 1)
 
         left_tip_pose_wrt_robot = self.pose_world_to_robot_base(self.left_finger_pos, self.left_finger_quat)
         right_tip_pose_wrt_robot = self.pose_world_to_robot_base(self.right_finger_pos, self.right_finger_quat)
         middle_tip_pose_wrt_robot = self.pose_world_to_robot_base(self.middle_finger_pos, self.middle_finger_quat)
-        tip_midpoint_pose_wrt_robot = self.pose_world_to_robot_base(self.fingertip_midpoint_pos,
-                                                                    self.fingertip_midpoint_quat)
+        tip_midpoint_pose_wrt_robot = self.pose_world_to_robot_base(self.fingertip_midpoint_pos, self.fingertip_midpoint_quat)
 
         if self.cfg_task.env.compute_contact_gt:
             for e in range(self.num_envs):
@@ -578,27 +594,31 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         
         normalize_forces = lambda x: (torch.clamp(torch.norm(x, dim=-1), 0, 100)/100).view(-1, 1)
         state_tensors = [
-            left_tip_pose_wrt_robot[0],  # 3
-            left_tip_pose_wrt_robot[1],  # 4
-            right_tip_pose_wrt_robot[0],  # 3
-            right_tip_pose_wrt_robot[1],  # 4
-            middle_tip_pose_wrt_robot[0],  # 3
-            middle_tip_pose_wrt_robot[1],  # 4
-            tip_midpoint_pose_wrt_robot[0],  # 3
-            tip_midpoint_pose_wrt_robot[1],  # 4
+            # left_tip_pose_wrt_robot[0],  # 3
+            # left_tip_pose_wrt_robot[1],  # 4
+            # right_tip_pose_wrt_robot[0],  # 3
+            # right_tip_pose_wrt_robot[1],  # 4
+            # middle_tip_pose_wrt_robot[0],  # 3
+            # middle_tip_pose_wrt_robot[1],  # 4
+            # tip_midpoint_pose_wrt_robot[0],  # 3
+            # tip_midpoint_pose_wrt_robot[1],  # 4
+            #  add delta error
             socket_tip_wrt_robot[0],  # 3
             socket_tip_wrt_robot[1],  # 4
             plug_bottom_wrt_robot[0],  # 3
             plug_bottom_wrt_robot[1],  # 4
-            physics_params,  # 2
-            # TODO: change this to binary contact
+            physics_params,  # 6 (plug_mass, plug_friction, socket_friction, left finger friction, right finger friction, middle finger friction)
+            # TODO: add friction of fingertips
+
             normalize_forces(self.left_finger_force.clone()),  # 1
             normalize_forces(self.right_finger_force.clone()),  # 1
             normalize_forces(self.middle_finger_force.clone()),  # 1
             # self.socket_contact_force.clone()  # 3
-
-            # TODO: add object shapes -- maybe as a point net model?
+            
+            # TODO: add object shapes -- bring diameter
             self.plug_heights,  # 1
+            
+            # TODO: add extrinsics contact (point cloud) -> this will encode the shape (check this)
         ]
 
 
@@ -622,47 +642,19 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         is_plug_oriented = plug_ori_penalty < self.cfg_task.rl.orientation_threshold
 
         is_plug_engaged_w_socket = self._check_plug_engaged_w_socket()
-        # engaged_env_ids = is_plug_engaged_w_socket.nonzero()
 
-        keypoint_scale = -0.2
-        early_reset_scale = -5.0
-        engagement_scale = 0.05
-
-        keypoint_r = keypoint_reward * keypoint_scale
-        dist_reset = (self.far_from_goal_buf  | self.degrasp_buf) * early_reset_scale
+        keypoint_r = keypoint_reward * self.cfg_task.rl.keypoint_reward_scale
+        dist_reset = (self.far_from_goal_buf  | self.degrasp_buf) * self.cfg_task.rl.early_reset_reward_scale
         engagement_reward = self._get_engagement_reward_scale(is_plug_engaged_w_socket,
-                                                                    self.cfg_task.rl.success_height_thresh) * engagement_scale
-        
-        # print(keypoint_r[0], dist_reset[0], engagement_reward[0])
-        # self.rew_buf[:] = 
-                        #   + plug_ori_penalty * self.cfg_task.rl.orientation_penalty_scale + \
-                        #   + action_penalty * self.cfg_task.rl.action_penalty_scale \
-                        #   + self.dist_plug_socket * self.cfg_task.rl.dist_penalty_scale
-        # print('reward', self.rew_buf[0])
-
-
-        # engagement_reward_scale = self._get_engagement_reward_scale(is_plug_engaged_w_socket,
-        #                                                             self.cfg_task.rl.success_height_thresh)
-
-        # is_plug_inserted_in_socket = self._check_plug_inserted_in_socket()
-        # self.time_complete_task[self.time_complete_task == 0] = (is_plug_inserted_in_socket * self.progress_buf)[
-        #     self.time_complete_task == 0
-        #     ]
-        
-        # engagement_reward = engagement_reward_scale * self.cfg_task.rl.engagement_bonus
-        # if len(engaged_env_ids) > 0:
-        #     print(keypoint_r[engaged_env_ids], dist_reset[engaged_env_ids], engagement_reward[engaged_env_ids])
-
-        # print('engagement_reward_scale', (engagement_reward_scale * self.cfg_task.rl.engagement_bonus))
-        # print(keypoint_r[0], dist_reset[0], engagement_reward[0])
+                                                                    self.cfg_task.rl.success_height_thresh) * self.cfg_task.rl.engagement_reward_scale
         self.rew_buf[:] = keypoint_r + dist_reset + engagement_reward
-        # print('reward', self.rew_buf[0])
-        # In this policy, episode length is constant across all envs todo why?
+
         is_last_step = (self.progress_buf[0] == self.max_episode_length - 1)
         if is_last_step:
+            self.rew_buf[:] += self.success_reset_buf * self.cfg_task.rl.success_bonus
             self.extras["engaged_w_socket"] = torch.mean(is_plug_engaged_w_socket.float())
             self.extras["plug_oriented"] = torch.mean(is_plug_oriented.float())
-            # self.extras["successes"] = torch.mean(is_plug_inserted_in_socket.float())
+            self.extras["successes"] = torch.mean(self.success_reset_buf.float())
             self.extras["dist_plug_socket"] = torch.mean(self.dist_plug_socket)
             self.extras["keypoint_reward"] = torch.mean(keypoint_reward.abs())
             self.extras["action_penalty"] = torch.mean(action_penalty)
@@ -671,13 +663,6 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             self.extras["mean_time_complete_task"] = torch.mean(
                 self.time_complete_task.float()
             )
-
-            is_plug_inserted_in_socket = self._check_plug_inserted_in_socket()
-            self.rew_buf[:] += is_plug_inserted_in_socket * self.cfg_task.rl.success_bonus
-
-            # a = self.time_complete_task.float() * is_plug_inserted_in_socket
-            # self.extras["time_success_task"] = a.sum() / torch.where(a > 0)[0].shape[0]
-
         # TODO update reward function to reset at insertion
 
     def _update_reset_buf(self):
@@ -685,13 +670,9 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         # print('before', self.reset_buf)
 
-        # If it fail to lift, reset
-        # lift_success = self._check_lift_success(height_multiple=0.1)
-        # self.reset_buf[:] = torch.where(lift_success[:] == 0,
-        #                                 torch.ones_like(self.reset_buf),
-        #                                 self.reset_buf)
-
-        # print('lift success', lift_success, self.reset_buf)
+        # if successfully inserted to a certain threshold
+        self.success_reset_buf[:] = self._check_plug_inserted_in_socket()
+        # self.reset_buf[:] |= self.success_reset_buf[:]
 
         # If max episode length has been reached
         self.timeout_reset_buf[:] = torch.where(self.progress_buf[:] >= self.cfg_task.rl.max_episode_length - 1,
@@ -1069,6 +1050,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.rew_buf[env_ids] = 0
 
         self.degrasp_buf[env_ids] = 0
+        self.success_reset_buf[env_ids] = 0
         self.far_from_goal_buf[env_ids] = 0
         self.timeout_reset_buf[env_ids] = 0
 
@@ -1267,32 +1249,20 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
     def _check_plug_close_to_socket(self):
         """Check if plug is close to socket."""
-
-        keypoint_dist = torch.norm(self.keypoints_socket - self.keypoints_plug, p=2, dim=-1)
-
-        is_plug_close_to_socket = torch.where(torch.sum(keypoint_dist, dim=-1) < self.cfg_task.rl.close_error_thresh, # 1 cm
-                                              torch.ones_like(self.progress_buf),
-                                              torch.zeros_like(self.progress_buf))
-
-        return is_plug_close_to_socket
+        return torch.norm(self.plug_pos[:, :2] - self.socket_tip[:, :2], p=2, dim=-1) < self.cfg_task.rl.close_error_thresh
 
     def _check_plug_inserted_in_socket(self):
         """Check if plug is inserted in socket."""
 
         # Check if plug is within threshold distance of assembled state
         is_plug_below_insertion_height = (
-                self.plug_pos[:, 2] < (self.socket_pos[:, 2] + self.socket_heights.view(-1))
+                self.plug_pos[:, 2] <= (self.socket_tip[:, 2] - self.cfg_task.rl.success_height_thresh)
         )
-
         # Check if plug is close to socket
         # NOTE: This check addresses edge case where plug is within threshold distance of
         # assembled state, but plug is outside socket
-        keypoint_dist = torch.norm(self.keypoints_socket - self.keypoints_plug, p=2, dim=-1)
-
-        is_plug_close_to_socket = torch.where(torch.sum(keypoint_dist, dim=-1) < 0.003, #self.cfg_task.rl.close_error_thresh, # 1 cm
-                                              torch.ones_like(self.progress_buf),
-                                              torch.zeros_like(self.progress_buf))
-
+        is_plug_close_to_socket = self._check_plug_close_to_socket()
+        
         # Combine both checks
         is_plug_inserted_in_socket = torch.logical_and(
             is_plug_below_insertion_height, is_plug_close_to_socket
@@ -1313,7 +1283,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         # Check if plug is close to socket
         # NOTE: This check addresses edge case where base of plug is below top of socket,
         # but plug is outside socket
-        is_plug_close_to_socket = torch.norm(self.plug_pos[:, :2] - self.socket_tip[:, :2], p=2, dim=-1) < 0.005 # self._check_plug_close_to_socket()
+        is_plug_close_to_socket = self._check_plug_close_to_socket() # torch.norm(self.plug_pos[:, :2] - self.socket_tip[:, :2], p=2, dim=-1) < 0.005 # self._check_plug_close_to_socket()
         # print(is_plug_below_engagement_height[0], is_plug_close_to_socket[0])
 
         # Combine both checks
@@ -1347,10 +1317,8 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
     def reset(self):
         super().reset()
+        self._refresh_task_tensors()
         self.obs_dict['priv_info'] = self.obs_dict['states']
         self.obs_dict['tactile_hist'] = self.tactile_queue.to(self.rl_device)
         self.obs_dict['ft_hist'] = self.ft_queue.to(self.rl_device)
         return self.obs_dict
-
-    def keypoints_distance_reward(self):
-        pass

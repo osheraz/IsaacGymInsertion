@@ -684,6 +684,7 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         # # Grasp ~ todo not sure if add randomization is needed
         # self.disable_gravity()
+        
         self._close_gripper(env_ids, self.cfg_task.env.num_gripper_close_sim_steps * 2)
         # self.enable_gravity(gravity_mag=abs(self.cfg_base.sim.gravity[2]))
         self._refresh_task_tensors(update_tactile=False)

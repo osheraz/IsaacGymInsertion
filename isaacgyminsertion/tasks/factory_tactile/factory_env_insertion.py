@@ -290,6 +290,9 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
 
         self.fingertips = ['finger_1_3', 'finger_2_3', 'finger_3_3']  # left, right, bottom. same for all envs
         self.fingertip_handles = [self.gym.find_asset_rigid_body_index(kuka_asset, name) for name in self.fingertips]
+        self.left_fingertip_handle = []
+        self.right_fingertip_handle = []
+        self.middle_fingertip_handle = []
         self.tactile_handles = []  # [num_envs , 3]
 
         actor_count = 0
@@ -378,6 +381,11 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
                                                                    gymapi.DOMAIN_ACTOR)
             middle_finger_id = self.gym.find_actor_rigid_body_index(env_ptr, kuka_handle, 'finger_3_3',
                                                                     gymapi.DOMAIN_ACTOR)
+
+            # useful for measuring the friction parameters (privileged information)
+            self.left_finger_id = left_finger_id
+            self.right_finger_id = right_finger_id
+            self.middle_finger_id = middle_finger_id
 
             self.shape_ids = [link7_id, hand_id, left_finger_id, right_finger_id, middle_finger_id]
 

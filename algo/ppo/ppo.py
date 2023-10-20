@@ -24,7 +24,7 @@ import torch
 import torch.distributed as dist
 import numpy as np
 
-from algo.ppo.experience import ExperienceBuffer
+from algo.ppo.experience import ExperienceBuffer, DataLogger
 from algo.ppo.experience import VectorizedExperienceBuffer
 from algo.models.models import ActorCritic
 from algo.models.running_mean_std import RunningMeanStd
@@ -162,9 +162,9 @@ class PPO(object):
         self.last_recording_it = 0
         self.last_recording_it_ft = 0
 
-        self.episode_rewards = AverageScalarMeter(50)
-        self.episode_lengths = AverageScalarMeter(50)
-        self.episode_success = AverageScalarMeter(50)
+        self.episode_rewards = AverageScalarMeter(100)
+        self.episode_lengths = AverageScalarMeter(100)
+        self.episode_success = AverageScalarMeter(100)
 
         self.obs = None
         self.epoch_num = 0
@@ -176,17 +176,22 @@ class PPO(object):
                                         self.actions_num,
                                         self.priv_info_dim,
                                         self.device,)
+        
 
-        #             'tactile_seq_length': self.tactile_seq_length,
-        if self.ppo_config['save_buffer'] and self.tactile_info:
-            # TODO change to use datalogger
-            #  obs_shape, priv_shape, tactile_shape, action_shape, capacity, device
-            self.buffer = VectorizedExperienceBuffer(self.obs_shape[0],
-                                                     self.priv_info_dim,
-                                                     (self.tactile_seq_length, *self.tactile_input_dim),
-                                                     self.actions_num,
-                                                     10000,
-                                                     self.device)
+        # ---- Data Logger ----
+        # getting the shapes for the data logger initialization
+        arm_joint_pos_shape = self.env.arm_dof_pos.shape[-1]
+        eef_pos_shape = self.env.fingertip_centered_pos.size()[-1] + self.env.fingertip_centered_quat.size()[-1]
+        socket_pos_shape = self.env.socket_pos.size()[-1] + self.env.socket_quat.size()[-1]
+        action_shape = self.actions_num
+        target_shape = self.env.targets.shape[-1]
+        tactile_shape = self.env.tactile_imgs.shape[1:]
+        latent_shape = net_config['priv_mlp_units'][-1]
+
+        # initializing data logger, the device should be changed
+        self.data_logger_init = lambda x: DataLogger(self.env.num_envs, self.env.max_episode_length, self.env.device, "/common/users/dm1487/inhand_manipulation/datastore1", arm_joints_shape=arm_joint_pos_shape, eef_pos_shape=eef_pos_shape, socket_pos_shape=socket_pos_shape, action_shape=action_shape, target_shape=target_shape, latent_shape=latent_shape, tactile_shape=tactile_shape)
+
+        self.data_logger = None
 
         batch_size = self.num_actors
         current_rewards_shape = (batch_size, 1)
@@ -268,9 +273,7 @@ class PPO(object):
                           f'Train RL Time: {self.rl_train_time / 60:.1f} min | ' \
                           f'Mean Reward: {self.best_rewards:.2f}'
             print(info_string)
-
             self.write_stats(a_losses, c_losses, b_losses, entropies, kls, grad_norms)
-
             mean_rewards = self.episode_rewards.get_mean()
             mean_lengths = self.episode_lengths.get_mean()
             mean_success = self.episode_success.get_mean()
@@ -284,13 +287,7 @@ class PPO(object):
                 if self.epoch_num % self.save_freq == 0:
                     self.save(os.path.join(self.nn_dir, checkpoint_name))
                     self.save(os.path.join(self.nn_dir, 'last'))
-            
             self.best_rewards = mean_rewards
-            # if mean_rewards > self.best_rewards and self.epoch_num >= self.save_best_after:
-            #     print(f'save current best reward: {mean_rewards:.2f}')
-            #     self.best_rewards = mean_rewards
-            #     self.save(os.path.join(self.nn_dir, 'best'))
-
         print('max steps achieved')
 
     def save(self, name):
@@ -320,15 +317,48 @@ class PPO(object):
             self.running_mean_std.load_state_dict(checkpoint['running_mean_std'])
             self.priv_mean_std.load_state_dict(checkpoint['priv_mean_std'])
 
-    def test(self):
+    def log_trajectory_data(self, action, latent, done):
+
+        eef_pos = torch.cat(self.env.pose_world_to_robot_base(self.env.fingertip_centered_pos.clone(), self.env.fingertip_centered_quat.clone()), dim=-1)
+        
+        noisy_socket_pos = torch.cat(self.env.pose_world_to_robot_base(self.env.noisy_gripper_goal_pos.clone(), self.env.noisy_gripper_goal_quat.clone()), dim=-1)
+
+        self.data_logger.update(arm_joints_pos = self.env.arm_dof_pos, eef_pos = eef_pos, noisy_socket_pos = noisy_socket_pos, action=action, target=self.env.targets, tactile_img=self.env.tactile_imgs, latent=latent, done=done)
+
+    # def test_oracle(self, collect_data=False):
+    #     self.set_eval()
+    #     obs_dict = self.env.reset()
+    #     action, latent, done = None, None, None
+    #     while True:
+    #         # collect data
+    #         if collect_data:
+    #             if self.data_logger is None:
+    #                 self.data_logger = self.data_logger_init(None)
+    #             self.log_trajectory_data(action, latent, done)
+    #         input_dict = {
+    #             'obs': self.running_mean_std(obs_dict['obs']),
+    #             'priv_info': self.priv_mean_std(obs_dict['priv_info']),
+    #         }
+    #         action, latent = self.model.act_eval(input_dict)
+    #         action = torch.clamp(action, -1.0, 1.0)
+    #         obs_dict, r, done, info = self.env.step(action)
+
+    def test(self, collect_data=False):
         self.set_eval()
         obs_dict = self.env.reset()
+        action, latent, done = None, None, None
         while True:
+            # collect data
+            if collect_data:
+                if self.data_logger is None:
+                    self.data_logger = self.data_logger_init(None)
+                self.log_trajectory_data(action, latent, done)
             input_dict = {
                 'obs': self.running_mean_std(obs_dict['obs']),
                 'priv_info': self.priv_mean_std(obs_dict['priv_info']),
             }
-            mu = self.model.act_inference(input_dict)
+            mu, latent = self.model.act_inference(input_dict)
+            action = mu.clone()
             mu = torch.clamp(mu, -1.0, 1.0)
             obs_dict, r, done, info = self.env.step(mu)
 
@@ -453,10 +483,8 @@ class PPO(object):
     def log_video(self):
         if self.it == 0:
             self.env.start_recording()
-            print("START RECORDING")
             self.last_recording_it = self.it
             self.env.start_recording_ft()
-            print("START FT RECORDING")
             self.last_recording_it_ft = self.it
             return
 
@@ -468,17 +496,15 @@ class PPO(object):
 
             if len(frames) < 20:
                 self.env.start_recording()
-                print("START RECORDING")
                 self.last_recording_it = self.it
                 self.env.start_recording_ft()
-                print("START FT RECORDING")
                 self.last_recording_it_ft = self.it
                 return
             video_dir = os.path.join(self.output_dir, 'videos1')
             if not os.path.exists(video_dir):
                 os.makedirs(video_dir)
             self._write_video(frames, f"{video_dir}/{self.it:05d}.mp4", frame_rate=30)
-            print("LOGGING VIDEO")
+            print(f"LOGGING VIDEO {self.it:05d}.mp4")
 
             ft_dir = os.path.join(self.output_dir, 'ft')
             if not os.path.exists(ft_dir):
@@ -486,45 +512,25 @@ class PPO(object):
             self._write_ft(ft_frames, f"{ft_dir}/{self.it:05d}")
             # self.create_line_and_image_animation(frames, ft_frames, f"{ft_dir}/{self.it:05d}_line.mp4")
             
-            print("LOGGING FT")
-
             self.env.start_recording()
-            print("START RECORDING")
             self.last_recording_it = self.it
 
             self.env.start_recording_ft()
-            print("START FT RECORDING")
             self.last_recording_it_ft = self.it
-
-    def log_ft(self):
-        if ((self.it - self.last_recording_it_ft) >= self.log_ft_every):
-            self.env.start_recording_ft()
-            print("START FT RECORDING")
-            self.last_recording_it_ft = self.it
-
-        frames = self.env.get_ft_frames()
-        if len(frames) > 0:
-            self.env.pause_recording_ft()
-            ft_dir = os.path.join(self.output_dir, 'ft')
-            if not os.path.exists(ft_dir):
-                os.makedirs(ft_dir)
-            self._write_ft(frames, f"{ft_dir}/{self.it:05d}")
-            print("LOGGING FT")
 
     def play_steps(self):
 
         for n in range(self.horizon_length):
             self.log_video()
-            # self.log_ft()
-            # print(f"it: {self.it}")
             self.it += 1
+
             res_dict = self.model_act(self.obs)
-            # collect o_t
             self.storage.update_data('obses', n, self.obs['obs'])
             self.storage.update_data('priv_info', n, self.obs['priv_info'])
 
             for k in ['actions', 'neglogpacs', 'values', 'mus', 'sigmas']:
                 self.storage.update_data(k, n, res_dict[k])
+
             # do env step
             actions = torch.clamp(res_dict['actions'], -1.0, 1.0)
             self.obs, rewards, self.dones, infos = self.env.step(actions)

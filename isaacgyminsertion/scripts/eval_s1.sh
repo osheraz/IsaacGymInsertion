@@ -1,11 +1,29 @@
 #!/bin/bash
-GPUS=$1
-CACHE=$2
-C=outputs/"${CACHE}"/stage1_nn/best.pth
+GPUS=${1:-0}
+SEED=${2:-42}
+CACHE=${3:-test}
+NUM_ENVS=${4:-5}
+HEADLESS=${5:-True}
+
+array=( $@ )
+len=${#array[@]}
+EXTRA_ARGS=${array[@]:5:$len}
+EXTRA_ARGS_SLUG=${EXTRA_ARGS// /_}
+
+echo extra "${EXTRA_ARGS}"
+
+C=outputs/${CACHE}/stage1_nn/last.pth
 CUDA_VISIBLE_DEVICES=${GPUS} \
-python train.py task=FactoryTaskInsertionTactile headless=True \
-task.env.numEnvs=1000 test=True task.on_evaluation=True \
+python trainV2.py task=FactoryTaskInsertionTactile headless=${HEADLESS} seed=${SEED} \
+test=True \
+collect_data=True \
+task.env.numEnvs=${NUM_ENVS} \
+task.env.tactile=False \
+task.env.numObsHist=5 \
 train.algo=PPO \
 train.ppo.priv_info=True \
+train.ppo.extrin_adapt=False \
+train.ppo.tactile_info=True \
 train.ppo.output_name="${CACHE}" \
-checkpoint="${C}"
+checkpoint="${C}" \
+${EXTRA_ARGS}
