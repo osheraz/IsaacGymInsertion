@@ -893,9 +893,9 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         """Reset root state of plug."""
 
         # Randomize root state of plug
-        plug_noise_xy = 2 * (torch.rand((self.num_envs, 2), dtype=torch.float32, device=self.device) - 0.5)  # [-1, 1]
-        plug_noise_xy = plug_noise_xy @ torch.diag(
-            torch.tensor(self.cfg_task.randomize.plug_pos_xy_noise, device=self.device))
+        # plug_noise_xy = 2 * (torch.rand((self.num_envs, 2), dtype=torch.float32, device=self.device) - 0.5)  # [-1, 1]
+        # plug_noise_xy = plug_noise_xy @ torch.diag(
+        #     torch.tensor(self.cfg_task.randomize.plug_pos_xy_noise, device=self.device))
 
         # self.root_pos[env_ids, self.plug_actor_id_env, 0] = self.cfg_task.randomize.plug_pos_xy_initial[0] \
         #                                                     + plug_noise_xy[env_ids, 0]
@@ -906,15 +906,11 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         # self.root_quat[env_ids, self.plug_actor_id_env] = torch.tensor([0.0, 0.0, 0.0, 1.0], dtype=torch.float32,
         #                                                                device=self.device).repeat(len(env_ids), 1)
 
-        # plug pose at grasp pose tensor([[-0.0012, -0.0093,  0.4335]])
-        # plug quat at grasp pose tensor([[-0.0709,  0.0626,  0.0375,  0.9948]])
-
         plug_pose = new_pose['plug_pose']
         plug_quat = new_pose['plug_quat']
 
         self.root_pos[env_ids, self.plug_actor_id_env, :] = plug_pose.to(device=self.device)  # .repeat(len(env_ids), 1)
-        self.root_quat[env_ids, self.plug_actor_id_env, :] = plug_quat.to(
-            device=self.device)  # .repeat(len(env_ids), 1)
+        self.root_quat[env_ids, self.plug_actor_id_env, :] = plug_quat.to(device=self.device) # .repeat(len(env_ids), 1)
 
         # Stabilize plug
         self.root_linvel[env_ids, self.plug_actor_id_env] = 0.0
@@ -929,9 +925,9 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         # self._simulate_and_refresh()
 
         # Randomize root state of socket
-        socket_noise_xy = 2 * (torch.rand((self.num_envs, 2), dtype=torch.float32, device=self.device) - 0.5)  # [-1, 1]
-        socket_noise_xy = socket_noise_xy @ torch.diag(
-            torch.tensor(self.cfg_task.randomize.socket_pos_xy_noise, device=self.device))
+        # socket_noise_xy = 2 * (torch.rand((self.num_envs, 2), dtype=torch.float32, device=self.device) - 0.5)  # [-1, 1]
+        # socket_noise_xy = socket_noise_xy @ torch.diag(
+        #     torch.tensor(self.cfg_task.randomize.socket_pos_xy_noise, device=self.device))
 
         # self.root_pos[env_ids, self.socket_actor_id_env, 0] = self.cfg_task.randomize.socket_pos_xy_initial[0] \
         #                                                     + socket_noise_xy[env_ids, 0]
@@ -942,8 +938,6 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         # self.root_quat[env_ids, self.socket_actor_id_env] = torch.tensor([0.0, 0.0, 0.0, 1.0], dtype=torch.float32,
         #                                                                device=self.device).repeat(len(env_ids), 1)
 
-        # socket pose at grasp pose tensor([[-0.0012, -0.0093,  0.4335]])
-        # socket quat at grasp pose tensor([[-0.0709,  0.0626,  0.0375,  0.9948]])
         socket_pose = new_pose['socket_pose']
         socket_quat = new_pose['socket_quat']
 
