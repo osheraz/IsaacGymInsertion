@@ -103,6 +103,7 @@ class Env(ABC):
 
         self.num_observations = config["env"].get("numObservations", 0)
         self.num_states = config["env"].get("numStates", 0)
+        self.num_obs_stud = config["env"].get("numObsStudent", 0)
 
         self.obs_space = spaces.Box(np.ones(self.num_obs) * -np.Inf, np.ones(self.num_obs) * np.Inf)
         self.state_space = spaces.Box(np.ones(self.num_states) * -np.Inf, np.ones(self.num_states) * np.Inf)
@@ -312,7 +313,7 @@ class VecTask(Env):
         self.states_buf = torch.zeros(
             (self.num_envs, self.num_states), device=self.device, dtype=torch.float)
         self.obs_student_buf = torch.zeros(
-            (self.num_envs, 792), device=self.device, dtype=torch.float) # todo fix..
+            (self.num_envs, self.num_obs_stud), device=self.device, dtype=torch.float) # todo fix..
         self.rew_buf = torch.zeros(
             self.num_envs, device=self.device, dtype=torch.float)
         self.reset_buf = torch.ones(

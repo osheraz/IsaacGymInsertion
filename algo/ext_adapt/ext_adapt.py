@@ -119,9 +119,9 @@ class ExtrinsicAdapt(object):
         self.direct_info = {}
         # ---- Misc ----
         self.batch_size = self.num_actors
-        self.mean_eps_reward = AverageScalarMeter(window_size=20000)
-        self.mean_eps_length = AverageScalarMeter(window_size=20000)
-        self.mean_eps_success = AverageScalarMeter(window_size=20000)
+        self.mean_eps_reward = AverageScalarMeter(window_size=100)
+        self.mean_eps_length = AverageScalarMeter(window_size=100)
+        self.mean_eps_success = AverageScalarMeter(window_size=100)
 
         self.best_rewards = -10000
         self.agent_steps = 0
