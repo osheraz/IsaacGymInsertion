@@ -213,7 +213,7 @@ class VectorizedExperienceBuffer:
 
 class DataLogger():
 
-    def __init__(self, num_envs, episode_length, device, dir_path, **kwargs):
+    def __init__(self, num_envs, episode_length, device, dir_path, total_trajectories, **kwargs):
 
         self.buffer = []
         self.id = 0
@@ -225,47 +225,44 @@ class DataLogger():
         self.num_envs = num_envs
         self.device = device
         self.transitions_per_env = episode_length
-
-        self.arm_joints_shape = kwargs.get('arm_joints_shape', None)
-        self.eef_pos_shape = kwargs.get('eef_pos_shape', None)
-        self.socket_pos_shape = kwargs.get('socket_pos_shape', None)
-        self.plug_pos_shape = kwargs.get('plug_pos_shape', None)
-        self.action_shape = kwargs.get('action_shape', None)
-        self.target_shape = kwargs.get('target_shape', None)
-        self.latent_shape = kwargs.get('latent_shape', None)
-        self.tactile_shape = kwargs.get('tactile_shape', None)
         
+        self.data_shapes = {}
+        for key, value in kwargs.items():
+            if key.endswith("_shape"):
+                self.data_shapes[key.replace("_shape", "")] = value
+
         self.trajectory_ctr = 0
-        self.total_trajectories = 1000
+        self.total_trajectories = total_trajectories
         self.pbar = tqdm(total=self.total_trajectories)
 
         self._init_buffers()
         save_data = True
         if save_data:
             self.num_workers = 24
-            self.q_s = [mp.JoinableQueue(maxsize=500) for _ in range(self.num_workers)]
-            self.workers = [mp.Process(target=self.worker, args=(q, idx)) for idx, q in enumerate(self.q_s)]
-            for worker in self.workers:
-                worker.daemon = True
-                worker.start()
+            try:
+                self.q_s = [mp.JoinableQueue(maxsize=500) for _ in range(self.num_workers)]
+                self.workers = [mp.Process(target=self.worker, args=(q, idx)) for idx, q in enumerate(self.q_s)]
+                for worker in self.workers:
+                    worker.daemon = True
+                    worker.start()
+            except KeyboardInterrupt:
+                for q in self.q_s:
+                    q.put(None)
+                for q in self.q_s:
+                    q.join()
+                for worker in self.workers:
+                    worker.terminate()
+                exit()
 
     def _init_buffers(self):
 
-        self.log_arm_joints = torch.zeros((self.num_envs, self.transitions_per_env, self.arm_joints_shape), dtype=torch.float32, device=self.device)
-
-        self.log_eef_pos = torch.zeros((self.num_envs, self.transitions_per_env, self.eef_pos_shape), dtype=torch.float32, device=self.device)
-
-        self.log_socket_pos = torch.zeros((self.num_envs, self.transitions_per_env, self.socket_pos_shape), dtype=torch.float32, device=self.device)
-
-        self.log_plug_pos = torch.zeros((self.num_envs, self.transitions_per_env, self.plug_pos_shape), dtype=torch.float32, device=self.device)
-
-        self.log_latent = torch.zeros((self.num_envs, self.transitions_per_env, self.latent_shape), dtype=torch.float32, device=self.device) # z_t
-
-        self.log_tactile_img = torch.zeros((self.num_envs, self.transitions_per_env, *self.tactile_shape), dtype=torch.float32, device=self.device)
-
-        self.log_action = torch.zeros((self.num_envs, self.transitions_per_env, self.action_shape), dtype=torch.float32, device=self.device)
-
-        self.log_target = torch.zeros((self.num_envs, self.transitions_per_env, self.target_shape), dtype=torch.float32, device=self.device)
+        self.log_data = {}
+        for key, shape in self.data_shapes.items():
+            if shape is not None:
+                data_shape = (self.num_envs, self.transitions_per_env, shape)
+                if isinstance(shape, torch.Size):
+                    data_shape = (self.num_envs, self.transitions_per_env, *shape)
+                self.log_data[key] = torch.zeros(data_shape, dtype=torch.float32, device=self.device)
 
         self.done = torch.zeros((self.num_envs), self.transitions_per_env, dtype=torch.bool, device=self.device)
 
@@ -274,14 +271,8 @@ class DataLogger():
         self.env_ids = torch.arange(self.num_envs, dtype=torch.long, device=self.device).unsqueeze(-1)
     
     def _reset_buffers(self, env_ids):
-        self.log_arm_joints[env_ids, ...] = 0.
-        self.log_eef_pos[env_ids, ...] = 0.
-        self.log_socket_pos[env_ids, ...] = 0.
-        self.log_plug_pos[env_ids, ...] = 0.
-        self.log_latent[env_ids, ...] = 0.
-        self.log_tactile_img[env_ids, ...] = 0.
-        self.log_action[env_ids, ...] = 0.
-        self.log_target[env_ids, ...] = 0.
+        for key, buffer in self.log_data.items():
+            buffer[env_ids, ...] = 0.
         self.done[env_ids, ...] = 0.
         self.env_step_counter[env_ids, ...] = 0.
 
@@ -290,39 +281,21 @@ class DataLogger():
         self.q_s[q_id].put(data)
         
     def update(self, **kwargs):
-        
-        arm_joints_pos = kwargs.get('arm_joints_pos', None)
-        eef_pos = kwargs.get('eef_pos', None)
-        noisy_socket_pos = kwargs.get('noisy_socket_pos', None)
-        plug_pos = kwargs.get('plug_pos', None)
-        tactile_img = kwargs.get('tactile_img', None)
-        
-        action = kwargs.get('action', None)
-        if action is None:
-            action = torch.zeros_like(self.log_action[:, 0, ...])
 
-        target = kwargs.get('target', None)
-        if target is None:
-            target = torch.zeros_like(self.log_target[:, 0, ...])
-        
-        latent = kwargs.get('latent', None)
-        if latent is None:
-            latent = torch.zeros_like(self.log_latent[:, 0, ...])
+        for key, value in kwargs.items():
+            if key == "done":
+                continue
+            if value is None:
+                value = torch.zeros((self.num_envs, self.data_shapes[key]), dtype=torch.float32, device=self.device)
+            self.log_data[key][self.env_ids, self.env_step_counter, ...] = value.clone().unsqueeze(1)
 
+        
         done = kwargs.get('done', None)
         if done is None:
             done = torch.zeros_like(self.done[:, 0, ...]).to(torch.bool)
         if done.dtype != torch.bool:
             done = done.clone().to(torch.bool)
 
-        self.log_arm_joints[self.env_ids, self.env_step_counter, :] = arm_joints_pos.clone().unsqueeze(1)
-        self.log_eef_pos[self.env_ids, self.env_step_counter, :] = eef_pos.clone().unsqueeze(1)
-        self.log_socket_pos[self.env_ids, self.env_step_counter, ...] = noisy_socket_pos.clone().unsqueeze(1)
-        self.log_plug_pos[self.env_ids, self.env_step_counter, ...] = plug_pos.clone().unsqueeze(1)
-        self.log_latent[self.env_ids, self.env_step_counter, ...] = latent.clone().unsqueeze(1)
-        self.log_tactile_img[self.env_ids, self.env_step_counter, ...] = tactile_img.clone().unsqueeze(1)
-        self.log_action[self.env_ids, self.env_step_counter, ...] = action.clone().unsqueeze(1)
-        self.log_target[self.env_ids, self.env_step_counter, ...] = target.clone().unsqueeze(1)
         self.done[self.env_ids, self.env_step_counter, ...] = done.clone().unsqueeze(1)
         self.env_step_counter += 1
         dones = done.to(torch.long).nonzero()
@@ -330,20 +303,11 @@ class DataLogger():
             self.pbar.update(len(dones))
             self.trajectory_ctr += len(dones)
             save_env_ids = dones.squeeze(1)
-            data = {
-                'arm_joints': self.log_arm_joints[save_env_ids, ...].clone().cpu(),
-                'eef_pos': self.log_eef_pos[save_env_ids, ...].clone().cpu(),
-                'socket_pos': self.log_socket_pos[save_env_ids, ...].clone().cpu(),
-                'plug_pos': self.log_plug_pos[save_env_ids, ...].clone().cpu(),
-                'latent': self.log_latent[save_env_ids, ...].clone().cpu(),
-                'tactile_img': self.log_tactile_img[save_env_ids, ...].clone().cpu(),
-                'action': self.log_action[save_env_ids, ...].clone().cpu(),
-                'target': self.log_target[save_env_ids, ...].clone().cpu(),
-                'done': self.done[save_env_ids, ...].clone().cpu()
-            }
-            self._save_batch_trajectories(data)
+            for save_env_id in save_env_ids:
+                batch_data = {key: self.log_data[key][save_env_id, ...].clone().cpu() for key in self.log_data}
+                batch_data['done'] = self.done[save_env_id, ...].clone().cpu()
+                self._save_batch_trajectories(batch_data)
             self._reset_buffers(save_env_ids)
-
             if self.trajectory_ctr >= self.total_trajectories:
                 self.pbar.close()
                 for q in self.q_s:
@@ -360,13 +324,17 @@ class DataLogger():
         if not os.path.exists(data_path):
             os.makedirs(data_path)
 
-        while True:
-            item = q.get()
-            if item is None:
-                break
-            # save the data
-            for k, v in item.items():
-                if isinstance(item[k], torch.Tensor):
-                    item[k] = item[k].numpy()
-            np.savez_compressed(os.path.join(data_path, f'{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}.npz'), **item)
-            q.task_done()
+        try:
+            while True:
+                item = q.get()
+                if item is None:
+                    break
+                # save the data
+                for k, v in item.items():
+                    if isinstance(item[k], torch.Tensor):
+                        item[k] = item[k].numpy()
+                np.savez_compressed(os.path.join(data_path, f'{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}.npz'), **item)
+                q.task_done()
+        except KeyboardInterrupt:
+            print("Ctrl+C detected. Exiting gracefully.")
+

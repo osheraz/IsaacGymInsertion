@@ -391,6 +391,7 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
 
             kuka_shape_props = self.gym.get_actor_rigid_shape_properties(env_ptr, kuka_handle)
 
+
             for shape_id in self.shape_ids:
                 kuka_shape_props[shape_id].friction = self.cfg_base.env.kuka_friction
                 kuka_shape_props[shape_id].rolling_friction = 0.0  # default = 0.0

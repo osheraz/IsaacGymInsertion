@@ -7,8 +7,11 @@ defaults:
 
 name: FactoryTaskInsertionTactile
 physics_engine: ${..physics_engine}
-collect_data: False
-datastore_folder: "/common/users/dm1487/inhand_manipulation/datastore5"
+
+data_logger:
+    collect_data: False
+    folder: "/common/users/dm1487/inhand_manipulation_data_store/datastore_6"
+    total_trajectories: 2000
 
 tactile:
   tacto:
@@ -28,7 +31,7 @@ tactile:
 env:
     numEnvs: ${resolve_default:128,${...num_envs}}
     numObservations: 165 
-    numStates: 24 # 48 # 62
+    numStates: 31 # 48 # 62
     numActions: 6 # [position, ori]
     numTargets: 6 # [position, ori]
 

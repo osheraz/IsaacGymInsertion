@@ -34,7 +34,6 @@ from isaacgyminsertion.utils.misc import add_to_fifo, multi_gpu_aggregate_stats
 from tensorboardX import SummaryWriter
 
 
-
 class PPO(object):
     def __init__(self, env, output_dif, full_config):
 
@@ -78,6 +77,8 @@ class PPO(object):
         self.priv_info_dim = self.ppo_config['priv_info_dim']
         self.extrin_adapt = self.ppo_config['extrin_adapt']
         self.priv_info_embed_dim = self.network_config.priv_mlp.units[-1]
+        # ---- Obs Info (student)----
+        self.obs_info = self.ppo_config["obs_info"]
         # ---- Model ----
         net_config = {
             'actor_units': self.network_config.mlp.units,
@@ -90,6 +91,8 @@ class PPO(object):
             "ft_input_shape": self.ft_info_dim,
             "ft_info": self.ft_info,
             "ft_units": self.network_config.ft_mlp.units,
+            "obs_units": self.network_config.obs_mlp.units,
+            "obs_info": self.obs_info,
 
             "tactile_info": self.tactile_info,
             "mlp_tactile_input_shape": self.mlp_tactile_info_dim,
@@ -175,25 +178,30 @@ class PPO(object):
                                         self.obs_shape[0],
                                         self.actions_num,
                                         self.priv_info_dim,
-                                        self.device,)
-        
+                                        self.device, )
 
         # ---- Data Logger ----
         # getting the shapes for the data logger initialization
-        arm_joint_pos_shape = self.env.arm_dof_pos.shape[-1]
-        eef_pos_shape = self.env.fingertip_centered_pos.size()[-1] + self.env.fingertip_centered_quat.size()[-1]
-        socket_pos_shape = self.env.socket_pos.size()[-1] + self.env.socket_quat.size()[-1]
-        plug_pos_shape = self.env.plug_pos.size()[-1] + self.env.plug_quat.size()[-1]
-        action_shape = self.actions_num
-        target_shape = self.env.targets.shape[-1]
-        tactile_shape = self.env.tactile_imgs.shape[1:]
-        latent_shape = net_config['priv_mlp_units'][-1]
+        log_items = {
+            'arm_joints_shape': self.env.arm_dof_pos.shape[-1],
+            'eef_pos_shape': self.env.fingertip_centered_pos.size()[-1] + self.env.fingertip_centered_quat.size()[-1],
+            'socket_pos_shape': self.env.socket_pos.size()[-1] + self.env.socket_quat.size()[-1],
+            'noisy_socket_pos_shape': self.env.socket_pos.size()[-1] + self.env.socket_quat.size()[-1],
+            'plug_pos_shape': self.env.plug_pos.size()[-1] + self.env.plug_quat.size()[-1],
+            'action_shape': self.actions_num,
+            'target_shape': self.env.targets.shape[-1],
+            'tactile_shape': self.env.tactile_imgs.shape[1:],
+            'latent_shape': net_config['priv_mlp_units'][-1],
+            'rigid_physics_params_shape': self.env.rigid_physics_params.shape[-1],
+            'plug_socket_pos_error_shape': self.env.plug_socket_pos_error.shape[-1],
+            'plug_socket_quat_error_shape': self.env.plug_socket_quat_error.shape[-1],
+
+        }
 
         # initializing data logger, the device should be changed
-        self.data_logger_init = lambda x: DataLogger(self.env.num_envs, self.env.max_episode_length, self.env.device, self.env.cfg_task.datastore_folder, arm_joints_shape=arm_joint_pos_shape, eef_pos_shape=eef_pos_shape, socket_pos_shape=socket_pos_shape, plug_pos_shape=plug_pos_shape, action_shape=action_shape, target_shape=target_shape, latent_shape=latent_shape, tactile_shape=tactile_shape)
-
+        self.data_logger_init = lambda x: DataLogger(self.env.num_envs, self.env.max_episode_length, self.env.device,
+                                                     self.env.cfg_task.data_logger.folder, self.env.cfg_task.data_logger.total_trajectories, **log_items)
         self.data_logger = None
-
         batch_size = self.num_actors
         current_rewards_shape = (batch_size, 1)
         self.current_rewards = torch.zeros(current_rewards_shape, dtype=torch.float32, device=self.device)
@@ -207,7 +215,6 @@ class PPO(object):
         self.data_collect_time = 0
         self.rl_train_time = 0
         self.all_time = 0
-
 
     def write_stats(self, a_losses, c_losses, b_losses, entropies, kls, grad_norms):
         self.writer.add_scalar('performance/RLTrainFPS', self.agent_steps / self.rl_train_time, self.agent_steps)
@@ -321,12 +328,30 @@ class PPO(object):
     def log_trajectory_data(self, action, latent, done):
 
         eef_pos = torch.cat(self.env.pose_world_to_robot_base(self.env.fingertip_centered_pos.clone(), self.env.fingertip_centered_quat.clone()), dim=-1)
-        
-        noisy_socket_pos = torch.cat(self.env.pose_world_to_robot_base(self.env.noisy_gripper_goal_pos.clone(), self.env.noisy_gripper_goal_quat.clone()), dim=-1)
-
         plug_pos = torch.cat(self.env.pose_world_to_robot_base(self.env.plug_pos.clone(), self.env.plug_quat.clone()), dim=-1)
+        socket_pos = torch.cat(self.env.pose_world_to_robot_base(self.env.socket_pos.clone(), self.env.socket_quat.clone()), dim=-1)
+        noisy_socket_pos = torch.cat(self.env.pose_world_to_robot_base(self.env.noisy_gripper_goal_pos.clone(), self.env.noisy_gripper_goal_quat.clone()), dim=-1)
+        rigid_physics_params = self.env.rigid_physics_params.clone()
+        plug_socket_pos_error = self.env.plug_socket_pos_error.clone()
+        plug_socket_quat_error = self.env.plug_socket_quat_error.clone()
 
-        self.data_logger.update(arm_joints_pos = self.env.arm_dof_pos, eef_pos = eef_pos, noisy_socket_pos = noisy_socket_pos, plug_pos=plug_pos, action=action, target=self.env.targets, tactile_img=self.env.tactile_imgs, latent=latent, done=done)
+        log_data = {
+            'arm_joints': self.env.arm_dof_pos,
+            'eef_pos': eef_pos,
+            'socket_pos': socket_pos,
+            'noisy_socket_pos': noisy_socket_pos,
+            'plug_pos': plug_pos,
+            'action': action,
+            'target': self.env.targets,
+            'tactile': self.env.tactile_imgs,
+            'latent': latent,
+            'rigid_physics_params': rigid_physics_params,
+            'plug_socket_pos_error': plug_socket_pos_error,
+            'plug_socket_quat_error': plug_socket_quat_error,
+            'done': done
+        }
+
+        self.data_logger.update(**log_data)
 
     def test(self):
         self.set_eval()
@@ -334,7 +359,8 @@ class PPO(object):
         action, latent, done = None, None, None
         while True:
             # collect data
-            if self.env.cfg_task.collect_data:
+            self.log_video()
+            if self.env.cfg_task.data_logger.collect_data:
                 if self.data_logger is None:
                     self.data_logger = self.data_logger_init(None)
                 self.log_trajectory_data(action, latent, done)
@@ -404,7 +430,7 @@ class PPO(object):
                 self.optimizer.zero_grad()
                 loss.backward()
                 grad_norms.append(torch.norm(
-                        torch.cat([p.reshape(-1) for p in self.model.parameters()])))
+                    torch.cat([p.reshape(-1) for p in self.model.parameters()])))
 
                 if self.truncate_grads:
                     torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.grad_norm)
@@ -447,8 +473,6 @@ class PPO(object):
         # cv2.destroyAllWindows()
 
     def _write_ft(self, data, output_loc):
-        # todo convert it to gif with same rate as video
-        # todo split into 2 plot, 1 for the fore a
         import matplotlib.pyplot as plt
         plt.figure(figsize=(8, 6))
         plt.plot(np.array(data)[:, :3])
@@ -463,7 +487,6 @@ class PPO(object):
         plt.ylabel('torque')
         plt.savefig(f'{output_loc}_torque.png')
         plt.close()
-
 
     def log_video(self):
         if self.it == 0:
@@ -496,7 +519,7 @@ class PPO(object):
                 os.makedirs(ft_dir)
             self._write_ft(ft_frames, f"{ft_dir}/{self.it:05d}")
             # self.create_line_and_image_animation(frames, ft_frames, f"{ft_dir}/{self.it:05d}_line.mp4")
-            
+
             self.env.start_recording()
             self.last_recording_it = self.it
 
@@ -565,7 +588,6 @@ class PPO(object):
         self.storage.data_dict['returns'] = returns
 
 
-
 def policy_kl(p0_mu, p0_sigma, p1_mu, p1_sigma):
     c1 = torch.log(p1_sigma / p0_sigma + 1e-5)
     c2 = (p0_sigma ** 2 + (p1_mu - p0_mu) ** 2) / (2.0 * (p1_sigma ** 2 + 1e-5))
@@ -573,7 +595,6 @@ def policy_kl(p0_mu, p0_sigma, p1_mu, p1_sigma):
     kl = c1 + c2 + c3
     kl = kl.sum(dim=-1)  # returning mean between all steps of sum between all actions
     return kl.mean()
-
 
 
 # from https://github.com/leggedrobotics/rsl_rl/blob/master/rsl_rl/algorithms/ppo.py
@@ -591,4 +612,3 @@ class AdaptiveScheduler(object):
         if kl_dist < (0.5 * self.kl_threshold):
             lr = min(current_lr * 1.5, self.max_lr)
         return lr
-

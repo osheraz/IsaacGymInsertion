@@ -16,7 +16,7 @@ C=outputs/${CACHE}/stage1_nn/last.pth
 CUDA_VISIBLE_DEVICES=${GPUS} \
 python trainV2.py task=FactoryTaskInsertionTactile headless=${HEADLESS} seed=${SEED} \
 test=True \
-task.collect_data=True \
+task.data_logger.collect_data=True \
 task.env.numEnvs=${NUM_ENVS} \
 task.env.tactile=True \
 task.env.tactile_history_len=1 \
