@@ -229,6 +229,7 @@ class DataLogger():
         self.arm_joints_shape = kwargs.get('arm_joints_shape', None)
         self.eef_pos_shape = kwargs.get('eef_pos_shape', None)
         self.socket_pos_shape = kwargs.get('socket_pos_shape', None)
+        self.plug_pos_shape = kwargs.get('plug_pos_shape', None)
         self.action_shape = kwargs.get('action_shape', None)
         self.target_shape = kwargs.get('target_shape', None)
         self.latent_shape = kwargs.get('latent_shape', None)
@@ -256,6 +257,8 @@ class DataLogger():
 
         self.log_socket_pos = torch.zeros((self.num_envs, self.transitions_per_env, self.socket_pos_shape), dtype=torch.float32, device=self.device)
 
+        self.log_plug_pos = torch.zeros((self.num_envs, self.transitions_per_env, self.plug_pos_shape), dtype=torch.float32, device=self.device)
+
         self.log_latent = torch.zeros((self.num_envs, self.transitions_per_env, self.latent_shape), dtype=torch.float32, device=self.device) # z_t
 
         self.log_tactile_img = torch.zeros((self.num_envs, self.transitions_per_env, *self.tactile_shape), dtype=torch.float32, device=self.device)
@@ -274,6 +277,7 @@ class DataLogger():
         self.log_arm_joints[env_ids, ...] = 0.
         self.log_eef_pos[env_ids, ...] = 0.
         self.log_socket_pos[env_ids, ...] = 0.
+        self.log_plug_pos[env_ids, ...] = 0.
         self.log_latent[env_ids, ...] = 0.
         self.log_tactile_img[env_ids, ...] = 0.
         self.log_action[env_ids, ...] = 0.
@@ -290,6 +294,7 @@ class DataLogger():
         arm_joints_pos = kwargs.get('arm_joints_pos', None)
         eef_pos = kwargs.get('eef_pos', None)
         noisy_socket_pos = kwargs.get('noisy_socket_pos', None)
+        plug_pos = kwargs.get('plug_pos', None)
         tactile_img = kwargs.get('tactile_img', None)
         
         action = kwargs.get('action', None)
@@ -313,6 +318,7 @@ class DataLogger():
         self.log_arm_joints[self.env_ids, self.env_step_counter, :] = arm_joints_pos.clone().unsqueeze(1)
         self.log_eef_pos[self.env_ids, self.env_step_counter, :] = eef_pos.clone().unsqueeze(1)
         self.log_socket_pos[self.env_ids, self.env_step_counter, ...] = noisy_socket_pos.clone().unsqueeze(1)
+        self.log_plug_pos[self.env_ids, self.env_step_counter, ...] = plug_pos.clone().unsqueeze(1)
         self.log_latent[self.env_ids, self.env_step_counter, ...] = latent.clone().unsqueeze(1)
         self.log_tactile_img[self.env_ids, self.env_step_counter, ...] = tactile_img.clone().unsqueeze(1)
         self.log_action[self.env_ids, self.env_step_counter, ...] = action.clone().unsqueeze(1)
@@ -328,6 +334,7 @@ class DataLogger():
                 'arm_joints': self.log_arm_joints[save_env_ids, ...].clone().cpu(),
                 'eef_pos': self.log_eef_pos[save_env_ids, ...].clone().cpu(),
                 'socket_pos': self.log_socket_pos[save_env_ids, ...].clone().cpu(),
+                'plug_pos': self.log_plug_pos[save_env_ids, ...].clone().cpu(),
                 'latent': self.log_latent[save_env_ids, ...].clone().cpu(),
                 'tactile_img': self.log_tactile_img[save_env_ids, ...].clone().cpu(),
                 'action': self.log_action[save_env_ids, ...].clone().cpu(),

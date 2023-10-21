@@ -183,13 +183,14 @@ class PPO(object):
         arm_joint_pos_shape = self.env.arm_dof_pos.shape[-1]
         eef_pos_shape = self.env.fingertip_centered_pos.size()[-1] + self.env.fingertip_centered_quat.size()[-1]
         socket_pos_shape = self.env.socket_pos.size()[-1] + self.env.socket_quat.size()[-1]
+        plug_pos_shape = self.env.plug_pos.size()[-1] + self.env.plug_quat.size()[-1]
         action_shape = self.actions_num
         target_shape = self.env.targets.shape[-1]
         tactile_shape = self.env.tactile_imgs.shape[1:]
         latent_shape = net_config['priv_mlp_units'][-1]
 
         # initializing data logger, the device should be changed
-        self.data_logger_init = lambda x: DataLogger(self.env.num_envs, self.env.max_episode_length, self.env.device, "/common/users/dm1487/inhand_manipulation/datastore1", arm_joints_shape=arm_joint_pos_shape, eef_pos_shape=eef_pos_shape, socket_pos_shape=socket_pos_shape, action_shape=action_shape, target_shape=target_shape, latent_shape=latent_shape, tactile_shape=tactile_shape)
+        self.data_logger_init = lambda x: DataLogger(self.env.num_envs, self.env.max_episode_length, self.env.device, self.env.cfg_task.datastore_folder, arm_joints_shape=arm_joint_pos_shape, eef_pos_shape=eef_pos_shape, socket_pos_shape=socket_pos_shape, plug_pos_shape=plug_pos_shape, action_shape=action_shape, target_shape=target_shape, latent_shape=latent_shape, tactile_shape=tactile_shape)
 
         self.data_logger = None
 
@@ -323,7 +324,9 @@ class PPO(object):
         
         noisy_socket_pos = torch.cat(self.env.pose_world_to_robot_base(self.env.noisy_gripper_goal_pos.clone(), self.env.noisy_gripper_goal_quat.clone()), dim=-1)
 
-        self.data_logger.update(arm_joints_pos = self.env.arm_dof_pos, eef_pos = eef_pos, noisy_socket_pos = noisy_socket_pos, action=action, target=self.env.targets, tactile_img=self.env.tactile_imgs, latent=latent, done=done)
+        plug_pos = torch.cat(self.env.pose_world_to_robot_base(self.env.plug_pos.clone(), self.env.plug_quat.clone()), dim=-1)
+
+        self.data_logger.update(arm_joints_pos = self.env.arm_dof_pos, eef_pos = eef_pos, noisy_socket_pos = noisy_socket_pos, plug_pos=plug_pos, action=action, target=self.env.targets, tactile_img=self.env.tactile_imgs, latent=latent, done=done)
 
     def test(self):
         self.set_eval()

@@ -8,6 +8,7 @@ defaults:
 name: FactoryTaskInsertionTactile
 physics_engine: ${..physics_engine}
 collect_data: False
+datastore_folder: "/common/users/dm1487/inhand_manipulation/datastore5"
 
 tactile:
   tacto:
