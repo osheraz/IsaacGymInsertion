@@ -27,7 +27,7 @@ tactile:
 env:
     numEnvs: ${resolve_default:128,${...num_envs}}
     numObservations: 165 
-    numStates: 24 # 48 # 62
+    numStates: 31 # 48 # 62
     numActions: 6 # [position, ori]
     numTargets: 6 # [position, ori]
 

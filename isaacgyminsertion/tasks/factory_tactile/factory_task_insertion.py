@@ -563,21 +563,18 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         # Define state (for teacher)
         socket_tip_wrt_robot = self.pose_world_to_robot_base(self.socket_tip, self.socket_quat)
         plug_bottom_wrt_robot = self.pose_world_to_robot_base(self.plug_pos, self.plug_quat)
-
-        # TODO: can be used in teacher
-        plug_socket_pos_error, plug_socket_axis_angle_error = fc.get_pose_error(
+        plug_socket_pos_error, plug_socket_quat_error = fc.get_pose_error(
             fingertip_midpoint_pos=plug_bottom_wrt_robot[0],
             fingertip_midpoint_quat=plug_bottom_wrt_robot[1],
             ctrl_target_fingertip_midpoint_pos=socket_tip_wrt_robot[0],
             ctrl_target_fingertip_midpoint_quat=socket_tip_wrt_robot[1],
             jacobian_type=self.cfg_ctrl['jacobian_type'],
-            rot_error_type='axis_angle')
+            rot_error_type='quat')
 
         # plug mass
         plug_mass = [self.gym.get_actor_rigid_body_properties(e, p)[0].mass for e, p in zip(self.envs, self.plug_handles)]
         # plug friction
-        plug_friction = [self.gym.get_actor_rigid_shape_properties(e, p)[0].friction for e, p in
-                    zip(self.envs, self.plug_handles)]
+        plug_friction = [self.gym.get_actor_rigid_shape_properties(e, p)[0].friction for e, p in zip(self.envs, self.plug_handles)]
         # socket friction
         socket_friction = [self.gym.get_actor_rigid_shape_properties(e, p)[0].friction for e, p in zip(self.envs, self.socket_handles)]
 
@@ -612,6 +609,8 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             socket_tip_wrt_robot[1],  # 4
             plug_bottom_wrt_robot[0],  # 3
             plug_bottom_wrt_robot[1],  # 4
+            plug_socket_pos_error, # 3
+            plug_socket_quat_error, # 4
             physics_params,  # 6 (plug_mass, plug_friction, socket_friction, left finger friction, right finger friction, middle finger friction)
             # TODO: add friction of fingertips
             # TODO: should we add the gripper targer pos ( pos is the same as socket, orientation as different)
