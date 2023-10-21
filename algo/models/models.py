@@ -85,7 +85,7 @@ class ActorCritic(nn.Module):
                 if self.obs_info:
                     self.obs_units = kwargs["obs_units"]
                     self.obs_mlp = MLP(
-                        units=self.obs_units, input_size=mlp_input_shape)
+                        units=self.obs_units, input_size=kwargs["student_obs_input_shape"])
 
                 if self.tactile_info:
                     path_checkpoint, root_dir = None, None

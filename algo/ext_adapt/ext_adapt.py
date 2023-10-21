@@ -67,7 +67,7 @@ class ExtrinsicAdapt(object):
         self.extrin_adapt = self.ppo_config['extrin_adapt']
         # ---- Obs Info (student)----
         self.obs_info = self.ppo_config["obs_info"]
-
+        self.student_obs_input_shape = self.ppo_config['student_obs_input_shape']
         # ---- Model ----
         net_config = {
             'actor_units': self.network_config.mlp.units,
@@ -82,6 +82,7 @@ class ExtrinsicAdapt(object):
             "ft_units": self.network_config.ft_mlp.units,
             "obs_units": self.network_config.obs_mlp.units,
             "obs_info": self.obs_info,
+            'student_obs_input_shape': self.student_obs_input_shape,
 
             "tactile_info": self.tactile_info,
             "mlp_tactile_input_shape": self.mlp_tactile_info_dim,
