@@ -325,31 +325,13 @@ class PPO(object):
 
         self.data_logger.update(arm_joints_pos = self.env.arm_dof_pos, eef_pos = eef_pos, noisy_socket_pos = noisy_socket_pos, action=action, target=self.env.targets, tactile_img=self.env.tactile_imgs, latent=latent, done=done)
 
-    # def test_oracle(self, collect_data=False):
-    #     self.set_eval()
-    #     obs_dict = self.env.reset()
-    #     action, latent, done = None, None, None
-    #     while True:
-    #         # collect data
-    #         if collect_data:
-    #             if self.data_logger is None:
-    #                 self.data_logger = self.data_logger_init(None)
-    #             self.log_trajectory_data(action, latent, done)
-    #         input_dict = {
-    #             'obs': self.running_mean_std(obs_dict['obs']),
-    #             'priv_info': self.priv_mean_std(obs_dict['priv_info']),
-    #         }
-    #         action, latent = self.model.act_eval(input_dict)
-    #         action = torch.clamp(action, -1.0, 1.0)
-    #         obs_dict, r, done, info = self.env.step(action)
-
-    def test(self, collect_data=False):
+    def test(self):
         self.set_eval()
         obs_dict = self.env.reset()
         action, latent, done = None, None, None
         while True:
             # collect data
-            if collect_data:
+            if self.env.cfg_task.collect_data:
                 if self.data_logger is None:
                     self.data_logger = self.data_logger_init(None)
                 self.log_trajectory_data(action, latent, done)
