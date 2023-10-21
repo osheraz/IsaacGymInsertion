@@ -84,12 +84,14 @@ class ActorCritic(nn.Module):
                 # Dims of latent have to be the same |z_t - z'_t|
                 if self.obs_info:
                     self.obs_units = kwargs["obs_units"]
+                    if not self.tactile_info:
+                        self.obs_units[-1] *= 2
                     self.obs_mlp = MLP(
-                        units=self.obs_units, input_size=mlp_input_shape)
+                        units=self.obs_units, input_size=kwargs["student_obs_input_shape"])
 
                 if self.tactile_info:
                     path_checkpoint, root_dir = None, None
-                    if False: #kwargs['tactile_pretrained']
+                    if False:  # kwargs['tactile_pretrained']
                         # we should think about decoupling this problem and pretraining a decoder
                         import os
                         current_file = os.path.abspath(__file__)
@@ -159,7 +161,7 @@ class ActorCritic(nn.Module):
             'sigmas': sigma,
         }
         return result
-    
+
     @torch.no_grad()
     def act_inference(self, obs_dict):
         # used for testing
@@ -171,13 +173,17 @@ class ActorCritic(nn.Module):
         extrin, extrin_gt = None, None
         if self.priv_info:
             if self.priv_info_stage2:
-                # extrin_ft = self.ft_adapt_tconv(obs_dict['ft_hist'])  currently ft is useless.
-                extrin_tactile = self._tactile_encode(obs_dict['tactile_hist'])
+                if self.tactile_info:
+                    extrin_tactile = self._tactile_encode(obs_dict['tactile_hist'])
                 if self.obs_info:
-                    extrin_obs = self.obs_mlp(obs)
+                    extrin_obs = self.obs_mlp(obs_dict['student_obs'])
+
+                if self.obs_info and self.tactile_info:
                     extrin = torch.cat([extrin_tactile, extrin_obs], dim=-1)
-                else:
+                elif self.tactile_info:
                     extrin = extrin_tactile
+                else:
+                    extrin = extrin_obs
                 # during supervised training, extrin has gt label
                 extrin_gt = self.env_mlp(obs_dict['priv_info']) if 'priv_info' in obs_dict else extrin
                 extrin_gt = torch.tanh(extrin_gt)
@@ -185,7 +191,7 @@ class ActorCritic(nn.Module):
                 obs = torch.cat([obs, extrin], dim=-1)
             else:
                 extrin = self.env_mlp(obs_dict['priv_info'])
-                extrin = torch.tanh(extrin) # constraining the projection space (everything in hypersphere of radius 2)
+                extrin = torch.tanh(extrin)  # constraining the projection space (everything in hypersphere of radius 2)
                 obs = torch.cat([obs, extrin], dim=-1)
 
         x = self.actor_mlp(obs)
@@ -232,7 +238,6 @@ class ActorCritic(nn.Module):
 
 def load_tactile_resnet(tactile_decoder_embed_dim, num_fingers, num_channels,
                         root_dir, path_checkpoint, pre_trained=False):
-
     import algo.models.convnets.resnets as resnet
     import os
 

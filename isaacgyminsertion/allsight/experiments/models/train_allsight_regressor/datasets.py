@@ -1,11 +1,10 @@
 import os
 import torch
 from torch.utils.data import DataLoader
-from experiments.models.train_allsight_regressor.misc import normalize, unnormalize, normalize_max_min, unnormalize_max_min # 
-
+from isaacgyminsertion.allsight.experiments.models.train_allsight_regressor.misc import normalize, unnormalize, normalize_max_min, unnormalize_max_min #
 import numpy as np
 import cv2
-from experiments.models.train_allsight_regressor.img_utils import circle_mask, _diff, _structure #
+from isaacgyminsertion.allsight.experiments.models.train_allsight_regressor.img_utils import circle_mask
 import pandas as pd
 import random
 from glob import glob
@@ -43,6 +42,7 @@ sensor_dict = {'markers': {'rrrgggbbb': [2, 1, 0, 11],
 
 
 def get_buffer_paths(leds, gel, indenter, sensor_id=None):
+
     trained_sensor_id = []
     test_sensor_id = []
 
@@ -67,8 +67,8 @@ def get_buffer_paths(leds, gel, indenter, sensor_id=None):
             with open(s, 'rb') as handle:
                 summ = json.load(handle)
                 summ['sensor_id'] = summ['sensor_id'] if isinstance(summ['sensor_id'], list) else [summ['sensor_id']]
-            for sm in summ['sensor_id']:
 
+            for sm in summ['sensor_id']:
                 if sensor_id is not None:
                     train_sensor = sensor_id
                 else:
@@ -85,29 +85,19 @@ def get_buffer_paths(leds, gel, indenter, sensor_id=None):
     return buffer_paths_to_train, buffer_paths_to_test, list(set(trained_sensor_id)), list(set(test_sensor_id))
 
 
-def get_buffer_paths_sim(leds, indenter, params):
-    # if leds == 'combined':
-    #     leds_list = ['rrrgggbbb', 'rgbrgbrgb', 'white']
-    # else:
-    #     leds_list = [leds]
-
-    # buffer_paths = []
-    # for l in leds_list:
-    #     path_alon = '/home/roblab20/Documents/repose/Allsight_sim2real/allsight_sim2real/datasets/data_Allsight/json_data/'
-    #     # paths = [f"/home/roblab20/allsight_sim/experiments/dataset/{l}/data/{ind}" for ind in indenter]
-    #     paths = path_alon
-    #     for p in paths:
-    #         buffer_paths += [y for x in os.walk(p) for y in glob(os.path.join(x[0], '*.json'))]
-    if params['train_type'] == 'real':
-        train_path = './datasets/data_Allsight/json_data/real_train_{}_transformed.json'.format(params['real_data_num'])     
-    elif params['train_type'] == 'sim':
-        train_path = './datasets/data_Allsight/json_data/sim_train_{}_transformed.json'.format(params['sim_data_num'])
-    elif params['train_type'] == 'gan':
-        train_path = './datasets/data_Allsight/json_data/{}_test_{}_{}_{}_transformed.json'.format(params['gan_name'],params['cgan_num'],params['sim_data_num'],params['cgan_epoch']) 
+def get_buffer_paths_clear(leds, indenter):
+    if leds == 'combined':
+        leds_list = ['rrrgggbbb', 'rgbrgbrgb', 'white']
     else:
-        print('No data provided')
-    test_path = './datasets/data_Allsight/json_data/real_test_{}_transformed.json'.format(params['real_data_num'])  
-    return [train_path,test_path]
+        leds_list = [leds]
+
+    buffer_paths = []
+    for l in leds_list:
+        paths = [f"/home/roblab20/allsight_sim/experiments/dataset/clear/{l}/data/{ind}" for ind in indenter]
+        for p in paths:
+            buffer_paths += [y for x in os.walk(p) for y in glob(os.path.join(x[0], '*.json'))]
+
+    return buffer_paths
 
 
 def get_inputs_and_targets(group, output_type):

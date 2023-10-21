@@ -67,7 +67,7 @@ class ExtrinsicAdapt(object):
         self.extrin_adapt = self.ppo_config['extrin_adapt']
         # ---- Obs Info (student)----
         self.obs_info = self.ppo_config["obs_info"]
-
+        self.student_obs_input_shape = self.ppo_config['student_obs_input_shape']
         # ---- Model ----
         net_config = {
             'actor_units': self.network_config.mlp.units,
@@ -82,6 +82,7 @@ class ExtrinsicAdapt(object):
             "ft_units": self.network_config.ft_mlp.units,
             "obs_units": self.network_config.obs_mlp.units,
             "obs_info": self.obs_info,
+            'student_obs_input_shape': self.student_obs_input_shape,
 
             "tactile_info": self.tactile_info,
             "mlp_tactile_input_shape": self.mlp_tactile_info_dim,
@@ -103,7 +104,8 @@ class ExtrinsicAdapt(object):
         # Currently ft is not supported
         self.ft_mean_std = RunningMeanStd((self.ft_seq_length, 6)).to(self.device)
         self.ft_mean_std.train()
-
+        self.running_mean_std_stud = RunningMeanStd((self.student_obs_input_shape,)).to(self.device)
+        self.running_mean_std_stud.train()
         # tactile is already normalized in task.
 
         # ---- Output Dir ----
@@ -117,9 +119,9 @@ class ExtrinsicAdapt(object):
         self.direct_info = {}
         # ---- Misc ----
         self.batch_size = self.num_actors
-        self.mean_eps_reward = AverageScalarMeter(window_size=20000)
-        self.mean_eps_length = AverageScalarMeter(window_size=20000)
-        self.mean_eps_success = AverageScalarMeter(window_size=20000)
+        self.mean_eps_reward = AverageScalarMeter(window_size=100)
+        self.mean_eps_length = AverageScalarMeter(window_size=100)
+        self.mean_eps_success = AverageScalarMeter(window_size=100)
 
         self.best_rewards = -10000
         self.agent_steps = 0
@@ -154,6 +156,7 @@ class ExtrinsicAdapt(object):
         self.running_mean_std.eval()
         self.priv_mean_std.eval()
         self.ft_mean_std.eval()
+        self.running_mean_std_stud.eval()
 
     def test(self):
         self.set_eval()
@@ -162,6 +165,7 @@ class ExtrinsicAdapt(object):
             input_dict = {
                 'obs': self.running_mean_std(obs_dict['obs']),
                 'ft_hist': self.ft_mean_std(obs_dict['ft_hist'].detach()),
+                'student_obs': self.running_mean_std_stud(obs_dict['student_obs'].detach()),
                 'tactile_hist': obs_dict['tactile_hist'].detach(),
             }
             mu = self.model.act_inference(input_dict)
@@ -180,7 +184,7 @@ class ExtrinsicAdapt(object):
             input_dict = {
                 'obs': self.running_mean_std(obs_dict['obs']).detach(),
                 'priv_info': self.priv_mean_std(obs_dict['priv_info']).detach(),
-                # 'ft_hist': self.ft_mean_std(obs_dict['ft_hist'].detach()),
+                'student_obs': self.running_mean_std_stud(obs_dict['student_obs'].detach()),
                 'tactile_hist': obs_dict['tactile_hist'].detach(),
             }
             mu, _, _, e, e_gt = self.model._actor_critic(input_dict)
@@ -241,6 +245,8 @@ class ExtrinsicAdapt(object):
         self.model.load_state_dict(checkpoint['model'], strict=False)
         self.running_mean_std.load_state_dict(checkpoint['running_mean_std'])
         self.priv_mean_std.load_state_dict(checkpoint['priv_mean_std'])
+        # self.running_mean_std_stud.load_state_dict(checkpoint['running_mean_std_stud'])
+
         # self.ft_mean_std.load_state_dict(checkpoint['ft_mean_std'])
 
     def restore_test(self, fn):
@@ -251,6 +257,7 @@ class ExtrinsicAdapt(object):
         self.model.load_state_dict(checkpoint['model'])
         self.ft_mean_std.load_state_dict(checkpoint['ft_mean_std'])
         self.priv_mean_std.load_state_dict(checkpoint['priv_mean_std'])
+        self.running_mean_std_stud.load_state_dict(checkpoint['running_mean_std_stud'])
 
     def save(self, name):
         weights = {
@@ -258,6 +265,8 @@ class ExtrinsicAdapt(object):
         }
         if self.running_mean_std:
             weights['running_mean_std'] = self.running_mean_std.state_dict()
+        if self.running_mean_std_stud:
+            weights['running_mean_std_stud'] = self.running_mean_std_stud.state_dict()
         if self.priv_mean_std:
             weights['priv_mean_std'] = self.priv_mean_std.state_dict()
         if self.ft_mean_std:
