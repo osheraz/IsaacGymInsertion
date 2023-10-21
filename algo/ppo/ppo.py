@@ -34,7 +34,6 @@ from isaacgyminsertion.utils.misc import add_to_fifo, multi_gpu_aggregate_stats
 from tensorboardX import SummaryWriter
 
 
-
 class PPO(object):
     def __init__(self, env, output_dif, full_config):
 
@@ -175,8 +174,7 @@ class PPO(object):
                                         self.obs_shape[0],
                                         self.actions_num,
                                         self.priv_info_dim,
-                                        self.device,)
-        
+                                        self.device, )
 
         # ---- Data Logger ----
         # getting the shapes for the data logger initialization
@@ -189,7 +187,16 @@ class PPO(object):
         latent_shape = net_config['priv_mlp_units'][-1]
 
         # initializing data logger, the device should be changed
-        self.data_logger_init = lambda x: DataLogger(self.env.num_envs, self.env.max_episode_length, self.env.device, "/common/users/dm1487/inhand_manipulation/datastore1", arm_joints_shape=arm_joint_pos_shape, eef_pos_shape=eef_pos_shape, socket_pos_shape=socket_pos_shape, action_shape=action_shape, target_shape=target_shape, latent_shape=latent_shape, tactile_shape=tactile_shape)
+        # TODO add the flag for collect data
+        self.data_logger_init = lambda x: DataLogger(self.env.num_envs, self.env.max_episode_length, self.env.device,
+                                                     "/common/users/dm1487/inhand_manipulation/datastore1",
+                                                     arm_joints_shape=arm_joint_pos_shape,
+                                                     eef_pos_shape=eef_pos_shape,
+                                                     socket_pos_shape=socket_pos_shape,
+                                                     action_shape=action_shape,
+                                                     target_shape=target_shape,
+                                                     latent_shape=latent_shape,
+                                                     tactile_shape=tactile_shape)
 
         self.data_logger = None
 
@@ -206,7 +213,6 @@ class PPO(object):
         self.data_collect_time = 0
         self.rl_train_time = 0
         self.all_time = 0
-
 
     def write_stats(self, a_losses, c_losses, b_losses, entropies, kls, grad_norms):
         self.writer.add_scalar('performance/RLTrainFPS', self.agent_steps / self.rl_train_time, self.agent_steps)
@@ -319,11 +325,16 @@ class PPO(object):
 
     def log_trajectory_data(self, action, latent, done):
 
-        eef_pos = torch.cat(self.env.pose_world_to_robot_base(self.env.fingertip_centered_pos.clone(), self.env.fingertip_centered_quat.clone()), dim=-1)
-        
-        noisy_socket_pos = torch.cat(self.env.pose_world_to_robot_base(self.env.noisy_gripper_goal_pos.clone(), self.env.noisy_gripper_goal_quat.clone()), dim=-1)
+        eef_pos = torch.cat(self.env.pose_world_to_robot_base(self.env.fingertip_centered_pos.clone(),
+                                                              self.env.fingertip_centered_quat.clone()), dim=-1)
 
-        self.data_logger.update(arm_joints_pos = self.env.arm_dof_pos, eef_pos = eef_pos, noisy_socket_pos = noisy_socket_pos, action=action, target=self.env.targets, tactile_img=self.env.tactile_imgs, latent=latent, done=done)
+        noisy_socket_pos = torch.cat(self.env.pose_world_to_robot_base(self.env.noisy_gripper_goal_pos.clone(),
+                                                                       self.env.noisy_gripper_goal_quat.clone()),
+                                     dim=-1)
+
+        self.data_logger.update(arm_joints_pos=self.env.arm_dof_pos, eef_pos=eef_pos, noisy_socket_pos=noisy_socket_pos,
+                                action=action, target=self.env.targets, tactile_img=self.env.tactile_imgs,
+                                latent=latent, done=done)
 
     # def test_oracle(self, collect_data=False):
     #     self.set_eval()
@@ -419,7 +430,7 @@ class PPO(object):
                 self.optimizer.zero_grad()
                 loss.backward()
                 grad_norms.append(torch.norm(
-                        torch.cat([p.reshape(-1) for p in self.model.parameters()])))
+                    torch.cat([p.reshape(-1) for p in self.model.parameters()])))
 
                 if self.truncate_grads:
                     torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.grad_norm)
@@ -462,8 +473,6 @@ class PPO(object):
         # cv2.destroyAllWindows()
 
     def _write_ft(self, data, output_loc):
-        # todo convert it to gif with same rate as video
-        # todo split into 2 plot, 1 for the fore a
         import matplotlib.pyplot as plt
         plt.figure(figsize=(8, 6))
         plt.plot(np.array(data)[:, :3])
@@ -478,7 +487,6 @@ class PPO(object):
         plt.ylabel('torque')
         plt.savefig(f'{output_loc}_torque.png')
         plt.close()
-
 
     def log_video(self):
         if self.it == 0:
@@ -511,7 +519,7 @@ class PPO(object):
                 os.makedirs(ft_dir)
             self._write_ft(ft_frames, f"{ft_dir}/{self.it:05d}")
             # self.create_line_and_image_animation(frames, ft_frames, f"{ft_dir}/{self.it:05d}_line.mp4")
-            
+
             self.env.start_recording()
             self.last_recording_it = self.it
 
@@ -580,7 +588,6 @@ class PPO(object):
         self.storage.data_dict['returns'] = returns
 
 
-
 def policy_kl(p0_mu, p0_sigma, p1_mu, p1_sigma):
     c1 = torch.log(p1_sigma / p0_sigma + 1e-5)
     c2 = (p0_sigma ** 2 + (p1_mu - p0_mu) ** 2) / (2.0 * (p1_sigma ** 2 + 1e-5))
@@ -588,7 +595,6 @@ def policy_kl(p0_mu, p0_sigma, p1_mu, p1_sigma):
     kl = c1 + c2 + c3
     kl = kl.sum(dim=-1)  # returning mean between all steps of sum between all actions
     return kl.mean()
-
 
 
 # from https://github.com/leggedrobotics/rsl_rl/blob/master/rsl_rl/algorithms/ppo.py
@@ -606,4 +612,3 @@ class AdaptiveScheduler(object):
         if kl_dist < (0.5 * self.kl_threshold):
             lr = min(current_lr * 1.5, self.max_lr)
         return lr
-
