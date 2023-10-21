@@ -77,6 +77,8 @@ class PPO(object):
         self.priv_info_dim = self.ppo_config['priv_info_dim']
         self.extrin_adapt = self.ppo_config['extrin_adapt']
         self.priv_info_embed_dim = self.network_config.priv_mlp.units[-1]
+        # ---- Obs Info (student)----
+        self.obs_info = self.ppo_config["obs_info"]
         # ---- Model ----
         net_config = {
             'actor_units': self.network_config.mlp.units,
@@ -89,6 +91,8 @@ class PPO(object):
             "ft_input_shape": self.ft_info_dim,
             "ft_info": self.ft_info,
             "ft_units": self.network_config.ft_mlp.units,
+            "obs_units": self.network_config.obs_mlp.units,
+            "obs_info": self.obs_info,
 
             "tactile_info": self.tactile_info,
             "mlp_tactile_input_shape": self.mlp_tactile_info_dim,
