@@ -12,7 +12,7 @@ network:
   obs_mlp:
     units: [128, 64, 16]
   tactile_mlp:
-    units: [300, 128, 32]
+    units: [300, 128, 32]  # if obs_info is true, last dims is // 2
   tactile_decoder:
     num_channels: ${....task.tactile.decoder.num_channels}
     tactile_seq_length: ${....task.env.tactile_history_len}
