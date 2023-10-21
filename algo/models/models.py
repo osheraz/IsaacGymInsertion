@@ -174,7 +174,7 @@ class ActorCritic(nn.Module):
                 # extrin_ft = self.ft_adapt_tconv(obs_dict['ft_hist'])  currently ft is useless.
                 extrin_tactile = self._tactile_encode(obs_dict['tactile_hist'])
                 if self.obs_info:
-                    extrin_obs = self.obs_mlp(obs)
+                    extrin_obs = self.obs_mlp(obs_dict['student_obs'])
                     extrin = torch.cat([extrin_tactile, extrin_obs], dim=-1)
                 else:
                     extrin = extrin_tactile
