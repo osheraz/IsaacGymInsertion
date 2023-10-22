@@ -9,7 +9,7 @@ import rospy
 
 class HandROSSubscriberFinger():
 
-    def __init__(self, dev_names=None):
+    def __init__(self, dev_names=None, fix=None):
         """
         Finger Device class for a single Finger
         :param serial: Finger device serial
@@ -18,22 +18,42 @@ class HandROSSubscriberFinger():
 
         if dev_names is None:
             dev_names = [2, 0, 4]
+        if fix is None:
+            fix = [(), (), ()]
+            fix[0] = (0, -12)
+            fix[1] = (6, 2)
+            fix[2] = (-3, 5)
 
-        self.finger_left = TactileSubscriberFinger(dev_name=dev_names[0])
-        self.finger_right = TactileSubscriberFinger(dev_name=dev_names[1])
-        self.finger_bottom = TactileSubscriberFinger(dev_name=dev_names[2])
+        self.finger_left = TactileSubscriberFinger(dev_name=dev_names[0], fix=fix[0])
+        self.finger_right = TactileSubscriberFinger(dev_name=dev_names[1], fix=fix[0])
+        self.finger_bottom = TactileSubscriberFinger(dev_name=dev_names[2], fix=fix[0])
+        self.init_success = True
+        self.left_bg, self.right_bg, self.bottom_bg = self.get_frames(diff=False)
 
-    def get_frames(self):
+    def get_frames(self, diff=True):
         """
         Returns a single image frame for the device
         :param transpose: Show direct output from the image sensor, WxH instead of HxW
         :return: Image frame array
         """
-        frame_left = self.finger_left.get_frame()
-        frame_right = self.finger_right.get_frame()
-        frame_bottom = self.finger_bottom.get_frame()
+        left = self.finger_left.get_frame()
+        right = self.finger_right.get_frame()
+        bottom = self.finger_bottom.get_frame()
 
-        return frame_left, frame_right, frame_bottom
+        if diff:
+            left = self._subtract_bg(left, self.left_bg) * self.finger_left.mask_resized
+            right = self._subtract_bg(right, self.right_bg) * self.finger_right.mask_resized
+            bottom = self._subtract_bg(bottom, self.bottom_bg) * self.finger_bottom.mask_resized
+
+        return left, right, bottom
+
+    def _subtract_bg(self, img1, img2, offset=0.5):
+
+        img1 = np.int32(img1)
+        img2 = np.int32(img2)
+        diff = img1 - img2
+        diff = diff / 255.0 + offset
+        return diff
 
     def show_fingers_view(self):
         """
@@ -106,9 +126,13 @@ class HandROSPublisher(Hand):
 
 if __name__ == "__main__":
     import os
+    rospy.init_node('TACTILE')
 
     pc_name = os.getlogin()
 
     tactile = HandROSSubscriberFinger()
+    rate = rospy.Rate(60)
 
-    tactile.show_fingers_view()
+    while not rospy.is_shutdown():
+        tactile.show_fingers_view()
+
