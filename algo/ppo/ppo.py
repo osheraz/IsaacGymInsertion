@@ -182,25 +182,26 @@ class PPO(object):
 
         # ---- Data Logger ----
         # getting the shapes for the data logger initialization
-        log_items = {
-            'arm_joints_shape': self.env.arm_dof_pos.shape[-1],
-            'eef_pos_shape': self.env.fingertip_centered_pos.size()[-1] + self.env.fingertip_centered_quat.size()[-1],
-            'socket_pos_shape': self.env.socket_pos.size()[-1] + self.env.socket_quat.size()[-1],
-            'noisy_socket_pos_shape': self.env.socket_pos.size()[-1] + self.env.socket_quat.size()[-1],
-            'plug_pos_shape': self.env.plug_pos.size()[-1] + self.env.plug_quat.size()[-1],
-            'action_shape': self.actions_num,
-            'target_shape': self.env.targets.shape[-1],
-            'tactile_shape': self.env.tactile_imgs.shape[1:],
-            'latent_shape': net_config['priv_mlp_units'][-1],
-            'rigid_physics_params_shape': self.env.rigid_physics_params.shape[-1],
-            'plug_socket_pos_error_shape': self.env.plug_socket_pos_error.shape[-1],
-            'plug_socket_quat_error_shape': self.env.plug_socket_quat_error.shape[-1],
+        if self.env.cfg_task.data_logger.collect_data:
+            log_items = {
+                'arm_joints_shape': self.env.arm_dof_pos.shape[-1],
+                'eef_pos_shape': self.env.fingertip_centered_pos.size()[-1] + self.env.fingertip_centered_quat.size()[-1],
+                'socket_pos_shape': self.env.socket_pos.size()[-1] + self.env.socket_quat.size()[-1],
+                'noisy_socket_pos_shape': self.env.socket_pos.size()[-1] + self.env.socket_quat.size()[-1],
+                'plug_pos_shape': self.env.plug_pos.size()[-1] + self.env.plug_quat.size()[-1],
+                'action_shape': self.actions_num,
+                'target_shape': self.env.targets.shape[-1],
+                'tactile_shape': self.env.tactile_imgs.shape[1:],
+                'latent_shape': net_config['priv_mlp_units'][-1],
+                'rigid_physics_params_shape': self.env.rigid_physics_params.shape[-1],
+                'plug_socket_pos_error_shape': self.env.plug_socket_pos_error.shape[-1],
+                'plug_socket_quat_error_shape': self.env.plug_socket_quat_error.shape[-1],
 
-        }
+            }
 
-        # initializing data logger, the device should be changed
-        self.data_logger_init = lambda x: DataLogger(self.env.num_envs, self.env.max_episode_length, self.env.device,
-                                                     self.env.cfg_task.data_logger.folder, self.env.cfg_task.data_logger.total_trajectories, **log_items)
+            # initializing data logger, the device should be changed
+            self.data_logger_init = lambda x: DataLogger(self.env.num_envs, self.env.max_episode_length, self.env.device,
+                                                         self.env.cfg_task.data_logger.folder, self.env.cfg_task.data_logger.total_trajectories, **log_items)
         self.data_logger = None
         batch_size = self.num_actors
         current_rewards_shape = (batch_size, 1)

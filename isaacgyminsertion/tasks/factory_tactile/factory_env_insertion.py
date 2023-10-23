@@ -387,7 +387,7 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
             self.right_finger_id = right_finger_id
             self.middle_finger_id = middle_finger_id
 
-            self.shape_ids = [link7_id, hand_id, left_finger_id, right_finger_id, middle_finger_id]
+            self.shape_ids = [link7_id, hand_id, left_finger_id - 1, right_finger_id - 1, middle_finger_id - 1]
 
             kuka_shape_props = self.gym.get_actor_rigid_shape_properties(env_ptr, kuka_handle)
 

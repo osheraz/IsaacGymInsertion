@@ -548,8 +548,8 @@ class FactoryBaseTactile(VecTask, FactoryABCBase):
             self.fingertip_centered_jacobian_tf = self.fingertip_centered_jacobian
 
         elif self.cfg_ctrl['jacobian_type'] == 'analytic':
-            self.fingertip_midpoint_jacobian_tf = fc.get_analytic_jacobian(
-                fingertip_quat=self.fingertip_quat,
+            self.fingertip_centered_jacobian_tf = fc.get_analytic_jacobian(
+                fingertip_quat=self.fingertip_centered_quat,
                 fingertip_jacobian=self.fingertip_centered_jacobian,
                 num_envs=self.num_envs,
                 device=self.device)
