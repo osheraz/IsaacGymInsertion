@@ -1,7 +1,7 @@
 import numpy as np
 import cv2
-from finger_ros import TactileSubscriberFinger
-from hand import Hand
+from algo.deploy.env.finger_ros import TactileSubscriberFinger
+from algo.deploy.env.hand import Hand
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge, CvBridgeError
 import rospy
@@ -36,6 +36,7 @@ class HandROSSubscriberFinger():
         :param transpose: Show direct output from the image sensor, WxH instead of HxW
         :return: Image frame array
         """
+
         left = self.finger_left.get_frame()
         right = self.finger_right.get_frame()
         bottom = self.finger_bottom.get_frame()

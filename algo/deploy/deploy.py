@@ -15,6 +15,7 @@ import hydra
 import cv2
 from isaacgyminsertion.utils import torch_jit_utils
 import isaacgyminsertion.tasks.factory_tactile.factory_control as fc
+from time import time
 
 
 class HardwarePlayer(object):
@@ -48,6 +49,9 @@ class HardwarePlayer(object):
         self.priv_info = self.deploy_config.ppo.priv_info
         self.priv_info_dim = self.deploy_config.ppo.priv_info_dim
         self.extrin_adapt = self.deploy_config.ppo.extrin_adapt
+        # ---- Obs Info (student)----
+        self.obs_info = self.deploy_config.ppo.obs_info
+        self.student_obs_input_shape = self.deploy_config.ppo.student_obs_input_shape
 
         net_config = {
             'actor_units': self.deploy_config.network.mlp.units,
@@ -58,6 +62,8 @@ class HardwarePlayer(object):
             'priv_info_dim': self.priv_info_dim,
             'priv_info': True,
             "tactile_info": self.tactile_info,
+            "obs_info": self.obs_info,
+            'student_obs_input_shape': self.student_obs_input_shape,
             "mlp_tactile_input_shape": self.mlp_tactile_info_dim,
             "ft_input_shape": self.ft_info_dim,
             "ft_info": self.ft_info,
@@ -74,7 +80,8 @@ class HardwarePlayer(object):
 
         self.running_mean_std = RunningMeanStd(self.obs_shape).to(self.device)
         self.running_mean_std.eval()
-
+        self.running_mean_std_stud = RunningMeanStd((self.student_obs_input_shape,)).to(self.device)
+        self.running_mean_std_stud.eval()
         # ---- Output Dir ----
         self.output_dir = output_dir
         self.dp_dir = os.path.join(self.output_dir, 'deploy')
@@ -138,6 +145,20 @@ class HardwarePlayer(object):
         self.goal_noisy_queue = torch.zeros((1, self.deploy_config.env.obs_seq_length, 7),
                                             dtype=torch.float, device=self.device)
 
+        # Bad, should queue the obs!
+        self.arm_joint_queue_student = torch.zeros((1, self.deploy_config.env.stud_obs_seq_length, 7),
+                                           dtype=torch.float, device=self.device)
+        self.arm_vel_queue_student = torch.zeros((1, self.deploy_config.env.stud_obs_seq_length, 7),
+                                         dtype=torch.float, device=self.device)
+        self.actions_queue_student = torch.zeros((1, self.deploy_config.env.stud_obs_seq_length, self.num_actions),
+                                         dtype=torch.float, device=self.device)
+        self.targets_queue_student = torch.zeros((1, self.deploy_config.env.stud_obs_seq_length, self.num_actions),
+                                         dtype=torch.float, device=self.device)
+        self.eef_queue_student = torch.zeros((1, self.deploy_config.env.stud_obs_seq_length, 7),
+                                     dtype=torch.float, device=self.device)
+        self.goal_noisy_queue_student = torch.zeros((1, self.deploy_config.env.stud_obs_seq_length, 7),
+                                            dtype=torch.float, device=self.device)
+
         # tactile buffers
         self.tactile_imgs = torch.zeros(
             (1, 3,  # left, right, bottom
@@ -167,8 +188,6 @@ class HardwarePlayer(object):
 
     def _update_socket_pose(self):
 
-        # TODO verify that everything is w.r.t robot base..
-
         socket_obs_pos_noise = 2 * (
                 torch.rand((1, 3), dtype=torch.float32, device=self.device)
                 - 0.5
@@ -196,8 +215,9 @@ class HardwarePlayer(object):
             self.socket_tip_pos_local)
 
     def compute_observations(self):
-
+        start_time = time()
         obses = self.env.get_obs()
+
         arm_joints = obses['joints']
         ee_pose = obses['ee_pose']
         left, right, bottom = obses['frames']
@@ -206,11 +226,18 @@ class HardwarePlayer(object):
         self.arm_joint_queue[:, 1:] = self.arm_joint_queue[:, :-1].clone().detach()
         self.arm_joint_queue[:, 0, :] = torch.tensor(arm_joints, device=self.device, dtype=torch.float)
 
-        self.fingertip_centered_pos = torch.tensor(ee_pose[:3], device=self.device, dtype=torch.float)
-        self.fingertip_centered_quat = torch.tensor(ee_pose[3:], device=self.device, dtype=torch.float)
+        self.arm_joint_queue_student[:, 1:] = self.arm_joint_queue_student[:, :-1].clone().detach()
+        self.arm_joint_queue_student[:, 0, :] = torch.tensor(arm_joints, device=self.device, dtype=torch.float)
+
+        self.fingertip_centered_pos = torch.tensor(ee_pose[:3], device=self.device, dtype=torch.float).unsqueeze(0)
+        self.fingertip_centered_quat = torch.tensor(ee_pose[3:], device=self.device, dtype=torch.float).unsqueeze(0)
 
         self.eef_queue[:, 1:] = self.eef_queue[:, :-1].clone().detach()
         self.eef_queue[:, 0, :] = torch.cat((self.fingertip_centered_pos.clone(),
+                                             self.fingertip_centered_quat.clone()), dim=-1)
+
+        self.eef_queue_student[:, 1:] = self.eef_queue_student[:, :-1].clone().detach()
+        self.eef_queue_student[:, 0, :] = torch.cat((self.fingertip_centered_pos.clone(),
                                              self.fingertip_centered_quat.clone()), dim=-1)
 
         left = cv2.resize(left, (self.cfg_tactile.decoder.width, self.cfg_tactile.decoder.height),
@@ -220,9 +247,9 @@ class HardwarePlayer(object):
         bottom = cv2.resize(bottom, (self.cfg_tactile.decoder.width, self.cfg_tactile.decoder.height),
                             interpolation=cv2.INTER_AREA)
 
-        self.tactile_imgs[1, 0] = torch_jit_utils.rgb_transform(left).to(self.device).permute(1, 2, 0)
-        self.tactile_imgs[1, 1] = torch_jit_utils.rgb_transform(right).to(self.device).permute(1, 2, 0)
-        self.tactile_imgs[1, 2] = torch_jit_utils.rgb_transform(bottom).to(self.device).permute(1, 2, 0)
+        self.tactile_imgs[0, 0] = torch_jit_utils.rgb_transform(left).to(self.device).permute(1, 2, 0)
+        self.tactile_imgs[0, 1] = torch_jit_utils.rgb_transform(right).to(self.device).permute(1, 2, 0)
+        self.tactile_imgs[0, 2] = torch_jit_utils.rgb_transform(bottom).to(self.device).permute(1, 2, 0)
 
         self.tactile_queue[:, 1:] = self.tactile_queue[:, :-1].clone().detach()
         self.tactile_queue[:, 0, :] = self.tactile_imgs
@@ -232,16 +259,25 @@ class HardwarePlayer(object):
 
         obs_tensors = [
             self.arm_joint_queue.reshape(1, -1),  # 7 * hist
-            # self.arm_vel_queue.reshape(1, -1),
             self.eef_queue.reshape(1, -1),  # (envs, 7 * hist)
             self.goal_noisy_queue.reshape(1, -1),  # (envs, 7 * hist)
             self.actions_queue.reshape(1, -1),  # (envs, 6 * hist)
             self.targets_queue.reshape(1, -1),  # (envs, 6 * hist)
         ]
 
-        self.obs_buf = torch.cat(obs_tensors, dim=-1)
+        obs_tensors_student = [
+            self.arm_joint_queue_student.reshape(1, -1), # 7 * hist
+            self.eef_queue_student.reshape(1, -1),  # (envs, 7 * hist)
+            self.goal_noisy_queue_student.reshape(1, -1),  # (envs, 7 * hist)
+            self.actions_queue_student.reshape(1, -1),  # (envs, 6 * hist)
+            self.targets_queue_student.reshape(1, -1),  # (envs, 6 * hist)
+        ]
 
-        return self.obs_buf
+        self.obs_buf = torch.cat(obs_tensors, dim=-1)
+        self.obs_buf_stud = torch.cat(obs_tensors_student, dim=-1)
+        print("FPS: ", 1.0 / (time() - start_time))  # FPS = 1 / time to process loop
+
+        return self.obs_buf, self.obs_buf_stud, self.tactile_queue
 
     def _move_arm_to_desired_pose(self, desired_pos, desired_rot=None):
         """Move gripper to desired pose."""
@@ -297,8 +333,13 @@ class HardwarePlayer(object):
         self.actions_queue[:, 1:] = self.actions_queue[:, :-1].clone().detach()
         self.actions_queue[:, 0, :] = self.actions
 
+        self.actions_queue_student[:, 1:] = self.actions_queue_student[:, :-1].clone().detach()
+        self.actions_queue_student[:, 0, :] = self.actions
+
         self.targets_queue[:, 1:] = self.targets_queue[:, :-1].clone().detach()
         self.targets_queue[:, 0, :] = self.targets
+        self.targets_queue_student[:, 1:] = self.targets_queue_student[:, :-1].clone().detach()
+        self.targets_queue_student[:, 0, :] = self.targets
         self.prev_targets[:] = self.targets.clone()
 
         # some-like taking a new socket pose measurement
@@ -307,8 +348,11 @@ class HardwarePlayer(object):
         self.goal_noisy_queue[:, 0, :] = torch.cat((self.noisy_gripper_goal_pos.clone(),
                                                     self.noisy_gripper_goal_quat.clone()),
                                                    dim=-1)
-
-        self.apply_action(actions)
+        self.goal_noisy_queue_student[:, 1:] = self.goal_noisy_queue_student[:, :-1].clone().detach()
+        self.goal_noisy_queue_student[:, 0, :] = torch.cat((self.noisy_gripper_goal_pos.clone(),
+                                                    self.noisy_gripper_goal_quat.clone()),
+                                                   dim=-1)
+        self.apply_action(self.actions)
 
     def apply_action(self, actions, do_scale=True, do_clamp=True):
 
@@ -384,17 +428,17 @@ class HardwarePlayer(object):
         # Wait for connections.
         rospy.sleep(0.5)
 
-        hz = 60
+        hz = 100
         ros_rate = rospy.Rate(hz)
 
         # TODO index the real objects
         self._create_asset_info()
         self._acquire_task_tensors()
 
-        true_socket_pose = [0, 0, 0.3]
+        true_socket_pose = [0, 0, 0.4]
         self._set_socket_pose(pos=true_socket_pose)
 
-        true_plug_pose = [0, 0, 0.33]
+        true_plug_pose = [0, 0, 0.4]
         above_plug_pose = [x + y for x, y in zip(true_plug_pose, [0, 0, 0.01])]
         plug_grasp_pose = [x + y for x, y in zip(above_plug_pose, [0, 0, -0.01])]
 
@@ -402,10 +446,11 @@ class HardwarePlayer(object):
 
         # Grasp the object
         self.env.move_to_init_state()
-        self._move_arm_to_desired_pose(plug_grasp_pose)
-        self.env.grasp()
+        for i in range(1):
+            self._move_arm_to_desired_pose(plug_grasp_pose)
+        # self.env.grasp()
 
-        obs = self.compute_observations()
+        obs, obs_stud, tactile = self.compute_observations()
 
         # TODO? Should we fill the history buffs?
         for i in range(self.deploy_config.env.obs_seq_length):
@@ -416,12 +461,15 @@ class HardwarePlayer(object):
 
             input_dict = {
                 'obs': obs,
-                'tactile_hist': self.tactile_queue,
+                'student_obs': obs_stud,
+                'tactile_hist': tactile
             }
 
-            action = self.model.act_inference(input_dict)
+            action, _ = self.model.act_inference(input_dict)
+
+            print(action)
             self.update_and_apply_action(action)
 
             ros_rate.sleep()
 
-            obs = self.compute_observations()
+            obs, obs_stud, tactile = self.compute_observations()

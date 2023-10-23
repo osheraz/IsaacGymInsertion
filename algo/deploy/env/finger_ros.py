@@ -1,7 +1,7 @@
 import rospy
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge, CvBridgeError
-from finger import Finger
+from algo.deploy.env.finger import Finger
 from algo.deploy.env.env_utils.img_utils import ContactArea, circle_mask, align_center
 
 
