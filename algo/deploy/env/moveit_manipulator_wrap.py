@@ -170,7 +170,7 @@ if __name__ == '__main__':
         b = moveit_test.get_jacobian_matrix()
         c = moveit_test.joint_values()
         rate.sleep()
-        print("FPS: ", 1.0 / (time() - start_time))  # FPS = 1 / time to process loop
+        # print("FPS: ", 1.0 / (time() - start_time))  # FPS = 1 / time to process loop
 
     #
     # # Move stuff

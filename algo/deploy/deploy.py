@@ -298,24 +298,26 @@ class HardwarePlayer(object):
         cfg_ctrl = {'num_envs': 1,
                     'jacobian_type': 'geometric'}
 
-        info = self.env.get_info_for_control()
-        ee_pose = info['ee_pose']
-        self.fingertip_centered_pos = torch.tensor(ee_pose[:3], device=self.device, dtype=torch.float).unsqueeze(0)
-        self.fingertip_centered_quat = torch.tensor(ee_pose[3:], device=self.device, dtype=torch.float).unsqueeze(0)
+        for _ in range(10):
 
-        pos_error, axis_angle_error = fc.get_pose_error_deploy(
-            fingertip_midpoint_pos=self.fingertip_centered_pos,
-            fingertip_midpoint_quat=self.fingertip_centered_quat,
-            ctrl_target_fingertip_midpoint_pos=self.ctrl_target_fingertip_centered_pos,
-            ctrl_target_fingertip_midpoint_quat=self.ctrl_target_fingertip_centered_quat,
-            jacobian_type=cfg_ctrl['jacobian_type'],
-            rot_error_type='axis_angle')
+            info = self.env.get_info_for_control()
+            ee_pose = info['ee_pose']
+            self.fingertip_centered_pos = torch.tensor(ee_pose[:3], device=self.device, dtype=torch.float).unsqueeze(0)
+            self.fingertip_centered_quat = torch.tensor(ee_pose[3:], device=self.device, dtype=torch.float).unsqueeze(0)
 
-        delta_hand_pose = torch.cat((pos_error, axis_angle_error), dim=-1)
-        actions = torch.zeros((1, self.num_actions), device=self.device)
-        actions[:, :6] = delta_hand_pose
-        # Apply the action, keep fingers in the same status
-        self.apply_action(actions=actions, do_scale=False, do_clamp=False)
+            pos_error, axis_angle_error = fc.get_pose_error_deploy(
+                fingertip_midpoint_pos=self.fingertip_centered_pos,
+                fingertip_midpoint_quat=self.fingertip_centered_quat,
+                ctrl_target_fingertip_midpoint_pos=self.ctrl_target_fingertip_centered_pos,
+                ctrl_target_fingertip_midpoint_quat=self.ctrl_target_fingertip_centered_quat,
+                jacobian_type=cfg_ctrl['jacobian_type'],
+                rot_error_type='axis_angle')
+
+            delta_hand_pose = torch.cat((pos_error, axis_angle_error), dim=-1)
+            actions = torch.zeros((1, self.num_actions), device=self.device)
+            actions[:, :6] = delta_hand_pose
+            # Apply the action, keep fingers in the same status
+            self.apply_action(actions=actions, do_scale=False, do_clamp=False)
 
     def update_and_apply_action(self, actions):
 
@@ -439,15 +441,15 @@ class HardwarePlayer(object):
         self._set_socket_pose(pos=true_socket_pose)
 
         true_plug_pose = [0, 0, 0.4]
-        above_plug_pose = [x + y for x, y in zip(true_plug_pose, [0, 0, 0.01])]
-        plug_grasp_pose = [x + y for x, y in zip(above_plug_pose, [0, 0, -0.01])]
+        above_plug_pose = [x + y for x, y in zip(true_plug_pose, [0, 0, 0.00])]
+        plug_grasp_pose = [x + y for x, y in zip(above_plug_pose, [0, 0, 0.00])]
 
         self._set_plug_pose(pos=true_plug_pose)
 
         # Grasp the object
         self.env.move_to_init_state()
-        for i in range(1):
-            self._move_arm_to_desired_pose(plug_grasp_pose)
+
+        self._move_arm_to_desired_pose(plug_grasp_pose)
         # self.env.grasp()
 
         obs, obs_stud, tactile = self.compute_observations()
