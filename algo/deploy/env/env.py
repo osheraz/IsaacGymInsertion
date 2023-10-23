@@ -1,5 +1,5 @@
 import rospy
-from algo.deploy.env.hand import Hand
+from algo.deploy.env.hand_ros import HandROSSubscriberFinger
 from algo.deploy.env.openhand_env import OpenhandEnv
 from algo.deploy.env.robots import RobotWithFtEnv
 
@@ -11,10 +11,10 @@ class ExperimentEnv:
     def __init__(self, ):
         rospy.logwarn('Setting up the environment')
         self.hand = OpenhandEnv()
-        # self.tactile = Hand()
+        self.tactile = HandROSSubscriberFinger()
         self.arm = RobotWithFtEnv()
         rospy.sleep(2)
-        # self.ready = self.arm.init_success and self.tactile.init_success
+        self.ready = self.arm.init_success and self.tactile.init_success
 
     def get_obs(self):
         ft = self.arm.robotiq_wrench_filtered_state.tolist()
