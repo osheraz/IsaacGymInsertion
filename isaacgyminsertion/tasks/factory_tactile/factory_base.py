@@ -677,5 +677,5 @@ class FactoryBaseTactile(VecTask, FactoryABCBase):
             robot_base_transform_inv[0], robot_base_transform_inv[1], quat, pos
         )
 
-        # return pos_in_robot_base, quat_in_robot_base
-        return pos, quat
+        return pos_in_robot_base, quat_in_robot_base
+        # return pos, quat
