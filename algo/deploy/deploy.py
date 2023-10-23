@@ -437,10 +437,10 @@ class HardwarePlayer(object):
         self._create_asset_info()
         self._acquire_task_tensors()
 
-        true_socket_pose = [0, 0, 0.4]
+        true_socket_pose = [0.5, 0, 0.4]
         self._set_socket_pose(pos=true_socket_pose)
 
-        true_plug_pose = [0, 0, 0.4]
+        true_plug_pose = [0.5, 0, 0.4]
         above_plug_pose = [x + y for x, y in zip(true_plug_pose, [0, 0, 0.00])]
         plug_grasp_pose = [x + y for x, y in zip(above_plug_pose, [0, 0, 0.00])]
 

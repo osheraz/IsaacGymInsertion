@@ -29,13 +29,14 @@ env:
   ft_seq_length: ${...task.env.ft_history_len}
   obs_seq_length: ${...task.env.numObsHist}
   stud_obs_seq_length: ${...task.env.numObsStudentHist}
+
   priv_info_dim: ${...task.env.numStates}
   numObservations: ${...task.env.numObservations}
   numActions: ${...task.env.numActions}
   numTargets: ${...task.env.numTargets}
   socket_pos_obs_noise: [ 0.001, 0.001, 0.0 ]
   socket_rot_obs_noise: [ 0.0, 0.0, 0.0 ]
-  fingertip_midpoint_rot_initial: [ -3.14159265359, 0.0, 1.57079632679 ]
+  fingertip_midpoint_rot_initial: [ -3.14159265359, 0.0, -1.57079632679 ]
 
 
 ppo:

@@ -9,6 +9,7 @@ from std_srvs.srv import Empty, EmptyResponse
 from iiwa_msgs.msg import JointQuantity, JointPosition
 from geometry_msgs.msg import PoseStamped
 from std_msgs.msg import Float32MultiArray
+from tutorial.msg import Jacobian
 
 class MoveManipulatorServiceWrap():
     """
@@ -38,6 +39,7 @@ class MoveManipulatorServiceWrap():
 
         rospy.wait_for_message('/iiwa/Joints', JointPosition)
         rospy.wait_for_message('/iiwa/Pose', PoseStamped)
+        rospy.wait_for_message('/iiwa/Jacobian', Float32MultiArray)
 
         rospy.logdebug("===== Out MoveManipulatorServiceWrap")
 
@@ -166,9 +168,13 @@ if __name__ == '__main__':
     while True:
         start_time = time()
 
-        a = moveit_test.get_cartesian_pose()
+        # a = moveit_test.get_cartesian_pose()
         b = moveit_test.get_jacobian_matrix()
-        c = moveit_test.joint_values()
+        c = moveit_test.get_jacobian_matrix_moveit()
+        # print(moveit_test.get_cartesian_pose())
+
+        print((b - c).max())
+        # c = moveit_test.joint_values()
         rate.sleep()
         # print("FPS: ", 1.0 / (time() - start_time))  # FPS = 1 / time to process loop
 
