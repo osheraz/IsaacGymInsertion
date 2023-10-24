@@ -215,7 +215,6 @@ class HardwarePlayer(object):
             self.socket_tip_pos_local)
 
     def compute_observations(self):
-        start_time = time()
         obses = self.env.get_obs()
 
         arm_joints = obses['joints']
@@ -275,7 +274,6 @@ class HardwarePlayer(object):
 
         self.obs_buf = torch.cat(obs_tensors, dim=-1)
         self.obs_buf_stud = torch.cat(obs_tensors_student, dim=-1)
-        print("FPS: ", 1.0 / (time() - start_time))  # FPS = 1 / time to process loop
 
         return self.obs_buf, self.obs_buf_stud, self.tactile_queue
 
@@ -298,7 +296,7 @@ class HardwarePlayer(object):
         cfg_ctrl = {'num_envs': 1,
                     'jacobian_type': 'geometric'}
 
-        for _ in range(10):
+        for _ in range(5):
 
             info = self.env.get_info_for_control()
             ee_pose = info['ee_pose']
@@ -317,9 +315,9 @@ class HardwarePlayer(object):
             actions = torch.zeros((1, self.num_actions), device=self.device)
             actions[:, :6] = delta_hand_pose
             # Apply the action, keep fingers in the same status
-            self.apply_action(actions=actions, do_scale=False, do_clamp=False)
+            self.apply_action(actions=actions, do_scale=False, do_clamp=False, wait=True)
 
-    def update_and_apply_action(self, actions):
+    def update_and_apply_action(self, actions, wait=True):
 
         self.actions = actions.clone().to(self.device)
 
@@ -354,9 +352,9 @@ class HardwarePlayer(object):
         self.goal_noisy_queue_student[:, 0, :] = torch.cat((self.noisy_gripper_goal_pos.clone(),
                                                     self.noisy_gripper_goal_quat.clone()),
                                                    dim=-1)
-        self.apply_action(self.actions)
+        self.apply_action(self.actions, wait=wait)
 
-    def apply_action(self, actions, do_scale=True, do_clamp=True):
+    def apply_action(self, actions, do_scale=True, do_clamp=True, wait=True):
 
         # Apply the action
         if do_clamp:
@@ -383,9 +381,9 @@ class HardwarePlayer(object):
         self.ctrl_target_fingertip_centered_quat = torch_jit_utils.quat_mul_deploy(rot_actions_quat,
                                                                                    self.fingertip_centered_quat)
 
-        self.generate_ctrl_signals()
+        self.generate_ctrl_signals(wait=wait)
 
-    def generate_ctrl_signals(self):
+    def generate_ctrl_signals(self, wait=True):
 
         ctrl_info = self.env.get_info_for_control()
 
@@ -412,7 +410,7 @@ class HardwarePlayer(object):
 
         self.ctrl_target_dof_pos = self.ctrl_target_dof_pos[:, :7]
 
-        self.env.move_to_joint_values(self.ctrl_target_dof_pos.cpu().detach().numpy().squeeze().tolist())
+        self.env.move_to_joint_values(self.ctrl_target_dof_pos.cpu().detach().numpy().squeeze().tolist(), wait=wait)
 
     def restore(self, fn):
         checkpoint = torch.load(fn)
@@ -459,6 +457,7 @@ class HardwarePlayer(object):
             pass
 
         while True:
+
             obs = self.running_mean_std(obs.clone())
 
             input_dict = {
@@ -466,12 +465,12 @@ class HardwarePlayer(object):
                 'student_obs': obs_stud,
                 'tactile_hist': tactile
             }
-
             action, _ = self.model.act_inference(input_dict)
-
-            print(action)
-            self.update_and_apply_action(action)
+            start_time = time()
+            self.update_and_apply_action(action, wait=True)
+            print("FPS: ", 1.0 / (time() - start_time))  # FPS = 1 / time to process loop
 
             ros_rate.sleep()
 
             obs, obs_stud, tactile = self.compute_observations()
+

@@ -56,7 +56,7 @@ class ExperimentEnv:
 
         self.hand.grasp()
 
-    def move_to_joint_values(self, values):
+    def move_to_joint_values(self, values, wait=False):
 
-        result = self.arm.set_trajectory_joints(values)
+        result = self.arm.set_trajectory_joints(values, wait=wait)
 
