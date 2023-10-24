@@ -16,6 +16,14 @@ class ExperimentEnv:
         rospy.sleep(2)
         self.ready = self.arm.init_success and self.tactile.init_success
 
+        self.joints_true_socket_pos = [-0.045325178653,
+                                       0.665507674217,
+                                       0.0672930404544,
+                                       -1.50247347355,
+                                       -0.0503565631807,
+                                       0.975263118744,
+                                       -1.53515446186]
+
     def get_obs(self):
         ft = self.arm.robotiq_wrench_filtered_state.tolist()
         left, right, bottom = self.tactile.get_frames()

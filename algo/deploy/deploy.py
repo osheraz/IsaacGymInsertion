@@ -296,7 +296,7 @@ class HardwarePlayer(object):
         cfg_ctrl = {'num_envs': 1,
                     'jacobian_type': 'geometric'}
 
-        for _ in range(5):
+        for _ in range(10):
 
             info = self.env.get_info_for_control()
             ee_pose = info['ee_pose']
@@ -318,6 +318,9 @@ class HardwarePlayer(object):
             self.apply_action(actions=actions, do_scale=False, do_clamp=False, wait=True)
 
     def update_and_apply_action(self, actions, wait=True):
+
+        actions[:, :] = 0
+        actions[:,0] = 1
 
         self.actions = actions.clone().to(self.device)
 
@@ -431,24 +434,28 @@ class HardwarePlayer(object):
         hz = 100
         ros_rate = rospy.Rate(hz)
 
-        # TODO index the real objects
         self._create_asset_info()
         self._acquire_task_tensors()
-
-        true_socket_pose = [0.5, 0, 0.4]
-        self._set_socket_pose(pos=true_socket_pose)
-
-        true_plug_pose = [0.5, 0, 0.4]
-        above_plug_pose = [x + y for x, y in zip(true_plug_pose, [0, 0, 0.00])]
-        plug_grasp_pose = [x + y for x, y in zip(above_plug_pose, [0, 0, 0.00])]
-
-        self._set_plug_pose(pos=true_plug_pose)
-
-        # Grasp the object
         self.env.move_to_init_state()
 
-        self._move_arm_to_desired_pose(plug_grasp_pose)
+        true_socket_pose = [0.6, 0.0, 0.1]
+        above_socket_pose = [x + y for x, y in zip(true_socket_pose, [0, 0, 0.1])]
+        self._set_socket_pose(pos=true_socket_pose)
+
+        true_plug_pose = [0.6, 0.2, 0.1]
+        self._set_plug_pose(pos=true_plug_pose)
+
+        above_plug_pose = [x + y for x, y in zip(true_plug_pose, [0, 0, 0.1])]
+        plug_grasp_pose = [x + y for x, y in zip(true_plug_pose, [0, 0, 0.05])]
+
+        # # Move & grasp the object
+        # self._move_arm_to_desired_pose(above_plug_pose)
+        # self._move_arm_to_desired_pose(plug_grasp_pose)
         # self.env.grasp()
+        #
+        # self._move_arm_to_desired_pose(above_socket_pose)
+        # # self._move_arm_to_desired_pose(true_socket_pose)
+        # self.env.move_to_joint_values(self.env.joints_true_socket_pos)
 
         obs, obs_stud, tactile = self.compute_observations()
 
