@@ -37,9 +37,11 @@ from termcolor import cprint
 
 from algo.ppo.ppo import PPO
 from algo.ext_adapt.ext_adapt import ExtrinsicAdapt
+
 from isaacgyminsertion.tasks import isaacgym_task_map
 from isaacgyminsertion.utils.reformat import omegaconf_to_dict, print_dict
 from isaacgyminsertion.utils.utils import set_np_formatting, set_seed
+
 
 import warnings
 
@@ -54,6 +56,7 @@ def run(cfg: DictConfig):
 
     # set numpy formatting for printing only
     set_np_formatting()
+
 
     # global rank of the GPU
     if cfg.train.ppo.multi_gpu:
@@ -70,6 +73,24 @@ def run(cfg: DictConfig):
 
     # sets seed. if seed is -1 will pick a random one
     # cfg.seed = set_seed(cfg.seed, torch_deterministic=cfg.torch_deterministic, rank=global_rank)
+
+    # for training the transformer with offline data only
+    if cfg.offline_training:
+        from algo.models.transformer.runner import Runner as TransformerRunner 
+        from algo.models.transformer.frozen_ppo import PPO
+
+        agent = None
+        # initializing control (ppo) model if we are doing actor regularization
+        if cfg.offline_train.train.action_regularization:
+            agent = PPO(None, None, full_config=cfg)
+            agent.restore_test(cfg.train.load_path)
+            agent.set_eval()
+
+        # perform train
+        runner = TransformerRunner(cfg.offline_train, agent=agent)
+        runner.run()
+        
+        exit()
 
     cprint("Start Building the Environment", "green", attrs=["bold"])
 
@@ -94,8 +115,24 @@ def run(cfg: DictConfig):
     output_dif = os.path.join('outputs', str(datetime.now().strftime("%m-%d-%y")))
     output_dif = os.path.join(output_dif, str(datetime.now().strftime("%H-%M-%S")))
     os.makedirs(output_dif, exist_ok=True)
-    agent = eval(cfg.train.algo)(envs, output_dif, full_config=cfg)
 
+    if cfg.offline_training_w_env:
+        assert cfg.train.load_path
+        agent.restore_test(cfg.train.load_path)
+        from algo.models.transformer.runner import Runner as TransformerRunner 
+        from algo.models.transformer.frozen_ppo import PPO
+
+        agent = PPO(envs, output_dif, full_config=cfg)
+        # initializing control (ppo) model if we are doing actor regularization
+        # if cfg.offline_train.train.action_regularization:
+        agent.restore_test(cfg.train.load_path)
+        agent.set_eval()
+        # perform train
+        runner = TransformerRunner(cfg.offline_train, agent, action_regularization=cfg.offline_train.train.action_regularization)
+        runner.run()
+        exit()
+
+    agent = eval(cfg.train.algo)(envs, output_dif, full_config=cfg)
     if cfg.test:
         assert cfg.train.load_path
         agent.restore_test(cfg.train.load_path)

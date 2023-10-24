@@ -1,0 +1,36 @@
+seed: 42
+data_folder: "/common/users/dm1487/inhand_manipulation_data_store/datastore_20" # can include * for globbing
+output_dir: "/common/users/dm1487/isaacgym_new/python/IsaacGymInsertion/isaacgyminsertion/outputs/offline_student"
+
+train:
+  epochs: 40
+  train_batch_size: 16
+  val_batch_size: 32
+  learning_rate: 0.001
+  print_every: 50
+  eval_every: 250
+  train_test_split: 0.95
+  action_regularization: True
+
+model:
+  linear: 
+    input_size: 33
+    # TODO: add model layers here
+  cnn:
+    in_channels: 9
+    out_channels: 32
+    kernel_size: 5
+    # TODO: add model layers here
+  transformer:
+    sequence_length: ${...task.rl.max_episode_length}
+    embed_size: 256
+    hidden_size: 512
+    num_layers: 2
+    num_heads: 2
+    output_size: 8
+  
+wandb:
+  wandb_enabled: True
+  wandb_project_name: "tactile_manipulation"
+
+

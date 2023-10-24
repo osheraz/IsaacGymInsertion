@@ -171,28 +171,33 @@ class ActorCritic(nn.Module):
     def _actor_critic(self, obs_dict):
         obs = obs_dict['obs']
         extrin, extrin_gt = None, None
-        if self.priv_info:
-            if self.priv_info_stage2:
-                if self.tactile_info:
-                    extrin_tactile = self._tactile_encode(obs_dict['tactile_hist'])
-                if self.obs_info:
-                    extrin_obs = self.obs_mlp(obs_dict['student_obs'])
 
-                if self.obs_info and self.tactile_info:
-                    extrin = torch.cat([extrin_tactile, extrin_obs], dim=-1)
-                elif self.tactile_info:
-                    extrin = extrin_tactile
+        if 'latent' in obs_dict:
+            extrin = obs_dict['latent']
+            obs = torch.cat([obs, extrin], dim=-1)
+        else:
+            if self.priv_info:
+                if self.priv_info_stage2:
+                    if self.tactile_info:
+                        extrin_tactile = self._tactile_encode(obs_dict['tactile_hist'])
+                    if self.obs_info:
+                        extrin_obs = self.obs_mlp(obs_dict['student_obs'])
+
+                    if self.obs_info and self.tactile_info:
+                        extrin = torch.cat([extrin_tactile, extrin_obs], dim=-1)
+                    elif self.tactile_info:
+                        extrin = extrin_tactile
+                    else:
+                        extrin = extrin_obs
+                    # during supervised training, extrin has gt label
+                    extrin_gt = self.env_mlp(obs_dict['priv_info']) if 'priv_info' in obs_dict else extrin
+                    extrin_gt = torch.tanh(extrin_gt)
+                    extrin = torch.tanh(extrin)
+                    obs = torch.cat([obs, extrin], dim=-1)
                 else:
-                    extrin = extrin_obs
-                # during supervised training, extrin has gt label
-                extrin_gt = self.env_mlp(obs_dict['priv_info']) if 'priv_info' in obs_dict else extrin
-                extrin_gt = torch.tanh(extrin_gt)
-                extrin = torch.tanh(extrin)
-                obs = torch.cat([obs, extrin], dim=-1)
-            else:
-                extrin = self.env_mlp(obs_dict['priv_info'])
-                extrin = torch.tanh(extrin)  # constraining the projection space (everything in hypersphere of radius 2)
-                obs = torch.cat([obs, extrin], dim=-1)
+                    extrin = self.env_mlp(obs_dict['priv_info'])
+                    extrin = torch.tanh(extrin)  # constraining the projection space (everything in hypersphere of radius 2)
+                    obs = torch.cat([obs, extrin], dim=-1)
 
         x = self.actor_mlp(obs)
         value = self.value(x)

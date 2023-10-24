@@ -16,12 +16,13 @@ C=outputs/${CACHE}/stage1_nn/last.pth
 CUDA_VISIBLE_DEVICES=${GPUS} \
 python trainV2.py task=FactoryTaskInsertionTactile headless=${HEADLESS} seed=${SEED} \
 test=True \
-task.data_logger.collect_data=True \
 task.env.numEnvs=${NUM_ENVS} \
 task.env.tactile=True \
 task.env.tactile_history_len=1 \
 task.tactile.decoder.num_channels=3 \
 task.env.numObsHist=5 \
+task.data_logger.collect_data=True \
+task.data_logger.sub_folder="datastore_20" \
 train.algo=PPO \
 train.ppo.priv_info=True \
 train.ppo.extrin_adapt=False \

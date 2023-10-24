@@ -49,18 +49,15 @@ class PPO(object):
             self.rank = -1
             self.device = full_config["rl_device"]
         # ------
+        self.task_config = full_config.task
         self.network_config = full_config.train.network
         self.ppo_config = full_config.train.ppo
         # ---- build environment ----
         self.env = env
         self.num_actors = self.ppo_config['num_actors']
-        action_space = self.env.action_space
-        self.actions_num = action_space.shape[0]
-        self.actions_low = torch.from_numpy(action_space.low.copy()).float().to(self.device)
-        self.actions_high = torch.from_numpy(action_space.high.copy()).float().to(self.device)
-        self.observation_space = self.env.observation_space
-        self.obs_shape = self.observation_space.shape
-        print("OBS", self.obs_shape)
+        self.actions_num = self.task_config.env.numActions
+        
+        self.obs_shape = self.task_config.env.numObservations
         # ---- Tactile Info ---
         self.tactile_info = self.ppo_config["tactile_info"]
         self.tactile_seq_length = self.network_config.tactile_decoder.tactile_seq_length
@@ -84,7 +81,7 @@ class PPO(object):
         net_config = {
             'actor_units': self.network_config.mlp.units,
             'actions_num': self.actions_num,
-            'input_shape': self.obs_shape,
+            'input_shape': [self.obs_shape],
             'priv_mlp_units': self.network_config.priv_mlp.units,
             'extrin_adapt': self.extrin_adapt,
             'priv_info_dim': self.priv_info_dim,
@@ -110,13 +107,18 @@ class PPO(object):
         self.priv_mean_std = RunningMeanStd((self.priv_info_dim,)).to(self.device)
 
         self.value_mean_std = RunningMeanStd((1,)).to(self.device)
-        # ---- Output Dir ----
-        # allows us to specify a folder where all experiments will reside
-        self.output_dir = output_dif
-        self.nn_dir = os.path.join(self.output_dir, 'stage1_nn')
-        self.tb_dif = os.path.join(self.output_dir, 'stage1_tb')
-        os.makedirs(self.nn_dir, exist_ok=True)
-        os.makedirs(self.tb_dif, exist_ok=True)
+        if env is not None and not full_config.offline_training:
+            # ---- Output Dir ----
+            # allows us to specify a folder where all experiments will reside
+            self.output_dir = output_dif
+            self.nn_dir = os.path.join(self.output_dir, 'stage1_nn')
+            self.tb_dif = os.path.join(self.output_dir, 'stage1_tb')
+            os.makedirs(self.nn_dir, exist_ok=True)
+            os.makedirs(self.tb_dif, exist_ok=True)
+             # ---- Tensorboard Logger ----
+            self.extra_info = {}
+            writer = SummaryWriter(self.tb_dif)
+            self.writer = writer
 
         # ---- Optim ----
         self.last_lr = float(self.ppo_config['learning_rate'])
@@ -153,15 +155,12 @@ class PPO(object):
         self.save_freq = self.ppo_config['save_frequency']
         self.save_best_after = self.ppo_config['save_best_after']
 
-        # ---- Tensorboard Logger ----
-        self.extra_info = {}
-        writer = SummaryWriter(self.tb_dif)
-        self.writer = writer
+        
 
         # ---- Rollout Videos ----
         self.it = 0
-        self.log_video_every = self.env.cfg_task.env.record_video_every
-        self.log_ft_every = self.env.cfg_task.env.record_ft_every
+        self.log_video_every = self.task_config.env.record_video_every
+        self.log_ft_every = self.task_config.env.record_ft_every
 
         self.last_recording_it = 0
         self.last_recording_it_ft = 0
@@ -176,36 +175,34 @@ class PPO(object):
                                         self.horizon_length,
                                         self.batch_size,
                                         self.minibatch_size,
-                                        self.obs_shape[0],
+                                        self.obs_shape,
                                         self.actions_num,
                                         self.priv_info_dim,
                                         self.device, )
 
         # ---- Data Logger ----
         # getting the shapes for the data logger initialization
-        log_items = {
-            'arm_joints_shape': self.env.arm_dof_pos.shape[-1],
-            'eef_pos_shape': self.env.fingertip_centered_pos.size()[-1] + self.env.fingertip_centered_quat.size()[-1],
-            'socket_pos_shape': self.env.socket_pos.size()[-1] + self.env.socket_quat.size()[-1],
-            'noisy_socket_pos_shape': self.env.socket_pos.size()[-1] + self.env.socket_quat.size()[-1],
-            'plug_pos_shape': self.env.plug_pos.size()[-1] + self.env.plug_quat.size()[-1],
-            'action_shape': self.actions_num,
-            'target_shape': self.env.targets.shape[-1],
-            'tactile_shape': self.env.tactile_imgs.shape[1:],
-            'latent_shape': net_config['priv_mlp_units'][-1],
-            'rigid_physics_params_shape': self.env.rigid_physics_params.shape[-1],
-            'plug_socket_pos_error_shape': self.env.plug_socket_pos_error.shape[-1],
-            'plug_socket_quat_error_shape': self.env.plug_socket_quat_error.shape[-1],
-            'finger_normalized_forces_shape': self.env.finger_normalized_forces.shape[-1],
-            'plug_heights_shape': self.env.plug_heights.shape[-1],
-            'obs_hist_shape': self.env.obs_buf.shape[-1],
-            'priv_obs_shape': self.env.states_buf.shape[-1],
-        }
+        if env is not None and self.env.cfg_task.data_logger.collect_data:
+            log_items = {
+                'arm_joints_shape': self.env.arm_dof_pos.shape[-1],
+                'eef_pos_shape': self.env.fingertip_centered_pos.size()[-1] + self.env.fingertip_centered_quat.size()[-1],
+                'socket_pos_shape': self.env.socket_pos.size()[-1] + self.env.socket_quat.size()[-1],
+                'noisy_socket_pos_shape': self.env.socket_pos.size()[-1] + self.env.socket_quat.size()[-1],
+                'plug_pos_shape': self.env.plug_pos.size()[-1] + self.env.plug_quat.size()[-1],
+                'action_shape': self.actions_num,
+                'target_shape': self.env.targets.shape[-1],
+                'tactile_shape': self.env.tactile_imgs.shape[1:],
+                'latent_shape': net_config['priv_mlp_units'][-1],
+                'rigid_physics_params_shape': self.env.rigid_physics_params.shape[-1],
+                'plug_socket_pos_error_shape': self.env.plug_socket_pos_error.shape[-1],
+                'plug_socket_quat_error_shape': self.env.plug_socket_quat_error.shape[-1],
 
-        # initializing data logger, the device should be changed
-        self.data_logger_init = lambda x: DataLogger(self.env.num_envs, self.env.max_episode_length, self.env.device, os.path.join(self.env.cfg_task.data_logger.base_folder, self.env.cfg_task.data_logger.sub_folder), self.env.cfg_task.data_logger.total_trajectories, **log_items)
-        self.data_logger = None
-        
+            }
+
+            # initializing data logger, the device should be changed
+            self.data_logger_init = lambda x: DataLogger(self.env.num_envs, self.env.max_episode_length, self.env.device, os.path.join(self.env.cfg_task.data_logger.base_folder, self.env.cfg_task.data_logger.sub_folder), self.env.cfg_task.data_logger.total_trajectories, **log_items)
+            self.data_logger = None
+            
         batch_size = self.num_actors
         current_rewards_shape = (batch_size, 1)
         self.current_rewards = torch.zeros(current_rewards_shape, dtype=torch.float32, device=self.device)
@@ -329,6 +326,15 @@ class PPO(object):
             self.running_mean_std.load_state_dict(checkpoint['running_mean_std'])
             self.priv_mean_std.load_state_dict(checkpoint['priv_mean_std'])
 
+    def play_latent_step(self, obs_dict):
+        processed_obs = self.running_mean_std(obs_dict['obs'])
+        input_dict = {
+            'obs': processed_obs,
+            'latent': obs_dict['latent'],
+        }
+        action, latent = self.model.act_inference(input_dict)
+        return action, latent
+
     def log_trajectory_data(self, action, latent, done):
 
         eef_pos = torch.cat(self.env.pose_world_to_robot_base(self.env.fingertip_centered_pos.clone(), self.env.fingertip_centered_quat.clone()), dim=-1)
@@ -338,12 +344,6 @@ class PPO(object):
         rigid_physics_params = self.env.rigid_physics_params.clone()
         plug_socket_pos_error = self.env.plug_socket_pos_error.clone()
         plug_socket_quat_error = self.env.plug_socket_quat_error.clone()
-
-        finger_normalized_forces = self.env.finger_normalized_forces.clone()
-        plug_heights = self.env.plug_heights.clone()
-
-        obs_hist = self.env.obs_buf.clone()
-        priv_obs = self.env.states_buf.clone()
 
         log_data = {
             'arm_joints': self.env.arm_dof_pos,
@@ -358,10 +358,6 @@ class PPO(object):
             'rigid_physics_params': rigid_physics_params,
             'plug_socket_pos_error': plug_socket_pos_error,
             'plug_socket_quat_error': plug_socket_quat_error,
-            'finger_normalized_forces': finger_normalized_forces,
-            'plug_heights': plug_heights,
-            'obs_hist': obs_hist,
-            'priv_obs': priv_obs,
             'done': done
         }
 
@@ -372,7 +368,9 @@ class PPO(object):
         obs_dict = self.env.reset()
         action, latent, done = None, None, None
         while True:
+            
             self.log_video()
+            
             input_dict = {
                 'obs': self.running_mean_std(obs_dict['obs']),
                 'priv_info': self.priv_mean_std(obs_dict['priv_info']),
@@ -603,6 +601,16 @@ class PPO(object):
         self.storage.data_dict['values'] = values
         self.storage.data_dict['returns'] = returns
 
+    # def play_steps_tactile(self, get_latent):
+    #     self.obs = self.env.reset()
+    #     while True:
+    #         self.log_video()
+    #         latent = get_latent()
+    #         obs_dict = {
+    #             'obs': self.running_mean_std(self.obs['obs']),
+    #             'priv_info': self.priv_mean_std(self.obs['priv_info']),
+    #         }
+    #         res_dict = self.model.act_inference(self.obs)
 
 def policy_kl(p0_mu, p0_sigma, p1_mu, p1_sigma):
     c1 = torch.log(p1_sigma / p0_sigma + 1e-5)

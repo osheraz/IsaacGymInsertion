@@ -190,6 +190,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         # state tensors
         self.plug_socket_pos_error, self.plug_socket_quat_error = torch.zeros((self.num_envs, 3), device=self.device), torch.zeros((self.num_envs, 4), device=self.device)
         self.rigid_physics_params = torch.zeros((self.num_envs, 6), device=self.device, dtype=torch.float) # TODO: Take num_params to config 
+        self.finger_normalized_forces = torch.zeros((self.num_envs, 3), device=self.device, dtype=torch.float)
 
         if self.cfg_task.env.compute_contact_gt:
             self.gt_extrinsic_contact = torch.zeros(
@@ -444,7 +445,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         is_last_step = (self.progress_buf[0] == self.max_episode_length - 1)
 
         update_tactile = False
-        if (self.temp_ctr % 3) == 0:
+        if (self.temp_ctr % self.cfg_task.tactile.tactile_freq) == 0:
             update_tactile = True
         self.temp_ctr += 1
         
@@ -651,7 +652,12 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                 )
             # todo should be added to priv.
         
-        normalize_forces = lambda x: (torch.clamp(torch.norm(x, dim=-1), 0, 100)/100).view(-1, 1)
+        # fingertip forces
+        normalize_forces = lambda x: (torch.clamp(torch.norm(x, dim=-1), 0, 100)/100).view(-1)
+        self.finger_normalized_forces[:, 0] = normalize_forces(self.left_finger_force.clone())
+        self.finger_normalized_forces[:, 1] = normalize_forces(self.right_finger_force.clone())
+        self.finger_normalized_forces[:, 2] = normalize_forces(self.middle_finger_force.clone())
+
         state_tensors = [
             #  add delta error
             socket_tip_wrt_robot[0],  # 3
@@ -661,11 +667,8 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             plug_socket_pos_error, # 3
             plug_socket_quat_error, # 4
             physics_params,  # 6 (plug_mass, plug_friction, socket_friction, left finger friction, right finger friction, middle finger friction)
-            # TODO: add friction of fingertips
             # TODO: should we add the gripper targer pos ( pos is the same as socket, orientation as different)
-            normalize_forces(self.left_finger_force.clone()),  # 1
-            normalize_forces(self.right_finger_force.clone()),  # 1
-            normalize_forces(self.middle_finger_force.clone()),  # 1
+            self.finger_normalized_forces,  # 3
             # self.socket_contact_force.clone()  # 3
             # TODO: add object shapes -- bring diameter
             self.plug_heights,  # 1
@@ -1322,9 +1325,10 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         return self.obs_dict, self.rew_buf, self.reset_buf, self.extras
 
     def reset(self):
-        super().reset()
-        self._refresh_task_tensors(update_tactile=True)
+        self.reset_idx(torch.arange(self.num_envs, device=self.device))
         self.compute_observations()
+        # self._refresh_task_tensors(update_tactile=True)
+        super().reset()
         self.obs_dict['priv_info'] = self.obs_dict['states'].to(self.rl_device)
         self.obs_dict['student_obs'] = self.obs_student_buf.to(self.rl_device)
         self.obs_dict['tactile_hist'] = self.tactile_queue.to(self.rl_device)

@@ -10,8 +10,9 @@ physics_engine: ${..physics_engine}
 
 data_logger:
     collect_data: False
-    folder: "/common/users/dm1487/inhand_manipulation_data_store/datastore_6"
-    total_trajectories: 2000
+    base_folder: "/common/users/dm1487/inhand_manipulation_data_store"
+    sub_folder: "datastore_10"
+    total_trajectories: 2500
 
 tactile:
   tacto:
@@ -22,6 +23,7 @@ tactile:
   with_bg: True # add background reference frame
   show_depth: True # visualize depth
   show_detect: False # visulize detection work only if true and show_depth true
+  tactile_freq: 2
 
   decoder:
     width: 64

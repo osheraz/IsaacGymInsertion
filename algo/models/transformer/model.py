@@ -5,7 +5,7 @@ import math
 
 
 class TactileTransformer(nn.Module):
-    def __init__(self, lin_input_size, in_channels, out_channels, kernel_size, embed_size, hidden_size, num_heads, max_sequence_length, num_layers, layer_norm=True):
+    def __init__(self, lin_input_size, in_channels, out_channels, kernel_size, embed_size, hidden_size, num_heads, max_sequence_length, num_layers, output_size, layer_norm=True):
         super(TactileTransformer, self).__init__()
 
         self.batch_first = True
@@ -33,13 +33,14 @@ class TactileTransformer(nn.Module):
             self.layer_norm_out = nn.LayerNorm(embed_size)
       
         self.dropout = nn.Dropout(0.2)
-        self.out = nn.Sequential(nn.Linear(embed_size, 64), nn.ELU(), nn.Dropout(0.2), nn.Linear(64, 32))
+        self.out = nn.Sequential(nn.Linear(embed_size, 64), nn.ELU(), nn.Dropout(0.2), nn.Linear(64, output_size))
     
-    def forward(self, cnn_input, lin_input, batch_size, src_mask=None):
+    def forward(self, cnn_input, lin_input, batch_size, embed_size, src_mask=None):
         
         lin_x = self.linear_in(lin_input)
-        cnn_x = self.cnn_embedding(cnn_input).view(batch_size, self.max_sequence_length, -1)
 
+        cnn_x = self.cnn_embedding(cnn_input).view(batch_size, self.max_sequence_length, embed_size)
+        
         x = torch.cat([lin_x, cnn_x], dim=-1)
 
         if self.layer_norm:
@@ -56,6 +57,7 @@ class TactileTransformer(nn.Module):
         x = self.dropout(x)
         x = self.activation(x)
         x = self.out(x)
+        x = torch.tanh(x)
         return x
 
 class PositionalEncoding(nn.Module):
@@ -104,12 +106,14 @@ class ConvEmbedding(nn.Module):
         x = self.dropout2(x)
         return x.flatten(start_dim=1)
     
-if __name__ == "__main__":
+# for tests
+# if __name__ == "__main__":
 
-    transformer = TactileTransformer(33, 9, 32, 5, 256, 256, 2, 100, 2)
+#     transformer = TactileTransformer(33, 9, 32, 5, 256, 256, 2, 100, 2)
 
-    lin_x = torch.randn(2, 100, 33)
-    cnn_x = torch.randn(2 * 100, 9, 64, 64)
+#     lin_x = torch.randn(2, 100, 33)
+#     cnn_x = torch.randn(2, 100, 9, 64, 64)
+#     cnn_x = cnn_x.view(2*100, 9, 64, 64)
 
-    x = transformer(cnn_x, lin_x, 2)
-    print(x.shape)
+#     x = transformer(cnn_x, lin_x, 2)
+#     print(x.shape)
