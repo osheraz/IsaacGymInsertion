@@ -300,9 +300,9 @@ class DataLogger():
         self.env_step_counter += 1
         dones = done.to(torch.long).nonzero()
         if len(dones) > 0:
-            self.pbar.update(len(dones))
             save_env_ids = dones.squeeze(1)
             if save_trajectory:
+                self.pbar.update(len(dones))
                 self.trajectory_ctr += len(dones)
                 for save_env_id in save_env_ids:
                     batch_data = {key: self.log_data[key][save_env_id, ...].clone().cpu() for key in self.log_data}

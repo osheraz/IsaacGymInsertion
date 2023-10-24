@@ -56,7 +56,7 @@ class Runner:
                 loss_action = self.loss_fn(pred_action.view(*action.shape), action)
                 loss_action = torch.sum(loss_action*mask)/torch.sum(mask)
 
-                    # TODO: add scaling loss coefficients
+                # TODO: add scaling loss coefficients
                 loss += loss_action
                 with torch.no_grad():
                     action_loss_list.append(loss_action.item())
@@ -87,9 +87,7 @@ class Runner:
 
             if (i+1) % test_every == 0:
                 self.test()
-                print(f'validation loss: {np.mean(val_loss)}')
                 self.model.train()
-                val_loss = 0.
             
         return val_loss
 
@@ -131,8 +129,15 @@ class Runner:
         return np.mean(val_loss)
 
     def test(self):
-        self.agent.test(self.predict)
-
+        num_success, total_trials = self.agent.test(self.predict)
+        if total_trials > 0:
+            print(f'{num_success}/{total_trials}, success rate on :', num_success/total_trials)
+            self._wandb_log({
+                'test/success_rate': num_success/total_trials
+            })
+        else:
+            print('something went wrong, there are no test trials')
+    
     def load_model(self, model_path, device='cuda:0'):
         self.model = torch.jit.load(model_path)
         self.device = device
@@ -145,7 +150,7 @@ class Runner:
             out = self.model(cnn_input, lin_input, src_mask=self.src_mask, batch_size=lin_input.shape[0], embed_size=self.cfg.model.transformer.embed_size//2)
         return out.detach()
 
-    def _run(self, file_list, save_folder, epochs=100, train_test_split=0.9, train_batch_size=32, val_batch_size=32, learning_rate=1e-4, device='cuda:0', print_every=50, eval_every=250):
+    def _run(self, file_list, save_folder, epochs=100, train_test_split=0.9, train_batch_size=32, val_batch_size=32, learning_rate=1e-4, device='cuda:0', print_every=50, eval_every=250, test_every=500):
 
         random.shuffle(file_list)
         print('# trajectories:', len(file_list))
@@ -176,7 +181,7 @@ class Runner:
         
         # training
         for epoch in range(epochs):
-            val_loss = self.train(train_dl, val_dl, ckpt_path, print_every=print_every, eval_every=eval_every)
+            val_loss = self.train(train_dl, val_dl, ckpt_path, print_every=print_every, eval_every=eval_every, test_every=test_every)
             self.scheduler.step(val_loss)
             
             torch.save(self.model.state_dict(), f'{ckpt_path}/model_{epoch}.pt')

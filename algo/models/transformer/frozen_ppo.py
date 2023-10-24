@@ -185,6 +185,7 @@ class PPO(object):
         # getting the shapes for the data logger initialization
         self.data_logger = None
         if env is not None and (self.env.cfg_task.data_logger.collect_data or self.full_config.offline_training_w_env):
+            # getting the shapes for the data logger initialization
             log_items = {
                 'arm_joints_shape': self.env.arm_dof_pos.shape[-1],
                 'eef_pos_shape': self.env.fingertip_centered_pos.size()[-1] + self.env.fingertip_centered_quat.size()[-1],
@@ -198,7 +199,10 @@ class PPO(object):
                 'rigid_physics_params_shape': self.env.rigid_physics_params.shape[-1],
                 'plug_socket_pos_error_shape': self.env.plug_socket_pos_error.shape[-1],
                 'plug_socket_quat_error_shape': self.env.plug_socket_quat_error.shape[-1],
-
+                'finger_normalized_forces_shape': self.env.finger_normalized_forces.shape[-1],
+                'plug_heights_shape': self.env.plug_heights.shape[-1],
+                'obs_hist_shape': self.env.obs_buf.shape[-1],
+                'priv_obs_shape': self.env.states_buf.shape[-1],
             }
 
             # initializing data logger, the device should be changed
@@ -349,6 +353,12 @@ class PPO(object):
         plug_socket_pos_error = self.env.plug_socket_pos_error.clone()
         plug_socket_quat_error = self.env.plug_socket_quat_error.clone()
 
+        finger_normalized_forces = self.env.finger_normalized_forces.clone()
+        plug_heights = self.env.plug_heights.clone()
+
+        obs_hist = self.env.obs_buf.clone()
+        priv_obs = self.env.states_buf.clone()
+
         log_data = {
             'arm_joints': self.env.arm_dof_pos,
             'eef_pos': eef_pos,
@@ -362,6 +372,10 @@ class PPO(object):
             'rigid_physics_params': rigid_physics_params,
             'plug_socket_pos_error': plug_socket_pos_error,
             'plug_socket_quat_error': plug_socket_quat_error,
+            'finger_normalized_forces': finger_normalized_forces,
+            'plug_heights': plug_heights,
+            'obs_hist': obs_hist,
+            'priv_obs': priv_obs,
             'done': done
         }
 
@@ -624,7 +638,10 @@ class PPO(object):
                 self.log_trajectory_data(action, latent, done, save_trajectory=save_trajectory)
         
         self.env_ids = torch.arange(self.env.num_envs).view(-1, 1)
-        for _ in range(500):
+        total_dones = 0
+        total_env_runs = 50 # add this to config
+        num_success = 0
+        while total_dones < total_env_runs:
             # log video during test
             self.log_video()
             # getting data from data logger
@@ -645,11 +662,18 @@ class PPO(object):
             action, latent = self.model.act_inference(obs_dict)
             action = torch.clamp(action, -1.0, 1.0)
             self.obs, r, done, info = self.env.step(action)
+            
+            num_success += self.env.success_reset_buf[done.nonzero()].sum()
+            # print(self.env.success_reset_buf[done.nonzero()])
 
             # logging data
             if save_trajectory or offline_test:
+                if offline_test: # only for offline test we record successful
+                    total_dones += len(done.nonzero())
                 self.log_trajectory_data(action, latent, done, save_trajectory=save_trajectory)
 
+        return num_success, total_dones
+        
     def _make_data(self, data):
         # This function is used to make the data for the student model
 
