@@ -264,13 +264,21 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
         """Set initial actor poses. Create actors. Set shape and DOF properties."""
 
         kuka_pose = gymapi.Transform()
-        kuka_pose.p.x = self.cfg_base.env.kuka_depth
+        # kuka_pose.p.x = self.cfg_base.env.kuka_depth
+        # kuka_pose.p.y = 0.0
+        # kuka_pose.p.z = 0.0
+        # kuka_pose.r = gymapi.Quat(0.0, 0.0, 1.0, 0.0)
+        kuka_pose.p.x = 0
         kuka_pose.p.y = 0.0
         kuka_pose.p.z = 0.0
-        kuka_pose.r = gymapi.Quat(0.0, 0.0, 1.0, 0.0)
+        kuka_pose.r = gymapi.Quat(0.0, 0.0, 0.0, 1.0)
 
         table_pose = gymapi.Transform()
-        table_pose.p.x = 0.0
+        # table_pose.p.x = 0.0
+        # table_pose.p.y = 0.0
+        # table_pose.p.z = self.cfg_base.env.table_height * 0.5
+        # table_pose.r = gymapi.Quat(0.0, 0.0, 0.0, 1.0)
+        table_pose.p.x = self.cfg_base.env.kuka_depth
         table_pose.p.y = 0.0
         table_pose.p.z = self.cfg_base.env.table_height * 0.5
         table_pose.r = gymapi.Quat(0.0, 0.0, 0.0, 1.0)
@@ -350,19 +358,29 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
             components = list(self.asset_info_insertion[subassembly])
 
             plug_pose = gymapi.Transform()
-            plug_pose.p.x = 0.0
+            # plug_pose.p.x = 0.0
+            # plug_pose.p.y = self.cfg_env.env.plug_lateral_offset
+            # plug_pose.p.z = self.cfg_base.env.table_height
+            # plug_pose.r = gymapi.Quat(0.0, 0.0, 0.0, 1.0)
+            plug_pose.p.x = self.cfg_base.env.kuka_depth
             plug_pose.p.y = self.cfg_env.env.plug_lateral_offset
             plug_pose.p.z = self.cfg_base.env.table_height
             plug_pose.r = gymapi.Quat(0.0, 0.0, 0.0, 1.0)
+
             plug_handle = self.gym.create_actor(env_ptr, plug_assets[j], plug_pose, 'plug', i, 0, 0)
             self.plug_actor_ids_sim.append(actor_count)
             actor_count += 1
 
             socket_pose = gymapi.Transform()
-            socket_pose.p.x = 0.0
+            # socket_pose.p.x = 0.0
+            # socket_pose.p.y = 0.0
+            # socket_pose.p.z = self.cfg_base.env.table_height
+            # socket_pose.r = gymapi.Quat(0.0, 0.0, 0.0, 1.0)
+            socket_pose.p.x = self.cfg_base.env.kuka_depth
             socket_pose.p.y = 0.0
             socket_pose.p.z = self.cfg_base.env.table_height
             socket_pose.r = gymapi.Quat(0.0, 0.0, 0.0, 1.0)
+
             socket_handle = self.gym.create_actor(env_ptr, socket_assets[j], socket_pose, 'socket', i, 0, 0)
             self.socket_actor_ids_sim.append(actor_count)
             actor_count += 1
