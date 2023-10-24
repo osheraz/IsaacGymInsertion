@@ -68,7 +68,7 @@ randomize:
                 # schedule_steps: 40000
         actor_params:
             kuka:
-                color: True
+                color: False
                 dof_properties:
                     lower:
                         range: [ 0, 0.01 ]
@@ -85,7 +85,7 @@ randomize:
                 rigid_shape_properties:
                     friction:
                         num_buckets: 250
-                        range: [ 0.5, 1.5 ]
+                        range: [ 0.9, 1.1 ]
                         operation: "scaling"
                         distribution: "uniform"
             plug:

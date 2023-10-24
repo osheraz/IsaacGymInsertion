@@ -8,7 +8,7 @@ import numpy as np
 from std_srvs.srv import Empty, EmptyResponse
 from iiwa_msgs.msg import JointQuantity, JointPosition
 from geometry_msgs.msg import PoseStamped
-from std_msgs.msg import Float32MultiArray
+from std_msgs.msg import Float32MultiArray, Time
 from tutorial.msg import Jacobian
 
 class MoveManipulatorServiceWrap():
@@ -36,6 +36,7 @@ class MoveManipulatorServiceWrap():
         rospy.Subscriber('/iiwa/Jacobian', Float32MultiArray, self.callback_jacob)
         rospy.Subscriber('/iiwa/Joints', JointPosition, self.callback_joints)
         rospy.Subscriber('/iiwa/Pose', PoseStamped, self.callback_pose)
+        self.pub_joints_api = rospy.Publisher('/iiwa/command/JointPosition', JointPosition, queue_size=1)
 
         rospy.wait_for_message('/iiwa/Joints', JointPosition)
         rospy.wait_for_message('/iiwa/Pose', PoseStamped)
@@ -115,22 +116,43 @@ class MoveManipulatorServiceWrap():
         req.wait = wait
         self.moveit_move_eef_pose_srv(req)
 
-    def joint_traj(self, positions_array, wait=True):
-        js = JointQuantity()
+    def joint_traj(self, positions_array, wait=True, by_moveit=True):
 
-        js.a1 = positions_array[0]
-        js.a2 = positions_array[1]
-        js.a3 = positions_array[2]
-        js.a4 = positions_array[3]
-        js.a5 = positions_array[4]
-        js.a6 = positions_array[5]
-        js.a7 = positions_array[6]
+        if by_moveit:
+            js = JointQuantity()
+            js.a1 = positions_array[0]
+            js.a2 = positions_array[1]
+            js.a3 = positions_array[2]
+            js.a4 = positions_array[3]
+            js.a5 = positions_array[4]
+            js.a6 = positions_array[5]
+            js.a7 = positions_array[6]
 
-        req = MoveitMoveJointPositionRequest()
-        req.pos = js
-        req.wait = wait
+            req = MoveitMoveJointPositionRequest()
+            req.pos = js
+            req.wait = wait
 
-        self.moveit_move_joints_srv(req)
+            self.moveit_move_joints_srv(req)
+        else:
+
+            msg = rospy.wait_for_message('/iiwa/state/JointPosition', JointPosition)
+
+            js = JointPosition()
+            js.header.seq = 1
+            js.header.stamp = rospy.Time(0)
+            js.header.frame_id = "world"
+            # js.header = msg.header
+            js.position.a1 = positions_array[0]
+            js.position.a2 = positions_array[1]
+            js.position.a3 = positions_array[2]
+            js.position.a4 = positions_array[3]
+            js.position.a5 = positions_array[4]
+            js.position.a6 = positions_array[5]
+            js.position.a7 = positions_array[6]
+
+            self.pub_joints_api.publish(js)
+            if wait:
+                rospy.wait_for_message('/iiwa/state/DestinationReached', Time)
 
         return True
 
@@ -158,28 +180,28 @@ if __name__ == '__main__':
 
     # Init tests
 
-    print(moveit_test.get_jacobian_matrix())
-    print(moveit_test.get_cartesian_pose())
-    print(moveit_test.joint_values())
+    # print(moveit_test.get_jacobian_matrix())
+    # print(moveit_test.get_cartesian_pose())
+    # print(moveit_test.joint_values())
 
-    from time import time
-    np.set_printoptions(5)
-    last = 0
-    while True:
-        start_time = time()
-
-        # a = moveit_test.get_cartesian_pose()
-        b = moveit_test.get_jacobian_matrix()
-        c = moveit_test.get_jacobian_matrix_moveit()
-        # print(moveit_test.get_cartesian_pose())
-
-        print((b - c).max())
-        # c = moveit_test.joint_values()
-        rate.sleep()
-        # print("FPS: ", 1.0 / (time() - start_time))  # FPS = 1 / time to process loop
+    # from time import time
+    # np.set_printoptions(5)
+    # last = 0
+    # while True:
+    #     start_time = time()
+    #
+    #     # a = moveit_test.get_cartesian_pose()
+    #     b = moveit_test.get_jacobian_matrix()
+    #     c = moveit_test.get_jacobian_matrix_moveit()
+    #     # print(moveit_test.get_cartesian_pose())
+    #
+    #     print((b - c).max())
+    #     # c = moveit_test.joint_values()
+    #     rate.sleep()
+    #     # print("FPS: ", 1.0 / (time() - start_time))  # FPS = 1 / time to process loop
 
     #
     # # Move stuff
-    # init_pose = [0.0064, 0.2375,  -0.0075,  -1.2022, 0.0015,  1.6900,  -1.5699]
-    # moveit_test.joint_traj(init_pose, wait=True)
+    init_pose = [0.0064, 0.2375,  -0.0075,  -1.2022, 0.0015,  1.6900,  -1.5699]
+    moveit_test.joint_traj(init_pose, wait=True, by_moveit=False)
 

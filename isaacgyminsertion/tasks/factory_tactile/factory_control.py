@@ -58,7 +58,7 @@ def compute_dof_pos_target(cfg_ctrl,
         ctrl_target_fingertip_midpoint_quat=ctrl_target_fingertip_midpoint_quat,
         jacobian_type=cfg_ctrl['jacobian_type'],
         rot_error_type='axis_angle')
-
+    
     delta_fingertip_pose = torch.cat((pos_error, axis_angle_error), dim=1)
     delta_arm_dof_pos = _get_delta_dof_pos(delta_pose=delta_fingertip_pose,
                                            ik_method=cfg_ctrl['ik_method'],

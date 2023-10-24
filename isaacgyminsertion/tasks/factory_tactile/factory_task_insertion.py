@@ -398,6 +398,10 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             self.reset_idx(env_ids)
 
         self.actions = actions.clone().to(self.device)  # shape = (num_envs, num_actions); values = [-1, 1]
+        # test actions for whenever we want to see some axis motion #
+        # self.actions[:, :] = 0.
+        # self.actions[:, 0] = 1.
+        ############################ 
         delta_targets = torch.cat([
             self.actions[:, :3] @ torch.diag(torch.tensor(self.cfg_task.rl.pos_action_scale, device=self.device)),  # 3
             self.actions[:, 3:6] @ torch.diag(torch.tensor(self.cfg_task.rl.rot_action_scale, device=self.device))  # 3
@@ -723,8 +727,6 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
     def _update_reset_buf(self):
         """Assign environments for reset if successful or failed."""
 
-        # print('before', self.reset_buf)
-
         # if successfully inserted to a certain threshold
         self.success_reset_buf[:] = self._check_plug_inserted_in_socket()
         if self.cfg_task.data_logger.collect_data:
@@ -736,37 +738,22 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                                         self.reset_buf)
         self.reset_buf[:] = self.timeout_reset_buf[:]
 
-        # print('max episode length', self.reset_buf)
-
         # check is object is grasped and reset if not
-
-        # d = torch.norm(self.fingertip_midpoint_pos - self.plug_com_pos, p=2, dim=-1)
         roll, pitch, _ = get_euler_xyz(self.plug_quat.clone())
         roll[roll > np.pi] -= 2 * np.pi
         pitch[pitch > np.pi] -= 2 * np.pi
         self.degrasp_buf[:] = (torch.abs(roll) > 0.4) | (torch.abs(pitch) > 0.4)
-        # is_not_grasped = d >= self.cfg_task.env.plug_grasp_threshold
+
+        # check if object is too far from gripper
         fingertips_plug_dist = (torch.norm(self.left_finger_pos - self.plug_pos, p=2, dim=-1) > 0.12) | (torch.norm(self.right_finger_pos - self.plug_pos, p=2, dim=-1) > 0.12) | (torch.norm(self.middle_finger_pos - self.plug_pos, p=2, dim=-1) > 0.12)
         self.degrasp_buf[:] |= fingertips_plug_dist
         # reset_envs = d.nonzero()
         self.reset_buf[:] |= self.degrasp_buf[:]
 
-        # print('object is grasped', d, self.cfg_task.env.plug_grasp_threshold, self.reset_buf)
-
         # If plug is too far from socket pos
         self.dist_plug_socket = torch.norm(self.plug_pos - self.socket_pos, p=2, dim=-1)
         self.far_from_goal_buf[:] = self.dist_plug_socket > 0.2 #  self.cfg_task.rl.far_error_thresh,
         self.reset_buf[:] |= self.far_from_goal_buf[:]
-        # print('plug is too far', self.reset_buf)
-
-        # self.dist_plug_fingertips = torch.norm(self.plug_pos - self.fingert, p=2, dim=-1)
-        # print(self.left_finger_pos, self.right_finger_pos, self.middle_finger_pos, self.plug_pos)
-
-        # print((torch.norm(self.left_finger_pos - self.plug_pos, p=2, dim=-1) > 0.12) | (torch.norm(self.right_finger_pos - self.plug_pos, p=2, dim=-1) > 0.12) | (torch.norm(self.middle_finger_pos - self.plug_pos, p=2, dim=-1) > 0.12))
-
-        # print(torch.norm(self.fingertip_centered_pos - self.plug_tip_pos, p=2, dim=-1))
-
-        # self.reset_buf[:] = self._check_plug_inserted_in_socket() * self.reset_buf
 
     def _reset_environment(self, env_ids):
 

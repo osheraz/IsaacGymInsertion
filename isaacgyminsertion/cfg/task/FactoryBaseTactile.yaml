@@ -38,6 +38,6 @@ sim:
 env:
     env_spacing: 0.5
     kuka_depth: 0.5
-    table_height: 0.4
+    table_height: 0.1
     kuka_friction: 1.0
     table_friction: 0.3
