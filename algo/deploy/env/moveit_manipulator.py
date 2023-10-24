@@ -12,12 +12,13 @@ from tactile_insertion.srv import MoveitJacobianResponse, MoveitMoveJointPositio
 from std_msgs.msg import String
 from std_srvs.srv import Empty, EmptyResponse
 
-import iiwa_msgs.msg
-from std_msgs.msg import Header
+from iiwa_msgs.msg import JointQuantity, JointPosition
+from std_msgs.msg import Header, Float32MultiArray
 from geometry_msgs.msg import Point, Pose, PoseStamped, Quaternion
 import copy
 import sys
 import numpy as np
+import tf
 
 
 class MoveManipulator():
@@ -35,9 +36,11 @@ class MoveManipulator():
         self.group_names = self.robot.get_group_names()
         rospy.logdebug("===== Out MoveManipulator")
 
-    def get_jacobian_matrix(self):
+    def get_jacobian_matrix(self, joints=None):
+        if joints is None:
+            joints = self.group.get_current_joint_values()
 
-        jacob = self.group.get_jacobian_matrix(self.group.get_current_joint_values())
+        jacob = self.group.get_jacobian_matrix(joints)
 
         return jacob
 
@@ -300,8 +303,36 @@ class ServiceWrap:
         '''
         Just wraping everything cuz melodic dont like python3+
         '''
+        self.joints = None
+        self.pose = None
+        self.tl = tf.TransformListener()
 
         self.moveit = MoveManipulator()
+
+    def tf_trans(self, target_frame, source_frame):
+        try:
+            # listen to transform, from source to target. if source is 0 and target is 1 than A_0^1
+            (trans, rot) = self.tl.lookupTransform(target_frame, source_frame, rospy.Time(0))
+            return trans, rot
+        except (tf.LookupException, tf.ConnectivityException, tf.ExtrapolationException):
+            return 'couldnt find mat', None, None
+
+    def callback_iiwa_pose(self, msg):
+        # overwrite.
+        trans, rot = self.tf_trans('world', 'iiwa_link_ee')
+
+        msg.pose.position.x = trans[0]
+        msg.pose.position.y = trans[1]
+        msg.pose.position.z = trans[2]
+
+        msg.pose.orientation.x = rot[0]
+        msg.pose.orientation.y = rot[1]
+        msg.pose.orientation.z = rot[2]
+        msg.pose.orientation.w = rot[3]
+
+        self.pose = msg
+    def callback_iiwa_joints(self, msg):
+        self.joints = msg
 
     def callback_set_pose(self, req):
         res = MoveitMoveEefPoseResponse()
@@ -368,7 +399,7 @@ if __name__ == "__main__":
     '''
     rospy.init_node('arm_control', anonymous=True)
 
-    rate = rospy.Rate(200)
+    rate = rospy.Rate(100)
     wrap = ServiceWrap()
 
     rospy.Service("/MoveItMoveJointPosition", MoveitMoveJointPosition, wrap.callback_set_joints)
@@ -379,5 +410,37 @@ if __name__ == "__main__":
     rospy.Service("/MoveItScaleVelAndAcc", VelAndAcc, wrap.callback_set_vel_acc)
     rospy.Service("/Stop", Empty, wrap.callback_stop_motion)
 
+    pub_jacob = rospy.Publisher('/iiwa/Jacobian', Float32MultiArray, queue_size=10)
+    pub_joints = rospy.Publisher('/iiwa/Joints', JointPosition, queue_size=10)
+    pub_pose = rospy.Publisher('/iiwa/Pose', PoseStamped, queue_size=10)
+
+    rospy.Subscriber('/iiwa/state/JointPosition', JointPosition, wrap.callback_iiwa_joints)
+    rospy.Subscriber('/iiwa/state/CartesianPose', PoseStamped, wrap.callback_iiwa_pose)
+
+    rospy.wait_for_message('/iiwa/state/JointPosition', JointPosition)
+    rospy.wait_for_message('/iiwa/state/CartesianPose', PoseStamped)
+
+    rospy.logwarn('Starting to pub')
+
     while not rospy.is_shutdown():
+
+        joints = wrap.joints
+        pub_joints.publish(joints)
+
+        joints = [joints.position.a1,
+                  joints.position.a2,
+                  joints.position.a3,
+                  joints.position.a4,
+                  joints.position.a5,
+                  joints.position.a6,
+                  joints.position.a7]
+
+        jacob = np.array(wrap.moveit.get_jacobian_matrix(joints)).flatten().tolist()
+
+        msg = Float32MultiArray()
+        msg.data = jacob
+        pub_jacob.publish(msg)
+
+        pub_pose.publish(wrap.pose)
+
         rate.sleep()

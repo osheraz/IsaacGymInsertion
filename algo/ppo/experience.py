@@ -236,7 +236,7 @@ class DataLogger():
         self.pbar = tqdm(total=self.total_trajectories)
 
         self._init_buffers()
-        save_data = True
+        save_data = False
         if save_data:
             self.num_workers = 24
             try:
@@ -280,7 +280,7 @@ class DataLogger():
         q_id = np.random.randint(0, self.num_workers)
         self.q_s[q_id].put(data)
         
-    def update(self, **kwargs):
+    def update(self, save_trajectory=True, **kwargs):
 
         for key, value in kwargs.items():
             if key == "done":
@@ -301,14 +301,15 @@ class DataLogger():
         dones = done.to(torch.long).nonzero()
         if len(dones) > 0:
             self.pbar.update(len(dones))
-            self.trajectory_ctr += len(dones)
             save_env_ids = dones.squeeze(1)
-            for save_env_id in save_env_ids:
-                batch_data = {key: self.log_data[key][save_env_id, ...].clone().cpu() for key in self.log_data}
-                batch_data['done'] = self.done[save_env_id, ...].clone().cpu()
-                self._save_batch_trajectories(batch_data)
+            if save_trajectory:
+                self.trajectory_ctr += len(dones)
+                for save_env_id in save_env_ids:
+                    batch_data = {key: self.log_data[key][save_env_id, ...].clone().cpu() for key in self.log_data}
+                    batch_data['done'] = self.done[save_env_id, ...].clone().cpu()
+                    self._save_batch_trajectories(batch_data)
             self._reset_buffers(save_env_ids)
-            if self.trajectory_ctr >= self.total_trajectories:
+            if save_trajectory and (self.trajectory_ctr >= self.total_trajectories):
                 self.pbar.close()
                 for q in self.q_s:
                     q.put(None)
@@ -338,3 +339,8 @@ class DataLogger():
         except KeyboardInterrupt:
             print("Ctrl+C detected. Exiting gracefully.")
 
+    def get_data(self):
+        return self.log_data
+    
+    def reset(self):
+        self._reset_buffers(torch.arange(self.num_envs, dtype=torch.long, device=self.device).unsqueeze(-1))

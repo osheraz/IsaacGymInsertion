@@ -1,7 +1,7 @@
 #!/bin/bash
 CACHE=$1
 
-C=outputs/10-20-23/15-15-53/stage1_nn/last.pth
+C=outputs/10-18-23/16-49-49/stage1_nn/last.pth
 python trainV2.py task=FactoryTaskInsertionTactile headless=False pipeline=gpu \
 task.env.numEnvs=1 test=True \
 task.tactile.tacto.width=224 \

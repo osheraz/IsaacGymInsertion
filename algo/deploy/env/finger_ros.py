@@ -1,12 +1,13 @@
 import rospy
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge, CvBridgeError
-from finger import Finger
+from algo.deploy.env.finger import Finger
+from algo.deploy.env.env_utils.img_utils import ContactArea, circle_mask, align_center
 
 
 class TactileSubscriberFinger:
 
-    def __init__(self, dev_name):
+    def __init__(self, dev_name, fix):
         """
         Finger Device class for a single Finger
         :param serial: Finger device serial
@@ -15,11 +16,14 @@ class TactileSubscriberFinger:
 
         self._cv_bridge = CvBridge()
         self.dev_name = dev_name
+        self.fix = fix
         self._topic_name = rospy.get_param('~topic_name', 'allsight{}/usb_cam/image_raw'.format(dev_name))
         rospy.loginfo("(topic_name) Subscribing to Images to topic  %s", self._topic_name)
-        self._image_subscriber = rospy.Subscriber(self._topic_name, Image, self.image_callback, queue_size=2)
         self.init_success = False
         self._check_finger_ready()
+
+        self._image_subscriber = rospy.Subscriber(self._topic_name, Image, self.image_callback, queue_size=2)
+        self.mask_resized = circle_mask(size=(480, 480), fix=fix)
 
     def _check_finger_ready(self):
 
@@ -29,7 +33,7 @@ class TactileSubscriberFinger:
         while self.last_frame is None and not rospy.is_shutdown():
             try:
                 self.last_frame = rospy.wait_for_message(
-                    'allsight{}/usb_cam/image_raw'.format(self.dev_name), Image, timeout=5.0)
+                    '/allsight{}/usb_cam/image_raw'.format(self.dev_name), Image, timeout=5.0)
                 rospy.logdebug(
                     "Current '/allsight{}/usb_cam/image_raw' READY=>".format(self.dev_name))
                 self.init_success = True
@@ -49,7 +53,8 @@ class TactileSubscriberFinger:
             self.last_frame = cv2_img
 
     def get_frame(self):
-
+        if type(self.last_frame) == Image:
+            self.last_frame = self._cv_bridge.imgmsg_to_cv2(self.last_frame, "bgr8")
         return self.last_frame
 
 
@@ -97,8 +102,10 @@ class TactileFingerROSPublisher(Finger):
 
 
 if __name__ == "__main__":
-    tactile = Finger(dev_name=4, serial='/dev/video')
 
-    tactile.connect()
+    rospy.init_node('Finger')
+    tactile = TactileSubscriberFinger(dev_name=0, fix=(0, 0))
+    rate = rospy.Rate(60)
 
-    tactile.show_view(ref_frame=tactile.get_frame())
+    while not rospy.is_shutdown():
+        rate.sleep()

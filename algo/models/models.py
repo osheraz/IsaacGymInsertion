@@ -172,7 +172,7 @@ class ActorCritic(nn.Module):
         obs = obs_dict['obs']
         extrin, extrin_gt = None, None
 
-        if 'latent' in obs_dict:
+        if 'latent' in obs_dict and obs_dict['latent'] is not None:
             extrin = obs_dict['latent']
             obs = torch.cat([obs, extrin], dim=-1)
         else:

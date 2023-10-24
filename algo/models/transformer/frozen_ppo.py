@@ -49,6 +49,7 @@ class PPO(object):
             self.rank = -1
             self.device = full_config["rl_device"]
         # ------
+        self.full_config = full_config
         self.task_config = full_config.task
         self.network_config = full_config.train.network
         self.ppo_config = full_config.train.ppo
@@ -182,7 +183,8 @@ class PPO(object):
 
         # ---- Data Logger ----
         # getting the shapes for the data logger initialization
-        if env is not None and self.env.cfg_task.data_logger.collect_data:
+        self.data_logger = None
+        if env is not None and (self.env.cfg_task.data_logger.collect_data or self.full_config.offline_training_w_env):
             log_items = {
                 'arm_joints_shape': self.env.arm_dof_pos.shape[-1],
                 'eef_pos_shape': self.env.fingertip_centered_pos.size()[-1] + self.env.fingertip_centered_quat.size()[-1],
@@ -201,7 +203,6 @@ class PPO(object):
 
             # initializing data logger, the device should be changed
             self.data_logger_init = lambda x: DataLogger(self.env.num_envs, self.env.max_episode_length, self.env.device, os.path.join(self.env.cfg_task.data_logger.base_folder, self.env.cfg_task.data_logger.sub_folder), self.env.cfg_task.data_logger.total_trajectories, **log_items)
-            self.data_logger = None
             
         batch_size = self.num_actors
         current_rewards_shape = (batch_size, 1)
@@ -258,6 +259,9 @@ class PPO(object):
             'obs': processed_obs,
             'priv_info': processed_priv,
         }
+        if 'latent' in obs_dict and obs_dict['latent'] is not None:
+            input_dict['latent'] = obs_dict['latent']
+
         res_dict = self.model.act(input_dict)
         res_dict['values'] = self.value_mean_std(res_dict['values'], True)
         return res_dict
@@ -335,7 +339,7 @@ class PPO(object):
         action, latent = self.model.act_inference(input_dict)
         return action, latent
 
-    def log_trajectory_data(self, action, latent, done):
+    def log_trajectory_data(self, action, latent, done, save_trajectory=True):
 
         eef_pos = torch.cat(self.env.pose_world_to_robot_base(self.env.fingertip_centered_pos.clone(), self.env.fingertip_centered_quat.clone()), dim=-1)
         plug_pos = torch.cat(self.env.pose_world_to_robot_base(self.env.plug_pos.clone(), self.env.plug_quat.clone()), dim=-1)
@@ -361,9 +365,9 @@ class PPO(object):
             'done': done
         }
 
-        self.data_logger.update(**log_data)
+        self.data_logger.update(save_trajectory=save_trajectory, **log_data)
 
-    def test(self):
+    def test1(self):
         self.set_eval()
         obs_dict = self.env.reset()
         action, latent, done = None, None, None
@@ -379,13 +383,12 @@ class PPO(object):
             action = mu.clone()
             mu = torch.clamp(mu, -1.0, 1.0)
 
+            obs_dict, r, done, info = self.env.step(mu)
             # collect data
             if self.env.cfg_task.data_logger.collect_data:
                 if self.data_logger is None:
                     self.data_logger = self.data_logger_init(None)
                 self.log_trajectory_data(action, latent, done)
-
-            obs_dict, r, done, info = self.env.step(mu)
 
     def train_epoch(self):
         # collect minibatch data
@@ -601,16 +604,74 @@ class PPO(object):
         self.storage.data_dict['values'] = values
         self.storage.data_dict['returns'] = returns
 
-    # def play_steps_tactile(self, get_latent):
-    #     self.obs = self.env.reset()
-    #     while True:
-    #         self.log_video()
-    #         latent = get_latent()
-    #         obs_dict = {
-    #             'obs': self.running_mean_std(self.obs['obs']),
-    #             'priv_info': self.priv_mean_std(self.obs['priv_info']),
-    #         }
-    #         res_dict = self.model.act_inference(self.obs)
+    def test(self, get_latent=None):
+        # this will test either the student or the teacher model. (check if the student model can be tested within models)
+        self.obs = self.env.reset()
+        
+        action, latent, done = None, None, None
+
+        save_trajectory = self.env.cfg_task.data_logger.collect_data # in data collection phase this will be true
+        offline_test = self.full_config.offline_training_w_env # in offline_test this will be true
+        
+        # logging initial data only if one of the above is true
+        if save_trajectory or offline_test:
+            if self.data_logger is None:
+                self.data_logger = self.data_logger_init(None)
+            else:
+                self.data_logger.reset()
+            if not save_trajectory:
+                # record initial data for latent inference (not needed if recording trajectory data, TODO: check why?)
+                self.log_trajectory_data(action, latent, done, save_trajectory=save_trajectory)
+        
+        self.env_ids = torch.arange(self.env.num_envs).view(-1, 1)
+        for _ in range(500):
+            # log video during test
+            self.log_video()
+            # getting data from data logger
+            data = self.data_logger.get_data()
+            latent = None
+            if get_latent is not None:
+                # making data for the latent prediction from student model
+                cnn_input, lin_input = self._make_data(data)
+                # getting the latent data from the student model
+                latent = get_latent(cnn_input, lin_input)[self.env_ids, self.env.progress_buf.view(-1, 1), :].squeeze(1)
+                
+            # adding the latent to the obs_dict (if present test with student, else test with teacher)
+            obs_dict = {
+                'obs': self.running_mean_std(self.obs['obs']),
+                'priv_info': self.priv_mean_std(self.obs['priv_info']),
+                'latent': latent,
+            }
+            action, latent = self.model.act_inference(obs_dict)
+            action = torch.clamp(action, -1.0, 1.0)
+            self.obs, r, done, info = self.env.step(action)
+
+            # logging data
+            if save_trajectory or offline_test:
+                self.log_trajectory_data(action, latent, done, save_trajectory=save_trajectory)
+
+    def _make_data(self, data):
+        # This function is used to make the data for the student model
+
+        # cnn input
+        tactile = data["tactile"]
+
+        # linear input
+        arm_joints = data["arm_joints"]
+        eef_pos = data["eef_pos"]
+        noisy_socket_pos = data["noisy_socket_pos"]
+        action = data["action"]
+        target = data["target"]
+
+        # making the inputs
+        cnn_input = torch.cat([tactile[:, :, 0, ...], tactile[:, :,  1, ...], tactile[:, :,  2, ...]], dim=-1)
+        lin_input = torch.cat([arm_joints, eef_pos, noisy_socket_pos, action, target], dim=-1)
+
+        # converting to torch tensors
+        # cnn_input = torch.from_numpy(cnn_input).float()
+        # lin_input = torch.from_numpy(lin_input).float()
+
+        return cnn_input, lin_input
 
 def policy_kl(p0_mu, p0_sigma, p1_mu, p1_sigma):
     c1 = torch.log(p1_sigma / p0_sigma + 1e-5)

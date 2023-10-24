@@ -2,7 +2,7 @@
 GPUS=${1:-0}
 SEED=${2:-42}
 CACHE=${3:-test}
-NUM_ENVS=${4:-5}
+NUM_ENVS=${4:-4096}
 HEADLESS=${5:-True}
 
 array=( $@ )
@@ -18,7 +18,7 @@ task.env.numEnvs=${NUM_ENVS} \
 task.env.tactile=False \
 task.env.numObsHist=5 \
 train.algo=PPO \
-train.ppo.priv_info=True \
+train.ppo.priv_info=False \
 train.ppo.extrin_adapt=False \
 train.ppo.tactile_info=False \
 train.ppo.output_name="${CACHE}" \

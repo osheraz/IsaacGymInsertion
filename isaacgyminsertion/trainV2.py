@@ -104,39 +104,25 @@ def run(cfg: DictConfig):
         force_render=cfg.force_render # if not cfg.headless else False,
     )
 
-    # envs.is_vector_env = True
-    # envs = gym.wrappers.RecordVideo(
-    #     envs,
-    #     f"videos",
-    #     step_trigger=lambda step: step % 1000 == 0,
-    #     video_length=100,
-    # )
-
     output_dif = os.path.join('outputs', str(datetime.now().strftime("%m-%d-%y")))
     output_dif = os.path.join(output_dif, str(datetime.now().strftime("%H-%M-%S")))
     os.makedirs(output_dif, exist_ok=True)
-
-    if cfg.offline_training_w_env:
-        assert cfg.train.load_path
-        agent.restore_test(cfg.train.load_path)
-        from algo.models.transformer.runner import Runner as TransformerRunner 
-        from algo.models.transformer.frozen_ppo import PPO
-
-        agent = PPO(envs, output_dif, full_config=cfg)
-        # initializing control (ppo) model if we are doing actor regularization
-        # if cfg.offline_train.train.action_regularization:
-        agent.restore_test(cfg.train.load_path)
-        agent.set_eval()
-        # perform train
-        runner = TransformerRunner(cfg.offline_train, agent, action_regularization=cfg.offline_train.train.action_regularization)
-        runner.run()
-        exit()
-
     agent = eval(cfg.train.algo)(envs, output_dif, full_config=cfg)
     if cfg.test:
         assert cfg.train.load_path
         agent.restore_test(cfg.train.load_path)
-        agent.test()
+        if not cfg.offline_training_w_env:
+            agent.test()
+        else:
+            from algo.models.transformer.runner import Runner as TransformerRunner 
+            from algo.models.transformer.frozen_ppo import PPO as PPOv3
+            agent = PPOv3(envs, output_dif, full_config=cfg)
+            agent.restore_test(cfg.train.load_path)
+            agent.set_eval()
+
+            runner = TransformerRunner(cfg.offline_train, agent, action_regularization=cfg.offline_train.train.action_regularization)
+            runner.run()
+
         # sim_timer = cfg.task.env.sim_timer
         # num_trials = 3
         # cprint(f"Running simulation for {num_trials} trials", "green", attrs=["bold"])

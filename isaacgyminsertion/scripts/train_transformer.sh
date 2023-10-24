@@ -2,10 +2,12 @@
 GPUS=${1:-0}
 SEED=${2:-42}
 CACHE=${3:-test}
+NUM_ENVS=${4:-4096}
+HEADLESS=${5:-True}
 
 array=( $@ )
 len=${#array[@]}
-EXTRA_ARGS=${array[@]:3:$len}
+EXTRA_ARGS=${array[@]:5:$len}
 EXTRA_ARGS_SLUG=${EXTRA_ARGS// /_}
 
 echo extra "${EXTRA_ARGS}"
@@ -13,7 +15,10 @@ echo extra "${EXTRA_ARGS}"
 C=outputs/${CACHE}/stage1_nn/last.pth
 CUDA_VISIBLE_DEVICES=${GPUS} \
 python trainV2.py task=FactoryTaskInsertionTactile headless=${HEADLESS} seed=${SEED} \
-offline_training=True \
+task.env.numEnvs=${NUM_ENVS} \
+offline_training=False \
+test=True \
+offline_training_w_env=True \
 offline_train.train.action_regularization=True \
 train.ppo.output_name="${CACHE}" \
 checkpoint="${C}" \

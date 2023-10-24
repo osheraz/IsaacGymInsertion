@@ -383,11 +383,11 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
                                                                     gymapi.DOMAIN_ACTOR)
 
             # useful for measuring the friction parameters (privileged information)
-            self.left_finger_id = left_finger_id
-            self.right_finger_id = right_finger_id
-            self.middle_finger_id = middle_finger_id
+            self.left_finger_id = left_finger_id - 1
+            self.right_finger_id = right_finger_id - 1
+            self.middle_finger_id = middle_finger_id - 1
 
-            self.shape_ids = [link7_id, hand_id, left_finger_id, right_finger_id, middle_finger_id]
+            self.shape_ids = [link7_id, hand_id, left_finger_id - 1, right_finger_id - 1, middle_finger_id - 1]
 
             kuka_shape_props = self.gym.get_actor_rigid_shape_properties(env_ptr, kuka_handle)
 
