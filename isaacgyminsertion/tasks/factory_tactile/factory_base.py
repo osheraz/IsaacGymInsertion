@@ -60,7 +60,7 @@ class FactoryBaseTactile(VecTask, FactoryABCBase):
         
         # TODO: put these in a config?
         grasp_folders = {
-            '2in_loose1mm': 'init_grasps_plug2in_loose1mm_2',
+            '2in_loose1mm': 'init_grasps_plug2in_loose1mm_new',
             '16mm_loose0.5mm': 'init_grasps_plug16mm_loose0.5mm',
         }
         self.grasps_folder = grasp_folders['2in_loose1mm']
