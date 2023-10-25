@@ -671,13 +671,12 @@ class FactoryBaseTactile(VecTask, FactoryABCBase):
         """Convert pose from world frame to robot base frame."""
 
         # convert
-        # robot_base_transform_inv = torch_utils.tf_inverse(
-        #     self.robot_base_quat, self.robot_base_pos
-        # )
-        # quat_in_robot_base, pos_in_robot_base = torch_utils.tf_combine(
-        #     robot_base_transform_inv[0], robot_base_transform_inv[1], quat, pos
-        # )
-        # return pos_in_robot_base, quat_in_robot_base
+        robot_base_transform_inv = torch_utils.tf_inverse(
+            self.robot_base_quat, self.robot_base_pos
+        )
+        quat_in_robot_base, pos_in_robot_base = torch_utils.tf_combine(
+            robot_base_transform_inv[0], robot_base_transform_inv[1], quat, pos
+        )
 
         if as_matrix:
             return pos_in_robot_base, quat2R(quat_in_robot_base).reshape(self.num_envs, -1)

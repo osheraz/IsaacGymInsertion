@@ -35,7 +35,7 @@ model:
   # tactile+obs encoder
   transformer:
     full_sequence: False # if True, it makes sequence length 500
-    sequence_length: 100 # ${...task.rl.max_episode_length}
+    sequence_length: 2 # ${...task.rl.max_episode_length}
     embed_size: 256
     hidden_size: 512
     num_layers: 2
