@@ -9,10 +9,14 @@ name: FactoryTaskInsertionTactile
 physics_engine: ${..physics_engine}
 
 data_logger:
+    # for data collection
     collect_data: False
+    total_trajectories: 5000
     base_folder: "/common/users/dm1487/inhand_manipulation_data_store"
-    sub_folder: "datastore_10"
-    total_trajectories: 2500
+    sub_folder: "datastore_0"
+
+    # for logging (tests) during student training
+    collect_test_sim: ${...offline_training_w_env}
 
 tactile:
   tacto:
@@ -77,12 +81,12 @@ sim:
 randomize:
 
     kuka_arm_initial_dof_pos: [0.0064, 0.2375,  -0.0075,  -1.2022, 0.0015,  1.6900,  -1.5699]
-    fingertip_midpoint_rot_initial: [-3.14159265359, 0.0, 1.57079632679]  # initial rotation of fingertips (Euler)
+    fingertip_midpoint_rot_initial: [-3.14159265359, 0.0, -1.57079632679]  # initial rotation of fingertips (Euler)
 
     # for grasp generations
-    plug_pos_xy_initial: [0.0, -0.23]  # initial XY position of plug on table
+    plug_pos_xy_initial: [0.5, 0.23]  # initial XY position of plug on table
     plug_pos_xy_noise: [0.02, 0.02] # noise on plug position
-    socket_pos_xy_initial: [0.0, 0.0]  # initial XY position of plug on table # round_hole_2in  width = 0.1016, length = 0.09144
+    socket_pos_xy_initial: [0.5, 0.0]  # initial XY position of plug on table # round_hole_2in  width = 0.1016, length = 0.09144
     socket_pos_xy_noise: [0.02, 0.02]  # noise on plug position
     grasp_plug_noise: 0.001
     above_socket_noise: 0.003

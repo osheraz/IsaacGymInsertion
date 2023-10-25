@@ -113,7 +113,8 @@ def run(cfg: DictConfig):
         assert cfg.train.load_path
         agent.restore_test(cfg.train.load_path)
         if not cfg.offline_training_w_env:
-            agent.test()
+            num_success, total_trials = agent.test()
+            print(f"Success rate: {num_success / total_trials}")
         else:
             from algo.models.transformer.runner import Runner as TransformerRunner 
             from algo.models.transformer.frozen_ppo import PPO as PPOv3

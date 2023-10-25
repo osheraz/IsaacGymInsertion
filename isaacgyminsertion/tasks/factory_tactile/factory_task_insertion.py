@@ -729,7 +729,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         # if successfully inserted to a certain threshold
         self.success_reset_buf[:] = self._check_plug_inserted_in_socket()
-        if self.cfg_task.data_logger.collect_data:
+        if self.cfg_task.data_logger.collect_data or self.cfg_task.data_logger.collect_test_sim:
             self.reset_buf[:] |= self.success_reset_buf[:]
 
         # If max episode length has been reached

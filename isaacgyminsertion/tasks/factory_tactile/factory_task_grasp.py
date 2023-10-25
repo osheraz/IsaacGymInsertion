@@ -390,7 +390,7 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                 resized_img = cv2.resize(tactile_img, (self.cfg_tactile.decoder.width,
                                                        self.cfg_tactile.decoder.height), interpolation=cv2.INTER_AREA)
                 # resized_depth
-                self.tactile_imgs[e, n] = torch_jit_utils.img_transform(resized_img).to(self.device).permute(1, 2, 0)
+                self.tactile_imgs[e, n] = torch_jit_utils.rgb_transform(resized_img).to(self.device).permute(1, 2, 0)
                 self.depth_maps[e, n] = torch.tensor(height_map).to(self.device)
                 tactile_imgs_per_env.append(tactile_img)
                 height_maps_per_env.append(height_map)

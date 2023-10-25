@@ -213,7 +213,7 @@ class VectorizedExperienceBuffer:
 
 class DataLogger():
 
-    def __init__(self, num_envs, episode_length, device, dir_path, total_trajectories, **kwargs):
+    def __init__(self, num_envs, episode_length, device, dir_path, total_trajectories, save_trajectory, **kwargs):
 
         self.buffer = []
         self.id = 0
@@ -231,13 +231,13 @@ class DataLogger():
             if key.endswith("_shape"):
                 self.data_shapes[key.replace("_shape", "")] = value
 
+        self.pbar = None
         self.trajectory_ctr = 0
-        self.total_trajectories = total_trajectories
-        self.pbar = tqdm(total=self.total_trajectories)
-
+        self.total_trajectories = None
         self._init_buffers()
-        save_data = False
-        if save_data:
+        if save_trajectory:
+            self.pbar = tqdm(total=self.total_trajectories)
+            self.total_trajectories = total_trajectories
             self.num_workers = 24
             try:
                 self.q_s = [mp.JoinableQueue(maxsize=500) for _ in range(self.num_workers)]
@@ -309,16 +309,17 @@ class DataLogger():
                     batch_data['done'] = self.done[save_env_id, ...].clone().cpu()
                     self._save_batch_trajectories(batch_data)
             self._reset_buffers(save_env_ids)
-            if save_trajectory and (self.trajectory_ctr >= self.total_trajectories):
-                self.pbar.close()
-                for q in self.q_s:
-                    q.put(None)
-                for q in self.q_s:
-                    q.join()
-                for worker in self.workers:
-                    worker.terminate()
-                print('Data collection finished!')
-                exit()
+            if save_trajectory:
+                if (self.trajectory_ctr >= self.total_trajectories):
+                    self.pbar.close()
+                    for q in self.q_s:
+                        q.put(None)
+                    for q in self.q_s:
+                        q.join()
+                    for worker in self.workers:
+                        worker.terminate()
+                    print('Data collection finished!')
+                    exit()
 
     def worker(self, q, q_idx):
         data_path = os.path.join(self.dir, f'{q_idx}')

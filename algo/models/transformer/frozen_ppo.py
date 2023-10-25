@@ -206,7 +206,7 @@ class PPO(object):
             }
 
             # initializing data logger, the device should be changed
-            self.data_logger_init = lambda x: DataLogger(self.env.num_envs, self.env.max_episode_length, self.env.device, os.path.join(self.env.cfg_task.data_logger.base_folder, self.env.cfg_task.data_logger.sub_folder), self.env.cfg_task.data_logger.total_trajectories, **log_items)
+            self.data_logger_init = lambda x: DataLogger(self.env.num_envs, self.env.max_episode_length, self.env.device, os.path.join(self.env.cfg_task.data_logger.base_folder, self.env.cfg_task.data_logger.sub_folder), self.env.cfg_task.data_logger.total_trajectories, save_trajectory=self.env.cfg_task.data_logger.collect_data, **log_items)
             
         batch_size = self.num_actors
         current_rewards_shape = (batch_size, 1)
@@ -621,6 +621,7 @@ class PPO(object):
     def test(self, get_latent=None):
         # this will test either the student or the teacher model. (check if the student model can be tested within models)
         self.obs = self.env.reset()
+        milestone = 100
         
         action, latent, done = None, None, None
 
@@ -639,9 +640,9 @@ class PPO(object):
         
         self.env_ids = torch.arange(self.env.num_envs).view(-1, 1)
         total_dones = 0
-        total_env_runs = 50 # add this to config
+        total_env_runs = self.full_config.offline_train.train.test_episodes # add this to config
         num_success = 0
-        while total_dones < total_env_runs:
+        while save_trajectory or (total_dones < total_env_runs):
             # log video during test
             self.log_video()
             # getting data from data logger
@@ -651,8 +652,10 @@ class PPO(object):
                 # making data for the latent prediction from student model
                 cnn_input, lin_input = self._make_data(data)
                 # getting the latent data from the student model
-                latent = get_latent(cnn_input, lin_input)[self.env_ids, self.env.progress_buf.view(-1, 1), :].squeeze(1)
-                
+                if self.full_config.offline_train.model.transformer.full_sequence:
+                    latent = get_latent(cnn_input, lin_input)[self.env_ids, self.env.progress_buf.view(-1, 1), :].squeeze(1)
+                else:
+                    latent = get_latent(cnn_input, lin_input)[self.env_ids, -1, :].squeeze(1)
             # adding the latent to the obs_dict (if present test with student, else test with teacher)
             obs_dict = {
                 'obs': self.running_mean_std(self.obs['obs']),
@@ -664,14 +667,14 @@ class PPO(object):
             self.obs, r, done, info = self.env.step(action)
             
             num_success += self.env.success_reset_buf[done.nonzero()].sum()
-            # print(self.env.success_reset_buf[done.nonzero()])
 
             # logging data
             if save_trajectory or offline_test:
-                if offline_test: # only for offline test we record successful
-                    total_dones += len(done.nonzero())
+                total_dones += len(done.nonzero())
+                if total_dones > milestone:
+                    print('success rate:', num_success/total_dones)
+                    milestone += 100
                 self.log_trajectory_data(action, latent, done, save_trajectory=save_trajectory)
-
         return num_success, total_dones
         
     def _make_data(self, data):
@@ -691,10 +694,16 @@ class PPO(object):
         cnn_input = torch.cat([tactile[:, :, 0, ...], tactile[:, :,  1, ...], tactile[:, :,  2, ...]], dim=-1)
         lin_input = torch.cat([arm_joints, eef_pos, noisy_socket_pos, action, target], dim=-1)
 
-        # converting to torch tensors
-        # cnn_input = torch.from_numpy(cnn_input).float()
-        # lin_input = torch.from_numpy(lin_input).float()
-
+        if self.full_config.offline_train.model.transformer.full_sequence:
+            return cnn_input, lin_input
+        
+        padding_cnn = torch.zeros_like(cnn_input)
+        padding_lin = torch.zeros_like(lin_input)
+        for env_id in range(self.env.num_envs):
+            padding_cnn[env_id, -(self.env.progress_buf[env_id]+1):, :] = cnn_input[env_id, :(self.env.progress_buf[env_id]+1), :]
+            padding_lin[env_id, -(self.env.progress_buf[env_id]+1):, :] = lin_input[env_id, :(self.env.progress_buf[env_id]+1), :]
+        cnn_input = padding_cnn[:, -self.full_config.offline_train.model.transformer.sequence_length:, :].clone()
+        lin_input = padding_lin[:, -self.full_config.offline_train.model.transformer.sequence_length:, :].clone()
         return cnn_input, lin_input
 
 def policy_kl(p0_mu, p0_sigma, p1_mu, p1_sigma):

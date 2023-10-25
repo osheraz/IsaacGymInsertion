@@ -12,6 +12,7 @@ import hydra
 from omegaconf import DictConfig, OmegaConf
 import os
 import wandb
+import time
 from algo.models.transformer.utils import set_seed
 
 
@@ -24,14 +25,15 @@ class Runner:
         self.ppo_step = agent.play_latent_step if ((agent is not None) and (action_regularization)) else None
         self.optimizer = None
         self.scheduler = None
-        self.sequence_length = 500 # self.cfg.model.transformer.sequence_length
+        self.full_sequence = self.cfg.model.transformer.full_sequence
+        self.sequence_length = 500 if self.full_sequence else self.cfg.model.transformer.sequence_length
         self.device = 'cuda:0'
         
         self.model = TactileTransformer(lin_input_size=self.cfg.model.linear.input_size, in_channels=self.cfg.model.cnn.in_channels, out_channels=self.cfg.model.cnn.out_channels, kernel_size=self.cfg.model.cnn.kernel_size, embed_size=self.cfg.model.transformer.embed_size, hidden_size=self.cfg.model.transformer.hidden_size, num_heads=self.cfg.model.transformer.num_heads, num_layers=self.cfg.model.transformer.num_layers, max_sequence_length=self.sequence_length, output_size=self.cfg.model.transformer.output_size)
 
         self.src_mask = torch.triu(torch.ones(self.sequence_length, self.sequence_length), diagonal=1).bool().to(self.device)
 
-        self.loss_fn = torch.nn.MSELoss(reduction='none')
+        self.loss_fn = lambda reduction: torch.nn.MSELoss(reduction=reduction)
 
     def train(self, dl, val_dl, ckpt_path, print_every=50, eval_every=250, test_every=500):
         self.model.train()
@@ -44,37 +46,50 @@ class Runner:
             latent = latent.to(self.device)
             action = action.to(self.device)
             mask = mask.to(self.device).unsqueeze(-1)
-            out = self.model(cnn_input, lin_input, batch_size=lin_input.shape[0], embed_size=self.cfg.model.transformer.embed_size//2, src_mask=self.src_mask)
+            out = self.model(cnn_input, lin_input, batch_size=lin_input.shape[0], embed_size=self.cfg.model.transformer.embed_size//2, src_mask=self.src_mask if self.full_sequence else None)
             
-            loss_latent = self.loss_fn(out, latent)
-            loss_latent = torch.sum(loss_latent*mask)/torch.sum(mask)
-            loss = loss_latent
-            if self.ppo_step is not None:
-                obs_hist = obs_hist.to(self.device).view(obs_hist.shape[0]*self.sequence_length, obs_hist.shape[-1])
-                pred_action, _ = self.ppo_step({'obs': obs_hist, 'latent': out.view(out.shape[0]*out.shape[1], out.shape[-1])})
+            if self.full_sequence:
+                loss_latent = self.loss_fn(reduction='none')(out, latent)
+                loss_latent = torch.sum(loss_latent*mask)/torch.sum(mask)
+                loss = loss_latent
+                if self.ppo_step is not None:
+                    obs_hist = obs_hist.to(self.device).view(obs_hist.shape[0]*self.sequence_length, obs_hist.shape[-1])
+                    pred_action, _ = self.ppo_step({'obs': obs_hist, 'latent': out.view(out.shape[0]*out.shape[1], out.shape[-1])})
 
-                loss_action = self.loss_fn(pred_action.view(*action.shape), action)
-                loss_action = torch.sum(loss_action*mask)/torch.sum(mask)
+                    loss_action = self.loss_fn(reduction='none')(pred_action.view(*action.shape), action)
+                    loss_action = torch.sum(loss_action*mask)/torch.sum(mask)
 
-                # TODO: add scaling loss coefficients
-                loss += loss_action
-                with torch.no_grad():
-                    action_loss_list.append(loss_action.item())
+                    # TODO: add scaling loss coefficients
+                    loss += loss_action
+                    with torch.no_grad():
+                        action_loss_list.append(loss_action.item())
+            else:
+                loss_latent = self.loss_fn(reduction='mean')(out[:, -1, :], latent[:, -1, :])
+                loss = loss_latent
+                if self.ppo_step is not None:
+                    obs_hist = obs_hist[:, -1, :].to(self.device).view(obs_hist.shape[0], obs_hist.shape[-1])
+                    pred_action, _ = self.ppo_step({'obs': obs_hist, 'latent': out[:, -1, :]})
+                    # TODO: add scaling loss coefficients
+                    loss_action = self.loss_fn(reduction='mean')(pred_action, action[:, -1, :].squeeze(1))
+                    loss += loss_action
 
             self.optimizer.zero_grad()
             loss.backward()
             self.optimizer.step()
             train_loss.append(loss.item())
             latent_loss_list.append(loss_latent.item())
+            if self.ppo_step is not None:
+                action_loss_list.append(loss_action.item())
 
-            
             if (i+1) % print_every == 0:
                 print(f'step {i+1}:', np.mean(train_loss))
                 self._wandb_log({
                     'train/loss': np.mean(train_loss),
                     'train/latent_loss': np.mean(latent_loss_list),
-                    'train/action_loss': np.mean(action_loss_list)
                     })
+                if self.ppo_step is not None:
+                    self._wandb_log({ 'train/action_loss': np.mean(action_loss_list) })
+                
                 train_loss = []
                 latent_loss_list = []
                 action_loss_list = []
@@ -102,20 +117,31 @@ class Runner:
                 latent = latent.to(self.device)
                 action = action.to(self.device)
                 mask = mask.to(self.device).unsqueeze(-1)
-                out = self.model(cnn_input, lin_input, batch_size=lin_input.shape[0], embed_size=self.cfg.model.transformer.embed_size//2, src_mask=self.src_mask)
+                out = self.model(cnn_input, lin_input, batch_size=lin_input.shape[0], embed_size=self.cfg.model.transformer.embed_size//2, src_mask=self.src_mask if self.full_sequence else None)
 
-                loss_latent = self.loss_fn(out, latent)
-                loss_latent = torch.sum(loss_latent*mask)/torch.sum(mask)
-                loss = loss_latent
+                if self.full_sequence:
+                    loss_latent = self.loss_fn(reduction='none')(out, latent)
+                    loss_latent = torch.sum(loss_latent*mask)/torch.sum(mask)
+                    loss = loss_latent
 
+                    if self.ppo_step is not None:
+                        obs_hist = obs_hist.to(self.device).view(obs_hist.shape[0]*self.sequence_length, obs_hist.shape[-1])
+                        pred_action, _ = self.ppo_step({'obs': obs_hist, 'latent': out.view(out.shape[0]*out.shape[1], out.shape[-1])})
+
+                        loss_action = self.loss_fn(reduction='none')(pred_action.view(*action.shape), action)
+                        loss_action = torch.sum(loss_action*mask)/torch.sum(mask)
+                        # TODO: add scaling loss coefficients
+                        loss += loss_action
+                else:
+                    loss_latent = self.loss_fn(reduction='mean')(out[:, -1, :], latent[:, -1, :])
+                    loss = loss_latent
+                    if self.ppo_step is not None:
+                        obs_hist = obs_hist[:, -1, :].to(self.device).view(obs_hist.shape[0], obs_hist.shape[-1])
+                        pred_action, _ = self.ppo_step({'obs': obs_hist, 'latent': out[:, -1, :]})
+                        loss_action = self.loss_fn(reduction='mean')(pred_action, action[:, -1, :].squeeze(1))
+                        loss += loss_action
+                
                 if self.ppo_step is not None:
-                    obs_hist = obs_hist.to(self.device).view(obs_hist.shape[0]*self.sequence_length, obs_hist.shape[-1])
-                    pred_action, _ = self.ppo_step({'obs': obs_hist, 'latent': out.view(out.shape[0]*out.shape[1], out.shape[-1])})
-
-                    loss_action = self.loss_fn(pred_action.view(*action.shape), action)
-                    loss_action = torch.sum(loss_action*mask)/torch.sum(mask)
-                    # TODO: add scaling loss coefficients
-                    loss += loss_action
                     action_loss_list.append(loss_action.item())
 
                 val_loss.append(loss.item())
@@ -145,9 +171,16 @@ class Runner:
     def predict(self, cnn_input, lin_input):
         self.model.eval()
         with torch.inference_mode():
-            cnn_input = cnn_input.to(self.device).to(self.device).view(cnn_input.shape[0] * self.sequence_length, *cnn_input.size()[-3:]).permute(0, 3, 1, 2)
+            # if not self.full_sequence:
+            #     cnn_input = cnn_input[:, -self.sequence_length, :].clone()
+            #     lin_input = lin_input[:, -self.sequence_length, :].clone()
+            
+            cnn_input = cnn_input[:, ].to(self.device).to(self.device).view(cnn_input.shape[0] * self.sequence_length, *cnn_input.size()[-3:]).permute(0, 3, 1, 2)
+            st = time.time()
             lin_input = lin_input.to(self.device)
             out = self.model(cnn_input, lin_input, src_mask=self.src_mask, batch_size=lin_input.shape[0], embed_size=self.cfg.model.transformer.embed_size//2)
+            # else:
+
         return out.detach()
 
     def _run(self, file_list, save_folder, epochs=100, train_test_split=0.9, train_batch_size=32, val_batch_size=32, learning_rate=1e-4, device='cuda:0', print_every=50, eval_every=250, test_every=500):
@@ -173,10 +206,10 @@ class Runner:
         training_files = [file_list[i] for i in train_idxs]
         val_files = [file_list[i] for i in val_idxs]
 
-        train_ds = TactileDataset(files=training_files)
+        train_ds = TactileDataset(files=training_files, full_sequence=self.full_sequence, sequence_length=self.sequence_length)
         train_dl = DataLoader(train_ds, batch_size=train_batch_size, shuffle=True)
         
-        val_ds = TactileDataset(files=val_files)
+        val_ds = TactileDataset(files=val_files, full_sequence=self.full_sequence, sequence_length=self.sequence_length)
         val_dl = DataLoader(val_ds, batch_size=val_batch_size, shuffle=True)
         
         # training
@@ -185,7 +218,6 @@ class Runner:
             self.scheduler.step(val_loss)
             
             torch.save(self.model.state_dict(), f'{ckpt_path}/model_{epoch}.pt')
-
             # torch.jit.save(torch.jit.script(self.model), f'{ckpt_path}/model_{epoch}.pt')
 
     def _wandb_log(self, data):
