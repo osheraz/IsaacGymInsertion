@@ -15,6 +15,7 @@ import hydra
 import cv2
 from isaacgyminsertion.utils import torch_jit_utils
 import isaacgyminsertion.tasks.factory_tactile.factory_control as fc
+from isaacgyminsertion.tasks.factory_tactile.factory_utils import quat2R
 from time import time
 import numpy as np
 
@@ -141,9 +142,9 @@ class HardwarePlayer(object):
                                          dtype=torch.float, device=self.device)
         self.targets_queue = torch.zeros((1, self.deploy_config.env.obs_seq_length, self.num_targets),
                                          dtype=torch.float, device=self.device)
-        self.eef_queue = torch.zeros((1, self.deploy_config.env.obs_seq_length, 7),
+        self.eef_queue = torch.zeros((1, self.deploy_config.env.obs_seq_length, 12),
                                      dtype=torch.float, device=self.device)
-        self.goal_noisy_queue = torch.zeros((1, self.deploy_config.env.obs_seq_length, 7),
+        self.goal_noisy_queue = torch.zeros((1, self.deploy_config.env.obs_seq_length, 12),
                                             dtype=torch.float, device=self.device)
 
         # Bad, should queue the obs!
@@ -155,9 +156,9 @@ class HardwarePlayer(object):
                                                  dtype=torch.float, device=self.device)
         self.targets_queue_student = torch.zeros((1, self.deploy_config.env.stud_obs_seq_length, self.num_actions),
                                                  dtype=torch.float, device=self.device)
-        self.eef_queue_student = torch.zeros((1, self.deploy_config.env.stud_obs_seq_length, 7),
+        self.eef_queue_student = torch.zeros((1, self.deploy_config.env.stud_obs_seq_length, 12),
                                              dtype=torch.float, device=self.device)
-        self.goal_noisy_queue_student = torch.zeros((1, self.deploy_config.env.stud_obs_seq_length, 7),
+        self.goal_noisy_queue_student = torch.zeros((1, self.deploy_config.env.stud_obs_seq_length, 12),
                                                     dtype=torch.float, device=self.device)
 
         # tactile buffers
@@ -234,11 +235,11 @@ class HardwarePlayer(object):
 
         self.eef_queue[:, 1:] = self.eef_queue[:, :-1].clone().detach()
         self.eef_queue[:, 0, :] = torch.cat((self.fingertip_centered_pos.clone(),
-                                             self.fingertip_centered_quat.clone()), dim=-1)
+                                             quat2R(self.fingertip_centered_quat.clone()).reshape(1, -1)), dim=-1)
 
         self.eef_queue_student[:, 1:] = self.eef_queue_student[:, :-1].clone().detach()
         self.eef_queue_student[:, 0, :] = torch.cat((self.fingertip_centered_pos.clone(),
-                                                     self.fingertip_centered_quat.clone()), dim=-1)
+                                                     quat2R(self.fingertip_centered_quat.clone()).reshape(1, -1)), dim=-1)
 
         left = cv2.resize(left, (self.cfg_tactile.decoder.width, self.cfg_tactile.decoder.height),
                           interpolation=cv2.INTER_AREA)
@@ -257,18 +258,28 @@ class HardwarePlayer(object):
         self.ft_queue[:, 1:] = self.ft_queue[:, :-1].clone().detach()
         self.ft_queue[:, 0, :] = torch.tensor(ft, device=self.device, dtype=torch.float)
 
+        # some-like taking a new socket pose measurement
+        self._update_socket_pose()
+        self.goal_noisy_queue[:, 1:] = self.goal_noisy_queue[:, :-1].clone().detach()
+        self.goal_noisy_queue[:, 0, :] = torch.cat((self.noisy_gripper_goal_pos.clone(),
+                                                    quat2R(self.noisy_gripper_goal_quat.clone()).reshape(1, -1)),
+                                                   dim=-1)
+        self.goal_noisy_queue_student[:, 1:] = self.goal_noisy_queue_student[:, :-1].clone().detach()
+        self.goal_noisy_queue_student[:, 0, :] = torch.cat((self.noisy_gripper_goal_pos.clone(),
+                                                            quat2R(self.noisy_gripper_goal_quat.clone()).reshape(1, -1)),
+                                                           dim=-1)
         obs_tensors = [
             self.arm_joint_queue.reshape(1, -1),  # 7 * hist
-            self.eef_queue.reshape(1, -1),  # (envs, 7 * hist)
-            self.goal_noisy_queue.reshape(1, -1),  # (envs, 7 * hist)
+            self.eef_queue.reshape(1, -1),  # (envs, 12 * hist)
+            self.goal_noisy_queue.reshape(1, -1),  # (envs, 12 * hist)
             self.actions_queue.reshape(1, -1),  # (envs, 6 * hist)
             self.targets_queue.reshape(1, -1),  # (envs, 6 * hist)
         ]
 
         obs_tensors_student = [
             self.arm_joint_queue_student.reshape(1, -1),  # 7 * hist
-            self.eef_queue_student.reshape(1, -1),  # (envs, 7 * hist)
-            self.goal_noisy_queue_student.reshape(1, -1),  # (envs, 7 * hist)
+            self.eef_queue_student.reshape(1, -1),  # (envs, 12 * hist)
+            self.goal_noisy_queue_student.reshape(1, -1),  # (envs, 12 * hist)
             self.actions_queue_student.reshape(1, -1),  # (envs, 6 * hist)
             self.targets_queue_student.reshape(1, -1),  # (envs, 6 * hist)
         ]
@@ -348,16 +359,6 @@ class HardwarePlayer(object):
         self.targets_queue_student[:, 0, :] = self.targets
         self.prev_targets[:] = self.targets.clone()
 
-        # some-like taking a new socket pose measurement
-        self._update_socket_pose()
-        self.goal_noisy_queue[:, 1:] = self.goal_noisy_queue[:, :-1].clone().detach()
-        self.goal_noisy_queue[:, 0, :] = torch.cat((self.noisy_gripper_goal_pos.clone(),
-                                                    self.noisy_gripper_goal_quat.clone()),
-                                                   dim=-1)
-        self.goal_noisy_queue_student[:, 1:] = self.goal_noisy_queue_student[:, :-1].clone().detach()
-        self.goal_noisy_queue_student[:, 0, :] = torch.cat((self.noisy_gripper_goal_pos.clone(),
-                                                            self.noisy_gripper_goal_quat.clone()),
-                                                           dim=-1)
         self.apply_action(self.actions, wait=wait)
 
     def apply_action(self, actions, do_scale=True, do_clamp=True, wait=True):
@@ -453,9 +454,17 @@ class HardwarePlayer(object):
         true_plug_pose = [self.deploy_config.env.kuka_depth, 0.3, self.deploy_config.env.table_height]
         self._set_plug_pose(pos=true_plug_pose)
         above_plug_pose = [x + y for x, y in zip(true_plug_pose, [0, 0, 0.2])]
-        self._move_arm_to_desired_pose([0.5, 0, 0.2])
+        # self._move_arm_to_desired_pose([0.5, 0, 0.2])
+        # self.env.move_to_joint_values(self.env.joints_above_socket_pos)
 
-        # self.env.move_to_joint_values(self.env.joints_true_socket_pos)
+        self.env.move_to_joint_values(self.env.joints_above_plug, wait=True)
+        self.env.move_to_joint_values(self.env.joints_grasp_pos, wait=True)
+        self.env.grasp()
+
+        self.env.move_to_joint_values(self.env.joints_above_plug, wait=True)
+        self.env.move_to_joint_values(self.env.joints_above_socket, wait=True)
+        self.env.move_to_joint_values(self.env.joint_start_insert, wait=True)
+        self.env.move_to_joint_values(self.env.joints_socket_pos, wait=True)
 
         # above_plug_pose = [x + y for x, y in zip(true_plug_pose, [0, 0, 0.1])]
         # plug_grasp_pose = [x + y for x, y in zip(true_plug_pose, [0, 0, 0.05])]
@@ -484,7 +493,7 @@ class HardwarePlayer(object):
             }
             action, _ = self.model.act_inference(input_dict)
             start_time = time()
-            self.update_and_apply_action(action, wait=True)
+            # self.update_and_apply_action(action, wait=True)
             print("FPS: ", 1.0 / (time() - start_time))  # FPS = 1 / time to process loop
 
             ros_rate.sleep()
@@ -493,26 +502,3 @@ class HardwarePlayer(object):
 
 
 
-'''
-[x 0.5, y 0.3,z 0.1]
-  a1: 0.396711885929
-  a2: 0.644319176674
-  a3: 0.220347777009
-  a4: -1.55624902248
-  a5: -0.160987839103
-  a6: 0.95887452364
-  a7: -0.90379679203
----
-
-    x: 0.501488964447
-    y: 0.00795072908259
-    z: 0.171816062996
-  a1: -0.098761215806
-  a2: 0.379355311394
-  a3: 0.142728880048
-  a4: -1.75525605679
-  a5: -0.0600436516106
-  a6: 1.0154761076
-  a7: -1.50801086426
-
-'''
