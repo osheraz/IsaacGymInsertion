@@ -143,9 +143,9 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                                          dtype=torch.float, device=self.device)
         self.targets_queue = torch.zeros((self.num_envs, self.cfg_task.env.numObsHist, self.num_actions),
                                          dtype=torch.float, device=self.device)
-        self.eef_queue = torch.zeros((self.num_envs, self.cfg_task.env.numObsHist, 7),
+        self.eef_queue = torch.zeros((self.num_envs, self.cfg_task.env.numObsHist, 12),
                                      dtype=torch.float, device=self.device)
-        self.goal_noisy_queue = torch.zeros((self.num_envs, self.cfg_task.env.numObsHist, 7),
+        self.goal_noisy_queue = torch.zeros((self.num_envs, self.cfg_task.env.numObsHist, 12),
                                             dtype=torch.float, device=self.device)
 
         # Bad, should queue the obs!
@@ -157,9 +157,9 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                                          dtype=torch.float, device=self.device)
         self.targets_queue_student = torch.zeros((self.num_envs, self.cfg_task.env.numObsStudentHist, self.num_actions),
                                          dtype=torch.float, device=self.device)
-        self.eef_queue_student = torch.zeros((self.num_envs, self.cfg_task.env.numObsStudentHist, 7),
+        self.eef_queue_student = torch.zeros((self.num_envs, self.cfg_task.env.numObsStudentHist, 12),
                                      dtype=torch.float, device=self.device)
-        self.goal_noisy_queue_student = torch.zeros((self.num_envs, self.cfg_task.env.numObsStudentHist, 7),
+        self.goal_noisy_queue_student = torch.zeros((self.num_envs, self.cfg_task.env.numObsStudentHist, 12),
                                             dtype=torch.float, device=self.device)
 
         # tactile buffers
@@ -603,16 +603,15 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         obs_tensors_student = [
             self.arm_joint_queue_student.reshape(self.num_envs, -1), # 7 * hist
-            self.eef_queue_student.reshape(self.num_envs, -1),  # (envs, 7 * hist)
-            self.goal_noisy_queue_student.reshape(self.num_envs, -1),  # (envs, 7 * hist)
-
+            self.eef_queue_student.reshape(self.num_envs, -1),  # (envs, 12 * hist)
+            self.goal_noisy_queue_student.reshape(self.num_envs, -1),  # (envs, 12 * hist)
             self.actions_queue_student.reshape(self.num_envs, -1),  # (envs, 6 * hist)
             self.targets_queue_student.reshape(self.num_envs, -1),  # (envs, 6 * hist)
         ]
 
         # Define state (for teacher)
-        socket_tip_wrt_robot = self.pose_world_to_robot_base(self.socket_tip, self.socket_quat)
-        plug_bottom_wrt_robot = self.pose_world_to_robot_base(self.plug_pos, self.plug_quat)
+        socket_tip_wrt_robot = self.pose_world_to_robot_base(self.socket_tip, self.socket_quat, as_matrix=False)
+        plug_bottom_wrt_robot = self.pose_world_to_robot_base(self.plug_pos, self.plug_quat, as_matrix=False)
         plug_socket_pos_error, plug_socket_quat_error = fc.get_pose_error(
             fingertip_midpoint_pos=plug_bottom_wrt_robot[0],
             fingertip_midpoint_quat=plug_bottom_wrt_robot[1],

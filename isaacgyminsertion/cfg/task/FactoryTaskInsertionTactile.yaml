@@ -36,9 +36,9 @@ tactile:
 
 env:
     numEnvs: ${resolve_default:128,${...num_envs}}
-    numObservations: 165 # actualy we should count obs for 1 timestep and multipy in the code with numobshist..
-    numObsStudent: 792
-    numStates: 31 # 48 # 62
+    numObservations: 215 # 43 * 5
+    numObsStudent: 792   #
+    numStates: 31 #
     numActions: 6 # [position, ori]
     numTargets: 6 # [position, ori]
 
