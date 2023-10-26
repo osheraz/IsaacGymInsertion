@@ -60,9 +60,9 @@ class HardwarePlayer(object):
             'actions_num': self.num_actions,
             'priv_mlp_units': self.deploy_config.network.priv_mlp.units,
             'input_shape': self.obs_shape,
-            'extrin_adapt': True,
+            'extrin_adapt': self.extrin_adapt,
             'priv_info_dim': self.priv_info_dim,
-            'priv_info': True,
+            'priv_info': self.priv_info,
             "tactile_info": self.tactile_info,
             "obs_info": self.obs_info,
             'student_obs_input_shape': self.student_obs_input_shape,
@@ -217,6 +217,7 @@ class HardwarePlayer(object):
             self.socket_tip_pos_local)
 
     def compute_observations(self):
+
         obses = self.env.get_obs()
 
         arm_joints = obses['joints']
@@ -429,8 +430,26 @@ class HardwarePlayer(object):
         self.running_mean_std.load_state_dict(checkpoint['running_mean_std'])
         self.model.load_state_dict(checkpoint['model'])
 
-    def deploy(self):
+    def _initialize_grasp_poses(self):
+        grasp_folders = {
+            '2in_loose1mm': 'init_grasps_plug2in_loose1mm_new',
+            '16mm_loose0.5mm': 'init_grasps_plug16mm_loose0.5mm',
+        }
+        self.grasps_folder = grasp_folders['2in_loose1mm']
 
+        self.initial_grasp_poses = np.load(f'initial_grasp_data/{self.grasps_folder}.npz')
+
+        self.total_init_poses = self.initial_grasp_poses['socket_pos'].shape[0]
+        self.init_dof_pos = torch.zeros((self.total_init_poses, 15))
+        self.init_dof_pos = self.init_dof_pos[:, :7]
+        dof_pos = self.initial_grasp_poses['dof_pos'][:, :7]
+        from tqdm import tqdm
+        print("Loading Poses")
+        for i in tqdm(range(self.total_init_poses)):
+            self.init_dof_pos[i] = torch.from_numpy(dof_pos[i])
+
+    def deploy(self):
+        self._initialize_grasp_poses()
         from algo.deploy.env.env import ExperimentEnv
 
         rospy.init_node('DeployEnv')
@@ -446,14 +465,15 @@ class HardwarePlayer(object):
         self._create_asset_info()
         self._acquire_task_tensors()
         self.env.move_to_init_state()
-
+        #                              0.5                       0             0.1
         true_socket_pose = [self.deploy_config.env.kuka_depth, 0.0, self.deploy_config.env.table_height]
         above_socket_pose = [x + y for x, y in zip(true_socket_pose, [0, 0, 0.1])]
         self._set_socket_pose(pos=true_socket_pose)
 
-        true_plug_pose = [self.deploy_config.env.kuka_depth, 0.3, self.deploy_config.env.table_height]
+        true_plug_pose = [self.deploy_config.env.kuka_depth, 0.0, self.deploy_config.env.table_height]
         self._set_plug_pose(pos=true_plug_pose)
         above_plug_pose = [x + y for x, y in zip(true_plug_pose, [0, 0, 0.2])]
+
         # self._move_arm_to_desired_pose([0.5, 0, 0.2])
         # self.env.move_to_joint_values(self.env.joints_above_socket_pos)
 
@@ -463,12 +483,18 @@ class HardwarePlayer(object):
 
         self.env.move_to_joint_values(self.env.joints_above_plug, wait=True)
         self.env.move_to_joint_values(self.env.joints_above_socket, wait=True)
-        self.env.move_to_joint_values(self.env.joint_start_insert, wait=True)
-        self.env.move_to_joint_values(self.env.joints_socket_pos, wait=True)
+
+        random_init_idx = torch.randint(0, self.total_init_poses, size=(1,))
+        # self.env_to_grasp[env_ids] = random_init_idx
+
+        kuka_dof_pos = self.init_dof_pos[random_init_idx]
+        kuka_dof_pos = kuka_dof_pos.cpu().detach().numpy().squeeze().tolist()
+        print(kuka_dof_pos)
+
+        self.env.move_to_joint_values(kuka_dof_pos, wait=True)
 
         # above_plug_pose = [x + y for x, y in zip(true_plug_pose, [0, 0, 0.1])]
         # plug_grasp_pose = [x + y for x, y in zip(true_plug_pose, [0, 0, 0.05])]
-
         # # Move & grasp the object
         # self._move_arm_to_desired_pose(above_plug_pose)
         # self._move_arm_to_desired_pose(plug_grasp_pose)
@@ -479,11 +505,12 @@ class HardwarePlayer(object):
 
         obs, obs_stud, tactile = self.compute_observations()
 
-        # TODO? Should we fill the history buffs?
+        # TODO: Should we fill the history buffs?
         for i in range(self.deploy_config.env.obs_seq_length):
             pass
 
         while True:
+
             obs = self.running_mean_std(obs.clone())
 
             input_dict = {
@@ -493,11 +520,10 @@ class HardwarePlayer(object):
             }
             action, _ = self.model.act_inference(input_dict)
             start_time = time()
-            # self.update_and_apply_action(action, wait=True)
-            print("FPS: ", 1.0 / (time() - start_time))  # FPS = 1 / time to process loop
-
+            self.update_and_apply_action(action, wait=True)
             ros_rate.sleep()
-
+            print("FPS: ", 1.0 / (time() - start_time))  # FPS = 1 / time to process loop
+            print(action)
             obs, obs_stud, tactile = self.compute_observations()
 
 
