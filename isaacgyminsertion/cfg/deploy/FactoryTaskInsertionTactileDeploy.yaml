@@ -43,9 +43,9 @@ env:
 
 
 ppo:
-  priv_info: True
-  extrin_adapt: True
-  tactile_info: True
+  priv_info: False
+  extrin_adapt: False
+  tactile_info: False
   ft_info: False
   ft_input_dim: 6
   obs_info: False

@@ -15,6 +15,7 @@ import hydra
 import cv2
 from isaacgyminsertion.utils import torch_jit_utils
 import isaacgyminsertion.tasks.factory_tactile.factory_control as fc
+from isaacgyminsertion.tasks.factory_tactile.factory_utils import quat2R
 from time import time
 import numpy as np
 
@@ -59,9 +60,9 @@ class HardwarePlayer(object):
             'actions_num': self.num_actions,
             'priv_mlp_units': self.deploy_config.network.priv_mlp.units,
             'input_shape': self.obs_shape,
-            'extrin_adapt': True,
+            'extrin_adapt': self.extrin_adapt,
             'priv_info_dim': self.priv_info_dim,
-            'priv_info': True,
+            'priv_info': self.priv_info,
             "tactile_info": self.tactile_info,
             "obs_info": self.obs_info,
             'student_obs_input_shape': self.student_obs_input_shape,
@@ -83,6 +84,7 @@ class HardwarePlayer(object):
         self.running_mean_std.eval()
         self.running_mean_std_stud = RunningMeanStd((self.student_obs_input_shape,)).to(self.device)
         self.running_mean_std_stud.eval()
+
         # ---- Output Dir ----
         self.output_dir = output_dir
         self.dp_dir = os.path.join(self.output_dir, 'deploy')
@@ -95,6 +97,29 @@ class HardwarePlayer(object):
         self.asset_info_insertion = hydra.compose(config_name=asset_info_path)
         self.asset_info_insertion = self.asset_info_insertion['']['']['']['']['']['']['assets']['factory'][
             'yaml']  # strip superfluous nesting
+
+    def restore(self, fn):
+        checkpoint = torch.load(fn)
+        self.running_mean_std.load_state_dict(checkpoint['running_mean_std'])
+        self.model.load_state_dict(checkpoint['model'])
+
+    def _initialize_grasp_poses(self):
+        grasp_folders = {
+            '2in_loose1mm': 'init_grasps_plug2in_loose1mm_new',
+            '16mm_loose0.5mm': 'init_grasps_plug16mm_loose0.5mm',
+        }
+        self.grasps_folder = grasp_folders['2in_loose1mm']
+
+        self.initial_grasp_poses = np.load(f'initial_grasp_data/{self.grasps_folder}.npz')
+
+        self.total_init_poses = self.initial_grasp_poses['socket_pos'].shape[0]
+        self.init_dof_pos = torch.zeros((self.total_init_poses, 15))
+        self.init_dof_pos = self.init_dof_pos[:, :7]
+        dof_pos = self.initial_grasp_poses['dof_pos'][:, :7]
+        from tqdm import tqdm
+        print("Loading Poses")
+        for i in tqdm(range(self.total_init_poses)):
+            self.init_dof_pos[i] = torch.from_numpy(dof_pos[i])
 
     def _create_asset_info(self):
 
@@ -116,8 +141,13 @@ class HardwarePlayer(object):
     def _acquire_task_tensors(self):
         """Acquire tensors."""
 
-        self.gripper_normal_quat = torch.tensor([-1 / 2 ** 0.5, -1 / 2 ** 0.5, 0.0, 0.0], device=self.device).unsqueeze(
-            0)
+        # Gripper pointing down w.r.t the world frame
+        gripper_goal_euler = torch.tensor(self.deploy_config.env.fingertip_midpoint_rot_initial,
+                                          device=self.device).unsqueeze(0)
+
+        self.gripper_goal_quat = torch_jit_utils.quat_from_euler_xyz(gripper_goal_euler[:, 0],
+                                                                     gripper_goal_euler[:, 1],
+                                                                     gripper_goal_euler[:, 2])
 
         self.identity_quat = torch.tensor([0.0, 0.0, 0.0, 1.0], device=self.device).unsqueeze(0)
 
@@ -141,9 +171,9 @@ class HardwarePlayer(object):
                                          dtype=torch.float, device=self.device)
         self.targets_queue = torch.zeros((1, self.deploy_config.env.obs_seq_length, self.num_targets),
                                          dtype=torch.float, device=self.device)
-        self.eef_queue = torch.zeros((1, self.deploy_config.env.obs_seq_length, 7),
+        self.eef_queue = torch.zeros((1, self.deploy_config.env.obs_seq_length, 12),
                                      dtype=torch.float, device=self.device)
-        self.goal_noisy_queue = torch.zeros((1, self.deploy_config.env.obs_seq_length, 7),
+        self.goal_noisy_queue = torch.zeros((1, self.deploy_config.env.obs_seq_length, 12),
                                             dtype=torch.float, device=self.device)
 
         # Bad, should queue the obs!
@@ -155,9 +185,9 @@ class HardwarePlayer(object):
                                                  dtype=torch.float, device=self.device)
         self.targets_queue_student = torch.zeros((1, self.deploy_config.env.stud_obs_seq_length, self.num_actions),
                                                  dtype=torch.float, device=self.device)
-        self.eef_queue_student = torch.zeros((1, self.deploy_config.env.stud_obs_seq_length, 7),
+        self.eef_queue_student = torch.zeros((1, self.deploy_config.env.stud_obs_seq_length, 12),
                                              dtype=torch.float, device=self.device)
-        self.goal_noisy_queue_student = torch.zeros((1, self.deploy_config.env.stud_obs_seq_length, 7),
+        self.goal_noisy_queue_student = torch.zeros((1, self.deploy_config.env.stud_obs_seq_length, 12),
                                                     dtype=torch.float, device=self.device)
 
         # tactile buffers
@@ -188,6 +218,7 @@ class HardwarePlayer(object):
         self.plug_pos = torch.tensor(pos, device=self.device).unsqueeze(0)
 
     def _update_socket_pose(self):
+        """ Update the noisy estimation of the socket pos"""
 
         socket_obs_pos_noise = 2 * (
                 torch.rand((1, 3), dtype=torch.float32, device=self.device)
@@ -209,13 +240,42 @@ class HardwarePlayer(object):
         self.noisy_socket_pos[:, 1] = self.socket_pos[:, 1] + socket_obs_pos_noise[:, 1]
         self.noisy_socket_pos[:, 2] = self.socket_pos[:, 2] + socket_obs_pos_noise[:, 2]
 
-        self.noisy_gripper_goal_quat, self.noisy_gripper_goal_pos = torch_jit_utils.tf_combine_deploy(
-            self.identity_quat,
+        # Add observation noise to socket rot
+        socket_rot_euler = torch.zeros(
+            (1, 3), dtype=torch.float32, device=self.device
+        )
+        socket_obs_rot_noise = 2 * (
+                torch.rand((1, 3), dtype=torch.float32, device=self.device)
+                - 0.5
+        )
+        socket_obs_rot_noise = socket_obs_rot_noise @ torch.diag(
+            torch.tensor(
+                self.deploy_config.env.socket_rot_obs_noise,
+                dtype=torch.float32,
+                device=self.device,
+            )
+        )
+
+        socket_obs_rot_euler = socket_rot_euler + socket_obs_rot_noise
+        self.noisy_socket_quat = torch_jit_utils.quat_from_euler_xyz_deploy(
+            socket_obs_rot_euler[:, 0],
+            socket_obs_rot_euler[:, 1],
+            socket_obs_rot_euler[:, 2],
+        )
+
+        # Compute observation noise on socket
+        (
+            self.noisy_gripper_goal_quat,
+            self.noisy_gripper_goal_pos,
+        ) = torch_jit_utils.tf_combine_deploy(
+            self.noisy_socket_quat,
             self.noisy_socket_pos,
-            self.gripper_normal_quat,
-            self.socket_tip_pos_local)
+            self.gripper_goal_quat,
+            self.socket_tip_pos_local,
+        )
 
     def compute_observations(self):
+
         obses = self.env.get_obs()
 
         arm_joints = obses['joints']
@@ -234,11 +294,12 @@ class HardwarePlayer(object):
 
         self.eef_queue[:, 1:] = self.eef_queue[:, :-1].clone().detach()
         self.eef_queue[:, 0, :] = torch.cat((self.fingertip_centered_pos.clone(),
-                                             self.fingertip_centered_quat.clone()), dim=-1)
+                                             quat2R(self.fingertip_centered_quat.clone()).reshape(1, -1)), dim=-1)
 
         self.eef_queue_student[:, 1:] = self.eef_queue_student[:, :-1].clone().detach()
         self.eef_queue_student[:, 0, :] = torch.cat((self.fingertip_centered_pos.clone(),
-                                                     self.fingertip_centered_quat.clone()), dim=-1)
+                                                     quat2R(self.fingertip_centered_quat.clone()).reshape(1, -1)),
+                                                    dim=-1)
 
         left = cv2.resize(left, (self.cfg_tactile.decoder.width, self.cfg_tactile.decoder.height),
                           interpolation=cv2.INTER_AREA)
@@ -257,18 +318,29 @@ class HardwarePlayer(object):
         self.ft_queue[:, 1:] = self.ft_queue[:, :-1].clone().detach()
         self.ft_queue[:, 0, :] = torch.tensor(ft, device=self.device, dtype=torch.float)
 
+        # some-like taking a new socket pose measurement
+        self._update_socket_pose()
+        self.goal_noisy_queue[:, 1:] = self.goal_noisy_queue[:, :-1].clone().detach()
+        self.goal_noisy_queue[:, 0, :] = torch.cat((self.noisy_gripper_goal_pos.clone(),
+                                                    quat2R(self.noisy_gripper_goal_quat.clone()).reshape(1, -1)),
+                                                   dim=-1)
+        self.goal_noisy_queue_student[:, 1:] = self.goal_noisy_queue_student[:, :-1].clone().detach()
+        self.goal_noisy_queue_student[:, 0, :] = torch.cat((self.noisy_gripper_goal_pos.clone(),
+                                                            quat2R(self.noisy_gripper_goal_quat.clone()).reshape(1,
+                                                                                                                 -1)),
+                                                           dim=-1)
         obs_tensors = [
             self.arm_joint_queue.reshape(1, -1),  # 7 * hist
-            self.eef_queue.reshape(1, -1),  # (envs, 7 * hist)
-            self.goal_noisy_queue.reshape(1, -1),  # (envs, 7 * hist)
+            self.eef_queue.reshape(1, -1),  # (envs, 12 * hist)
+            self.goal_noisy_queue.reshape(1, -1),  # (envs, 12 * hist)
             self.actions_queue.reshape(1, -1),  # (envs, 6 * hist)
             self.targets_queue.reshape(1, -1),  # (envs, 6 * hist)
         ]
 
         obs_tensors_student = [
             self.arm_joint_queue_student.reshape(1, -1),  # 7 * hist
-            self.eef_queue_student.reshape(1, -1),  # (envs, 7 * hist)
-            self.goal_noisy_queue_student.reshape(1, -1),  # (envs, 7 * hist)
+            self.eef_queue_student.reshape(1, -1),  # (envs, 12 * hist)
+            self.goal_noisy_queue_student.reshape(1, -1),  # (envs, 12 * hist)
             self.actions_queue_student.reshape(1, -1),  # (envs, 6 * hist)
             self.targets_queue_student.reshape(1, -1),  # (envs, 6 * hist)
         ]
@@ -298,7 +370,6 @@ class HardwarePlayer(object):
                     'jacobian_type': 'geometric'}
 
         for _ in range(3):
-
             info = self.env.get_info_for_control()
             ee_pose = info['ee_pose']
             self.fingertip_centered_pos = torch.tensor(ee_pose[:3], device=self.device, dtype=torch.float).unsqueeze(0)
@@ -321,7 +392,6 @@ class HardwarePlayer(object):
             actions[:, :6] = delta_hand_pose
             # Apply the action, keep fingers in the same status
             self.apply_action(actions=actions, do_scale=False, do_clamp=False, wait=True)
-
 
     def update_and_apply_action(self, actions, wait=True):
 
@@ -348,16 +418,6 @@ class HardwarePlayer(object):
         self.targets_queue_student[:, 0, :] = self.targets
         self.prev_targets[:] = self.targets.clone()
 
-        # some-like taking a new socket pose measurement
-        self._update_socket_pose()
-        self.goal_noisy_queue[:, 1:] = self.goal_noisy_queue[:, :-1].clone().detach()
-        self.goal_noisy_queue[:, 0, :] = torch.cat((self.noisy_gripper_goal_pos.clone(),
-                                                    self.noisy_gripper_goal_quat.clone()),
-                                                   dim=-1)
-        self.goal_noisy_queue_student[:, 1:] = self.goal_noisy_queue_student[:, :-1].clone().detach()
-        self.goal_noisy_queue_student[:, 0, :] = torch.cat((self.noisy_gripper_goal_pos.clone(),
-                                                            self.noisy_gripper_goal_quat.clone()),
-                                                           dim=-1)
         self.apply_action(self.actions, wait=wait)
 
     def apply_action(self, actions, do_scale=True, do_clamp=True, wait=True):
@@ -423,13 +483,9 @@ class HardwarePlayer(object):
         except:
             print(f'failed to reach {target_joints}')
 
-    def restore(self, fn):
-        checkpoint = torch.load(fn)
-        self.running_mean_std.load_state_dict(checkpoint['running_mean_std'])
-        self.model.load_state_dict(checkpoint['model'])
-
     def deploy(self):
 
+        self._initialize_grasp_poses()
         from algo.deploy.env.env import ExperimentEnv
 
         rospy.init_node('DeployEnv')
@@ -447,34 +503,49 @@ class HardwarePlayer(object):
         self.env.move_to_init_state()
 
         true_socket_pose = [self.deploy_config.env.kuka_depth, 0.0, self.deploy_config.env.table_height]
-        above_socket_pose = [x + y for x, y in zip(true_socket_pose, [0, 0, 0.1])]
         self._set_socket_pose(pos=true_socket_pose)
+        # above_socket_pose = [x + y for x, y in zip(true_socket_pose, [0, 0, 0.1])]
 
-        true_plug_pose = [self.deploy_config.env.kuka_depth, 0.3, self.deploy_config.env.table_height]
+        true_plug_pose = [self.deploy_config.env.kuka_depth, 0.0, self.deploy_config.env.table_height]
         self._set_plug_pose(pos=true_plug_pose)
-        above_plug_pose = [x + y for x, y in zip(true_plug_pose, [0, 0, 0.2])]
-        self._move_arm_to_desired_pose([0.5, 0, 0.2])
+        # above_plug_pose = [x + y for x, y in zip(true_plug_pose, [0, 0, 0.2])]
 
-        # self.env.move_to_joint_values(self.env.joints_true_socket_pos)
+        # self._move_arm_to_desired_pose([0.5, 0, 0.2])
+        # self.env.move_to_joint_values(self.env.joints_above_socket_pos)
+
+        self.env.move_to_joint_values(self.env.joints_above_plug, wait=True)
+        # self.env.move_to_joint_values(self.env.joints_grasp_pos, wait=True)
+        grasp_joints = [0.3302,      0.4781,      0.1310,     -1.6159,     -0.0692,   1.0522,     -1.0898]
+        self.env.move_to_joint_values(grasp_joints, wait=True)
+
+        self.env.grasp()
+
+        self.env.move_to_joint_values(self.env.joints_above_plug, wait=True)
+        self.env.move_to_joint_values(self.env.joints_above_socket, wait=True)
+
+        # Sample init error
+        random_init_idx = torch.randint(0, self.total_init_poses, size=(1,))
+        kuka_dof_pos = self.init_dof_pos[random_init_idx]
+        kuka_dof_pos = kuka_dof_pos.cpu().detach().numpy().squeeze().tolist()
+        self.env.move_to_joint_values(kuka_dof_pos, wait=True)
 
         # above_plug_pose = [x + y for x, y in zip(true_plug_pose, [0, 0, 0.1])]
         # plug_grasp_pose = [x + y for x, y in zip(true_plug_pose, [0, 0, 0.05])]
-
         # # Move & grasp the object
         # self._move_arm_to_desired_pose(above_plug_pose)
         # self._move_arm_to_desired_pose(plug_grasp_pose)
         # self.env.grasp()
-        #
         # self._move_arm_to_desired_pose(above_socket_pose)
         # # self._move_arm_to_desired_pose(true_socket_pose)
 
         obs, obs_stud, tactile = self.compute_observations()
 
-        # TODO? Should we fill the history buffs?
+        # TODO: Should we fill the history buffs?
         for i in range(self.deploy_config.env.obs_seq_length):
             pass
 
         while True:
+
             obs = self.running_mean_std(obs.clone())
 
             input_dict = {
@@ -485,34 +556,7 @@ class HardwarePlayer(object):
             action, _ = self.model.act_inference(input_dict)
             start_time = time()
             self.update_and_apply_action(action, wait=True)
-            print("FPS: ", 1.0 / (time() - start_time))  # FPS = 1 / time to process loop
-
             ros_rate.sleep()
-
+            print("FPS: ", 1.0 / (time() - start_time))  # FPS = 1 / time to process loop
+            print(action)
             obs, obs_stud, tactile = self.compute_observations()
-
-
-
-'''
-[x 0.5, y 0.3,z 0.1]
-  a1: 0.396711885929
-  a2: 0.644319176674
-  a3: 0.220347777009
-  a4: -1.55624902248
-  a5: -0.160987839103
-  a6: 0.95887452364
-  a7: -0.90379679203
----
-
-    x: 0.501488964447
-    y: 0.00795072908259
-    z: 0.171816062996
-  a1: -0.098761215806
-  a2: 0.379355311394
-  a3: 0.142728880048
-  a4: -1.75525605679
-  a5: -0.0600436516106
-  a6: 1.0154761076
-  a7: -1.50801086426
-
-'''

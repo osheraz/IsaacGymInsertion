@@ -69,7 +69,7 @@ class allsight_renderer:
             obj_scale = 1.02 # 0.01 * random.randint(115, 130)
         else:
             bg_id = 15
-            obj_scale = 1.5
+            obj_scale = 1.0
 
         # Create renderer
         self.zrange = 0.002

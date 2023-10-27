@@ -49,8 +49,8 @@ env:
     tactile_history_len: 3
 
     openhand:
-        distal_open: 0.0
-        distal_close: 0.1
+        distal_open: 0.1
+        distal_close: 0.4
         proximal_open: 1.0
         proximal_close: 2.1
         base_angle: 0.7
@@ -88,12 +88,12 @@ randomize:
     plug_pos_xy_noise: [0.02, 0.02] # noise on plug position
     socket_pos_xy_initial: [0.5, 0.0]  # initial XY position of plug on table # round_hole_2in  width = 0.1016, length = 0.09144
     socket_pos_xy_noise: [0.02, 0.02]  # noise on plug position
-    grasp_plug_noise: 0.001
+    grasp_plug_noise: 0.0005
     above_socket_noise: 0.003
 
 rl:
 
-    pos_action_scale: [0.005, 0.005, 0.004]
+    pos_action_scale: [0.001, 0.001, 0.001]
     rot_action_scale: [0.001, 0.001, 0.001]
 
     force_action_scale: [1.0, 1.0, 1.0]
@@ -109,7 +109,7 @@ rl:
     keypoint_scale: 1.0  # length of line of keypoints
 
 
-    max_episode_length: 500 # 8192  # terminate episode after this number of timesteps (failure)
+    max_episode_length: 750 # 8192  # terminate episode after this number of timesteps (failure)
 
     orientation_threshold: 0.1
     far_error_thresh: 0.100  # threshold above which plug is considered too far from bolt

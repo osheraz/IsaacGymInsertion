@@ -217,11 +217,11 @@ class ActorCritic(nn.Module):
                     # plt.pause(0.0001)
                     # plt.cla()
 
-                    obs = torch.cat([obs, extrin], dim=-1)
+                    obs = torch.cat([obs, extrin], dim=-1) # len(obs) + len(extrin)
 
-        x = self.actor_mlp(obs)
-        value = self.value(x)
-        mu = self.mu(x)
+        x = self.actor_mlp(obs) # 128
+        value = self.value(x) # 1
+        mu = self.mu(x) # 6
         sigma = self.sigma
         return mu, mu * 0 + sigma, value, extrin, extrin_gt
 

@@ -16,6 +16,7 @@ from datetime import datetime
 import isaacgym
 import hydra
 from omegaconf import DictConfig, OmegaConf
+from hydra.utils import to_absolute_path
 
 
 import argparse
@@ -30,13 +31,17 @@ warnings.filterwarnings("ignore", category=DeprecationWarning)
 @hydra.main(config_name="config", config_path="./cfg")
 def main(config: DictConfig):
 
+    config.checkpoint = 'outputs/stupid/last.pth'
+    if config.checkpoint:
+        config.checkpoint = to_absolute_path(config.checkpoint)
+
     set_np_formatting()
     config.seed = set_seed(config.seed)
     output_dif = os.path.join('outputs', str(datetime.now().strftime("%m-%d-%y")))
     output_dif = os.path.join(output_dif, str(datetime.now().strftime("%H-%M-%S")))
     os.makedirs(output_dif, exist_ok=True)
     agent = HardwarePlayer(output_dif, config)
-    # agent.restore(config.checkpoint)
+    agent.restore(config.checkpoint)
     agent.deploy()
 
 if __name__ == '__main__':
