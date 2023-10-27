@@ -19,12 +19,12 @@ task.env.numEnvs=${NUM_ENVS} \
 offline_training=False \
 test=True \
 offline_training_w_env=True \
-offline_train.train.action_regularization=False \
+offline_train.train.action_regularization=True \
 offline_train.model.transformer.full_sequence=False \
-offline_train.model.transformer.sequence_length=100 \
+offline_train.model.transformer.sequence_length=50 \
 task.env.tactile=True \
 task.env.tactile_history_len=1 \
 task.tactile.decoder.num_channels=3 \
 train.ppo.output_name="${CACHE}" \
 checkpoint="${C}" \
-${EXTRA_ARGS} 
+${EXTRA_ARGS}

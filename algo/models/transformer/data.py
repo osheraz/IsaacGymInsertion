@@ -17,8 +17,6 @@ class TactileDataset(Dataset):
         return int((len(self.all_folders)))
     
     def __getitem__(self, idx):
-        
-
 
         data = np.load(self.all_folders[idx])
         
@@ -48,7 +46,6 @@ class TactileDataset(Dataset):
         done = data["done"]
         done_idx = done.nonzero()[0][-1]
         
-
         if self.full_sequence:
             mask = np.zeros_like(done)
             mask[:done_idx] = 1
@@ -61,8 +58,8 @@ class TactileDataset(Dataset):
 
         # generating mask (for varied sequence lengths)
         end_idx = np.random.randint(0, done_idx) # 0 and 500
-        start_idx = max(0, end_idx - self.sequence_length)
-        padding_length = self.sequence_length - (end_idx - start_idx)
+        start_idx = max(0, end_idx - self.sequence_length) # max(0, 60 - 50) = 10 -> 60
+        padding_length = self.sequence_length - (end_idx - start_idx) # 50 - (60 - 10) = 0 -> 50
 
         create_data = lambda x: np.concatenate([np.zeros((padding_length, *x.shape[1:])), x[start_idx: end_idx]], axis=0)
         
@@ -75,6 +72,7 @@ class TactileDataset(Dataset):
         action = create_data(action)
         latent = create_data(latent)
         obs_hist = create_data(obs_hist)
+        # priv_obs = create_data(priv_obs)
         
         # converting to torch tensors
         cnn_input = self.to_torch(cnn_input)
@@ -82,6 +80,7 @@ class TactileDataset(Dataset):
         obs_hist = self.to_torch(obs_hist)
         latent = self.to_torch(latent)
         action = self.to_torch(action)
+        # priv_obs = self.to_torch(priv_obs)
         mask = self.to_torch(mask)
 
         return cnn_input, lin_input, obs_hist, latent, action, mask

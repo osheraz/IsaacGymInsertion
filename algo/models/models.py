@@ -15,6 +15,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from matplotlib import pyplot as plt
 
 
 class MLP(nn.Module):
@@ -74,6 +75,9 @@ class ActorCritic(nn.Module):
         self.priv_mlp = kwargs['priv_mlp_units']
         self.priv_info = kwargs['priv_info']
         self.priv_info_stage2 = kwargs['extrin_adapt']
+
+        self.temp_latent = []
+        self.temp_extrin = []
 
         if self.priv_info:
             mlp_input_shape += self.priv_mlp[-1]
@@ -175,6 +179,15 @@ class ActorCritic(nn.Module):
         if 'latent' in obs_dict and obs_dict['latent'] is not None:
             extrin = obs_dict['latent']
             obs = torch.cat([obs, extrin], dim=-1)
+
+            if 'priv_info' in obs_dict:
+                with torch.inference_mode():
+                    priv_extrin = self.env_mlp(obs_dict['priv_info'])
+                    plt.ylim(-1, 1)
+                    plt.scatter(list(range(8)), torch.tanh(priv_extrin).clone().cpu().numpy()[0, :], color='b')
+                    plt.scatter(list(range(8)), extrin.clone().detach().cpu().numpy()[0, :], color='r')
+                    plt.pause(0.0001)
+                    plt.cla()
         else:
             if self.priv_info:
                 if self.priv_info_stage2:
@@ -196,7 +209,14 @@ class ActorCritic(nn.Module):
                     obs = torch.cat([obs, extrin], dim=-1)
                 else:
                     extrin = self.env_mlp(obs_dict['priv_info'])
-                    extrin = torch.tanh(extrin)  # constraining the projection space (everything in hypersphere of radius 2)
+                    extrin = torch.tanh(extrin)  # constraining the projection space (everything in hypersphere of radius 1)
+                    
+                    # plt.ylim(-1, 1)
+                    # plt.scatter(list(range(8)), extrin.clone().detach().cpu().numpy()[0, :], color='b')
+                    # plt.scatter(list(range(8)), obs_dict['latent1'].clone().cpu().numpy()[0, :], color='r')
+                    # plt.pause(0.0001)
+                    # plt.cla()
+
                     obs = torch.cat([obs, extrin], dim=-1)
 
         x = self.actor_mlp(obs)

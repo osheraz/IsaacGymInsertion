@@ -1,43 +1,43 @@
 seed: 42 # not sure if this is used yet.
-data_folder: "/common/users/dm1487/inhand_manipulation_data_store/datastore_*" # where is all your data, can include * for globbing
+data_folder: "/common/users/dm1487/inhand_manipulation_data_store/datastore_4*" # where is all your data, can include * for globbing
 output_dir: "/common/users/dm1487/isaacgym_new/python/IsaacGymInsertion/isaacgyminsertion/outputs/offline_student" # where to save checkpoints and logs
 
 # supervised learning
 train:
   # basic training hyperparameters
   epochs: 40
-  train_batch_size: 16
+  train_batch_size: 2
   val_batch_size: 32
-  learning_rate: 0.001
-  train_test_split: 0.95
+  learning_rate: 0.0005
+  train_test_split: 0.98
   action_regularization: False # propogate gradients for action loss
 
   # for on screen logging
-  print_every: 250
-  eval_every: 500
-  test_every: 250
-  test_episodes: 20
+  print_every: 50
+  eval_every: 1000
+  test_every: 50
+  test_episodes: 5
   
 # model configuration
 model:
   # linear embedding
   linear: 
-    input_size: 33
+    input_size: 43
     # TODO: add model layers here
 
   # tactile embedding
   cnn:
     in_channels: 9
-    out_channels: 32
-    kernel_size: 5
+    out_channels: 1 # 32
+    kernel_size: 3
     # TODO: add model layers here
 
   # tactile+obs encoder
   transformer:
     full_sequence: False # if True, it makes sequence length 500
-    sequence_length: 2 # ${...task.rl.max_episode_length}
-    embed_size: 256
-    hidden_size: 512
+    sequence_length: 100 # ${...task.rl.max_episode_length}
+    embed_size: 32
+    hidden_size: 64
     num_layers: 2
     num_heads: 2
     output_size: 8

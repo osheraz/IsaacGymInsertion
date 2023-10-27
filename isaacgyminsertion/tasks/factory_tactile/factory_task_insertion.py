@@ -663,10 +663,10 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         state_tensors = [
             #  add delta error
-            socket_tip_wrt_robot[0],  # 3
-            socket_tip_wrt_robot[1],  # 4
-            plug_bottom_wrt_robot[0],  # 3
-            plug_bottom_wrt_robot[1],  # 4
+            # socket_tip_wrt_robot[0],  # 3
+            # socket_tip_wrt_robot[1],  # 4
+            # plug_bottom_wrt_robot[0],  # 3
+            # plug_bottom_wrt_robot[1],  # 4
             plug_socket_pos_error, # 3
             plug_socket_quat_error, # 4
             physics_params,  # 6 (plug_mass, plug_friction, socket_friction, left finger friction, right finger friction, middle finger friction)

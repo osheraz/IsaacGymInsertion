@@ -188,10 +188,10 @@ class PPO(object):
             # getting the shapes for the data logger initialization
             log_items = {
                 'arm_joints_shape': self.env.arm_dof_pos.shape[-1],
-                'eef_pos_shape': self.env.fingertip_centered_pos.size()[-1] + self.env.fingertip_centered_quat.size()[-1],
-                'socket_pos_shape': self.env.socket_pos.size()[-1] + self.env.socket_quat.size()[-1],
-                'noisy_socket_pos_shape': self.env.socket_pos.size()[-1] + self.env.socket_quat.size()[-1],
-                'plug_pos_shape': self.env.plug_pos.size()[-1] + self.env.plug_quat.size()[-1],
+                'eef_pos_shape': self.env.fingertip_centered_pos.size()[-1] + 9, # self.env.fingertip_centered_quat.size()[-1], # 7
+                'socket_pos_shape': self.env.socket_pos.size()[-1] + 9, # self.env.socket_quat.size()[-1],
+                'noisy_socket_pos_shape': self.env.socket_pos.size()[-1] + 9, # self.env.socket_quat.size()[-1],
+                'plug_pos_shape': self.env.plug_pos.size()[-1] + 9, # self.env.plug_quat.size()[-1],
                 'action_shape': self.actions_num,
                 'target_shape': self.env.targets.shape[-1],
                 'tactile_shape': self.env.tactile_imgs.shape[1:],
@@ -700,10 +700,11 @@ class PPO(object):
         padding_cnn = torch.zeros_like(cnn_input)
         padding_lin = torch.zeros_like(lin_input)
         for env_id in range(self.env.num_envs):
-            padding_cnn[env_id, -(self.env.progress_buf[env_id]+1):, :] = cnn_input[env_id, :(self.env.progress_buf[env_id]+1), :]
-            padding_lin[env_id, -(self.env.progress_buf[env_id]+1):, :] = lin_input[env_id, :(self.env.progress_buf[env_id]+1), :]
+            padding_cnn[env_id, -(self.env.progress_buf[env_id]+1):, :] = cnn_input[env_id, :(self.env.progress_buf[env_id]+1), :] # seq_len=50, progress_buf=10
+            padding_lin[env_id, -(self.env.progress_buf[env_id]+1):, :] = lin_input[env_id, :(self.env.progress_buf[env_id]+1), :] # seq_len=50, progress_buf=10
         cnn_input = padding_cnn[:, -self.full_config.offline_train.model.transformer.sequence_length:, :].clone()
         lin_input = padding_lin[:, -self.full_config.offline_train.model.transformer.sequence_length:, :].clone()
+        
         return cnn_input, lin_input
 
 def policy_kl(p0_mu, p0_sigma, p1_mu, p1_sigma):

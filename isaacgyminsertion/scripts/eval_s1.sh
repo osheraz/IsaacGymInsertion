@@ -18,8 +18,10 @@ python trainV2.py task=FactoryTaskInsertionTactile headless=${HEADLESS} seed=${S
 test=True \
 task.env.numEnvs=${NUM_ENVS} \
 task.env.tactile=True \
+task.tactile.tacto.width=224 \
+task.tactile.tacto.height=224 \
 task.env.tactile_history_len=1 \
-task.tactile.decoder.num_channels=3 \
+task.tactile.decoder.num_channels=1 \
 task.env.numObsHist=5 \
 task.data_logger.collect_data=True \
 task.data_logger.base_folder="/common/users/dm1487/inhand_manipulation_data_store" \

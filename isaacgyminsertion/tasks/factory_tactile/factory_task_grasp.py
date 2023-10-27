@@ -660,14 +660,14 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         priv_depth = self.depth_maps.clone()
 
         # # Move arm to grasp pose
-
         plug_pos_noise = (2 * (torch.randn((len(env_ids), 3), device=self.device) - 0.5)) * self.cfg_task.randomize.grasp_plug_noise
         first_plug_pose = self.plug_grasp_pos.clone()
         self._move_arm_to_desired_pose(env_ids, first_plug_pose + plug_pos_noise,
                                        sim_steps=self.cfg_task.env.num_gripper_move_sim_steps*2)
         self._zero_velocities(env_ids)
         self._refresh_task_tensors(update_tactile=False)
-
+        print(self.dof_pos[0, :7])
+        
         # # Grasp ~
         # self.disable_gravity()
         
@@ -725,7 +725,7 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             plug_pos = self.root_pos[valid_env_ids, self.plug_actor_id_env, :].clone().cpu().numpy()
             plug_quat = self.root_quat[valid_env_ids, self.plug_actor_id_env, :].clone().cpu().numpy()
             dof_pos = self.dof_pos[valid_env_ids, :].clone().cpu().numpy()
-            print(dof_pos[:, :, 6:], dof_pos.shape)
+            # print(dof_pos[:, :, 6:], dof_pos.shape)
             output_dir = './outputs/debug'
             file_name = self.grasps_folder
             init_grasp_folder = os.path.join(output_dir, file_name)

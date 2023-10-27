@@ -33,47 +33,49 @@ class Runner:
 
         self.src_mask = torch.triu(torch.ones(self.sequence_length, self.sequence_length), diagonal=1).bool().to(self.device)
 
-        self.loss_fn = lambda reduction: torch.nn.MSELoss(reduction=reduction)
+        self.loss_fn_mean = torch.nn.MSELoss(reduction='mean')
+        self.loss_fn = torch.nn.MSELoss(reduction='none')
 
     def train(self, dl, val_dl, ckpt_path, print_every=50, eval_every=250, test_every=500):
         self.model.train()
         train_loss, val_loss = [], 0
         latent_loss_list, action_loss_list = [], []
         for i, (cnn_input, lin_input, obs_hist, latent, action, mask) in tqdm(enumerate(dl)):
+            self.optimizer.zero_grad()
+
+            # envs x seq_len x 64 x 64 x 9 => envs*seq_len x 9 x 64 x 64
             cnn_input = cnn_input.to(self.device).view(cnn_input.shape[0] * self.sequence_length, *cnn_input.size()[-3:]).permute(0, 3, 1, 2)
             
             lin_input = lin_input.to(self.device) 
-            latent = latent.to(self.device)
+            latent = latent.to(self.device) # z_t
             action = action.to(self.device)
             mask = mask.to(self.device).unsqueeze(-1)
-            out = self.model(cnn_input, lin_input, batch_size=lin_input.shape[0], embed_size=self.cfg.model.transformer.embed_size//2, src_mask=self.src_mask if self.full_sequence else None)
-            
+            out = self.model(cnn_input, lin_input, batch_size=lin_input.shape[0], embed_size=self.cfg.model.transformer.embed_size//2, src_mask=self.src_mask)
+
+            loss_latent = 0
+            loss_action = 0
+
             if self.full_sequence:
-                loss_latent = self.loss_fn(reduction='none')(out, latent)
+                loss_latent = torch.sum(self.loss_fn(out, latent), dim=-1).unsqueeze(-1)
                 loss_latent = torch.sum(loss_latent*mask)/torch.sum(mask)
-                loss = loss_latent
-                if self.ppo_step is not None:
+                if self.ppo_step is not None: # action regularization
                     obs_hist = obs_hist.to(self.device).view(obs_hist.shape[0]*self.sequence_length, obs_hist.shape[-1])
                     pred_action, _ = self.ppo_step({'obs': obs_hist, 'latent': out.view(out.shape[0]*out.shape[1], out.shape[-1])})
 
-                    loss_action = self.loss_fn(reduction='none')(pred_action.view(*action.shape), action)
+                    loss_action = torch.sum(self.loss_fn(pred_action.view(*action.shape), action), dim=-1).unsqueeze(-1)
                     loss_action = torch.sum(loss_action*mask)/torch.sum(mask)
-
-                    # TODO: add scaling loss coefficients
-                    loss += loss_action
                     with torch.no_grad():
                         action_loss_list.append(loss_action.item())
             else:
-                loss_latent = self.loss_fn(reduction='mean')(out[:, -1, :], latent[:, -1, :])
-                loss = loss_latent
-                if self.ppo_step is not None:
+                loss_latent = self.loss_fn_mean(out[:, -1:, :].squeeze(1), latent[:, -1:, :].squeeze(1))
+                if self.ppo_step is not None: # action regularization
                     obs_hist = obs_hist[:, -1, :].to(self.device).view(obs_hist.shape[0], obs_hist.shape[-1])
                     pred_action, _ = self.ppo_step({'obs': obs_hist, 'latent': out[:, -1, :]})
-                    # TODO: add scaling loss coefficients
-                    loss_action = self.loss_fn(reduction='mean')(pred_action, action[:, -1, :].squeeze(1))
-                    loss += loss_action
+                    loss_action = self.loss_fn_mean(pred_action, action[:, -1, :].squeeze(1))
 
-            self.optimizer.zero_grad()
+             # TODO: add scaling loss coefficients
+            loss = loss_latent + loss_action
+            
             loss.backward()
             self.optimizer.step()
             train_loss.append(loss.item())
@@ -98,7 +100,7 @@ class Runner:
                 val_loss = self.validate(val_dl)
                 print(f'validation loss: {np.mean(val_loss)}')
                 self.model.train()
-                val_loss = 0.
+                # val_loss = 0.
 
             if (i+1) % test_every == 0:
                 self.test()
@@ -117,35 +119,37 @@ class Runner:
                 latent = latent.to(self.device)
                 action = action.to(self.device)
                 mask = mask.to(self.device).unsqueeze(-1)
-                out = self.model(cnn_input, lin_input, batch_size=lin_input.shape[0], embed_size=self.cfg.model.transformer.embed_size//2, src_mask=self.src_mask if self.full_sequence else None)
+                out = self.model(cnn_input, lin_input, batch_size=lin_input.shape[0], embed_size=self.cfg.model.transformer.embed_size//2, src_mask=self.src_mask)
 
+                loss_latent = 0
+                loss_action = 0
+                
                 if self.full_sequence:
-                    loss_latent = self.loss_fn(reduction='none')(out, latent)
+                    loss_latent = torch.sum(self.loss_fn(out, latent), dim=-1).unsqueeze(-1)
                     loss_latent = torch.sum(loss_latent*mask)/torch.sum(mask)
-                    loss = loss_latent
-
+                    # loss = loss_latent
                     if self.ppo_step is not None:
                         obs_hist = obs_hist.to(self.device).view(obs_hist.shape[0]*self.sequence_length, obs_hist.shape[-1])
                         pred_action, _ = self.ppo_step({'obs': obs_hist, 'latent': out.view(out.shape[0]*out.shape[1], out.shape[-1])})
-
-                        loss_action = self.loss_fn(reduction='none')(pred_action.view(*action.shape), action)
+                        loss_action = torch.sum(self.loss_fn(pred_action.view(*action.shape), action), dim=-1).unsqueeze(-1)
                         loss_action = torch.sum(loss_action*mask)/torch.sum(mask)
-                        # TODO: add scaling loss coefficients
-                        loss += loss_action
+                        # loss += loss_action
                 else:
-                    loss_latent = self.loss_fn(reduction='mean')(out[:, -1, :], latent[:, -1, :])
-                    loss = loss_latent
+                    loss_latent = self.loss_fn_mean(out[:, -1, :], latent[:, -1, :])
+                    # loss = loss_latent
                     if self.ppo_step is not None:
                         obs_hist = obs_hist[:, -1, :].to(self.device).view(obs_hist.shape[0], obs_hist.shape[-1])
                         pred_action, _ = self.ppo_step({'obs': obs_hist, 'latent': out[:, -1, :]})
-                        loss_action = self.loss_fn(reduction='mean')(pred_action, action[:, -1, :].squeeze(1))
-                        loss += loss_action
+                        loss_action = self.loss_fn_mean(pred_action, action[:, -1, :].squeeze(1))
+                        # loss += loss_action
                 
-                if self.ppo_step is not None:
-                    action_loss_list.append(loss_action.item())
+                # TODO: add scaling loss coefficients
+                loss = loss_latent + loss_action
 
                 val_loss.append(loss.item())
                 latent_loss_list.append(loss_latent.item())
+                if self.ppo_step is not None:
+                    action_loss_list.append(loss_action.item())
 
             self._wandb_log({
                 'val/loss': np.mean(val_loss),
@@ -171,15 +175,11 @@ class Runner:
     def predict(self, cnn_input, lin_input):
         self.model.eval()
         with torch.inference_mode():
-            # if not self.full_sequence:
-            #     cnn_input = cnn_input[:, -self.sequence_length, :].clone()
-            #     lin_input = lin_input[:, -self.sequence_length, :].clone()
-            
-            cnn_input = cnn_input[:, ].to(self.device).to(self.device).view(cnn_input.shape[0] * self.sequence_length, *cnn_input.size()[-3:]).permute(0, 3, 1, 2)
-            st = time.time()
+            cnn_input = cnn_input.to(self.device).view(cnn_input.shape[0] * self.sequence_length, *cnn_input.size()[-3:]).permute(0, 3, 1, 2)
+
             lin_input = lin_input.to(self.device)
+            
             out = self.model(cnn_input, lin_input, src_mask=self.src_mask, batch_size=lin_input.shape[0], embed_size=self.cfg.model.transformer.embed_size//2)
-            # else:
 
         return out.detach()
 
@@ -215,7 +215,7 @@ class Runner:
         # training
         for epoch in range(epochs):
             val_loss = self.train(train_dl, val_dl, ckpt_path, print_every=print_every, eval_every=eval_every, test_every=test_every)
-            self.scheduler.step(val_loss)
+            # self.scheduler.step(val_loss)
             
             torch.save(self.model.state_dict(), f'{ckpt_path}/model_{epoch}.pt')
             # torch.jit.save(torch.jit.script(self.model), f'{ckpt_path}/model_{epoch}.pt')
@@ -227,6 +227,7 @@ class Runner:
     def run(self):
         from datetime import datetime
         from glob import glob
+        from tqdm import tqdm
         
         file_list = glob(os.path.join(self.cfg.data_folder, '*/*.npz'))
         save_folder = f'{self.cfg.output_dir}/{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}'
@@ -259,4 +260,15 @@ class Runner:
                 dir=save_folder,
             )
 
+        for file in tqdm(file_list):
+            try:
+                d = np.load(file)
+                done_idx = d['done'].nonzero()[0]
+                if done_idx == 0:
+                    file_list.remove(file)
+            except KeyboardInterrupt:
+                exit()
+            except:
+                file_list.remove(file)
+        
         self._run(file_list, save_folder, device=device, **train_config)

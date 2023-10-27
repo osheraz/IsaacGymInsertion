@@ -3,7 +3,6 @@ import torch
 import math
 
 
-
 class TactileTransformer(nn.Module):
     def __init__(self, lin_input_size, in_channels, out_channels, kernel_size, embed_size, hidden_size, num_heads, max_sequence_length, num_layers, output_size, layer_norm=True):
         super(TactileTransformer, self).__init__()
@@ -33,13 +32,13 @@ class TactileTransformer(nn.Module):
             self.layer_norm_out = nn.LayerNorm(embed_size)
       
         self.dropout = nn.Dropout(0.2)
-        self.out = nn.Sequential(nn.Linear(embed_size, 64), nn.ELU(), nn.Dropout(0.2), nn.Linear(64, output_size))
+        self.out = nn.Sequential(nn.Linear(embed_size, 16), nn.ELU(), nn.Dropout(0.2), nn.Linear(16, output_size))
     
     def forward(self, cnn_input, lin_input, batch_size, embed_size, src_mask=None):
         
         lin_x = self.linear_in(lin_input)
-
-        cnn_x = self.cnn_embedding(cnn_input).view(batch_size, self.max_sequence_length, embed_size)
+        cnn_x = self.cnn_embedding(cnn_input)
+        cnn_x = cnn_x.view(batch_size, self.max_sequence_length, embed_size)
         
         x = torch.cat([lin_x, cnn_x], dim=-1)
 
@@ -82,38 +81,44 @@ class ConvEmbedding(nn.Module):
         
         super(ConvEmbedding, self).__init__()
 
-        self.conv1 = nn.Conv2d(in_channels, 16, kernel_size=kernel_size, stride=2)
-        self.maxpool1 = nn.MaxPool2d(kernel_size=3, stride=2)
-        self.batchnorm1 = nn.BatchNorm2d(16)
-        self.dropout1 = nn.Dropout(0.2)
-        self.conv2 = nn.Conv2d(16, out_channels, kernel_size=kernel_size, stride=2)
-        self.max_pool2 = nn.MaxPool2d(kernel_size=2, stride=3)
-        self.batchnorm2 = nn.BatchNorm2d(out_channels)
-        self.dropout2 = nn.Dropout(0.2)
+        self.conv1 = nn.Conv2d(in_channels, 4, kernel_size=kernel_size, stride=1)
+        self.conv2 = nn.Conv2d(4, out_channels, kernel_size=kernel_size, stride=1)
 
+        self.batchnorm1 = nn.BatchNorm2d(4)
+        self.batchnorm2 = nn.BatchNorm2d(out_channels)
+
+        self.dropout1 = nn.Dropout(0.2)
+        self.dropout2 = nn.Dropout(0.2)
+        self.maxpool1 = nn.MaxPool2d(kernel_size=3, stride=2)
+        self.max_pool2 = nn.MaxPool2d(kernel_size=2, stride=3)
+
+        self.global_avg_pool = nn.AdaptiveAvgPool2d(4)
+        
         self.activation = nn.ELU()
 
     def forward(self, x):
         x = self.conv1(x)
         x = self.batchnorm1(x)
         x = self.activation(x)
-        x = self.maxpool1(x)
+        # x = self.maxpool1(x)
         x = self.dropout1(x)
         x = self.conv2(x)
         x = self.batchnorm2(x)
         x = self.activation(x)
-        x = self.max_pool2(x)
+        # x = self.max_pool2(x)
         x = self.dropout2(x)
-        return x.flatten(start_dim=1)
+        x = self.global_avg_pool(x)
+        x = x.flatten(start_dim=1)
+        return x
     
 # for tests
-# if __name__ == "__main__":
+if __name__ == "__main__":
 
-#     transformer = TactileTransformer(33, 9, 32, 5, 256, 256, 2, 100, 2)
+    transformer = TactileTransformer(33, 9, 32, 5, 256, 256, 2, 100, 2)
 
-#     lin_x = torch.randn(2, 100, 33)
-#     cnn_x = torch.randn(2, 100, 9, 64, 64)
-#     cnn_x = cnn_x.view(2*100, 9, 64, 64)
+    lin_x = torch.randn(2, 100, 33)
+    cnn_x = torch.randn(2, 100, 9, 64, 64)
+    cnn_x = cnn_x.view(2*100, 9, 64, 64)
 
-#     x = transformer(cnn_x, lin_x, 2)
-#     print(x.shape)
+    x = transformer(cnn_x, lin_x, 2)
+    print(x.shape)
