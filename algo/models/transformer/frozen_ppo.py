@@ -288,7 +288,8 @@ class PPO(object):
                           f'Last FPS: {last_fps:.1f} | ' \
                           f'Collect Time: {self.data_collect_time / 60:.1f} min | ' \
                           f'Train RL Time: {self.rl_train_time / 60:.1f} min | ' \
-                          f'Mean Reward: {self.best_rewards:.2f}'
+                          f'Mean Reward: {self.best_rewards:.2f} |' \
+                          f'Priv info: {self.full_config.train.ppo.priv_info}'
             print(info_string)
             self.write_stats(a_losses, c_losses, b_losses, entropies, kls, grad_norms)
             mean_rewards = self.episode_rewards.get_mean()

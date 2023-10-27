@@ -44,7 +44,9 @@ class Runner:
             self.optimizer.zero_grad()
 
             # envs x seq_len x 64 x 64 x 9 => envs*seq_len x 9 x 64 x 64
-            cnn_input = cnn_input.to(self.device).view(cnn_input.shape[0] * self.sequence_length, *cnn_input.size()[-3:]).permute(0, 3, 1, 2)
+            cnn_input = cnn_input.to(self.device)
+            cnn_input = cnn_input.view(cnn_input.shape[0] * self.sequence_length, *cnn_input.size()[-3:])
+            cnn_input = cnn_input.permute(0, 3, 1, 2)
             
             lin_input = lin_input.to(self.device) 
             latent = latent.to(self.device) # z_t
