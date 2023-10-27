@@ -682,7 +682,7 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         # # Move arm above the socket
         above_socket_pos_noise = (2 * (torch.randn((len(env_ids), 3), device=self.device) - 0.5)) * self.cfg_task.randomize.above_socket_noise
-        above_socket_pos_noise[:, 2] = 0
+        above_socket_pos_noise[:, 2] = torch.abs(above_socket_pos_noise[:, 2])  # Only +z
         self._move_arm_to_desired_pose(env_ids, self.above_socket_pos.clone() + above_socket_pos_noise,
                                        sim_steps=self.cfg_task.env.num_gripper_move_sim_steps * 2)
         self._refresh_task_tensors(update_tactile=True)
