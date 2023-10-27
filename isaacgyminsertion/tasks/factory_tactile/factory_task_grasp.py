@@ -167,12 +167,8 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
     def _refresh_task_tensors(self, update_tactile=False):
         """Refresh tensors."""
-        update_tactile = True
-        # print('here 5 1 3 3 3 1')
         self.refresh_base_tensors()
-        # print('here 5 1 3 3 3 2')
         self.refresh_env_tensors()
-        # print('here 5 1 3 3 3 3')
         self.plug_grasp_quat, self.plug_grasp_pos = torch_jit_utils.tf_combine(self.plug_quat,
                                                                                self.plug_pos,
                                                                                self.plug_grasp_quat_local,
@@ -365,7 +361,7 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             #     self.tactile_imgs = torch.tensor(imgs, dtype=torch.float32, device=self.device)
 
     def _update_tactile(self, left_finger_pose, right_finger_pose, middle_finger_pose, object_pose,
-                        offset=None, queue=None, display_viz=True):
+                        offset=None, queue=None, display_viz=False):
 
         tactile_imgs_list, height_maps = [], []  # only for display.
 
