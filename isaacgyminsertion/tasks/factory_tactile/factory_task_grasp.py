@@ -167,7 +167,7 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
     def _refresh_task_tensors(self, update_tactile=False):
         """Refresh tensors."""
-
+        update_tactile = True
         # print('here 5 1 3 3 3 1')
         self.refresh_base_tensors()
         # print('here 5 1 3 3 3 2')
@@ -241,7 +241,7 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                                                                        keypoint_offset.repeat(self.num_envs, 1))[1]
 
 
-        if update_tactile and self.cfg['env']['tactile']:
+        if update_tactile and self.cfg_task.env.tactile:
             # left_finger_poses = pose_vec_to_mat(torch.cat((self.left_finger_pos,
             #                                               self.left_finger_quat), axis=1)).cpu().numpy()
             # right_finger_poses = pose_vec_to_mat(torch.cat((self.right_finger_pos,
@@ -365,7 +365,7 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             #     self.tactile_imgs = torch.tensor(imgs, dtype=torch.float32, device=self.device)
 
     def _update_tactile(self, left_finger_pose, right_finger_pose, middle_finger_pose, object_pose,
-                        offset=None, queue=None, display_viz=False):
+                        offset=None, queue=None, display_viz=True):
 
         tactile_imgs_list, height_maps = [], []  # only for display.
 
@@ -391,7 +391,7 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                                                        self.cfg_tactile.decoder.height), interpolation=cv2.INTER_AREA)
                 # resized_depth
                 self.tactile_imgs[e, n] = torch_jit_utils.rgb_transform(resized_img).to(self.device).permute(1, 2, 0)
-                self.depth_maps[e, n] = torch.tensor(height_map).to(self.device)
+                # self.depth_maps[e, n] = torch.tensor(height_map).to(self.device)
                 tactile_imgs_per_env.append(tactile_img)
                 height_maps_per_env.append(height_map)
 

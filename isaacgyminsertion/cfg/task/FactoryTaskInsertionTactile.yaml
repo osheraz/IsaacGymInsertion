@@ -20,8 +20,8 @@ data_logger:
 
 tactile:
   tacto:
-    width: 64 # 224 # 480 | 224
-    height: 64 # 224 # 480 | 224 for the gan
+    width: 224 # 224 # 480 | 224
+    height: 224 # 224 # 480 | 224 for the gan
     visualize_gui: True
 
   with_bg: True # add background reference frame
@@ -49,8 +49,8 @@ env:
     tactile_history_len: 3
 
     openhand:
-        distal_open: 0.0
-        distal_close: 0.1
+        distal_open: 0.1
+        distal_close: 0.4
         proximal_open: 1.0
         proximal_close: 2.1
         base_angle: 0.7
@@ -66,8 +66,8 @@ env:
     socket_base_height: 0.003
     plug_grasp_threshold: 0.01
 
-    tactile: False
-    tactile_display_viz: False
+    tactile: True
+    tactile_display_viz: True
     compute_contact_gt: False
 
     record_video: True
