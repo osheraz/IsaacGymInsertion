@@ -19,7 +19,7 @@ tactile_display_viz: True
 # taking from training default, allows to over write
 # actually, we should write different config for each observation we test
 rl:
-    pos_action_scale: ${...task.rl.pos_action_scale}
+    pos_action_scale: [0.001, 0.001, 0.001]
     rot_action_scale: ${...task.rl.rot_action_scale}
     clamp_rot: ${...task.rl.clamp_rot}
     clamp_rot_thresh: ${...task.rl.clamp_rot_thresh}
