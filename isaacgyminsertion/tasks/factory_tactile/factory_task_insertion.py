@@ -651,7 +651,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         if self.cfg_task.env.compute_contact_gt:
             for e in range(self.num_envs):
                 self.gt_extrinsic_contact[e] = self.extrinsic_contact_gt[e].get_extrinsic_contact(
-                    obj_pos=self.plug_pos, obj_quat=self.plug_quat, socket_pos=self.socket_pos
+                    obj_pos=self.plug_pos[e], obj_quat=self.plug_quat[e], socket_pos=self.socket_pos[e], socket_quat=self.socket_quat[e]
                 )
             # todo should be added to priv.
         

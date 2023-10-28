@@ -69,6 +69,7 @@ env:
     tactile: False
     tactile_display_viz: False
     compute_contact_gt: False
+    compute_contact_gt_fingers_plug: False
 
     record_video: True
     record_ft: True
@@ -93,7 +94,7 @@ randomize:
 
 rl:
 
-    pos_action_scale: [0.0025, 0.0025, 0.0025]
+    pos_action_scale: [0.005, 0.005, 0.004]
     rot_action_scale: [0.001, 0.001, 0.001]
 
     force_action_scale: [1.0, 1.0, 1.0]
