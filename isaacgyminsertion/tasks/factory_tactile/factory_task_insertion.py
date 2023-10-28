@@ -702,26 +702,25 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         is_plug_engaged_w_socket = self._check_plug_engaged_w_socket()
 
         keypoint_r = keypoint_reward * self.cfg_task.rl.keypoint_reward_scale
-        dist_reset = (self.far_from_goal_buf  | self.degrasp_buf) * self.cfg_task.rl.early_reset_reward_scale
+        distance_reset_buf = (self.far_from_goal_buf  | self.degrasp_buf)
+        early_reset_reward = distance_reset_buf * self.cfg_task.rl.early_reset_reward_scale
         engagement_reward = self._get_engagement_reward_scale(is_plug_engaged_w_socket,
                                                                     self.cfg_task.rl.success_height_thresh) * self.cfg_task.rl.engagement_reward_scale
-        self.rew_buf[:] = keypoint_r + dist_reset + engagement_reward
+        self.rew_buf[:] = keypoint_r + engagement_reward
 
+        self.rew_buf[:] += (early_reset_reward * self.timeout_reset_buf)
+        self.rew_buf[:] += (self.timeout_reset_buf * self.success_reset_buf) * self.cfg_task.rl.success_bonus
+        self.extras['successes'] = ((self.timeout_reset_buf  | distance_reset_buf) * self.success_reset_buf) * 1.0
+        
         is_last_step = (self.progress_buf[0] == self.max_episode_length - 1)
         if is_last_step:
-            self.rew_buf[:] += self.success_reset_buf * self.cfg_task.rl.success_bonus
-            self.extras["engaged_w_socket"] = torch.mean(is_plug_engaged_w_socket.float())
-            self.extras["plug_oriented"] = torch.mean(is_plug_oriented.float())
-            self.extras["successes"] = torch.mean(self.success_reset_buf.float())
-            self.extras["dist_plug_socket"] = torch.mean(self.dist_plug_socket)
-            self.extras["keypoint_reward"] = torch.mean(keypoint_reward.abs())
-            self.extras["action_penalty"] = torch.mean(action_penalty)
-            self.extras["mug_quat_penalty"] = torch.mean(plug_ori_penalty)
-            self.extras["steps"] = torch.mean(self.progress_buf.float())
-            self.extras["mean_time_complete_task"] = torch.mean(
-                self.time_complete_task.float()
-            )
-        # TODO update reward function to reset at insertion
+            success_dones = self.success_reset_buf.nonzero()
+            failure_dones = (1.0 - self.success_reset_buf).nonzero()
+            print('Success Rate:', torch.mean(self.success_reset_buf * 1.0).item(), 
+                  ' Success Reward:', self.rew_buf[success_dones].mean().item(), 
+                  ' Failure Reward:', self.rew_buf[failure_dones].mean().item())
+
+            
 
     def _update_reset_buf(self):
         """Assign environments for reset if successful or failed."""
@@ -732,7 +731,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             self.reset_buf[:] |= self.success_reset_buf[:]
 
         # If max episode length has been reached
-        self.timeout_reset_buf[:] = torch.where(self.progress_buf[:] >= self.cfg_task.rl.max_episode_length - 1,
+        self.timeout_reset_buf[:] = torch.where(self.progress_buf[:] >= (self.cfg_task.rl.max_episode_length - 1),
                                         torch.ones_like(self.reset_buf),
                                         self.reset_buf)
         self.reset_buf[:] = self.timeout_reset_buf[:]
@@ -747,12 +746,12 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         fingertips_plug_dist = (torch.norm(self.left_finger_pos - self.plug_pos, p=2, dim=-1) > 0.12) | (torch.norm(self.right_finger_pos - self.plug_pos, p=2, dim=-1) > 0.12) | (torch.norm(self.middle_finger_pos - self.plug_pos, p=2, dim=-1) > 0.12)
         self.degrasp_buf[:] |= fingertips_plug_dist
         # reset_envs = d.nonzero()
-        self.reset_buf[:] |= self.degrasp_buf[:]
+        # self.reset_buf[:] |= self.degrasp_buf[:]
 
         # If plug is too far from socket pos
         self.dist_plug_socket = torch.norm(self.plug_pos - self.socket_pos, p=2, dim=-1)
         self.far_from_goal_buf[:] = self.dist_plug_socket > 0.2 #  self.cfg_task.rl.far_error_thresh,
-        self.reset_buf[:] |= self.far_from_goal_buf[:]
+        # self.reset_buf[:] |= self.far_from_goal_buf[:]
 
     def _reset_environment(self, env_ids):
 

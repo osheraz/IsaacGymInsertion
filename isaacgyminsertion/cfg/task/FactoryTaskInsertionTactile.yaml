@@ -93,7 +93,7 @@ randomize:
 
 rl:
 
-    pos_action_scale: [0.0025, 0.0025, 0.0025]
+    pos_action_scale: [0.005, 0.005, 0.004]
     rot_action_scale: [0.001, 0.001, 0.001]
 
     force_action_scale: [1.0, 1.0, 1.0]
@@ -109,7 +109,7 @@ rl:
     keypoint_scale: 1.0  # length of line of keypoints
 
 
-    max_episode_length: 750 # 8192  # terminate episode after this number of timesteps (failure)
+    max_episode_length: 500 # 8192  # terminate episode after this number of timesteps (failure)
 
     orientation_threshold: 0.1
     far_error_thresh: 0.100  # threshold above which plug is considered too far from bolt
@@ -118,7 +118,7 @@ rl:
 
     keypoint_reward_scale: -0.2  # scale on keypoint-based reward
     action_penalty_scale: -0.0  # scale on action penalty
-    orientation_penalty_scale: -0.1
+    orientation_penalty_scale: -0.0
     dist_penalty_scale: -0.0
     early_reset_reward_scale: -5.0
     engagement_reward_scale: 0.05
