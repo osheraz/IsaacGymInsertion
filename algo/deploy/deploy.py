@@ -495,7 +495,7 @@ class HardwarePlayer(object):
         # Wait for connections.
         rospy.sleep(0.5)
 
-        hz = 100
+        hz = 60
         ros_rate = rospy.Rate(hz)
 
         self._create_asset_info()
