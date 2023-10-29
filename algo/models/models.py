@@ -184,8 +184,8 @@ class ActorCritic(nn.Module):
                 with torch.inference_mode():
                     priv_extrin = self.env_mlp(obs_dict['priv_info'])
                     plt.ylim(-1, 1)
-                    plt.scatter(list(range(8)), torch.tanh(priv_extrin).clone().cpu().numpy()[0, :], color='b')
-                    plt.scatter(list(range(8)), extrin.clone().detach().cpu().numpy()[0, :], color='r')
+                    plt.scatter(list(range(4)), torch.tanh(priv_extrin).clone().cpu().numpy()[0, :], color='b')
+                    plt.scatter(list(range(4)), extrin.clone().detach().cpu().numpy()[0, :], color='r')
                     plt.pause(0.0001)
                     plt.cla()
         else:
