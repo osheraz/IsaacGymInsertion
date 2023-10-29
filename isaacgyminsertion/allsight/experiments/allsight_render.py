@@ -172,10 +172,11 @@ class allsight_renderer:
         """
         render [tactile image + depth + mask] @ current pose
         """
+        normal_forces = 20 if normal_forces is None else normal_forces
 
         if object_poses is not None:
             obj_pos_dict = {'object': matrix2trans(object_poses)}
-            normal_force_dict = {'object': 20}  # Todo collect force
+            normal_force_dict = {'object': normal_forces}  # Todo collect force
         else:
             obj_pos_dict, normal_force_dict = None, None
 
