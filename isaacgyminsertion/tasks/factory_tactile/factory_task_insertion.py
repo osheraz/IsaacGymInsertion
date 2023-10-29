@@ -651,7 +651,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         if self.cfg_task.env.compute_contact_gt:
             for e in range(self.num_envs):
                 self.gt_extrinsic_contact[e] = self.extrinsic_contact_gt[e].get_extrinsic_contact(
-                    obj_pos=self.plug_pos, obj_quat=self.plug_quat, socket_pos=self.socket_pos
+                    obj_pos=self.plug_pos[e], obj_quat=self.plug_quat[e], socket_pos=self.socket_pos[e], socket_quat=self.socket_quat[e]
                 )
             # todo should be added to priv.
         
@@ -670,7 +670,6 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             plug_socket_pos_error, # 3
             plug_socket_quat_error, # 4
             physics_params,  # 6 (plug_mass, plug_friction, socket_friction, left finger friction, right finger friction, middle finger friction)
-            # TODO: should we add the gripper targer pos ( pos is the same as socket, orientation as different)
             self.finger_normalized_forces,  # 3
             # self.socket_contact_force.clone()  # 3
             # TODO: add object shapes -- bring diameter

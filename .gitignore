@@ -31,4 +31,6 @@ runs/
 outputs/
 *.hydra*
 /isaacgymenvs/wandb
-test_files/
+*.avi
+*.mp4
+*-checkpoint.ipynb

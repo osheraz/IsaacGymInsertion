@@ -69,6 +69,7 @@ env:
     tactile: False
     tactile_display_viz: False
     compute_contact_gt: False
+    compute_contact_gt_fingers_plug: False
 
     record_video: True
     record_ft: True
@@ -87,7 +88,7 @@ randomize:
     plug_pos_xy_initial: [0.5, 0.23]  # initial XY position of plug on table
     plug_pos_xy_noise: [0.02, 0.02] # noise on plug position
     socket_pos_xy_initial: [0.5, 0.0]  # initial XY position of plug on table # round_hole_2in  width = 0.1016, length = 0.09144
-    socket_pos_xy_noise: [0.02, 0.02]  # noise on plug position
+    socket_pos_xy_noise: [0.00, 0.00]  # noise on plug position
     grasp_plug_noise: 0.0005
     above_socket_noise: 0.003
 

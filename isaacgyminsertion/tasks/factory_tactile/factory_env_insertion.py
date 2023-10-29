@@ -60,10 +60,12 @@ class ExtrinsicContact:
             obj_scale,
             socket_scale,
             socket_pos,
-            num_points = 50
+            num_points=300
     ) -> None:
+
         self.object_trimesh = trimesh.load(mesh_obj)
         self.object_trimesh = self.object_trimesh.apply_scale(obj_scale)
+
         T = np.eye(4)
         T[0:3, 0:3] = R.from_euler("xyz", [0, 0, 90], degrees=True).as_matrix()
         self.object_trimesh = self.object_trimesh.apply_transform(T)
@@ -79,47 +81,38 @@ class ExtrinsicContact:
             o3d.t.geometry.TriangleMesh.from_legacy(self.socket_trimesh.as_open3d)
         )
 
-        import pyvista as pv
-        # Create a PyVista mesh from the trimesh object
-        # Randomly sample X points from the mesh's point cloud
-        mesh = pv.PolyData(self.object_trimesh.vertices, self.object_trimesh.faces)
-        sampled_indices = np.random.choice(mesh.n_points, num_points, replace=False)
-        sampled_points = mesh.points[sampled_indices]
-        self.pointcloud_obj = sampled_points
-        self.n_points = sampled_points. shape[0]
-
+        self.pointcloud_obj = trimesh.sample.sample_surface(self.object_trimesh, num_points)[0]
+        self.n_points = num_points
         self.gt_extrinsic_contact = torch.zeros((1, self.n_points))
 
     def _xyzquat_to_tf_numpy(self, position_quat: np.ndarray) -> np.ndarray:
         """
         convert [x, y, z, qx, qy, qz, qw] to 4 x 4 transformation matrices
         """
-        # try:
         position_quat = np.atleast_2d(position_quat)  # (N, 7)
         N = position_quat.shape[0]
         T = np.zeros((N, 4, 4))
         T[:, 0:3, 0:3] = R.from_quat(position_quat[:, 3:]).as_matrix()
         T[:, :3, 3] = position_quat[:, :3]
         T[:, 3, 3] = 1
-        # except ValueError:
-        #     print("Zero quat error!")
         return T.squeeze()
 
     def reset_extrinsic_contact(self):
         self.gt_extrinsic_contact *= 0
         self.step = 0
 
-    def get_extrinsic_contact(self, obj_pos, obj_quat, socket_pos):
-        object_poses = torch.cat((obj_pos, obj_quat), dim=1)
+    def get_extrinsic_contact(self, obj_pos, obj_quat, socket_pos, socket_quat, display=False):
+
+        object_poses = torch.cat((obj_pos, obj_quat), dim=0)
         object_poses = self._xyzquat_to_tf_numpy(object_poses.cpu().numpy())
 
         object_pc_i = trimesh.points.PointCloud(self.pointcloud_obj.copy())
         object_pc_i.apply_transform(object_poses)
         coords = np.array(object_pc_i.vertices)
 
-        T = np.eye(4)
-        T[0:3, -1] = socket_pos.cpu().numpy()
-        self.socket_trimesh.apply_transform(T)
+        socket_poses = torch.cat((socket_pos, socket_quat), dim=0)
+        socket_poses = self._xyzquat_to_tf_numpy(socket_poses.cpu().numpy())
+        self.socket_trimesh.apply_transform(socket_poses)
 
         self.socket = o3d.t.geometry.RaycastingScene()
         self.socket.add_triangles(
@@ -129,18 +122,31 @@ class ExtrinsicContact:
             o3d.core.Tensor.from_numpy(coords.astype(np.float32))
         ).numpy()
 
-        c = 0.008
-        d = d.flatten()
-        idx_2 = np.where(d > c)[0]
-        d[idx_2] = c
-        d = np.clip(d, 0.0, c)
+        threshold = 0.05  # Define your threshold distance
+        intersecting_indices = np.where(d < threshold)[0]
+        contacts = coords[intersecting_indices]
 
-        d = 1.0 - d / c
+        d = d.flatten()
+        idx_2 = np.where(d > threshold)[0]
+        d[idx_2] = threshold
+        d = np.clip(d, 0.0, threshold)
+
+        d = 1.0 - d / threshold
         d = np.clip(d, 0.0, 1.0)
         d[d > 0.1] = 1.0
         d = d.reshape((1, self.n_points))
 
         self.gt_extrinsic_contact = torch.tensor(d, dtype=torch.float32)
+
+        if display:
+
+            self.socket_pcl = trimesh.sample.sample_surface_even(self.socket_trimesh, 300)[0]
+            self.socket_pcl = np.array(self.socket_pcl)
+            import matplotlib.pyplot as plt
+            ax = plt.axes(projection='3d')
+            ax.plot(self.socket_pcl[:, 0], self.socket_pcl[:, 1], self.socket_pcl[:, 2], 'yo')
+            ax.plot(coords[:, 0], coords[:, 1], coords[:, 2], 'ko')
+            ax.plot(contacts[:, 0], contacts[:, 1], contacts[:, 2], 'ro')
 
         return self.gt_extrinsic_contact
 
@@ -489,7 +495,7 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
             self.envs_asset[i] = {'subassembly': subassembly, 'components': components}
             plug_file = self.asset_info_insertion[subassembly][components[0]]['urdf_path']
             plug_file += '_subdiv_3x.obj' if 'rectangular' in plug_file else '.obj'
-            socket_file = self.asset_info_insertion[subassembly][components[0]]['urdf_path']
+            socket_file = self.asset_info_insertion[subassembly][components[1]]['urdf_path']
             socket_file += '_subdiv_3x.obj' if 'rectangular' in plug_file else '.obj'
 
             mesh_root = os.path.join(os.path.dirname(__file__), '..', '..', '..', 'assets', 'factory', 'mesh',
@@ -505,9 +511,7 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
                                                                   mesh_socket=os.path.join(mesh_root, socket_file),
                                                                   obj_scale=1.0,
                                                                   socket_scale=1.0,
-                                                                  socket_pos=socket_pos
-                                                                  )
-                                                 )
+                                                                  socket_pos=socket_pos))
 
             if self.cfg_env.env.aggregate_mode:
                 self.gym.end_aggregate(env_ptr)
