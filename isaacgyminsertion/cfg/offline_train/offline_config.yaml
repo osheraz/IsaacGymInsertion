@@ -1,5 +1,5 @@
 seed: 42 # not sure if this is used yet.
-data_folder: "/common/users/dm1487/inhand_manipulation_data_store/datastore_4*" # where is all your data, can include * for globbing
+data_folder: "/common/users/dm1487/inhand_manipulation_data_store/datastore_41" # where is all your data, can include * for globbing
 output_dir: "/common/users/dm1487/isaacgym_new/python/IsaacGymInsertion/isaacgyminsertion/outputs/offline_student" # where to save checkpoints and logs
 
 # supervised learning
@@ -15,7 +15,7 @@ train:
   # for on screen logging
   print_every: 50
   eval_every: 1000
-  test_every: 50
+  test_every: 250
   test_episodes: 5
   
 # model configuration
@@ -40,7 +40,7 @@ model:
     hidden_size: 64
     num_layers: 2
     num_heads: 2
-    output_size: 8
+    output_size: 4
   
 # wandb logging
 wandb:

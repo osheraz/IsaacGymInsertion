@@ -670,7 +670,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             plug_socket_pos_error, # 3
             plug_socket_quat_error, # 4
             physics_params,  # 6 (plug_mass, plug_friction, socket_friction, left finger friction, right finger friction, middle finger friction)
-            self.finger_normalized_forces,  # 3
+            # self.finger_normalized_forces,  # 3
             # self.socket_contact_force.clone()  # 3
             # TODO: add object shapes -- bring diameter
             self.plug_heights,  # 1
