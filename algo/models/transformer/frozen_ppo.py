@@ -649,21 +649,22 @@ class PPO(object):
         total_dones = 0
         total_env_runs = self.full_config.offline_train.train.test_episodes # add this to config
         num_success = 0
-        while save_trajectory or (total_dones < total_env_runs):
+        while save_trajectory or (total_dones < total_env_runs) or not (offline_test and save_trajectory):
             # log video during test
             self.log_video()
             # getting data from data logger
-            data = self.data_logger.get_data()
             latent = None
-            if get_latent is not None:
-                # making data for the latent prediction from student model
-                cnn_input, lin_input = self._make_data(data)
-                # getting the latent data from the student model
-                if self.full_config.offline_train.model.transformer.full_sequence:
-                    latent = get_latent(cnn_input, lin_input)[self.env_ids, self.env.progress_buf.view(-1, 1), :].squeeze(1)
-                else:
-                    latent = get_latent(cnn_input, lin_input)[self.env_ids, -1, :].squeeze(1)
-            # adding the latent to the obs_dict (if present test with student, else test with teacher)
+            if offline_test:
+                data = self.data_logger.get_data()
+                if get_latent is not None:
+                    # making data for the latent prediction from student model
+                    cnn_input, lin_input = self._make_data(data)
+                    # getting the latent data from the student model
+                    if self.full_config.offline_train.model.transformer.full_sequence:
+                        latent = get_latent(cnn_input, lin_input)[self.env_ids, self.env.progress_buf.view(-1, 1), :].squeeze(1)
+                    else:
+                        latent = get_latent(cnn_input, lin_input)[self.env_ids, -1, :].squeeze(1)
+                # adding the latent to the obs_dict (if present test with student, else test with teacher)
             obs_dict = {
                 'obs': self.running_mean_std(self.obs['obs']),
                 'priv_info': self.priv_mean_std(self.obs['priv_info']),
@@ -674,7 +675,6 @@ class PPO(object):
             self.obs, r, done, info = self.env.step(action)
             
             num_success += self.env.success_reset_buf[done.nonzero()].sum()
-
             # logging data
             if save_trajectory or offline_test:
                 total_dones += len(done.nonzero())

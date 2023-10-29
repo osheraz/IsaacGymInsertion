@@ -711,16 +711,31 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.rew_buf[:] += (early_reset_reward * self.timeout_reset_buf)
         self.rew_buf[:] += (self.timeout_reset_buf * self.success_reset_buf) * self.cfg_task.rl.success_bonus
         self.extras['successes'] = ((self.timeout_reset_buf  | distance_reset_buf) * self.success_reset_buf) * 1.0
+
+        # if self.reset_buf[0]:
+        #     print("### reset env 0 ###")
         
         is_last_step = (self.progress_buf[0] == self.max_episode_length - 1)
         if is_last_step:
-            success_dones = self.success_reset_buf.nonzero()
-            failure_dones = (1.0 - self.success_reset_buf).nonzero()
-            print('Success Rate:', torch.mean(self.success_reset_buf * 1.0).item(), 
-                  ' Success Reward:', self.rew_buf[success_dones].mean().item(), 
-                  ' Failure Reward:', self.rew_buf[failure_dones].mean().item())
+            if not self.cfg_task.data_logger.collect_data:
+                success_dones = self.success_reset_buf.nonzero()
+                failure_dones = (1.0 - self.success_reset_buf).nonzero()
+                print('Success Rate:', torch.mean(self.success_reset_buf * 1.0).item(), 
+                    ' Success Reward:', self.rew_buf[success_dones].mean().item(), 
+                    ' Failure Reward:', self.rew_buf[failure_dones].mean().item())
 
-            
+            self.extras["engaged_w_socket"] = torch.mean(is_plug_engaged_w_socket.float())
+            self.extras["plug_oriented"] = torch.mean(is_plug_oriented.float())
+            self.extras["successes"] = torch.mean(self.success_reset_buf.float())
+            self.extras["dist_plug_socket"] = torch.mean(self.dist_plug_socket)
+            self.extras["keypoint_reward"] = torch.mean(keypoint_reward.abs())
+            self.extras["action_penalty"] = torch.mean(action_penalty)
+            self.extras["mug_quat_penalty"] = torch.mean(plug_ori_penalty)
+            self.extras["steps"] = torch.mean(self.progress_buf.float())
+            self.extras["mean_time_complete_task"] = torch.mean(
+                self.time_complete_task.float()
+            )
+        
 
     def _update_reset_buf(self):
         """Assign environments for reset if successful or failed."""

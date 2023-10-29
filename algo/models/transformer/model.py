@@ -39,9 +39,7 @@ class TactileTransformer(nn.Module):
         lin_x = self.linear_in(lin_input)
         cnn_x = self.cnn_embedding(cnn_input)
         cnn_x = cnn_x.view(batch_size, self.max_sequence_length, embed_size)
-        
         x = torch.cat([lin_x, cnn_x], dim=-1)
-
         if self.layer_norm:
             x = self.layer_norm_in(x)
         x = self.dropout(x)
@@ -81,10 +79,10 @@ class ConvEmbedding(nn.Module):
         
         super(ConvEmbedding, self).__init__()
 
-        self.conv1 = nn.Conv2d(in_channels, 4, kernel_size=kernel_size, stride=1)
-        self.conv2 = nn.Conv2d(4, out_channels, kernel_size=kernel_size, stride=1)
+        self.conv1 = nn.Conv2d(in_channels, 8, kernel_size=kernel_size, stride=1)
+        self.conv2 = nn.Conv2d(8, out_channels, kernel_size=kernel_size, stride=1)
 
-        self.batchnorm1 = nn.BatchNorm2d(4)
+        self.batchnorm1 = nn.BatchNorm2d(8)
         self.batchnorm2 = nn.BatchNorm2d(out_channels)
 
         self.dropout1 = nn.Dropout(0.2)
@@ -112,13 +110,15 @@ class ConvEmbedding(nn.Module):
         return x
     
 # for tests
-if __name__ == "__main__":
+if __name__ == "__main__":  
+    
+    lin_input_size, in_channels, out_channels, kernel_size, embed_size, hidden_size, num_heads, max_sequence_length, num_layers, output_size = 33, 3, 1, 3, 32, 32, 2, 100, 2, 8
 
-    transformer = TactileTransformer(33, 9, 32, 5, 256, 256, 2, 100, 2)
+    transformer = TactileTransformer(lin_input_size, in_channels, out_channels, kernel_size, embed_size, hidden_size, num_heads, max_sequence_length, num_layers, output_size)
 
     lin_x = torch.randn(2, 100, 33)
-    cnn_x = torch.randn(2, 100, 9, 64, 64)
-    cnn_x = cnn_x.view(2*100, 9, 64, 64)
+    cnn_x = torch.randn(2, 100, 3, 224, 224)
+    cnn_x = cnn_x.view(2*100, 3, 224, 224)
 
-    x = transformer(cnn_x, lin_x, 2)
+    x = transformer(cnn_x, lin_x, 2, 16)
     print(x.shape)

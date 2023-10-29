@@ -287,8 +287,12 @@ class DataLogger():
                 continue
             if value is None:
                 value = torch.zeros((self.num_envs, self.data_shapes[key]), dtype=torch.float32, device=self.device)
+            
+            # if key == "plug_pos":
+            #     print(value[:, :3])
             self.log_data[key][self.env_ids, self.env_step_counter, ...] = value.clone().unsqueeze(1)
 
+        # print("env steps", self.env_step_counter[0])
         
         done = kwargs.get('done', None)
         if done is None:
