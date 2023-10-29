@@ -166,9 +166,9 @@ class PPO(object):
         self.last_recording_it = 0
         self.last_recording_it_ft = 0
 
-        self.episode_rewards = AverageScalarMeter(100)
-        self.episode_lengths = AverageScalarMeter(100)
-        self.episode_success = AverageScalarMeter(100)
+        self.episode_rewards = AverageScalarMeter(2000)
+        self.episode_lengths = AverageScalarMeter(2000)
+        self.episode_success = AverageScalarMeter(2000)
 
         self.obs = None
         self.epoch_num = 0
@@ -210,12 +210,15 @@ class PPO(object):
             
         batch_size = self.num_actors
         current_rewards_shape = (batch_size, 1)
+        # get shape
         self.current_rewards = torch.zeros(current_rewards_shape, dtype=torch.float32, device=self.device)
         self.current_lengths = torch.zeros(batch_size, dtype=torch.float32, device=self.device)
+        self.current_success = torch.zeros(batch_size, dtype=torch.float32, device=self.device)
         self.dones = torch.ones((batch_size,), dtype=torch.uint8, device=self.device)
         self.agent_steps = 0
         self.max_agent_steps = self.ppo_config['max_agent_steps']
         self.best_rewards = -10000
+        self.success_rate = 0
 
         # ---- Timing
         self.data_collect_time = 0
@@ -288,7 +291,7 @@ class PPO(object):
                           f'Last FPS: {last_fps:.1f} | ' \
                           f'Collect Time: {self.data_collect_time / 60:.1f} min | ' \
                           f'Train RL Time: {self.rl_train_time / 60:.1f} min | ' \
-                          f'Mean Reward: {self.best_rewards:.2f} |' \
+                          f'Mean Reward: {self.best_rewards:.2f} | ' \
                           f'Priv info: {self.full_config.train.ppo.priv_info}'
             print(info_string)
             self.write_stats(a_losses, c_losses, b_losses, entropies, kls, grad_norms)
@@ -306,6 +309,7 @@ class PPO(object):
                     self.save(os.path.join(self.nn_dir, checkpoint_name))
                     self.save(os.path.join(self.nn_dir, 'last'))
             self.best_rewards = mean_rewards
+            self.success_rate = mean_success
         print('max steps achieved')
 
     def save(self, name):
@@ -584,12 +588,13 @@ class PPO(object):
             self.storage.update_data('rewards', n, shaped_rewards)
 
             self.current_rewards += rewards
+            self.current_success += infos['successes']
             self.current_lengths += 1
             done_indices = self.dones.nonzero(as_tuple=False)
             self.episode_rewards.update(self.current_rewards[done_indices])
             self.episode_lengths.update(self.current_lengths[done_indices])
-            # self.episode_success.update(?) TODO..
-
+            self.episode_success.update(self.current_success[done_indices])
+            
             assert isinstance(infos, dict), 'Info Should be a Dict'
             self.extra_info = {}
             for k, v in infos.items():
@@ -598,9 +603,10 @@ class PPO(object):
                     self.extra_info[k] = v
 
             not_dones = 1.0 - self.dones.float()
-
             self.current_rewards = self.current_rewards * not_dones.unsqueeze(1)
             self.current_lengths = self.current_lengths * not_dones
+            self.current_success = self.current_success * not_dones
+            
 
         res_dict = self.model_act(self.obs)
         last_values = res_dict['values']
