@@ -49,7 +49,6 @@ from isaacgyminsertion.tasks.factory_tactile.factory_utils import *
 from isaacgyminsertion.utils import torch_jit_utils
 from multiprocessing import Process, Queue, Manager
 import cv2
-import matplotlib.pyplot as plt
 # from isaacgyminsertion.allsight.experiments.allsight_render import allsight_renderer
 
 
@@ -104,10 +103,6 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
     def _acquire_task_tensors(self):
         """Acquire tensors."""
 
-        self.ax = plt.axes()
-        self.f1_list = []
-        self.f2_list = []
-        self.f3_list = []
         self.plug_grasp_pos_local = self.plug_heights * 0.5 * torch.tensor([0.0, 0.0, 1.0], device=self.device).repeat(
             (self.num_envs, 1))
         self.plug_grasp_quat_local = torch.tensor([0.0, 0.0, 0.0, 1.0], device=self.device).unsqueeze(0).repeat(
@@ -688,17 +683,6 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.finger_normalized_forces[:, 0] = (1 - e) * normalize_forces(self.left_finger_force.clone()) + e * self.finger_normalized_forces[:, 0]
         self.finger_normalized_forces[:, 1] = (1 - e) * normalize_forces(self.right_finger_force.clone()) + e * self.finger_normalized_forces[:, 1]
         self.finger_normalized_forces[:, 2] = (1 - e) * normalize_forces(self.middle_finger_force.clone()) + e * self.finger_normalized_forces[:, 2]
-
-        if False:
-            self.f1_list.append(self.finger_normalized_forces[0][0].cpu().detach().numpy())
-            self.f2_list.append(self.finger_normalized_forces[0][1].cpu().detach().numpy())
-            self.f3_list.append(self.finger_normalized_forces[0][2].cpu().detach().numpy())
-            self.ax.plot(self.f1_list)
-            self.ax.plot(self.f2_list)
-            self.ax.plot(self.f3_list)
-
-            plt.pause(0.0000001)
-            self.ax.cla()
 
         state_tensors = [
             #  add delta error
