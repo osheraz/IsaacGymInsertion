@@ -35,8 +35,8 @@ import argparse
 from typing import Optional
 from termcolor import cprint
 
-# from algo.models.transformer.frozen_ppo import PPO # TODO: we can completely switch to this one for PPO. (added functions for online testing of offline training)
-from algo.ppo.ppo import PPO
+from algo.models.transformer.frozen_ppo import PPO # TODO: we can completely switch to this one for PPO. (added functions for online testing of offline training)
+# from algo.ppo.ppo import PPO
 from algo.ext_adapt.ext_adapt import ExtrinsicAdapt
 
 from isaacgyminsertion.tasks import isaacgym_task_map

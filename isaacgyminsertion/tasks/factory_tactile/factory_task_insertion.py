@@ -677,8 +677,12 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         # fingertip forces
         e = 0.9
-        normalize_forces = lambda x: (torch.clamp(torch.norm(x, dim=-1), 0, 35) / 35).view(-1)
+        normalize_forces = lambda x: (torch.clamp(torch.norm(x, dim=-1), 0, 100) / 100).view(-1)
         # normalize_forces = lambda x: torch.norm(x, dim=-1).view(-1)
+        
+        smoothing = False
+        if not smoothing:
+            e = 0
 
         self.finger_normalized_forces[:, 0] = (1 - e) * normalize_forces(self.left_finger_force.clone()) + e * self.finger_normalized_forces[:, 0]
         self.finger_normalized_forces[:, 1] = (1 - e) * normalize_forces(self.right_finger_force.clone()) + e * self.finger_normalized_forces[:, 1]
@@ -693,11 +697,10 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             plug_socket_pos_error, # 3
             plug_socket_quat_error, # 4
             physics_params,  # 6 (plug_mass, plug_friction, socket_friction, left finger friction, right finger friction, middle finger friction)
-            # self.finger_normalized_forces,  # 3
+            self.finger_normalized_forces,  # 3
             # self.socket_contact_force.clone()  # 3
             # TODO: add object shapes -- bring diameter
             self.plug_heights,  # 1
-
             # TODO: add extrinsics contact (point cloud) -> this will encode the shape (check this)
         ]
 

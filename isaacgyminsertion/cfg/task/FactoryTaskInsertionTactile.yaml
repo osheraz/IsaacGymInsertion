@@ -38,7 +38,7 @@ env:
     numEnvs: ${resolve_default:128,${...num_envs}}
     numObservations: 215 # 43 * 5
     numObsStudent: 792   #
-    numStates: 14 # 31 #
+    numStates: 17 # 31 #
     numActions: 6 # [position, ori]
     numTargets: 6 # [position, ori]
 
