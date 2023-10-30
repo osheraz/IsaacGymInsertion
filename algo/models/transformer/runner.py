@@ -29,7 +29,16 @@ class Runner:
         self.sequence_length = self.agent.full_config.task.rl.max_episode_length if self.full_sequence else self.cfg.model.transformer.sequence_length
         self.device = 'cuda:0'
         
-        self.model = TactileTransformer(lin_input_size=self.cfg.model.linear.input_size, in_channels=self.cfg.model.cnn.in_channels, out_channels=self.cfg.model.cnn.out_channels, kernel_size=self.cfg.model.cnn.kernel_size, embed_size=self.cfg.model.transformer.embed_size, hidden_size=self.cfg.model.transformer.hidden_size, num_heads=self.cfg.model.transformer.num_heads, num_layers=self.cfg.model.transformer.num_layers, max_sequence_length=self.sequence_length, output_size=self.cfg.model.transformer.output_size)
+        self.model = TactileTransformer(lin_input_size=self.cfg.model.linear.input_size,
+                                        in_channels=self.cfg.model.cnn.in_channels,
+                                        out_channels=self.cfg.model.cnn.out_channels,
+                                        kernel_size=self.cfg.model.cnn.kernel_size,
+                                        embed_size=self.cfg.model.transformer.embed_size,
+                                        hidden_size=self.cfg.model.transformer.hidden_size,
+                                        num_heads=self.cfg.model.transformer.num_heads,
+                                        num_layers=self.cfg.model.transformer.num_layers,
+                                        max_sequence_length=self.sequence_length,
+                                        output_size=self.cfg.model.transformer.output_size)
 
         self.src_mask = torch.triu(torch.ones(self.sequence_length, self.sequence_length), diagonal=1).bool().to(self.device)
 
@@ -41,26 +50,29 @@ class Runner:
         train_loss, val_loss = [], 0
         latent_loss_list, action_loss_list = [], []
         for i, (cnn_input, lin_input, obs_hist, latent, action, mask) in tqdm(enumerate(dl)):
+
             self.optimizer.zero_grad()
 
-            # envs x seq_len x 64 x 64 x 9 => envs*seq_len x 9 x 64 x 64
+            # [envs, seq_len, W, H, C] => [envs*seq_len, C, W, H]
             cnn_input = cnn_input.to(self.device)
             cnn_input = cnn_input.view(cnn_input.shape[0] * self.sequence_length, *cnn_input.size()[-3:])
             cnn_input = cnn_input.permute(0, 3, 1, 2)
             
             lin_input = lin_input.to(self.device) 
-            latent = latent.to(self.device) # z_t
+            latent = latent.to(self.device)
             action = action.to(self.device)
             mask = mask.to(self.device).unsqueeze(-1)
-            out = self.model(cnn_input, lin_input, batch_size=lin_input.shape[0], embed_size=self.cfg.model.transformer.embed_size//2, src_mask=self.src_mask)
 
-            loss_latent = 0
+            out = self.model(cnn_input, lin_input,
+                             batch_size=lin_input.shape[0],
+                             embed_size=self.cfg.model.transformer.embed_size // 2,
+                             src_mask=self.src_mask)
+
             loss_action = 0
-
             if self.full_sequence:
                 loss_latent = torch.sum(self.loss_fn(out, latent), dim=-1).unsqueeze(-1)
                 loss_latent = torch.sum(loss_latent*mask)/torch.sum(mask)
-                if self.ppo_step is not None: # action regularization
+                if self.ppo_step is not None:  # action regularization
                     obs_hist = obs_hist.to(self.device).view(obs_hist.shape[0]*self.sequence_length, obs_hist.shape[-1])
                     pred_action, _ = self.ppo_step({'obs': obs_hist, 'latent': out.view(out.shape[0]*out.shape[1], out.shape[-1])})
 
@@ -70,7 +82,7 @@ class Runner:
                         action_loss_list.append(loss_action.item())
             else:
                 loss_latent = self.loss_fn_mean(out[:, -1:, :].squeeze(1), latent[:, -1:, :].squeeze(1))
-                if self.ppo_step is not None: # action regularization
+                if self.ppo_step is not None:  # action regularization
                     obs_hist = obs_hist[:, -1, :].to(self.device).view(obs_hist.shape[0], obs_hist.shape[-1])
                     pred_action, _ = self.ppo_step({'obs': obs_hist, 'latent': out[:, -1, :]})
                     loss_action = self.loss_fn_mean(pred_action, action[:, -1, :].squeeze(1))
@@ -116,14 +128,20 @@ class Runner:
             val_loss = []
             latent_loss_list, action_loss_list = [], []
             for i, (cnn_input, lin_input, obs_hist, latent, action, mask) in tqdm(enumerate(dl)):
-                cnn_input = cnn_input.to(self.device).to(self.device).view(cnn_input.shape[0] * self.sequence_length, *cnn_input.size()[-3:]).permute(0, 3, 1, 2)
-                lin_input = lin_input.to(self.device) 
+                # [envs, seq_len, W, H, C] => [envs*seq_len, C, W, H]
+                cnn_input = cnn_input.to(self.device)
+                cnn_input = cnn_input.view(cnn_input.shape[0] * self.sequence_length, *cnn_input.size()[-3:])
+                cnn_input = cnn_input.permute(0, 3, 1, 2)
+
+                lin_input = lin_input.to(self.device)
                 latent = latent.to(self.device)
                 action = action.to(self.device)
                 mask = mask.to(self.device).unsqueeze(-1)
-                out = self.model(cnn_input, lin_input, batch_size=lin_input.shape[0], embed_size=self.cfg.model.transformer.embed_size//2, src_mask=self.src_mask)
+                out = self.model(cnn_input, lin_input,
+                                 batch_size=lin_input.shape[0],
+                                 embed_size=self.cfg.model.transformer.embed_size//2,
+                                 src_mask=self.src_mask)
 
-                loss_latent = 0
                 loss_action = 0
                 
                 if self.full_sequence:
@@ -176,16 +194,25 @@ class Runner:
 
     def predict(self, cnn_input, lin_input):
         self.model.eval()
+
         with torch.inference_mode():
-            cnn_input = cnn_input.to(self.device).view(cnn_input.shape[0] * self.sequence_length, *cnn_input.size()[-3:]).permute(0, 3, 1, 2)
+
+            # [envs, seq_len, W, H, C] => [envs*seq_len, C, W, H]
+            cnn_input = cnn_input.to(self.device)
+            cnn_input = cnn_input.view(cnn_input.shape[0] * self.sequence_length, *cnn_input.size()[-3:])
+            cnn_input = cnn_input.permute(0, 3, 1, 2)
 
             lin_input = lin_input.to(self.device)
             
-            out = self.model(cnn_input, lin_input, src_mask=self.src_mask, batch_size=lin_input.shape[0], embed_size=self.cfg.model.transformer.embed_size//2)
+            out = self.model(cnn_input, lin_input,
+                             src_mask=self.src_mask,
+                             batch_size=lin_input.shape[0],
+                             embed_size=self.cfg.model.transformer.embed_size // 2)
 
         return out.detach()
 
-    def _run(self, file_list, save_folder, epochs=100, train_test_split=0.9, train_batch_size=32, val_batch_size=32, learning_rate=1e-4, device='cuda:0', print_every=50, eval_every=250, test_every=500):
+    def _run(self, file_list, save_folder, epochs=100, train_test_split=0.9, train_batch_size=32, val_batch_size=32,
+             learning_rate=1e-4, device='cuda:0', print_every=50, eval_every=250, test_every=500):
 
         random.shuffle(file_list)
         print('# trajectories:', len(file_list))
@@ -230,7 +257,8 @@ class Runner:
         from datetime import datetime
         from glob import glob
         from tqdm import tqdm
-        
+
+        # Load trajectories
         file_list = glob(os.path.join(self.cfg.data_folder, '*/*.npz'))
         save_folder = f'{self.cfg.output_dir}/{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}'
         os.makedirs(save_folder, exist_ok=True)
@@ -256,12 +284,13 @@ class Runner:
         if self.cfg.wandb.wandb_enabled:
             wandb.init(
                 # Set the project where this run will be logged
-                project= self.cfg.wandb.wandb_project_name,
+                project=self.cfg.wandb.wandb_project_name,
                 # Track hyperparameters and run metadata
                 config=train_config,
                 dir=save_folder,
             )
 
+        # Removing failed trajectories?
         for file in tqdm(file_list):
             try:
                 d = np.load(file)

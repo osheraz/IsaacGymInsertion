@@ -35,8 +35,8 @@ import argparse
 from typing import Optional
 from termcolor import cprint
 
-# from algo.models.transformer.frozen_ppo import PPO # TODO: we can completely switch to this one for PPO. (added functions for online testing of offline training)
-from algo.ppo.ppo import PPO
+from algo.models.transformer.frozen_ppo import PPO # TODO: we can completely switch to this one for PPO. (added functions for online testing of offline training)
+# from algo.ppo.ppo import PPO
 from algo.ext_adapt.ext_adapt import ExtrinsicAdapt
 
 from isaacgyminsertion.tasks import isaacgym_task_map
@@ -102,7 +102,7 @@ def run(cfg: DictConfig):
         graphics_device_id=cfg.graphics_device_id,
         headless=cfg.headless,
         virtual_screen_capture=False,  # cfg.capture_video,
-        force_render=cfg.force_render # if not cfg.headless else False,
+        force_render=cfg.force_render  # if not cfg.headless else False,
     )
 
     output_dif = os.path.join('outputs', str(datetime.now().strftime("%m-%d-%y")))

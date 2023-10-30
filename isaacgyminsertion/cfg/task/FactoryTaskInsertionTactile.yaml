@@ -13,6 +13,7 @@ data_logger:
     collect_data: False
     total_trajectories: 5000
     base_folder: "/common/users/dm1487/inhand_manipulation_data_store"
+    base_folder_osher: "/common/users/oa348/data"
     sub_folder: "datastore_0"
 
     # for logging (tests) during student training
@@ -47,6 +48,7 @@ env:
     numObsStudentHist: 24
     ft_history_len: 30
     tactile_history_len: 3
+    smooth_force: False
 
     openhand:
         distal_open: 0.1

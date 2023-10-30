@@ -56,8 +56,6 @@ class PPO(object):
         self.num_actors = self.ppo_config['num_actors']
         action_space = self.env.action_space
         self.actions_num = action_space.shape[0]
-        self.actions_low = torch.from_numpy(action_space.low.copy()).float().to(self.device)
-        self.actions_high = torch.from_numpy(action_space.high.copy()).float().to(self.device)
         self.observation_space = self.env.observation_space
         self.obs_shape = self.observation_space.shape
         print("OBS", self.obs_shape)
