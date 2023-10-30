@@ -119,7 +119,7 @@ rl:
     close_error_thresh: 0.005  # threshold below which plug is considered close enough to bolt
     success_height_thresh: 0.003  # threshold distance below which plug is considered successfully inserted
 
-    keypoint_reward_scale: -0.2  # scale on keypoint-based reward
+    keypoint_reward_scale: -1.0  # scale on keypoint-based reward
     action_penalty_scale: -0.0  # scale on action penalty
     orientation_penalty_scale: -0.0
     dist_penalty_scale: -0.0
