@@ -57,8 +57,11 @@ class PPO(object):
         self.env = env
         self.num_actors = self.ppo_config['num_actors']
         self.actions_num = self.task_config.env.numActions
-        
-        self.obs_shape = self.task_config.env.numObservations
+        self.observation_space = self.env.observation_space
+        self.obs_shape = self.observation_space.shape
+        # self.obs_shape = self.task_config.env.numObservations
+        print("OBS", self.obs_shape)
+
         # ---- Tactile Info ---
         self.tactile_info = self.ppo_config["tactile_info"]
         self.tactile_seq_length = self.network_config.tactile_decoder.tactile_seq_length
@@ -82,7 +85,7 @@ class PPO(object):
         net_config = {
             'actor_units': self.network_config.mlp.units,
             'actions_num': self.actions_num,
-            'input_shape': [self.obs_shape],
+            'input_shape': self.obs_shape,
             'priv_mlp_units': self.network_config.priv_mlp.units,
             'extrin_adapt': self.extrin_adapt,
             'priv_info_dim': self.priv_info_dim,
@@ -156,8 +159,6 @@ class PPO(object):
         self.save_freq = self.ppo_config['save_frequency']
         self.save_best_after = self.ppo_config['save_best_after']
 
-        
-
         # ---- Rollout Videos ----
         self.it = 0
         self.log_video_every = self.task_config.env.record_video_every
@@ -176,7 +177,7 @@ class PPO(object):
                                         self.horizon_length,
                                         self.batch_size,
                                         self.minibatch_size,
-                                        self.obs_shape,
+                                        self.obs_shape[0],
                                         self.actions_num,
                                         self.priv_info_dim,
                                         self.device, )
@@ -186,12 +187,13 @@ class PPO(object):
         self.data_logger = None
         if env is not None and (self.env.cfg_task.data_logger.collect_data or self.full_config.offline_training_w_env):
             # getting the shapes for the data logger initialization
+            ROT_MAT_SIZE = 9
             log_items = {
                 'arm_joints_shape': self.env.arm_dof_pos.shape[-1],
-                'eef_pos_shape': self.env.fingertip_centered_pos.size()[-1] + 9, # self.env.fingertip_centered_quat.size()[-1], # 7
-                'socket_pos_shape': self.env.socket_pos.size()[-1] + 9, # self.env.socket_quat.size()[-1],
-                'noisy_socket_pos_shape': self.env.socket_pos.size()[-1] + 9, # self.env.socket_quat.size()[-1],
-                'plug_pos_shape': self.env.plug_pos.size()[-1] + 9, # self.env.plug_quat.size()[-1],
+                'eef_pos_shape': self.env.fingertip_centered_pos.size()[-1] + ROT_MAT_SIZE,  # self.env.fingertip_centered_quat.size()[-1], # 7
+                'socket_pos_shape': self.env.socket_pos.size()[-1] + ROT_MAT_SIZE,  # self.env.socket_quat.size()[-1],
+                'noisy_socket_pos_shape': self.env.socket_pos.size()[-1] + ROT_MAT_SIZE,  # self.env.socket_quat.size()[-1],
+                'plug_pos_shape': self.env.plug_pos.size()[-1] + ROT_MAT_SIZE,  # self.env.plug_quat.size()[-1],
                 'action_shape': self.actions_num,
                 'target_shape': self.env.targets.shape[-1],
                 'tactile_shape': self.env.tactile_imgs.shape[1:],
@@ -206,7 +208,18 @@ class PPO(object):
             }
 
             # initializing data logger, the device should be changed
-            self.data_logger_init = lambda x: DataLogger(self.env.num_envs, self.env.max_episode_length, self.env.device, os.path.join(self.env.cfg_task.data_logger.base_folder, self.env.cfg_task.data_logger.sub_folder), self.env.cfg_task.data_logger.total_trajectories, save_trajectory=self.env.cfg_task.data_logger.collect_data, **log_items)
+
+            log_folder = self.env.cfg_task.data_logger.base_folder
+            if 'oa348' in os.getcwd():
+                log_folder.replace("dm1487", "oa348")
+            self.data_logger_init = lambda x: DataLogger(self.env.num_envs,
+                                                         self.env.max_episode_length,
+                                                         self.env.device,
+                                                         os.path.join(log_folder,
+                                                                      self.env.cfg_task.data_logger.sub_folder),
+                                                         self.env.cfg_task.data_logger.total_trajectories,
+                                                         save_trajectory=self.env.cfg_task.data_logger.collect_data,
+                                                         **log_items)
             
         batch_size = self.num_actors
         current_rewards_shape = (batch_size, 1)
@@ -385,29 +398,6 @@ class PPO(object):
         }
 
         self.data_logger.update(save_trajectory=save_trajectory, **log_data)
-
-    def test1(self):
-        self.set_eval()
-        obs_dict = self.env.reset()
-        action, latent, done = None, None, None
-        while True:
-            
-            self.log_video()
-            
-            input_dict = {
-                'obs': self.running_mean_std(obs_dict['obs']),
-                'priv_info': self.priv_mean_std(obs_dict['priv_info']),
-            }
-            mu, latent = self.model.act_inference(input_dict)
-            action = mu.clone()
-            mu = torch.clamp(mu, -1.0, 1.0)
-
-            obs_dict, r, done, info = self.env.step(mu)
-            # collect data
-            if self.env.cfg_task.data_logger.collect_data:
-                if self.data_logger is None:
-                    self.data_logger = self.data_logger_init(None)
-                self.log_trajectory_data(action, latent, done)
 
     def train_epoch(self):
         # collect minibatch data
@@ -606,7 +596,6 @@ class PPO(object):
             self.current_rewards = self.current_rewards * not_dones.unsqueeze(1)
             self.current_lengths = self.current_lengths * not_dones
             self.current_success = self.current_success * not_dones
-            
 
         res_dict = self.model_act(self.obs)
         last_values = res_dict['values']
@@ -627,13 +616,14 @@ class PPO(object):
 
     def test(self, get_latent=None):
         # this will test either the student or the teacher model. (check if the student model can be tested within models)
+        self.set_eval()
         self.obs = self.env.reset()
         milestone = 100
         
         action, latent, done = None, None, None
 
-        save_trajectory = self.env.cfg_task.data_logger.collect_data # in data collection phase this will be true
-        offline_test = self.full_config.offline_training_w_env # in offline_test this will be true
+        save_trajectory = self.env.cfg_task.data_logger.collect_data  # in data collection phase this will be true
+        offline_test = self.full_config.offline_training_w_env  # in offline_test this will be true
         
         # logging initial data only if one of the above is true
         if save_trajectory or offline_test:
@@ -646,9 +636,9 @@ class PPO(object):
                 self.log_trajectory_data(action, latent, done, save_trajectory=save_trajectory)
         
         self.env_ids = torch.arange(self.env.num_envs).view(-1, 1)
-        total_dones = 0
+        total_dones, num_success = 0, 0
         total_env_runs = self.full_config.offline_train.train.test_episodes # add this to config
-        num_success = 0
+
         while save_trajectory or (total_dones < total_env_runs):
             # log video during test
             self.log_video()
@@ -664,7 +654,8 @@ class PPO(object):
                         latent = get_latent(cnn_input, lin_input)[self.env_ids, self.env.progress_buf.view(-1, 1), :].squeeze(1)
                     else:
                         latent = get_latent(cnn_input, lin_input)[self.env_ids, -1, :].squeeze(1)
-                # adding the latent to the obs_dict (if present test with student, else test with teacher)
+
+            # adding the latent to the obs_dict (if present test with student, else test with teacher)
             obs_dict = {
                 'obs': self.running_mean_std(self.obs['obs']),
                 'priv_info': self.priv_mean_std(self.obs['priv_info']),
@@ -682,6 +673,7 @@ class PPO(object):
                     print('success rate:', num_success/total_dones)
                     milestone += 100
                 self.log_trajectory_data(action, latent, done, save_trajectory=save_trajectory)
+
         return num_success, total_dones
         
     def _make_data(self, data):
@@ -707,8 +699,8 @@ class PPO(object):
         padding_cnn = torch.zeros_like(cnn_input)
         padding_lin = torch.zeros_like(lin_input)
         for env_id in range(self.env.num_envs):
-            padding_cnn[env_id, -(self.env.progress_buf[env_id]+1):, :] = cnn_input[env_id, :(self.env.progress_buf[env_id]+1), :] # seq_len=50, progress_buf=10
-            padding_lin[env_id, -(self.env.progress_buf[env_id]+1):, :] = lin_input[env_id, :(self.env.progress_buf[env_id]+1), :] # seq_len=50, progress_buf=10
+            padding_cnn[env_id, -(self.env.progress_buf[env_id]+1):, :] = cnn_input[env_id, :(self.env.progress_buf[env_id]+1), :]
+            padding_lin[env_id, -(self.env.progress_buf[env_id]+1):, :] = lin_input[env_id, :(self.env.progress_buf[env_id]+1), :]
         cnn_input = padding_cnn[:, -self.full_config.offline_train.model.transformer.sequence_length:, :].clone()
         lin_input = padding_lin[:, -self.full_config.offline_train.model.transformer.sequence_length:, :].clone()
         

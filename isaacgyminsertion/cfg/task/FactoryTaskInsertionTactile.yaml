@@ -47,6 +47,7 @@ env:
     numObsStudentHist: 24
     ft_history_len: 30
     tactile_history_len: 3
+    smooth_force: False
 
     openhand:
         distal_open: 0.1

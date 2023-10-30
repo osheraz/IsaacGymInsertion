@@ -4,7 +4,9 @@ import math
 
 
 class TactileTransformer(nn.Module):
-    def __init__(self, lin_input_size, in_channels, out_channels, kernel_size, embed_size, hidden_size, num_heads, max_sequence_length, num_layers, output_size, layer_norm=True):
+    def __init__(self, lin_input_size, in_channels, out_channels, kernel_size, embed_size, hidden_size, num_heads,
+                 max_sequence_length, num_layers, output_size, layer_norm=True):
+
         super(TactileTransformer, self).__init__()
 
         self.batch_first = True
@@ -12,16 +14,17 @@ class TactileTransformer(nn.Module):
         self.num_layers = num_layers
         self.max_sequence_length = max_sequence_length
 
-        self.linear_in = nn.Linear(lin_input_size, embed_size)
+        self.linear_in = nn.Linear(lin_input_size, embed_size) # removed embed_size // 2 for no cnn
 
         self.cnn_embedding = ConvEmbedding(in_channels, out_channels, kernel_size)
-        
+
         self.positonal_embedding = PositionalEncoding(embed_size, max_len=max_sequence_length)
-        
-        self.encoder_layer = nn.TransformerEncoderLayer(d_model=embed_size, nhead=num_heads, dim_feedforward=hidden_size, batch_first=self.batch_first)
-        
+
+        self.encoder_layer = nn.TransformerEncoderLayer(d_model=embed_size, nhead=num_heads,
+                                                        dim_feedforward=hidden_size, batch_first=self.batch_first)
+
         self.encoder = nn.TransformerEncoder(self.encoder_layer, num_layers)
-        
+
         self.activation = nn.ELU()
 
         self.linear_out = nn.Linear(embed_size, embed_size)
@@ -30,12 +33,12 @@ class TactileTransformer(nn.Module):
         if self.layer_norm:
             self.layer_norm_in = nn.LayerNorm(embed_size)
             self.layer_norm_out = nn.LayerNorm(embed_size)
-      
+
         self.dropout = nn.Dropout(0.2)
         self.out = nn.Sequential(nn.Linear(embed_size, 16), nn.ELU(), nn.Dropout(0.2), nn.Linear(16, output_size))
-    
+
     def forward(self, cnn_input, lin_input, batch_size, embed_size, src_mask=None):
-        
+
         lin_x = self.linear_in(lin_input)
         # cnn_x = self.cnn_embedding(cnn_input)
         # cnn_x = cnn_x.view(batch_size, self.max_sequence_length, embed_size)
@@ -58,6 +61,7 @@ class TactileTransformer(nn.Module):
         x = torch.tanh(x)
         return x
 
+
 class PositionalEncoding(nn.Module):
 
     def __init__(self, d_model: int, dropout: float = 0.1, max_len: int = 5000):
@@ -75,9 +79,9 @@ class PositionalEncoding(nn.Module):
         x = x + self.pe[:x.size(1)].permute(1, 0, 2)
         return self.dropout(x)
 
+
 class ConvEmbedding(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size):
-        
         super(ConvEmbedding, self).__init__()
 
         self.conv1 = nn.Conv2d(in_channels, 8, kernel_size=kernel_size, stride=1)
@@ -92,7 +96,7 @@ class ConvEmbedding(nn.Module):
         self.max_pool2 = nn.MaxPool2d(kernel_size=2, stride=3)
 
         self.global_avg_pool = nn.AdaptiveAvgPool2d(4)
-        
+
         self.activation = nn.ELU()
 
     def forward(self, x):
@@ -109,17 +113,27 @@ class ConvEmbedding(nn.Module):
         x = self.global_avg_pool(x)
         x = x.flatten(start_dim=1)
         return x
-    
-# for tests
-if __name__ == "__main__":  
-    
-    lin_input_size, in_channels, out_channels, kernel_size, embed_size, hidden_size, num_heads, max_sequence_length, num_layers, output_size = 33, 3, 1, 3, 32, 32, 2, 100, 2, 8
 
-    transformer = TactileTransformer(lin_input_size, in_channels, out_channels, kernel_size, embed_size, hidden_size, num_heads, max_sequence_length, num_layers, output_size)
+
+# for tests
+if __name__ == "__main__":
+    lin_input_size = 33
+    in_channels = 3
+    out_channels = 1
+    kernel_size = 3
+    embed_size = 32
+    hidden_size = 32
+    num_heads = 2
+    max_sequence_length = 100
+    num_layers = 2
+    output_size = 8
+
+    transformer = TactileTransformer(lin_input_size, in_channels, out_channels, kernel_size, embed_size, hidden_size,
+                                     num_heads, max_sequence_length, num_layers, output_size)
 
     lin_x = torch.randn(2, 100, 33)
     cnn_x = torch.randn(2, 100, 3, 224, 224)
-    cnn_x = cnn_x.view(2*100, 3, 224, 224)
+    cnn_x = cnn_x.view(2 * 100, 3, 224, 224)
 
     x = transformer(cnn_x, lin_x, 2, 16)
     print(x.shape)
