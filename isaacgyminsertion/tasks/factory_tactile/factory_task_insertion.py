@@ -370,7 +370,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             for n in range(3):
 
                 if self.cfg_task.env.tactile_wrt_force:
-                    force = 20 * self.finger_normalized_forces[e, n].cpu().detach().numpy()
+                    force = 50 * self.finger_normalized_forces[e, n].cpu().detach().numpy()
                 else:
                     force = 20
 
