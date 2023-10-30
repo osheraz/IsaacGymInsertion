@@ -208,7 +208,18 @@ class PPO(object):
             }
 
             # initializing data logger, the device should be changed
-            self.data_logger_init = lambda x: DataLogger(self.env.num_envs, self.env.max_episode_length, self.env.device, os.path.join(self.env.cfg_task.data_logger.base_folder, self.env.cfg_task.data_logger.sub_folder), self.env.cfg_task.data_logger.total_trajectories, save_trajectory=self.env.cfg_task.data_logger.collect_data, **log_items)
+
+            log_folder = self.env.cfg_task.data_logger.base_folder
+            if 'oa348' in os.getcwd():
+                log_folder.replace("dm1487", "oa348")
+            self.data_logger_init = lambda x: DataLogger(self.env.num_envs,
+                                                         self.env.max_episode_length,
+                                                         self.env.device,
+                                                         os.path.join(log_folder,
+                                                                      self.env.cfg_task.data_logger.sub_folder),
+                                                         self.env.cfg_task.data_logger.total_trajectories,
+                                                         save_trajectory=self.env.cfg_task.data_logger.collect_data,
+                                                         **log_items)
             
         batch_size = self.num_actors
         current_rewards_shape = (batch_size, 1)

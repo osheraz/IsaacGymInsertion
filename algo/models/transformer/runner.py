@@ -14,7 +14,7 @@ import os
 import wandb
 import time
 from algo.models.transformer.utils import set_seed
-
+from hydra.utils import to_absolute_path
 
 class Runner:
     def __init__(self, cfg=None, agent=None, action_regularization=False):
@@ -259,8 +259,11 @@ class Runner:
         from tqdm import tqdm
 
         # Load trajectories
+        if 'oa348' in os.getcwd():
+            self.cfg.data_folder.replace("dm1487", "oa348")
+            self.cfg.output_dir.replace("dm1487", "oa348")
         file_list = glob(os.path.join(self.cfg.data_folder, '*/*.npz'))
-        save_folder = f'{self.cfg.output_dir}/{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}'
+        save_folder = f'{to_absolute_path(self.cfg.output_dir)}/{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}'
         os.makedirs(save_folder, exist_ok=True)
         
         load_model = False
