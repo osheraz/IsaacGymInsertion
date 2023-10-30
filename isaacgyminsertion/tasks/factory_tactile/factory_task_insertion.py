@@ -626,13 +626,13 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         ]
 
         # Define state (for teacher)
-        socket_tip_wrt_robot = self.pose_world_to_robot_base(self.socket_tip, self.socket_quat, as_matrix=False)
+        socket_pos_wrt_robot = self.pose_world_to_robot_base(self.socket_pos, self.socket_quat, as_matrix=False)
         plug_bottom_wrt_robot = self.pose_world_to_robot_base(self.plug_pos, self.plug_quat, as_matrix=False)
         plug_socket_pos_error, plug_socket_quat_error = fc.get_pose_error(
             fingertip_midpoint_pos=plug_bottom_wrt_robot[0],
             fingertip_midpoint_quat=plug_bottom_wrt_robot[1],
-            ctrl_target_fingertip_midpoint_pos=socket_tip_wrt_robot[0],
-            ctrl_target_fingertip_midpoint_quat=socket_tip_wrt_robot[1],
+            ctrl_target_fingertip_midpoint_pos=socket_pos_wrt_robot[0],
+            ctrl_target_fingertip_midpoint_quat=socket_pos_wrt_robot[1],
             jacobian_type=self.cfg_ctrl['jacobian_type'],
             rot_error_type='quat')
 
@@ -686,8 +686,8 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         state_tensors = [
             #  add delta error
-            # socket_tip_wrt_robot[0],  # 3
-            # socket_tip_wrt_robot[1],  # 4
+            # socket_pos_wrt_robot[0],  # 3
+            # socket_pos_wrt_robot[1],  # 4
             # plug_bottom_wrt_robot[0],  # 3
             # plug_bottom_wrt_robot[1],  # 4
             plug_socket_pos_error, # 3
