@@ -679,14 +679,17 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         e = 0.9
         normalize_forces = lambda x: (torch.clamp(torch.norm(x, dim=-1), 0, 100) / 100).view(-1)
         # normalize_forces = lambda x: torch.norm(x, dim=-1).view(-1)
+        self.finger_normalized_forces[:, 0] =  normalize_forces(self.left_finger_force.clone())
+        self.finger_normalized_forces[:, 1] =  normalize_forces(self.right_finger_force.clone())
+        self.finger_normalized_forces[:, 2] =  normalize_forces(self.middle_finger_force.clone())
         
         smoothing = False
         if not smoothing:
             e = 0
 
-        self.finger_normalized_forces[:, 0] = (1 - e) * normalize_forces(self.left_finger_force.clone()) + e * self.finger_normalized_forces[:, 0]
-        self.finger_normalized_forces[:, 1] = (1 - e) * normalize_forces(self.right_finger_force.clone()) + e * self.finger_normalized_forces[:, 1]
-        self.finger_normalized_forces[:, 2] = (1 - e) * normalize_forces(self.middle_finger_force.clone()) + e * self.finger_normalized_forces[:, 2]
+        # self.finger_normalized_forces[:, 0] = (1 - e) * normalize_forces(self.left_finger_force.clone()) + e * self.finger_normalized_forces[:, 0]
+        # self.finger_normalized_forces[:, 1] = (1 - e) * normalize_forces(self.right_finger_force.clone()) + e * self.finger_normalized_forces[:, 1]
+        # self.finger_normalized_forces[:, 2] = (1 - e) * normalize_forces(self.middle_finger_force.clone()) + e * self.finger_normalized_forces[:, 2]
 
         state_tensors = [
             #  add delta error

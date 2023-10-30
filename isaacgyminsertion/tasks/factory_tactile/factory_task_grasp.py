@@ -707,9 +707,7 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         pitch[pitch > np.pi] -= 2 * np.pi
 
         cond = (abs(roll * 180 / np.pi) < 8) & (abs(pitch * 180 / np.pi) < 8) 
-        # print(cond)
         cond &= (torch.sum(torch.sum((self.depth_maps - priv_depth), dim=(2, 3)) >= 0.0, dim=1) == 3)
-        # print(torch.sum((self.depth_maps - priv_depth), dim=(2, 3)), cond)
         valid_env_ids = env_ids[cond.nonzero()]
 
         print(len(valid_env_ids))
