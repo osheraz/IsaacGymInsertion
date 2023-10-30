@@ -180,6 +180,8 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         self.ft_queue = torch.zeros((self.num_envs, self.ft_hist_len, 6), device=self.device, dtype=torch.float)
 
+        
+
         # reset tensors
         self.timeout_reset_buf = torch.zeros_like(self.reset_buf)
         self.degrasp_buf = torch.zeros_like(self.reset_buf)
@@ -198,6 +200,9 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             self.gt_extrinsic_contact = torch.zeros(
                 (self.num_envs, self.extrinsic_contact_gt[0].pointcloud_obj.shape[0]),
                 device=self.device, dtype=torch.float)
+            
+        # reward tensor
+        self.reward_log_buf = torch.zeros_like(self.rew_buf)
 
     def _refresh_task_tensors(self, update_tactile=False):
         """Refresh tensors."""
@@ -684,6 +689,8 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.finger_normalized_forces[:, 1] = (1 - e) * normalize_forces(self.right_finger_force.clone()) + e * self.finger_normalized_forces[:, 1]
         self.finger_normalized_forces[:, 2] = (1 - e) * normalize_forces(self.middle_finger_force.clone()) + e * self.finger_normalized_forces[:, 2]
 
+        # print(self.finger_normalized_forces[0])
+
         state_tensors = [
             #  add delta error
             # socket_pos_wrt_robot[0],  # 3
@@ -715,36 +722,38 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
     def _update_rew_buf(self):
         """Compute reward at current timestep."""
 
-        keypoint_reward = self._get_keypoint_dist()
+        keypoint_dist = self._get_keypoint_dist()
         action_penalty = torch.norm(self.actions, p=2, dim=-1)
         plug_ori_penalty = torch.norm(self.plug_quat - self.identity_quat, p=2, dim=-1)
         is_plug_oriented = plug_ori_penalty < self.cfg_task.rl.orientation_threshold
 
         is_plug_engaged_w_socket = self._check_plug_engaged_w_socket()
 
-        keypoint_r = keypoint_reward * self.cfg_task.rl.keypoint_reward_scale
+        keypoint_reward = keypoint_dist * self.cfg_task.rl.keypoint_reward_scale
         distance_reset_buf = (self.far_from_goal_buf | self.degrasp_buf)
         early_reset_reward = distance_reset_buf * self.cfg_task.rl.early_reset_reward_scale
-        engagement_reward = self._get_engagement_reward_scale(is_plug_engaged_w_socket,
-                                                              self.cfg_task.rl.success_height_thresh) * self.cfg_task.rl.engagement_reward_scale
-        self.rew_buf[:] = keypoint_r + engagement_reward
+        engagement = self._get_engagement_reward_scale(is_plug_engaged_w_socket,
+                                                              self.cfg_task.rl.success_height_thresh)
+        engagement_reward = engagement * self.cfg_task.rl.engagement_reward_scale
+        self.rew_buf[:] = keypoint_reward + engagement_reward
 
+        
         self.rew_buf[:] += (early_reset_reward * self.timeout_reset_buf)
         self.rew_buf[:] += (self.timeout_reset_buf * self.success_reset_buf) * self.cfg_task.rl.success_bonus
         self.extras['successes'] = ((self.timeout_reset_buf | distance_reset_buf) * self.success_reset_buf) * 1.0
 
-        # if self.reset_buf[0]:
-        #     print("### reset env 0 ###")
+        self.reward_log_buf[:] = self.rew_buf[:]
 
         is_last_step = (self.progress_buf[0] == self.max_episode_length - 1)
         if is_last_step:
             if not self.cfg_task.data_logger.collect_data:
                 success_dones = self.success_reset_buf.nonzero()
                 failure_dones = (1.0 - self.success_reset_buf).nonzero()
+
                 print('Success Rate:', torch.mean(self.success_reset_buf * 1.0).item(),
+                      'Avg Ep Reward:', torch.mean(self.reward_log_buf).item(),
                       ' Success Reward:', self.rew_buf[success_dones].mean().item(),
                       ' Failure Reward:', self.rew_buf[failure_dones].mean().item())
-
             self.extras["engaged_w_socket"] = torch.mean(is_plug_engaged_w_socket.float())
             self.extras["plug_oriented"] = torch.mean(is_plug_oriented.float())
             self.extras["successes"] = torch.mean(self.success_reset_buf.float())
@@ -1074,6 +1083,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.progress_buf[env_ids] = 0
         self.time_complete_task = torch.zeros_like(self.progress_buf)
         self.rew_buf[env_ids] = 0
+        self.reward_log_buf[env_ids] = 0
 
         self.degrasp_buf[env_ids] = 0
         self.success_reset_buf[env_ids] = 0
@@ -1331,7 +1341,6 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         # Set default value of scale to zero
         reward_scale = torch.zeros((self.num_envs,), dtype=torch.float32, device=self.device)
-
         # For envs in which plug and socket are engaged, compute positive scale
         engaged_idx = np.argwhere(is_plug_engaged_w_socket.cpu().numpy().copy()).squeeze()
         height_dist = self.plug_pos[engaged_idx, 2] - self.socket_pos[engaged_idx, 2]
