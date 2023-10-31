@@ -1,23 +1,31 @@
 #!/bin/bash
-GPUS=$1
-SEED=$2
-CACHE=$3
+GPUS=${1:-0}
+SEED=${2:-42}
+CACHE=${3:-test}
+NUM_ENVS=${4:-2}
+HEADLESS=${5:-True}
+
 
 array=( $@ )
 len=${#array[@]}
 EXTRA_ARGS=${array[@]:3:$len}
 EXTRA_ARGS_SLUG=${EXTRA_ARGS// /_}
 
-C=outputs/10-18-23/16-49-49/stage1_nn/last.pth
+C=outputs/${CACHE}/stage1_nn/last.pth
 
 echo extra "${EXTRA_ARGS}"
 
 CUDA_VISIBLE_DEVICES=${GPUS} \
-python trainV2.py task=FactoryTaskInsertionTactile headless=True seed=${SEED} \
-task.env.numEnvs=32 \
+python trainV2.py task=FactoryTaskInsertionTactile headless=${HEADLESS} seed=${SEED} \
+task.env.numEnvs=${NUM_ENVS} \
 task.env.tactile=True \
 task.env.tactile_history_len=3 \
-task.tactile.decoder.num_channels=3 \
+task.tactile.tacto.width=224 \
+task.tactile.tacto.height=224 \
+task.tactile.decoder.width=224 \
+task.tactile.decoder.height=224 \
+task.env.tactile_wrt_force=True \
+task.tactile.decoder.num_channels=1 \
 train.ppo.tactile_info=True \
 train.ppo.obs_info=True \
 train.algo=ExtrinsicAdapt \

@@ -90,6 +90,8 @@ class ExtrinsicAdapt(object):
             "mlp_tactile_units": self.network_config.tactile_mlp.units,
             'tactile_seq_length': self.tactile_seq_length,
             "tactile_decoder_embed_dim": self.network_config.tactile_mlp.units[0],
+
+            "merge_units": self.network_config.merge_mlp.units
         }
 
         self.model = ActorCritic(net_config)
@@ -129,7 +131,7 @@ class ExtrinsicAdapt(object):
         # ---- Optim ----
         adapt_params = []
         for name, p in self.model.named_parameters():
-            if 'tactile_decoder' in name or 'tactile_mlp' in name or 'obs_mlp' in name:
+            if 'tactile_decoder' in name or 'tactile_mlp' in name or 'obs_mlp' in name or 'merge_mlp' in name:
                 adapt_params.append(p)
             else:
                 p.requires_grad = False

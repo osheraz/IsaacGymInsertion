@@ -51,6 +51,8 @@ import trimesh
 import open3d as o3d
 from scipy.spatial.transform import Rotation as R
 import omegaconf
+import matplotlib.pyplot as plt
+
 
 class ExtrinsicContact:
     def __init__(
@@ -82,8 +84,12 @@ class ExtrinsicContact:
         )
 
         self.pointcloud_obj = trimesh.sample.sample_surface(self.object_trimesh, num_points)[0]
+        self.object_pc = trimesh.points.PointCloud(self.pointcloud_obj.copy())
+
         self.n_points = num_points
         self.gt_extrinsic_contact = torch.zeros((1, self.n_points))
+        self.constant_socket = False
+        self.ax = plt.axes(projection='3d')
 
     def _xyzquat_to_tf_numpy(self, position_quat: np.ndarray) -> np.ndarray:
         """
@@ -106,23 +112,29 @@ class ExtrinsicContact:
         object_poses = torch.cat((obj_pos, obj_quat), dim=0)
         object_poses = self._xyzquat_to_tf_numpy(object_poses.cpu().numpy())
 
-        object_pc_i = trimesh.points.PointCloud(self.pointcloud_obj.copy())
-        object_pc_i.apply_transform(object_poses)
-        coords = np.array(object_pc_i.vertices)
+        self.pointcloud_obj = trimesh.sample.sample_surface(self.object_trimesh, 300)[0]
+        self.object_pc = trimesh.points.PointCloud(self.pointcloud_obj.copy())
+        self.object_pc.apply_transform(object_poses)
+        coords = np.array(self.object_pc.vertices)
 
-        socket_poses = torch.cat((socket_pos, socket_quat), dim=0)
-        socket_poses = self._xyzquat_to_tf_numpy(socket_poses.cpu().numpy())
-        self.socket_trimesh.apply_transform(socket_poses)
+        if not self.constant_socket:
+            socket_poses = torch.cat((socket_pos, socket_quat), dim=0)
+            socket_poses = self._xyzquat_to_tf_numpy(socket_poses.cpu().numpy())
+            self.socket_trimesh.apply_transform(socket_poses)
+            self.socket = o3d.t.geometry.RaycastingScene()
+            self.socket.add_triangles(
+                o3d.t.geometry.TriangleMesh.from_legacy(self.socket_trimesh.as_open3d)
+            )
 
-        self.socket = o3d.t.geometry.RaycastingScene()
-        self.socket.add_triangles(
-            o3d.t.geometry.TriangleMesh.from_legacy(self.socket_trimesh.as_open3d)
-        )
+            self.socket_pcl = trimesh.sample.sample_surface_even(self.socket_trimesh, 300)[0]
+            self.socket_pcl = np.array(self.socket_pcl)
+            self.constant_socket = True
+
         d = self.socket.compute_distance(
             o3d.core.Tensor.from_numpy(coords.astype(np.float32))
         ).numpy()
 
-        threshold = 0.05  # Define your threshold distance
+        threshold = 0.02  # Define your threshold distance
         intersecting_indices = np.where(d < threshold)[0]
         contacts = coords[intersecting_indices]
 
@@ -139,14 +151,11 @@ class ExtrinsicContact:
         self.gt_extrinsic_contact = torch.tensor(d, dtype=torch.float32)
 
         if display:
-
-            self.socket_pcl = trimesh.sample.sample_surface_even(self.socket_trimesh, 300)[0]
-            self.socket_pcl = np.array(self.socket_pcl)
-            import matplotlib.pyplot as plt
-            ax = plt.axes(projection='3d')
-            ax.plot(self.socket_pcl[:, 0], self.socket_pcl[:, 1], self.socket_pcl[:, 2], 'yo')
-            ax.plot(coords[:, 0], coords[:, 1], coords[:, 2], 'ko')
-            ax.plot(contacts[:, 0], contacts[:, 1], contacts[:, 2], 'ro')
+            self.ax.plot(self.socket_pcl[:, 0], self.socket_pcl[:, 1], self.socket_pcl[:, 2], 'yo')
+            self.ax.plot(coords[:, 0], coords[:, 1], coords[:, 2], 'ko')
+            self.ax.plot(contacts[:, 0], contacts[:, 1], contacts[:, 2], 'ro')
+            plt.pause(0.0002)
+            self.ax.cla()
 
         return self.gt_extrinsic_contact
 

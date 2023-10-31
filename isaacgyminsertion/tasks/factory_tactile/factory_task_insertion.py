@@ -678,8 +678,6 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                     obj_pos=self.plug_pos[e], obj_quat=self.plug_quat[e], socket_pos=self.socket_pos[e],
                     socket_quat=self.socket_quat[e]
                 )
-            # todo should be added to priv.
-
         # fingertip forces
 
         e = 0.9 if self.cfg_task.env.smooth_force else 0
