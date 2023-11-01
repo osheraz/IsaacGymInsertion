@@ -189,7 +189,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.success_reset_buf = torch.zeros_like(self.reset_buf)
 
         # state tensors
-        self.plug_socket_pos_error, self.plug_socket_quat_error = torch.zeros((self.num_envs, 3),
+        self.plug_hand_pos, self.plug_hand_quat = torch.zeros((self.num_envs, 3),
                                                                               device=self.device), torch.zeros(
             (self.num_envs, 4), device=self.device)
         self.rigid_physics_params = torch.zeros((self.num_envs, 6), device=self.device,
@@ -631,18 +631,19 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         ]
 
         # Define state (for teacher)
-        eef_pose_wrt_robot = self.pose_world_to_robot_base(self.fingertip_centered_pos, self.fingertip_centered_quat, as_matrix=False)
-        plug_bottom_wrt_robot = self.pose_world_to_robot_base(self.plug_pos, self.plug_quat, as_matrix=False)
-        plug_socket_pos_error, plug_socket_quat_error = fc.get_pose_error(
-            fingertip_midpoint_pos=plug_bottom_wrt_robot[0],
-            fingertip_midpoint_quat=plug_bottom_wrt_robot[1],
-            ctrl_target_fingertip_midpoint_pos=eef_pose_wrt_robot[0],
-            ctrl_target_fingertip_midpoint_quat=eef_pose_wrt_robot[1],
-            jacobian_type=self.cfg_ctrl['jacobian_type'],
-            rot_error_type='quat')
+        # eef_pose_wrt_robot = self.pose_world_to_robot_base(self.fingertip_centered_pos, self.fingertip_centered_quat, as_matrix=False)
+        # plug_bottom_wrt_robot = self.pose_world_to_robot_base(self.plug_pos, self.plug_quat, as_matrix=False)
+        # plug_hand_pos, plug_hand_quat = fc.get_pose_error(
+        #     fingertip_midpoint_pos=plug_bottom_wrt_robot[0],
+        #     fingertip_midpoint_quat=plug_bottom_wrt_robot[1],
+        #     ctrl_target_fingertip_midpoint_pos=eef_pose_wrt_robot[0],
+        #     ctrl_target_fingertip_midpoint_quat=eef_pose_wrt_robot[1],
+        #     jacobian_type=self.cfg_ctrl['jacobian_type'],
+        #     rot_error_type='quat')
 
-        self.plug_socket_pos_error[...] = plug_socket_pos_error
-        self.plug_socket_quat_error[...] = plug_socket_quat_error
+        plug_hand_pos, plug_hand_quat = self.pose_world_to_hand_base(self.plug_pos, self.plug_quat, as_matrix=False)
+        self.plug_hand_pos[...] = plug_hand_pos
+        self.plug_hand_quat[...] = plug_hand_quat
 
         # plug mass
         plug_mass = [self.gym.get_actor_rigid_body_properties(e, p)[0].mass for e, p in
@@ -694,8 +695,8 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             # socket_pos_wrt_robot[1],  # 4
             # plug_bottom_wrt_robot[0],  # 3
             # plug_bottom_wrt_robot[1],  # 4
-            plug_socket_pos_error, # 3
-            plug_socket_quat_error, # 4
+            plug_hand_pos, # 3
+            plug_hand_quat, # 4
             physics_params,  # 6 (plug_mass, plug_friction, socket_friction, left finger friction, right finger friction, middle finger friction)
             self.finger_normalized_forces,  # 3
             # self.socket_contact_force.clone()  # 3
