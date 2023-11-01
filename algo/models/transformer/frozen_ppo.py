@@ -204,8 +204,8 @@ class PPO(object):
                 'tactile_shape': self.env.tactile_imgs.shape[1:],
                 'latent_shape': net_config['priv_mlp_units'][-1],
                 'rigid_physics_params_shape': self.env.rigid_physics_params.shape[-1],
-                'plug_socket_pos_error_shape': self.env.plug_socket_pos_error.shape[-1],
-                'plug_socket_quat_error_shape': self.env.plug_socket_quat_error.shape[-1],
+                'plug_hand_pos_shape': self.env.plug_hand_pos.shape[-1],
+                'plug_hand_quat_shape': self.env.plug_hand_quat.shape[-1],
                 'finger_normalized_forces_shape': self.env.finger_normalized_forces.shape[-1],
                 'plug_heights_shape': self.env.plug_heights.shape[-1],
                 'obs_hist_shape': self.env.obs_buf.shape[-1],
@@ -375,8 +375,8 @@ class PPO(object):
         socket_pos = torch.cat(self.env.pose_world_to_robot_base(self.env.socket_pos.clone(), self.env.socket_quat.clone()), dim=-1)
         noisy_socket_pos = torch.cat(self.env.pose_world_to_robot_base(self.env.noisy_gripper_goal_pos.clone(), self.env.noisy_gripper_goal_quat.clone()), dim=-1)
         rigid_physics_params = self.env.rigid_physics_params.clone()
-        plug_socket_pos_error = self.env.plug_socket_pos_error.clone()
-        plug_socket_quat_error = self.env.plug_socket_quat_error.clone()
+        plug_hand_pos = self.env.plug_hand_pos.clone()
+        plug_hand_quat = self.env.plug_hand_quat.clone()
 
         finger_normalized_forces = self.env.finger_normalized_forces.clone()
         plug_heights = self.env.plug_heights.clone()
@@ -395,8 +395,8 @@ class PPO(object):
             'tactile': self.env.tactile_imgs,
             'latent': latent,
             'rigid_physics_params': rigid_physics_params,
-            'plug_socket_pos_error': plug_socket_pos_error,
-            'plug_socket_quat_error': plug_socket_quat_error,
+            'plug_hand_pos': plug_hand_pos,
+            'plug_hand_quat': plug_hand_quat,
             'finger_normalized_forces': finger_normalized_forces,
             'plug_heights': plug_heights,
             'obs_hist': obs_hist,

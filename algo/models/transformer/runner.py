@@ -26,7 +26,7 @@ class Runner:
         self.optimizer = None
         self.scheduler = None
         self.full_sequence = self.cfg.model.transformer.full_sequence
-        self.sequence_length = self.agent.full_config.task.rl.max_episode_length if self.full_sequence else self.cfg.model.transformer.sequence_length
+        self.sequence_length = 500 if self.full_sequence else self.cfg.model.transformer.sequence_length
         self.device = 'cuda:0'
         
         self.model = TactileTransformer(lin_input_size=self.cfg.model.linear.input_size,
@@ -104,7 +104,7 @@ class Runner:
                     'train/latent_loss': np.mean(latent_loss_list),
                     })
                 if self.ppo_step is not None:
-                    self._wandb_log({ 'train/action_loss': np.mean(action_loss_list) })
+                    self._wandb_log({'train/action_loss': np.mean(action_loss_list)})
                 
                 train_loss = []
                 latent_loss_list = []
