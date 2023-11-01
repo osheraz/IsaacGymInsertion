@@ -629,17 +629,19 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         ]
 
         # Define state (for teacher)
-        # eef_pose_wrt_robot = self.pose_world_to_robot_base(self.fingertip_centered_pos, self.fingertip_centered_quat, as_matrix=False)
-        # plug_bottom_wrt_robot = self.pose_world_to_robot_base(self.plug_pos, self.plug_quat, as_matrix=False)
-        # plug_hand_pos, plug_hand_quat = fc.get_pose_error(
-        #     fingertip_midpoint_pos=plug_bottom_wrt_robot[0],
-        #     fingertip_midpoint_quat=plug_bottom_wrt_robot[1],
-        #     ctrl_target_fingertip_midpoint_pos=eef_pose_wrt_robot[0],
-        #     ctrl_target_fingertip_midpoint_quat=eef_pose_wrt_robot[1],
-        #     jacobian_type=self.cfg_ctrl['jacobian_type'],
-        #     rot_error_type='quat')
+        eef_pose_wrt_robot = self.pose_world_to_robot_base(self.fingertip_centered_pos.clone(),
+                                                           self.fingertip_centered_quat.clone(), as_matrix=False)
+        plug_bottom_wrt_robot = self.pose_world_to_robot_base(self.plug_pos.clone(), self.plug_quat.clone(), as_matrix=False)
+        plug_hand_pos, plug_hand_quat = fc.get_pose_error(
+            fingertip_midpoint_pos=plug_bottom_wrt_robot[0],
+            fingertip_midpoint_quat=plug_bottom_wrt_robot[1],
+            ctrl_target_fingertip_midpoint_pos=eef_pose_wrt_robot[0],
+            ctrl_target_fingertip_midpoint_quat=eef_pose_wrt_robot[1],
+            jacobian_type=self.cfg_ctrl['jacobian_type'],
+            rot_error_type='quat')
 
-        plug_hand_pos, plug_hand_quat = self.pose_world_to_hand_base(self.plug_pos, self.plug_quat, as_matrix=False)
+        # Actually this is the right representation
+        # plug_hand_pos, plug_hand_quat = self.pose_world_to_hand_base(self.plug_pos, self.plug_quat, as_matrix=False)
         self.plug_hand_pos[...] = plug_hand_pos
         self.plug_hand_quat[...] = plug_hand_quat
 

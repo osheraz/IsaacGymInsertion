@@ -63,7 +63,8 @@ class ExtrinsicContact:
             socket_scale,
             socket_pos,
             num_envs,
-            num_points=300
+            num_points=300,
+            device='cuda:0'
     ) -> None:
 
         self.object_trimesh = trimesh.load(mesh_obj)
@@ -94,6 +95,7 @@ class ExtrinsicContact:
         self.constant_socket = False
         self.ax = plt.axes(projection='3d')
         self.num_envs = num_envs
+        self.device = device
 
     def _xyzquat_to_tf_numpy(self, position_quat: np.ndarray) -> np.ndarray:
         """
@@ -154,7 +156,7 @@ class ExtrinsicContact:
         d[d > 0.1] = 1.0
         d = d.reshape((self.num_envs, self.n_points))
 
-        self.gt_extrinsic_contact = torch.tensor(d, dtype=torch.float32)
+        self.gt_extrinsic_contact = torch.tensor(d, dtype=torch.float32, device=self.device)
 
         if display:
             env_to_plot = 0
