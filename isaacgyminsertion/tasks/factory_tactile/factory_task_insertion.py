@@ -198,7 +198,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         if self.cfg_task.env.compute_contact_gt:
             self.gt_extrinsic_contact = torch.zeros(
-                (self.num_envs, self.extrinsic_contact_gt[0].pointcloud_obj.shape[0]),
+                (self.num_envs, self.extrinsic_contact_gt.pointcloud_obj.shape[0]),
                 device=self.device, dtype=torch.float)
             
         # reward tensor
@@ -673,11 +673,10 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.rigid_physics_params[...] = physics_params
 
         if self.cfg_task.env.compute_contact_gt:
-            for e in range(self.num_envs):
-                self.gt_extrinsic_contact[e] = self.extrinsic_contact_gt[e].get_extrinsic_contact(
-                    obj_pos=self.plug_pos[e], obj_quat=self.plug_quat[e], socket_pos=self.socket_pos[e],
-                    socket_quat=self.socket_quat[e]
-                )
+            self.gt_extrinsic_contact = self.extrinsic_contact_gt.get_extrinsic_contact(
+                obj_pos=self.plug_pos, obj_quat=self.plug_quat, socket_pos=self.socket_pos,
+                socket_quat=self.socket_quat
+            )
         # fingertip forces
 
         e = 0.9 if self.cfg_task.env.smooth_force else 0
