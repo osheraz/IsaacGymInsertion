@@ -196,10 +196,8 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                                                 dtype=torch.float)  # TODO: Take num_params to config
         self.finger_normalized_forces = torch.zeros((self.num_envs, 3), device=self.device, dtype=torch.float)
 
-        if self.cfg_task.env.compute_contact_gt:
-            self.gt_extrinsic_contact = torch.zeros(
-                (self.num_envs, self.extrinsic_contact_gt.pointcloud_obj.shape[0]),
-                device=self.device, dtype=torch.float)
+        self.gt_extrinsic_contact = torch.zeros((self.num_envs, self.cfg_task.env.num_points),
+                                                device=self.device, dtype=torch.float)
             
         # reward tensor
         self.reward_log_buf = torch.zeros_like(self.rew_buf)
@@ -678,16 +676,13 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                 obj_pos=self.plug_pos, obj_quat=self.plug_quat, socket_pos=self.socket_pos,
                 socket_quat=self.socket_quat
             )
+
         # fingertip forces
-
         e = 0.9 if self.cfg_task.env.smooth_force else 0
-
         normalize_forces = lambda x: (torch.clamp(torch.norm(x, dim=-1), 0, 50) / 50).view(-1)
         self.finger_normalized_forces[:, 0] = (1 - e) * normalize_forces(self.left_finger_force.clone()) + e * self.finger_normalized_forces[:, 0]
         self.finger_normalized_forces[:, 1] = (1 - e) * normalize_forces(self.right_finger_force.clone()) + e * self.finger_normalized_forces[:, 1]
         self.finger_normalized_forces[:, 2] = (1 - e) * normalize_forces(self.middle_finger_force.clone()) + e * self.finger_normalized_forces[:, 2]
-
-        # print(self.finger_normalized_forces[0])
 
         state_tensors = [
             #  add delta error
@@ -1107,6 +1102,9 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.goal_noisy_queue_student[env_ids] *= 0
         self.targets_queue_student[env_ids] *= 0
 
+        if self.cfg_task.env.compute_contact_gt:
+            self.gt_extrinsic_contact[env_ids] *= 0
+
     def _set_viewer_params(self):
         """Set viewer parameters."""
         bx, by, bz = -0.0012, -0.0093, 0.4335
@@ -1353,6 +1351,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.obs_dict['ft_hist'] = self.ft_queue.to(self.rl_device)
         self.obs_dict['priv_info'] = self.obs_dict['states'].to(self.rl_device)
         self.obs_dict['student_obs'] = self.obs_student_buf.to(self.rl_device)
+        self.obs_dict['contacts'] = self.gt_extrinsic_contact.to(self.rl_device)
         return self.obs_dict, self.rew_buf, self.reset_buf, self.extras
 
     def reset(self):
@@ -1364,4 +1363,6 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.obs_dict['student_obs'] = self.obs_student_buf.to(self.rl_device)
         self.obs_dict['tactile_hist'] = self.tactile_queue.to(self.rl_device)
         self.obs_dict['ft_hist'] = self.ft_queue.to(self.rl_device)
+        self.obs_dict['contacts'] = self.gt_extrinsic_contact.to(self.rl_device)
+
         return self.obs_dict

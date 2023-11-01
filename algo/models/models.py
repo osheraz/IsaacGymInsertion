@@ -71,17 +71,24 @@ class ActorCritic(nn.Module):
         self.ft_info = kwargs["ft_info"]
         self.tactile_info = kwargs["tactile_info"]
         self.obs_info = kwargs["obs_info"]
-
-        self.priv_mlp = kwargs['priv_mlp_units']
+        self.contact_info = kwargs['gt_contacts_info']
+        self.contact_mlp_units = kwargs['contacts_mlp_units']
+        self.priv_mlp_units = kwargs['priv_mlp_units']
         self.priv_info = kwargs['priv_info']
         self.priv_info_stage2 = kwargs['extrin_adapt']
+        self.priv_info_dim = kwargs['priv_info_dim']
 
         self.temp_latent = []
         self.temp_extrin = []
 
         if self.priv_info:
-            mlp_input_shape += self.priv_mlp[-1]
-            self.env_mlp = MLP(units=self.priv_mlp, input_size=kwargs['priv_info_dim'])
+            mlp_input_shape += self.priv_mlp_units[-1]
+
+            if self.contact_info:
+                self.priv_info_dim += self.contact_mlp_units[-1]
+                self.contact_mlp = MLP(units=self.contact_mlp_units, input_size=kwargs["num_contact_points"])
+
+            self.env_mlp = MLP(units=self.priv_mlp_units, input_size=self.priv_info_dim)
 
             if self.priv_info_stage2:
                 # ---- tactile Decoder ----
@@ -206,13 +213,30 @@ class ActorCritic(nn.Module):
                         extrin = extrin_tactile
                     else:
                         extrin = extrin_obs
+
                     # during supervised training, extrin has gt label
-                    extrin_gt = self.env_mlp(obs_dict['priv_info']) if 'priv_info' in obs_dict else extrin
+                    if self.priv_info:
+                        if self.contact_info:
+                            contact_features = self.contact_mlp(obs_dict['contacts'])
+                            priv_obs = torch.cat([obs_dict['priv_info'], contact_features], dim=-1)
+                            extrin = self.env_mlp(priv_obs)
+                        else:
+                            extrin_gt = self.env_mlp(obs_dict['priv_info'])
+                    else:
+                        extrin_gt = extrin
+
+                    # extrin_gt = self.env_mlp(obs_dict['priv_info']) if 'priv_info' in obs_dict else extrin
                     extrin_gt = torch.tanh(extrin_gt)
                     extrin = torch.tanh(extrin)
                     obs = torch.cat([obs, extrin], dim=-1)
                 else:
-                    extrin = self.env_mlp(obs_dict['priv_info'])
+                    if self.contact_info:
+                        contact_features = self.contact_mlp(obs_dict['contacts'])
+                        priv_obs = torch.cat([obs_dict['priv_info'], contact_features], dim=-1)
+                        extrin = self.env_mlp(priv_obs)
+                    else:
+                        extrin = self.env_mlp(obs_dict['priv_info'])
+
                     extrin = torch.tanh(extrin)
 
                     # plt.ylim(-1, 1)

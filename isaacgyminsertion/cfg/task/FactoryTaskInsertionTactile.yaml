@@ -69,8 +69,10 @@ env:
 
     tactile: False
     tactile_display_viz: False
-    compute_contact_gt: False
     tactile_wrt_force: False
+
+    compute_contact_gt: True
+    num_points: 300
 
     record_video: True
     record_ft: True

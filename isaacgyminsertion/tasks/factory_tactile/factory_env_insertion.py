@@ -111,7 +111,7 @@ class ExtrinsicContact:
         self.gt_extrinsic_contact *= 0
         self.step = 0
 
-    def get_extrinsic_contact(self, obj_pos, obj_quat, socket_pos, socket_quat, threshold=0.005, display=False):
+    def get_extrinsic_contact(self, obj_pos, obj_quat, socket_pos, socket_quat, threshold=0.002, display=False):
 
         object_poses = torch.cat((obj_pos, obj_quat), dim=1)
         object_poses = self._xyzquat_to_tf_numpy(object_poses.cpu().numpy())
@@ -120,7 +120,10 @@ class ExtrinsicContact:
         for i in range(self.num_envs):
 
             object_pc_i = trimesh.points.PointCloud(self.pointcloud_obj.copy())
-            object_pc_i.apply_transform(object_poses[i])
+            if self.num_envs > 1:
+                object_pc_i.apply_transform(object_poses[i])
+            else:
+                object_pc_i.apply_transform(object_poses)
             coords[i] = np.array(object_pc_i.vertices)
 
             if not self.constant_socket:
@@ -532,7 +535,8 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
                                                              obj_scale=1.0,
                                                              socket_scale=1.0,
                                                              socket_pos=socket_pos,
-                                                             num_envs=self.num_envs)
+                                                             num_envs=self.num_envs,
+                                                             num_points=self.cfg['env']['num_points'])
 
             if self.cfg_env.env.aggregate_mode:
                 self.gym.end_aggregate(env_ptr)
