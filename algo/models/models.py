@@ -211,11 +211,11 @@ class ActorCritic(nn.Module):
                     extrin = self.env_mlp(obs_dict['priv_info'])
                     extrin = torch.tanh(extrin)  # constraining the projection space (everything in hypersphere of radius 1)
                     
-                    # plt.ylim(-1, 1)
-                    # plt.scatter(list(range(8)), extrin.clone().detach().cpu().numpy()[0, :], color='b')
-                    # plt.scatter(list(range(8)), obs_dict['latent1'].clone().cpu().numpy()[0, :], color='r')
-                    # plt.pause(0.0001)
-                    # plt.cla()
+                    plt.ylim(-1, 1)
+                    plt.scatter(list(range(4)), extrin.clone().detach().cpu().numpy()[0, :], color='b')
+                    plt.scatter(list(range(4)), obs_dict['latent1'].clone().cpu().numpy()[0, :], color='r')
+                    plt.pause(0.00000001)
+                    plt.cla()
 
                     obs = torch.cat([obs, extrin], dim=-1) # len(obs) + len(extrin)
 

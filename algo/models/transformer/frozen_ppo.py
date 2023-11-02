@@ -614,16 +614,23 @@ class PPO(object):
         self.storage.data_dict['values'] = values
         self.storage.data_dict['returns'] = returns
 
-    def test(self, get_latent=None):
+    def test(self, get_latent=None, normalize_dict=None):
         # this will test either the student or the teacher model. (check if the student model can be tested within models)
         self.set_eval()
-        self.obs = self.env.reset()
         milestone = 100
         
         action, latent, done = None, None, None
 
         save_trajectory = self.env.cfg_task.data_logger.collect_data  # in data collection phase this will be true
         offline_test = self.full_config.offline_training_w_env  # in offline_test this will be true
+        
+        # convert normalizing measures to torch and add to device
+        if normalize_dict is not None:
+            for key in normalize_dict.keys():
+                normalize_dict[key] = torch.tensor(normalize_dict[key], device=self.device)
+
+        # reset all envs
+        self.obs = self.env.reset()
         
         # logging initial data only if one of the above is true
         if save_trajectory or offline_test:
@@ -648,12 +655,12 @@ class PPO(object):
                 data = self.data_logger.get_data()
                 if get_latent is not None:
                     # making data for the latent prediction from student model
-                    cnn_input, lin_input = self._make_data(data)
+                    cnn_input, lin_input = self._make_data(data, normalize_dict)
                     # getting the latent data from the student model
                     if self.full_config.offline_train.model.transformer.full_sequence:
                         latent = get_latent(cnn_input, lin_input)[self.env_ids, self.env.progress_buf.view(-1, 1), :].squeeze(1)
                     else:
-                        latent = get_latent(cnn_input, lin_input)[self.env_ids, -1, :].squeeze(1)
+                        latent = get_latent(cnn_input, lin_input)[:, -1, :].squeeze(1)
 
             # adding the latent to the obs_dict (if present test with student, else test with teacher)
             obs_dict = {
@@ -676,7 +683,7 @@ class PPO(object):
 
         return num_success, total_dones
         
-    def _make_data(self, data):
+    def _make_data(self, data, normalize_dict):
         # This function is used to make the data for the student model
 
         # cnn input
@@ -684,11 +691,17 @@ class PPO(object):
 
         # linear input
         arm_joints = data["arm_joints"]
-        eef_pos = data["eef_pos"]
-        noisy_socket_pos = data["noisy_socket_pos"]
+        eef_pos = data['eef_pos']
+        noisy_socket_pos = data["noisy_socket_pos"][..., :2]
         action = data["action"]
         target = data["target"]
 
+        if normalize_dict is not None:
+            arm_joints = (arm_joints - self.normalize_dict["mean"]["arm_joints"]) / self.normalize_dict["std"]["arm_joints"]
+            eef_pos = (eef_pos - self.normalize_dict["mean"]["eef_pos"]) / self.normalize_dict["std"]["eef_pos"]
+            noisy_socket_pos = (noisy_socket_pos - self.normalize_dict["mean"]["noisy_socket_pos"][:2]) / self.normalize_dict["std"]["noisy_socket_pos"][:2]
+            target = (target - self.normalize_dict["mean"]["target"]) / self.normalize_dict["std"]["target"]
+            
         # making the inputs
         cnn_input = torch.cat([tactile[:, :, 0, ...], tactile[:, :,  1, ...], tactile[:, :,  2, ...]], dim=-1)
         lin_input = torch.cat([arm_joints, eef_pos, noisy_socket_pos, action, target], dim=-1)

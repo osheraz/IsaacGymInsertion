@@ -26,7 +26,7 @@ class Runner:
         self.optimizer = None
         self.scheduler = None
         self.full_sequence = self.cfg.model.transformer.full_sequence
-        self.sequence_length = self.agent.full_config.task.rl.max_episode_length if self.full_sequence else self.cfg.model.transformer.sequence_length
+        self.sequence_length = 500 if self.full_sequence else self.cfg.model.transformer.sequence_length
         self.device = 'cuda:0'
         
         self.model = TactileTransformer(lin_input_size=self.cfg.model.linear.input_size,
@@ -46,18 +46,17 @@ class Runner:
         self.loss_fn = torch.nn.MSELoss(reduction='none')
 
     def train(self, dl, val_dl, ckpt_path, print_every=50, eval_every=250, test_every=500):
+        from matplotlib import pyplot as plt
         self.model.train()
         train_loss, val_loss = [], 0
         latent_loss_list, action_loss_list = [], []
         for i, (cnn_input, lin_input, obs_hist, latent, action, mask) in tqdm(enumerate(dl)):
-
-            self.optimizer.zero_grad()
-
-            # [envs, seq_len, W, H, C] => [envs*seq_len, C, W, H]
+            self.model.train()
+            
             cnn_input = cnn_input.to(self.device)
             cnn_input = cnn_input.view(cnn_input.shape[0] * self.sequence_length, *cnn_input.size()[-3:])
             cnn_input = cnn_input.permute(0, 3, 1, 2)
-            
+
             lin_input = lin_input.to(self.device) 
             latent = latent.to(self.device)
             action = action.to(self.device)
@@ -81,15 +80,17 @@ class Runner:
                     with torch.no_grad():
                         action_loss_list.append(loss_action.item())
             else:
-                loss_latent = self.loss_fn_mean(out[:, -1:, :].squeeze(1), latent[:, -1:, :].squeeze(1))
+                loss_latent = self.loss_fn_mean(out[:, -1, :], latent[:, -1, :])
                 if self.ppo_step is not None:  # action regularization
                     obs_hist = obs_hist[:, -1, :].to(self.device).view(obs_hist.shape[0], obs_hist.shape[-1])
                     pred_action, _ = self.ppo_step({'obs': obs_hist, 'latent': out[:, -1, :]})
+                    pred_action = torch.clamp(pred_action, -1, 1)
                     loss_action = self.loss_fn_mean(pred_action, action[:, -1, :].squeeze(1))
 
              # TODO: add scaling loss coefficients
-            loss = loss_latent + loss_action
-            
+            loss = (1 * loss_latent) + + (1 * loss_action)
+
+            self.optimizer.zero_grad()
             loss.backward()
             self.optimizer.step()
             train_loss.append(loss.item())
@@ -112,12 +113,15 @@ class Runner:
 
             if (i+1) % eval_every == 0:
                 val_loss = self.validate(val_dl)
-                print(f'validation loss: {np.mean(val_loss)}')
+                print(f'validation loss: {val_loss}')
                 self.model.train()
                 # val_loss = 0.
 
             if (i+1) % test_every == 0:
-                self.test()
+                try:
+                    self.test()
+                except:
+                    pass
                 self.model.train()
             
         return val_loss
@@ -156,15 +160,17 @@ class Runner:
                         # loss += loss_action
                 else:
                     loss_latent = self.loss_fn_mean(out[:, -1, :], latent[:, -1, :])
+
                     # loss = loss_latent
                     if self.ppo_step is not None:
                         obs_hist = obs_hist[:, -1, :].to(self.device).view(obs_hist.shape[0], obs_hist.shape[-1])
                         pred_action, _ = self.ppo_step({'obs': obs_hist, 'latent': out[:, -1, :]})
+                        pred_action = torch.clamp(pred_action, -1, 1)
                         loss_action = self.loss_fn_mean(pred_action, action[:, -1, :].squeeze(1))
                         # loss += loss_action
                 
                 # TODO: add scaling loss coefficients
-                loss = loss_latent + loss_action
+                loss = (1 * loss_latent) + (1 * loss_action)
 
                 val_loss.append(loss.item())
                 latent_loss_list.append(loss_latent.item())
@@ -176,27 +182,31 @@ class Runner:
                 'val/latent_loss': np.mean(latent_loss_list),
                 # 'val/action_loss': np.mean(action_loss_list)
             })
+            if self.ppo_step is not None:
+                   self._wandb_log({
+                        'val/action_loss': np.mean(action_loss_list)
+                    })
         return np.mean(val_loss)
 
     def test(self):
-        num_success, total_trials = self.agent.test(self.predict)
-        if total_trials > 0:
-            print(f'{num_success}/{total_trials}, success rate on :', num_success/total_trials)
-            self._wandb_log({
-                'test/success_rate': num_success/total_trials
-            })
-        else:
-            print('something went wrong, there are no test trials')
-    
+        with torch.inference_mode():
+            num_success, total_trials = self.agent.test(self.predict, self.normalize_dict.copy())
+            if total_trials > 0:
+                print(f'{num_success}/{total_trials}, success rate on :', num_success/total_trials)
+                self._wandb_log({
+                    'test/success_rate': num_success/total_trials
+                })
+            else:
+                print('something went wrong, there are no test trials')
+        
     def load_model(self, model_path, device='cuda:0'):
-        self.model = torch.jit.load(model_path)
+        self.model.load_state_dict(torch.load(model_path))
+        # self.model.eval()
         self.device = device
 
     def predict(self, cnn_input, lin_input):
         self.model.eval()
-
         with torch.inference_mode():
-
             # [envs, seq_len, W, H, C] => [envs*seq_len, C, W, H]
             cnn_input = cnn_input.to(self.device)
             cnn_input = cnn_input.view(cnn_input.shape[0] * self.sequence_length, *cnn_input.size()[-3:])
@@ -208,8 +218,7 @@ class Runner:
                              src_mask=self.src_mask,
                              batch_size=lin_input.shape[0],
                              embed_size=self.cfg.model.transformer.embed_size // 2)
-
-        return out.detach()
+        return out
 
     def _run(self, file_list, save_folder, epochs=100, train_test_split=0.9, train_batch_size=32, val_batch_size=32,
              learning_rate=1e-4, device='cuda:0', print_every=50, eval_every=250, test_every=500):
@@ -226,7 +235,7 @@ class Runner:
         self.src_mask = self.src_mask.to(self.device)
 
         self.optimizer = optim.Adam(self.model.parameters(), lr=learning_rate)
-
+        
         self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, mode='min', factor=0.5, patience=5, verbose=True)
 
         num_train_envs = int(len(file_list) * train_test_split)
@@ -235,10 +244,10 @@ class Runner:
         training_files = [file_list[i] for i in train_idxs]
         val_files = [file_list[i] for i in val_idxs]
 
-        train_ds = TactileDataset(files=training_files, full_sequence=self.full_sequence, sequence_length=self.sequence_length)
+        train_ds = TactileDataset(files=training_files, full_sequence=self.full_sequence, sequence_length=self.sequence_length, normalize_dict=self.normalize_dict)
         train_dl = DataLoader(train_ds, batch_size=train_batch_size, shuffle=True)
         
-        val_ds = TactileDataset(files=val_files, full_sequence=self.full_sequence, sequence_length=self.sequence_length)
+        val_ds = TactileDataset(files=val_files, full_sequence=self.full_sequence, sequence_length=self.sequence_length, normalize_dict=self.normalize_dict)
         val_dl = DataLoader(val_ds, batch_size=val_batch_size, shuffle=True)
         
         # training
@@ -266,11 +275,10 @@ class Runner:
         save_folder = f'{to_absolute_path(self.cfg.output_dir)}/{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}'
         os.makedirs(save_folder, exist_ok=True)
         
-        load_model = False
         device = 'cuda:0'
         
-        if load_model:
-            model_path = ''
+        if self.cfg.train.load_checkpoint:
+            model_path = self.cfg.train.ckpt_path
             self.load_model(model_path, device=device)
         
         train_config = {
@@ -293,7 +301,7 @@ class Runner:
                 dir=save_folder,
             )
 
-        # Removing failed trajectories?
+        # Removing failed trajectories
         for file in tqdm(file_list):
             try:
                 d = np.load(file)
@@ -305,4 +313,31 @@ class Runner:
             except:
                 file_list.remove(file)
         
+
+        normalize_keys = self.cfg.train.normalize_keys
+        
+        normalization_path = self.cfg.train.normalize_file
+        if os.path.exists(normalization_path):
+            # if already exisits, just load
+            with open(normalization_path, 'rb') as f:
+                normalize_dict = pickle.load(f)
+        else:
+            # means and standard deviations for normalization
+            normalize_dict = {
+                "mean": {},
+                "std": {}
+            }
+            for norm_keys in normalize_keys:
+                data = []
+                for file in tqdm(random.sample(file_list, 1000)):
+                    d = np.load(file)
+                    done_idx = d['done'].nonzero()[0][-1]
+                    data.append(d[norm_keys][:done_idx, :])
+                data = np.concatenate(data, axis=0)
+                normalize_dict['mean'][norm_keys] = np.mean(data, axis=0)
+                normalize_dict['std'][norm_keys] = np.std(data, axis=0)
+            with open(f'{normalization_path}', 'wb') as f:
+                pickle.dump(normalize_dict, f)
+        
+        self.normalize_dict = normalize_dict
         self._run(file_list, save_folder, device=device, **train_config)

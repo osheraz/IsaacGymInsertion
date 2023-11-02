@@ -5,7 +5,7 @@ import math
 
 class TactileTransformer(nn.Module):
     def __init__(self, lin_input_size, in_channels, out_channels, kernel_size, embed_size, hidden_size, num_heads,
-                 max_sequence_length, num_layers, output_size, layer_norm=True):
+                 max_sequence_length, num_layers, output_size, layer_norm=False):
 
         super(TactileTransformer, self).__init__()
 
@@ -14,7 +14,7 @@ class TactileTransformer(nn.Module):
         self.num_layers = num_layers
         self.max_sequence_length = max_sequence_length
 
-        self.linear_in = nn.Linear(lin_input_size, embed_size) # removed embed_size // 2 for no cnn
+        self.linear_in = nn.Linear(lin_input_size, embed_size // 2) # removed embed_size // 2 for no cnn
 
         self.cnn_embedding = ConvEmbedding(in_channels, out_channels, kernel_size)
 
@@ -25,7 +25,7 @@ class TactileTransformer(nn.Module):
 
         self.encoder = nn.TransformerEncoder(self.encoder_layer, num_layers)
 
-        self.activation = nn.ELU()
+        self.activation = nn.ReLU()
 
         self.linear_out = nn.Linear(embed_size, embed_size)
 
@@ -35,36 +35,37 @@ class TactileTransformer(nn.Module):
             self.layer_norm_out = nn.LayerNorm(embed_size)
 
         self.dropout = nn.Dropout(0.2)
-        self.out = nn.Sequential(nn.Linear(embed_size, 16), nn.ELU(), nn.Dropout(0.2), nn.Linear(16, output_size))
+        # self.out = nn.Sequential(nn.Linear(embed_size, 16), nn.ReLU(), nn.Dropout(0.2), nn.Linear(16, output_size))
+        self.out = nn.Sequential(nn.Linear(embed_size, 16), nn.ReLU(), nn.Linear(16, output_size))
 
     def forward(self, cnn_input, lin_input, batch_size, embed_size, src_mask=None):
-
+        
         lin_x = self.linear_in(lin_input)
-        # cnn_x = self.cnn_embedding(cnn_input)
-        # cnn_x = cnn_x.view(batch_size, self.max_sequence_length, embed_size)
-        # x = torch.cat([lin_x, cnn_x], dim=-1)
-        x = lin_x
-        if self.layer_norm:
-            x = self.layer_norm_in(x)
-        x = self.dropout(x)
+        cnn_x = self.cnn_embedding(cnn_input)
+        cnn_x = cnn_x.view(batch_size, self.max_sequence_length, embed_size)
+        x = torch.cat([lin_x, cnn_x], dim=-1)
+        # x = cnn_x
+        # if self.layer_norm:
+        #     x = self.layer_norm_in(x)
+        # x = self.dropout(x)
         x = self.positonal_embedding(x)
         if src_mask is None:
             x = self.encoder(x)
         else:
             x = self.encoder(x, mask=src_mask)
         x = self.linear_out(x)
-        if self.layer_norm:
-            x = self.layer_norm_out(x)
-        x = self.dropout(x)
+        # if self.layer_norm:
+        #     x = self.layer_norm_out(x)
+        # x = self.dropout(x)
         x = self.activation(x)
         x = self.out(x)
-        x = torch.tanh(x)
+        # x = torch.tanh(x)
         return x
 
 
 class PositionalEncoding(nn.Module):
 
-    def __init__(self, d_model: int, dropout: float = 0.1, max_len: int = 5000):
+    def __init__(self, d_model: int, dropout: float = 0.0, max_len: int = 5000):
         super().__init__()
         self.dropout = nn.Dropout(p=dropout)
 
@@ -90,26 +91,26 @@ class ConvEmbedding(nn.Module):
         self.batchnorm1 = nn.BatchNorm2d(8)
         self.batchnorm2 = nn.BatchNorm2d(out_channels)
 
-        self.dropout1 = nn.Dropout(0.2)
-        self.dropout2 = nn.Dropout(0.2)
+        self.dropout1 = nn.Dropout(0.0)
+        self.dropout2 = nn.Dropout(0.0)
         self.maxpool1 = nn.MaxPool2d(kernel_size=3, stride=2)
         self.max_pool2 = nn.MaxPool2d(kernel_size=2, stride=3)
 
         self.global_avg_pool = nn.AdaptiveAvgPool2d(4)
 
-        self.activation = nn.ELU()
+        self.activation = nn.ReLU()
 
     def forward(self, x):
         x = self.conv1(x)
-        x = self.batchnorm1(x)
+        # x = self.batchnorm1(x)
         x = self.activation(x)
         # x = self.maxpool1(x)
-        x = self.dropout1(x)
+        # x = self.dropout1(x)
         x = self.conv2(x)
-        x = self.batchnorm2(x)
+        # x = self.batchnorm2(x)
         x = self.activation(x)
         # x = self.max_pool2(x)
-        x = self.dropout2(x)
+        # x = self.dropout2(x)
         x = self.global_avg_pool(x)
         x = x.flatten(start_dim=1)
         return x
