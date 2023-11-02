@@ -493,11 +493,16 @@ class PPO(object):
         return a_losses, c_losses, b_losses, entropies, kls, grad_norms
 
     # TODO move all of this logging to an utils\misc folder
-    def _write_video(self, frames, output_loc, frame_rate):
+    def _write_video(self, frames, ft_frames, output_loc, frame_rate):
         writer = imageio.get_writer(output_loc, mode='I', fps=frame_rate)
         # out = cv2.VideoWriter(output_loc, self.fourcc, frame_rate, (240, 360))
         for i in range(len(frames)):
             frame = np.uint8(frames[i])
+            x, y = 30, 100
+            for item in ft_frames[i].tolist():
+                cv2.putText(frame, str(round(item, 3)), (x, y), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2, cv2.LINE_AA)
+                y += 30  # Move down to the next line
+            frame = np.uint8(frame)
             writer.append_data(frame)
             # cv2.imshow('frame', frames[i])
             # cv2.waitKey(0)
@@ -545,7 +550,7 @@ class PPO(object):
             video_dir = os.path.join(self.output_dir, 'videos1')
             if not os.path.exists(video_dir):
                 os.makedirs(video_dir)
-            self._write_video(frames, f"{video_dir}/{self.it:05d}.mp4", frame_rate=30)
+            self._write_video(frames, ft_frames, f"{video_dir}/{self.it:05d}.mp4", frame_rate=10)
             print(f"LOGGING VIDEO {self.it:05d}.mp4")
 
             ft_dir = os.path.join(self.output_dir, 'ft')
