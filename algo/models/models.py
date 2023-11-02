@@ -71,25 +71,30 @@ class ActorCritic(nn.Module):
         self.ft_info = kwargs["ft_info"]
         self.tactile_info = kwargs["tactile_info"]
         self.obs_info = kwargs["obs_info"]
-
-        self.priv_mlp = kwargs['priv_mlp_units']
+        self.contact_info = kwargs['gt_contacts_info']
+        self.contact_mlp_units = kwargs['contacts_mlp_units']
+        self.priv_mlp_units = kwargs['priv_mlp_units']
         self.priv_info = kwargs['priv_info']
         self.priv_info_stage2 = kwargs['extrin_adapt']
+        self.priv_info_dim = kwargs['priv_info_dim']
 
         self.temp_latent = []
         self.temp_extrin = []
 
         if self.priv_info:
-            mlp_input_shape += self.priv_mlp[-1]
-            self.env_mlp = MLP(units=self.priv_mlp, input_size=kwargs['priv_info_dim'])
+            mlp_input_shape += self.priv_mlp_units[-1]
+
+            if self.contact_info:
+                self.priv_info_dim += self.contact_mlp_units[-1]
+                self.contact_mlp = MLP(units=self.contact_mlp_units, input_size=kwargs["num_contact_points"])
+
+            self.env_mlp = MLP(units=self.priv_mlp_units, input_size=self.priv_info_dim)
 
             if self.priv_info_stage2:
                 # ---- tactile Decoder ----
                 # Dims of latent have to be the same |z_t - z'_t|
                 if self.obs_info:
                     self.obs_units = kwargs["obs_units"]
-                    if not self.tactile_info:
-                        self.obs_units[-1] *= 2
                     self.obs_mlp = MLP(
                         units=self.obs_units, input_size=kwargs["student_obs_input_shape"])
 
@@ -119,11 +124,15 @@ class ActorCritic(nn.Module):
                     # add tactile mlp to the decoded features
                     self.tactile_units = kwargs["mlp_tactile_units"]
                     tactile_input_shape = kwargs["mlp_tactile_input_shape"]
-                    if self.obs_info:
-                        self.tactile_units[-1] //= 2  # concat with obs info to generate extrin
 
                     self.tactile_mlp = MLP(
                         units=self.tactile_units, input_size=tactile_input_shape
+                    )
+
+                if self.obs_info and self.tactile_info:
+                    self.merge_units = kwargs["merge_units"]
+                    self.merge_mlp = MLP(
+                        units=self.merge_units, input_size=self.tactile_units[-1] + self.obs_units[-1]
                     )
 
                 if self.ft_info:
@@ -198,30 +207,50 @@ class ActorCritic(nn.Module):
 
                     if self.obs_info and self.tactile_info:
                         extrin = torch.cat([extrin_tactile, extrin_obs], dim=-1)
+                        extrin = self.merge_mlp(extrin)
+
                     elif self.tactile_info:
                         extrin = extrin_tactile
                     else:
                         extrin = extrin_obs
+
                     # during supervised training, extrin has gt label
-                    extrin_gt = self.env_mlp(obs_dict['priv_info']) if 'priv_info' in obs_dict else extrin
+                    if self.priv_info:
+                        if self.contact_info:
+                            contact_features = self.contact_mlp(obs_dict['contacts'])
+                            priv_obs = torch.cat([obs_dict['priv_info'], contact_features], dim=-1)
+                            extrin = self.env_mlp(priv_obs)
+                        else:
+                            extrin_gt = self.env_mlp(obs_dict['priv_info'])
+                    else:
+                        extrin_gt = extrin
+
+                    # extrin_gt = self.env_mlp(obs_dict['priv_info']) if 'priv_info' in obs_dict else extrin
                     extrin_gt = torch.tanh(extrin_gt)
                     extrin = torch.tanh(extrin)
                     obs = torch.cat([obs, extrin], dim=-1)
                 else:
-                    extrin = self.env_mlp(obs_dict['priv_info'])
-                    extrin = torch.tanh(extrin)  # constraining the projection space (everything in hypersphere of radius 1)
-                    
-                    plt.ylim(-1, 1)
-                    plt.scatter(list(range(4)), extrin.clone().detach().cpu().numpy()[0, :], color='b')
-                    plt.scatter(list(range(4)), obs_dict['latent1'].clone().cpu().numpy()[0, :], color='r')
-                    plt.pause(0.00000001)
-                    plt.cla()
+                    if self.contact_info:
+                        contact_features = self.contact_mlp(obs_dict['contacts'])
+                        priv_obs = torch.cat([obs_dict['priv_info'], contact_features], dim=-1)
+                        extrin = self.env_mlp(priv_obs)
+                    else:
+                        extrin = self.env_mlp(obs_dict['priv_info'])
 
-                    obs = torch.cat([obs, extrin], dim=-1) # len(obs) + len(extrin)
+                    extrin = torch.tanh(extrin)
 
-        x = self.actor_mlp(obs) # 128
-        value = self.value(x) # 1
-        mu = self.mu(x) # 6
+                    # plot for latent viz
+                    # plt.ylim(-1, 1)
+                    # plt.scatter(list(range(4)), extrin.clone().detach().cpu().numpy()[0, :], color='b')
+                    # plt.scatter(list(range(4)), obs_dict['latent1'].clone().cpu().numpy()[0, :], color='r')
+                    # plt.pause(0.0001)
+                    # plt.cla()
+
+                    obs = torch.cat([obs, extrin], dim=-1)
+
+        x = self.actor_mlp(obs)
+        value = self.value(x)
+        mu = self.mu(x)
         sigma = self.sigma
         return mu, mu * 0 + sigma, value, extrin, extrin_gt
 

@@ -105,7 +105,7 @@ class Runner:
                     'train/latent_loss': np.mean(latent_loss_list),
                     })
                 if self.ppo_step is not None:
-                    self._wandb_log({ 'train/action_loss': np.mean(action_loss_list) })
+                    self._wandb_log({'train/action_loss': np.mean(action_loss_list)})
                 
                 train_loss = []
                 latent_loss_list = []

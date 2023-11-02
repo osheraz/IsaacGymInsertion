@@ -189,17 +189,15 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.success_reset_buf = torch.zeros_like(self.reset_buf)
 
         # state tensors
-        self.plug_socket_pos_error, self.plug_socket_quat_error = torch.zeros((self.num_envs, 3),
+        self.plug_hand_pos, self.plug_hand_quat = torch.zeros((self.num_envs, 3),
                                                                               device=self.device), torch.zeros(
             (self.num_envs, 4), device=self.device)
         self.rigid_physics_params = torch.zeros((self.num_envs, 6), device=self.device,
                                                 dtype=torch.float)  # TODO: Take num_params to config
         self.finger_normalized_forces = torch.zeros((self.num_envs, 3), device=self.device, dtype=torch.float)
 
-        if self.cfg_task.env.compute_contact_gt:
-            self.gt_extrinsic_contact = torch.zeros(
-                (self.num_envs, self.extrinsic_contact_gt[0].pointcloud_obj.shape[0]),
-                device=self.device, dtype=torch.float)
+        self.gt_extrinsic_contact = torch.zeros((self.num_envs, self.cfg_task.env.num_points),
+                                                device=self.device, dtype=torch.float)
             
         # reward tensor
         self.reward_log_buf = torch.zeros_like(self.rew_buf)
@@ -630,31 +628,23 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             self.targets_queue_student.reshape(self.num_envs, -1),  # (envs, 6 * hist)
         ]
 
-
-        socket_pos_wrt_robot = self.pose_world_to_robot_base(self.fingertip_centered_pos.clone(), self.fingertip_centered_quat.clone(), as_matrix=False)
-        plug_bottom_wrt_robot = self.pose_world_to_robot_base(self.plug_pos.clone(), self.plug_quat.clone(), as_matrix=False)
-        plug_socket_pos_error, plug_socket_quat_error = fc.get_pose_error(
-            fingertip_midpoint_pos=plug_bottom_wrt_robot[0],
-            fingertip_midpoint_quat=plug_bottom_wrt_robot[1],
-            ctrl_target_fingertip_midpoint_pos=socket_pos_wrt_robot[0],
-            ctrl_target_fingertip_midpoint_quat=socket_pos_wrt_robot[1],
-            jacobian_type=self.cfg_ctrl['jacobian_type'],
-            rot_error_type='quat')
-        
-
         # Define state (for teacher)
-        # socket_pos_wrt_robot = self.pose_world_to_robot_base(self.socket_pos, self.socket_quat, as_matrix=False)
-        # plug_bottom_wrt_robot = self.pose_world_to_robot_base(self.plug_pos, self.plug_quat, as_matrix=False)
-        # plug_socket_pos_error, plug_socket_quat_error = fc.get_pose_error(
+        # eef_pose_wrt_robot = self.pose_world_to_robot_base(self.fingertip_centered_pos.clone(),
+        #                                                    self.fingertip_centered_quat.clone(), as_matrix=False)
+        # plug_bottom_wrt_robot = self.pose_world_to_robot_base(self.plug_pos.clone(), self.plug_quat.clone(), as_matrix=False)
+        # plug_hand_pos, plug_hand_quat = fc.get_pose_error(
         #     fingertip_midpoint_pos=plug_bottom_wrt_robot[0],
         #     fingertip_midpoint_quat=plug_bottom_wrt_robot[1],
-        #     ctrl_target_fingertip_midpoint_pos=socket_pos_wrt_robot[0],
-        #     ctrl_target_fingertip_midpoint_quat=socket_pos_wrt_robot[1],
+        #     ctrl_target_fingertip_midpoint_pos=eef_pose_wrt_robot[0],
+        #     ctrl_target_fingertip_midpoint_quat=eef_pose_wrt_robot[1],
         #     jacobian_type=self.cfg_ctrl['jacobian_type'],
         #     rot_error_type='quat')
         
-        self.plug_socket_pos_error[...] = plug_socket_pos_error
-        self.plug_socket_quat_error[...] = plug_socket_quat_error
+
+        # Actually this is the right representation
+        plug_hand_pos, plug_hand_quat = self.pose_world_to_hand_base(self.plug_pos, self.plug_quat, as_matrix=False)
+        self.plug_hand_pos[...] = plug_hand_pos
+        self.plug_hand_quat[...] = plug_hand_quat
 
         # plug mass
         plug_mass = [self.gym.get_actor_rigid_body_properties(e, p)[0].mass for e, p in
@@ -685,17 +675,13 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.rigid_physics_params[...] = physics_params
 
         if self.cfg_task.env.compute_contact_gt:
-            for e in range(self.num_envs):
-                self.gt_extrinsic_contact[e] = self.extrinsic_contact_gt[e].get_extrinsic_contact(
-                    obj_pos=self.plug_pos[e], obj_quat=self.plug_quat[e], socket_pos=self.socket_pos[e],
-                    socket_quat=self.socket_quat[e]
-                )
-            # todo should be added to priv.
+            self.gt_extrinsic_contact = self.extrinsic_contact_gt.get_extrinsic_contact(
+                obj_pos=self.plug_pos, obj_quat=self.plug_quat, socket_pos=self.socket_pos,
+                socket_quat=self.socket_quat
+            )
 
         # fingertip forces
-
         e = 0.9 if self.cfg_task.env.smooth_force else 0
-
         normalize_forces = lambda x: (torch.clamp(torch.norm(x, dim=-1), 0, 50) / 50).view(-1)
         self.finger_normalized_forces[:, 0] = (1 - e) * normalize_forces(self.left_finger_force.clone()) + e * self.finger_normalized_forces[:, 0]
         self.finger_normalized_forces[:, 1] = (1 - e) * normalize_forces(self.right_finger_force.clone()) + e * self.finger_normalized_forces[:, 1]
@@ -707,10 +693,10 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             # socket_pos_wrt_robot[1],  # 4
             # plug_bottom_wrt_robot[0],  # 3
             # plug_bottom_wrt_robot[1],  # 4
-            plug_socket_pos_error, # 3
-            plug_socket_quat_error, # 4
-            physics_params,  # 6 (plug_mass, plug_friction, socket_friction, left finger friction, right finger friction, middle finger friction)
-            self.finger_normalized_forces,  # 3
+            # plug_hand_pos, # 3
+            # plug_hand_quat, # 4
+            # physics_params,  # 6 (plug_mass, plug_friction, socket_friction, left finger friction, right finger friction, middle finger friction)
+            # self.finger_normalized_forces,  # 3
             # self.socket_contact_force.clone()  # 3
             # TODO: add object shapes -- bring diameter
             self.plug_heights,  # 1
@@ -1119,6 +1105,9 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.goal_noisy_queue_student[env_ids] *= 0
         self.targets_queue_student[env_ids] *= 0
 
+        if self.cfg_task.env.compute_contact_gt:
+            self.gt_extrinsic_contact[env_ids] *= 0
+
     def _set_viewer_params(self):
         """Set viewer parameters."""
         bx, by, bz = -0.0012, -0.0093, 0.4335
@@ -1365,6 +1354,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.obs_dict['ft_hist'] = self.ft_queue.to(self.rl_device)
         self.obs_dict['priv_info'] = self.obs_dict['states'].to(self.rl_device)
         self.obs_dict['student_obs'] = self.obs_student_buf.to(self.rl_device)
+        self.obs_dict['contacts'] = self.gt_extrinsic_contact.to(self.rl_device)
         return self.obs_dict, self.rew_buf, self.reset_buf, self.extras
 
     def reset(self):
@@ -1376,4 +1366,6 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.obs_dict['student_obs'] = self.obs_student_buf.to(self.rl_device)
         self.obs_dict['tactile_hist'] = self.tactile_queue.to(self.rl_device)
         self.obs_dict['ft_hist'] = self.ft_queue.to(self.rl_device)
+        self.obs_dict['contacts'] = self.gt_extrinsic_contact.to(self.rl_device)
+
         return self.obs_dict

@@ -10,9 +10,14 @@ network:
   ft_mlp:
     units: [128, 64, 16]
   obs_mlp:
-    units: [1024, 512, 128, 16]
+    units: [1024, 512, 128, 32]
   tactile_mlp:
-    units: [300, 128, 32]  # if obs_info is true, last dims is // 2
+    units: [300, 128, 32]
+  merge_mlp:
+    units: [128, 64, 4]
+  contact_mlp:
+    units: [ 128, 64, 16]
+
   tactile_decoder:
     num_channels: ${....task.tactile.decoder.num_channels}
     tactile_seq_length: ${....task.env.tactile_history_len}
@@ -60,6 +65,9 @@ ppo:
   ft_seq_length: ${...task.env.ft_history_len}
   obs_seq_length: ${...task.env.numObsHist}
   priv_info_dim: ${...task.env.numStates}
+  compute_contact_gt: ${...task.env.compute_contact_gt}
+  num_points: ${...task.env.num_points}
+
   student_obs_input_shape: ${...task.env.numObsStudent}
   save_buffer: False
   ft_input_dim: 6

@@ -34,7 +34,7 @@ def transform_op(arr):
 
 
 class ExperienceBuffer(Dataset):
-    def __init__(self, num_envs, horizon_length, batch_size, minibatch_size, obs_dim, act_dim, priv_dim, device):
+    def __init__(self, num_envs, horizon_length, batch_size, minibatch_size, obs_dim, act_dim, priv_dim, pts_dim, device):
         self.device = device
         self.num_envs = num_envs
         self.transitions_per_env = horizon_length
@@ -44,10 +44,13 @@ class ExperienceBuffer(Dataset):
         self.obs_dim = obs_dim
         self.act_dim = act_dim
         self.priv_dim = priv_dim
+        self.pts_dim = pts_dim
         self.storage_dict = {
             'obses': torch.zeros((self.transitions_per_env, self.num_envs, self.obs_dim), dtype=torch.float32,
                                  device=self.device),
             'priv_info': torch.zeros((self.transitions_per_env, self.num_envs, self.priv_dim), dtype=torch.float32,
+                                     device=self.device),
+            'contacts': torch.zeros((self.transitions_per_env, self.num_envs, self.pts_dim), dtype=torch.float32,
                                      device=self.device),
             'rewards': torch.zeros((self.transitions_per_env, self.num_envs, 1), dtype=torch.float32,
                                    device=self.device),
@@ -86,7 +89,7 @@ class ExperienceBuffer(Dataset):
                 input_dict[k] = v[start:end]
         return input_dict['values'], input_dict['neglogpacs'], input_dict['advantages'], input_dict['mus'], \
                input_dict['sigmas'], input_dict['returns'], input_dict['actions'], \
-               input_dict['obses'], input_dict['priv_info']
+               input_dict['obses'], input_dict['priv_info'], input_dict['contacts']
 
     def update_mu_sigma(self, mu, sigma):
         start = self.last_range[0]

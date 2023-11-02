@@ -51,6 +51,8 @@ import trimesh
 import open3d as o3d
 from scipy.spatial.transform import Rotation as R
 import omegaconf
+import matplotlib.pyplot as plt
+
 
 class ExtrinsicContact:
     def __init__(
@@ -60,15 +62,17 @@ class ExtrinsicContact:
             obj_scale,
             socket_scale,
             socket_pos,
-            num_points=300
+            num_envs,
+            num_points=300,
+            device='cuda:0'
     ) -> None:
 
         self.object_trimesh = trimesh.load(mesh_obj)
         self.object_trimesh = self.object_trimesh.apply_scale(obj_scale)
 
-        T = np.eye(4)
-        T[0:3, 0:3] = R.from_euler("xyz", [0, 0, 90], degrees=True).as_matrix()
-        self.object_trimesh = self.object_trimesh.apply_transform(T)
+        # T = np.eye(4)
+        # T[0:3, 0:3] = R.from_euler("xyz", [0, 0, 90], degrees=True).as_matrix()
+        # self.object_trimesh = self.object_trimesh.apply_transform(T)
 
         self.socket_trimesh = trimesh.load(mesh_socket)
         self.socket_trimesh = self.socket_trimesh.apply_scale(socket_scale)
@@ -80,10 +84,18 @@ class ExtrinsicContact:
         self.socket.add_triangles(
             o3d.t.geometry.TriangleMesh.from_legacy(self.socket_trimesh.as_open3d)
         )
+        self.socket_pcl = trimesh.sample.sample_surface_even(self.socket_trimesh, num_points)[0]
+        self.socket_pcl = np.array(self.socket_pcl)
 
         self.pointcloud_obj = trimesh.sample.sample_surface(self.object_trimesh, num_points)[0]
+        self.object_pc = trimesh.points.PointCloud(self.pointcloud_obj.copy())
+
         self.n_points = num_points
-        self.gt_extrinsic_contact = torch.zeros((1, self.n_points))
+        self.gt_extrinsic_contact = torch.zeros((num_envs, self.n_points))
+        self.constant_socket = False
+        self.ax = plt.axes(projection='3d')
+        self.num_envs = num_envs
+        self.device = device
 
     def _xyzquat_to_tf_numpy(self, position_quat: np.ndarray) -> np.ndarray:
         """
@@ -101,30 +113,38 @@ class ExtrinsicContact:
         self.gt_extrinsic_contact *= 0
         self.step = 0
 
-    def get_extrinsic_contact(self, obj_pos, obj_quat, socket_pos, socket_quat, display=False):
+    def get_extrinsic_contact(self, obj_pos, obj_quat, socket_pos, socket_quat, threshold=0.002, display=False):
 
-        object_poses = torch.cat((obj_pos, obj_quat), dim=0)
+        object_poses = torch.cat((obj_pos, obj_quat), dim=1)
         object_poses = self._xyzquat_to_tf_numpy(object_poses.cpu().numpy())
+        coords = np.zeros((self.num_envs, self.n_points, 3))
 
-        object_pc_i = trimesh.points.PointCloud(self.pointcloud_obj.copy())
-        object_pc_i.apply_transform(object_poses)
-        coords = np.array(object_pc_i.vertices)
+        for i in range(self.num_envs):
 
-        socket_poses = torch.cat((socket_pos, socket_quat), dim=0)
-        socket_poses = self._xyzquat_to_tf_numpy(socket_poses.cpu().numpy())
-        self.socket_trimesh.apply_transform(socket_poses)
+            object_pc_i = trimesh.points.PointCloud(self.pointcloud_obj.copy())
+            if self.num_envs > 1:
+                object_pc_i.apply_transform(object_poses[i])
+            else:
+                object_pc_i.apply_transform(object_poses)
+            coords[i] = np.array(object_pc_i.vertices)
 
-        self.socket = o3d.t.geometry.RaycastingScene()
-        self.socket.add_triangles(
-            o3d.t.geometry.TriangleMesh.from_legacy(self.socket_trimesh.as_open3d)
-        )
+            if not self.constant_socket:
+                # only once
+                socket_poses = torch.cat((socket_pos[0], socket_quat[0]), dim=0)
+                socket_poses = self._xyzquat_to_tf_numpy(socket_poses.cpu().numpy())
+                self.socket_trimesh.apply_transform(socket_poses)
+                self.socket = o3d.t.geometry.RaycastingScene()
+                self.socket.add_triangles(
+                    o3d.t.geometry.TriangleMesh.from_legacy(self.socket_trimesh.as_open3d)
+                )
+                self.socket_pcl = trimesh.sample.sample_surface_even(self.socket_trimesh, self.n_points)[0]
+                self.socket_pcl = np.array(self.socket_pcl)
+                self.constant_socket = True
+
+        # Multi-env calc
         d = self.socket.compute_distance(
             o3d.core.Tensor.from_numpy(coords.astype(np.float32))
         ).numpy()
-
-        threshold = 0.05  # Define your threshold distance
-        intersecting_indices = np.where(d < threshold)[0]
-        contacts = coords[intersecting_indices]
 
         d = d.flatten()
         idx_2 = np.where(d > threshold)[0]
@@ -134,19 +154,27 @@ class ExtrinsicContact:
         d = 1.0 - d / threshold
         d = np.clip(d, 0.0, 1.0)
         d[d > 0.1] = 1.0
-        d = d.reshape((1, self.n_points))
+        d = d.reshape((self.num_envs, self.n_points))
 
-        self.gt_extrinsic_contact = torch.tensor(d, dtype=torch.float32)
+        self.gt_extrinsic_contact = torch.tensor(d, dtype=torch.float32, device=self.device)
 
         if display:
+            env_to_plot = 0
+            self.ax.plot(self.socket_pcl[:, 0], self.socket_pcl[:, 1], self.socket_pcl[:, 2], 'yo')
+            self.ax.plot(coords[env_to_plot, :, 0], coords[env_to_plot, :, 1], coords[env_to_plot, :, 2], 'ko')
+            d = self.socket.compute_distance(
+                o3d.core.Tensor.from_numpy(coords.astype(np.float32))
+            ).numpy()
+            intersecting_indices = d < threshold
+            contacts = np.zeros_like(coords)
+            contacts[intersecting_indices] = coords[intersecting_indices]
 
-            self.socket_pcl = trimesh.sample.sample_surface_even(self.socket_trimesh, 300)[0]
-            self.socket_pcl = np.array(self.socket_pcl)
-            import matplotlib.pyplot as plt
-            ax = plt.axes(projection='3d')
-            ax.plot(self.socket_pcl[:, 0], self.socket_pcl[:, 1], self.socket_pcl[:, 2], 'yo')
-            ax.plot(coords[:, 0], coords[:, 1], coords[:, 2], 'ko')
-            ax.plot(contacts[:, 0], contacts[:, 1], contacts[:, 2], 'ro')
+            for c in contacts[env_to_plot]:
+                if np.linalg.norm(c, axis=0):
+                    self.ax.plot(c[0], c[1], c[2], 'ro')
+
+            plt.pause(0.0001)
+            self.ax.cla()
 
         return self.gt_extrinsic_contact
 
@@ -320,7 +348,6 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
         self.socket_depths = []
 
         self.asset_indices = []
-        self.extrinsic_contact_gt = []
         # Create wrist and fingertip force sensors
         sensor_pose = gymapi.Transform()
         # for ft_handle in self.fingertip_handles:
@@ -415,7 +442,6 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
 
             kuka_shape_props = self.gym.get_actor_rigid_shape_properties(env_ptr, kuka_handle)
 
-
             for shape_id in self.shape_ids:
                 kuka_shape_props[shape_id].friction = self.cfg_base.env.kuka_friction
                 kuka_shape_props[shape_id].rolling_friction = 0.0  # default = 0.0
@@ -426,7 +452,7 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
             self.gym.set_actor_rigid_shape_properties(env_ptr, kuka_handle, kuka_shape_props)
 
             plug_shape_props = self.gym.get_actor_rigid_shape_properties(env_ptr, plug_handle)
-            plug_shape_props[0].friction = self.cfg_env.env.plug_friction # todo osher changed, WAS 1
+            plug_shape_props[0].friction = self.cfg_env.env.plug_friction  # todo osher changed, WAS 1
             plug_shape_props[0].rolling_friction = 0.0  # default = 0.0
             plug_shape_props[0].torsion_friction = 0.0  # default = 0.0
             plug_shape_props[0].restitution = 0.0  # default = 0.0
@@ -443,7 +469,6 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
             socket_shape_props[0].thickness = 0.0  # default = 0.0
             self.gym.set_actor_rigid_shape_properties(env_ptr, socket_handle, socket_shape_props)
             # self.gym.set_actor_scale(env_ptr, socket_handle, 5)
-
 
             table_shape_props = self.gym.get_actor_rigid_shape_properties(env_ptr, table_handle)
             table_shape_props[0].friction = self.cfg_base.env.table_friction
@@ -485,7 +510,7 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
                 print('CAMERA:', self.rendering_camera1)
                 self.gym.set_camera_location(self.rendering_camera1, env_ptr, gymapi.Vec3(1.5, 1, 3.0),
                                              gymapi.Vec3(0, 0, 0))
-                
+
                 self.rendering_camera2 = self.gym.create_camera_sensor(env_ptr, self.camera_props)
                 print('CAMERA:', self.rendering_camera2)
                 self.gym.set_camera_location(self.rendering_camera2, env_ptr, gymapi.Vec3(1.5, 1, 3.0),
@@ -507,11 +532,13 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
                                                                finger_idx=i) for i in range(len(self.fingertips))])
             if self.cfg['env']['compute_contact_gt']:
                 socket_pos = [0, 0, self.cfg_base.env.table_height]
-                self.extrinsic_contact_gt.append(ExtrinsicContact(mesh_obj=os.path.join(mesh_root, plug_file),
-                                                                  mesh_socket=os.path.join(mesh_root, socket_file),
-                                                                  obj_scale=1.0,
-                                                                  socket_scale=1.0,
-                                                                  socket_pos=socket_pos))
+                self.extrinsic_contact_gt = ExtrinsicContact(mesh_obj=os.path.join(mesh_root, plug_file),
+                                                             mesh_socket=os.path.join(mesh_root, socket_file),
+                                                             obj_scale=1.0,
+                                                             socket_scale=1.0,
+                                                             socket_pos=socket_pos,
+                                                             num_envs=self.num_envs,
+                                                             num_points=self.cfg['env']['num_points'])
 
             if self.cfg_env.env.aggregate_mode:
                 self.gym.end_aggregate(env_ptr)
@@ -629,16 +656,18 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
             # bx, by, bz = 0, 1, 0
             bx, by, bz = self.init_plug_pos_cam[0, 0], self.init_plug_pos_cam[0, 1], self.init_plug_pos_cam[0, 2]
 
-            self.gym.set_camera_location(self.rendering_camera1, self.envs[0], gymapi.Vec3(bx - 0.1, by - 0.1, bz+0.1),
+            self.gym.set_camera_location(self.rendering_camera1, self.envs[0],
+                                         gymapi.Vec3(bx - 0.1, by - 0.1, bz + 0.1),
                                          gymapi.Vec3(bx, by, bz))
             self.video_frame1 = self.gym.get_camera_image(self.sim, self.envs[0], self.rendering_camera1,
-                                                         gymapi.IMAGE_COLOR)
+                                                          gymapi.IMAGE_COLOR)
             self.video_frame1 = self.video_frame1.reshape((self.camera_props.height, self.camera_props.width, 4))
 
-            self.gym.set_camera_location(self.rendering_camera2, self.envs[0], gymapi.Vec3(bx - 0.1, by + 0.1, bz+0.1),
+            self.gym.set_camera_location(self.rendering_camera2, self.envs[0],
+                                         gymapi.Vec3(bx - 0.1, by + 0.1, bz + 0.1),
                                          gymapi.Vec3(bx, by, bz))
             self.video_frame2 = self.gym.get_camera_image(self.sim, self.envs[0], self.rendering_camera2,
-                                                         gymapi.IMAGE_COLOR)
+                                                          gymapi.IMAGE_COLOR)
             self.video_frame2 = self.video_frame2.reshape((self.camera_props.height, self.camera_props.width, 4))
 
             # print('video frame shape', self.video_frame.shape)

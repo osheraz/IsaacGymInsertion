@@ -57,10 +57,10 @@ class PPO(object):
         self.env = env
         self.num_actors = self.ppo_config['num_actors']
         self.actions_num = self.task_config.env.numActions
-        self.observation_space = self.env.observation_space
-        self.obs_shape = self.observation_space.shape
-        # self.obs_shape = self.task_config.env.numObservations
-        print("OBS", self.obs_shape)
+        # self.observation_space = self.env.observation_space
+        # self.obs_shape = self.observation_space.shape
+        self.obs_shape = (self.task_config.env.numObservations,)
+        # print("OBS", self.obs_shape)
 
         # ---- Tactile Info ---
         self.tactile_info = self.ppo_config["tactile_info"]
@@ -78,6 +78,8 @@ class PPO(object):
         self.priv_info = self.ppo_config['priv_info']
         self.priv_info_dim = self.ppo_config['priv_info_dim']
         self.extrin_adapt = self.ppo_config['extrin_adapt']
+        self.gt_contacts_info = self.ppo_config['compute_contact_gt']
+        self.num_contacts_points = self.ppo_config['num_points']
         self.priv_info_embed_dim = self.network_config.priv_mlp.units[-1]
         # ---- Obs Info (student)----
         self.obs_info = self.ppo_config["obs_info"]
@@ -95,7 +97,9 @@ class PPO(object):
             "ft_units": self.network_config.ft_mlp.units,
             "obs_units": self.network_config.obs_mlp.units,
             "obs_info": self.obs_info,
-
+            "gt_contacts_info": self.gt_contacts_info,
+            "contacts_mlp_units": self.network_config.contact_mlp.units,
+            "num_contact_points": self.num_contacts_points,
             "tactile_info": self.tactile_info,
             "mlp_tactile_input_shape": self.mlp_tactile_info_dim,
             "mlp_tactile_units": self.network_config.tactile_mlp.units,
@@ -180,6 +184,7 @@ class PPO(object):
                                         self.obs_shape[0],
                                         self.actions_num,
                                         self.priv_info_dim,
+                                        self.num_contacts_points,
                                         self.device, )
 
         # ---- Data Logger ----
@@ -199,8 +204,8 @@ class PPO(object):
                 'tactile_shape': self.env.tactile_imgs.shape[1:],
                 'latent_shape': net_config['priv_mlp_units'][-1],
                 'rigid_physics_params_shape': self.env.rigid_physics_params.shape[-1],
-                'plug_socket_pos_error_shape': self.env.plug_socket_pos_error.shape[-1],
-                'plug_socket_quat_error_shape': self.env.plug_socket_quat_error.shape[-1],
+                'plug_hand_pos_shape': self.env.plug_hand_pos.shape[-1],
+                'plug_hand_quat_shape': self.env.plug_hand_quat.shape[-1],
                 'finger_normalized_forces_shape': self.env.finger_normalized_forces.shape[-1],
                 'plug_heights_shape': self.env.plug_heights.shape[-1],
                 'obs_hist_shape': self.env.obs_buf.shape[-1],
@@ -282,6 +287,9 @@ class PPO(object):
         if 'latent' in obs_dict and obs_dict['latent'] is not None:
             input_dict['latent'] = obs_dict['latent']
 
+        if 'contacts' in obs_dict and self.gt_contacts_info:
+            input_dict['contacts'] = obs_dict['contacts']
+
         res_dict = self.model.act(input_dict)
         res_dict['values'] = self.value_mean_std(res_dict['values'], True)
         return res_dict
@@ -362,14 +370,13 @@ class PPO(object):
         return action, latent
 
     def log_trajectory_data(self, action, latent, done, save_trajectory=True):
-
         eef_pos = torch.cat(self.env.pose_world_to_robot_base(self.env.fingertip_centered_pos.clone(), self.env.fingertip_centered_quat.clone()), dim=-1)
         plug_pos = torch.cat(self.env.pose_world_to_robot_base(self.env.plug_pos.clone(), self.env.plug_quat.clone()), dim=-1)
         socket_pos = torch.cat(self.env.pose_world_to_robot_base(self.env.socket_pos.clone(), self.env.socket_quat.clone()), dim=-1)
         noisy_socket_pos = torch.cat(self.env.pose_world_to_robot_base(self.env.noisy_gripper_goal_pos.clone(), self.env.noisy_gripper_goal_quat.clone()), dim=-1)
         rigid_physics_params = self.env.rigid_physics_params.clone()
-        plug_socket_pos_error = self.env.plug_socket_pos_error.clone()
-        plug_socket_quat_error = self.env.plug_socket_quat_error.clone()
+        plug_hand_pos = self.env.plug_hand_pos.clone()
+        plug_hand_quat = self.env.plug_hand_quat.clone()
 
         finger_normalized_forces = self.env.finger_normalized_forces.clone()
         plug_heights = self.env.plug_heights.clone()
@@ -388,8 +395,8 @@ class PPO(object):
             'tactile': self.env.tactile_imgs,
             'latent': latent,
             'rigid_physics_params': rigid_physics_params,
-            'plug_socket_pos_error': plug_socket_pos_error,
-            'plug_socket_quat_error': plug_socket_quat_error,
+            'plug_hand_pos': plug_hand_pos,
+            'plug_hand_quat': plug_hand_quat,
             'finger_normalized_forces': finger_normalized_forces,
             'plug_heights': plug_heights,
             'obs_hist': obs_hist,
@@ -414,7 +421,7 @@ class PPO(object):
             ep_kls = []
             for i in range(len(self.storage)):
                 value_preds, old_action_log_probs, advantage, old_mu, old_sigma, \
-                returns, actions, obs, priv_info = self.storage[i]
+                returns, actions, obs, priv_info, contacts = self.storage[i]
 
                 obs = self.running_mean_std(obs)
                 priv_info = self.priv_mean_std(priv_info)
@@ -423,6 +430,7 @@ class PPO(object):
                     'prev_actions': actions,
                     'obs': obs,
                     'priv_info': priv_info,
+                    'contacts': contacts
                 }
                 res_dict = self.model(batch_dict)
                 action_log_probs = res_dict['prev_neglogp']
@@ -561,6 +569,7 @@ class PPO(object):
             res_dict = self.model_act(self.obs)
             self.storage.update_data('obses', n, self.obs['obs'])
             self.storage.update_data('priv_info', n, self.obs['priv_info'])
+            self.storage.update_data('contacts', n, self.obs['contacts'])
 
             for k in ['actions', 'neglogpacs', 'values', 'mus', 'sigmas']:
                 self.storage.update_data(k, n, res_dict[k])
@@ -666,6 +675,7 @@ class PPO(object):
             obs_dict = {
                 'obs': self.running_mean_std(self.obs['obs']),
                 'priv_info': self.priv_mean_std(self.obs['priv_info']),
+                'contacts': self.obs['contacts'],
                 'latent': latent,
             }
             action, latent = self.model.act_inference(obs_dict)
@@ -701,7 +711,7 @@ class PPO(object):
             eef_pos = (eef_pos - self.normalize_dict["mean"]["eef_pos"]) / self.normalize_dict["std"]["eef_pos"]
             noisy_socket_pos = (noisy_socket_pos - self.normalize_dict["mean"]["noisy_socket_pos"][:2]) / self.normalize_dict["std"]["noisy_socket_pos"][:2]
             target = (target - self.normalize_dict["mean"]["target"]) / self.normalize_dict["std"]["target"]
-            
+
         # making the inputs
         cnn_input = torch.cat([tactile[:, :, 0, ...], tactile[:, :,  1, ...], tactile[:, :,  2, ...]], dim=-1)
         lin_input = torch.cat([arm_joints, eef_pos, noisy_socket_pos, action, target], dim=-1)
