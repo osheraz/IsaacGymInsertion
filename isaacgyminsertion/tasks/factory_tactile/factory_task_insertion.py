@@ -350,7 +350,8 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                         offset=None, queue=None):
 
         tactile_imgs_list, height_maps = [], []  # only for display.
-
+        finger_normalized_forces = self.finger_normalized_forces.clone()    
+        
         for e in range(self.num_envs):
 
             # plug_file = self.asset_info_insertion[self.envs_asset[e]['subassembly'] ][self.envs_asset[e]['components'][0]]['urdf_path']
@@ -368,9 +369,8 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             tactile_imgs_per_env, height_maps_per_env = [], []
 
             for n in range(3):
-
                 if self.cfg_task.env.tactile_wrt_force:
-                    force = 50 * self.finger_normalized_forces[e, n].cpu().detach().numpy()
+                    force = 50 * finger_normalized_forces[e, n].cpu().detach().numpy()
                 else:
                     force = 20
 
@@ -630,9 +630,9 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             self.targets_queue_student.reshape(self.num_envs, -1),  # (envs, 6 * hist)
         ]
 
-        # Define state (for teacher)
-        socket_pos_wrt_robot = self.pose_world_to_robot_base(self.socket_pos, self.socket_quat, as_matrix=False)
-        plug_bottom_wrt_robot = self.pose_world_to_robot_base(self.plug_pos, self.plug_quat, as_matrix=False)
+
+        socket_pos_wrt_robot = self.pose_world_to_robot_base(self.fingertip_centered_pos.clone(), self.fingertip_centered_quat.clone(), as_matrix=False)
+        plug_bottom_wrt_robot = self.pose_world_to_robot_base(self.plug_pos.clone(), self.plug_quat.clone(), as_matrix=False)
         plug_socket_pos_error, plug_socket_quat_error = fc.get_pose_error(
             fingertip_midpoint_pos=plug_bottom_wrt_robot[0],
             fingertip_midpoint_quat=plug_bottom_wrt_robot[1],
@@ -640,7 +640,19 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             ctrl_target_fingertip_midpoint_quat=socket_pos_wrt_robot[1],
             jacobian_type=self.cfg_ctrl['jacobian_type'],
             rot_error_type='quat')
+        
 
+        # Define state (for teacher)
+        # socket_pos_wrt_robot = self.pose_world_to_robot_base(self.socket_pos, self.socket_quat, as_matrix=False)
+        # plug_bottom_wrt_robot = self.pose_world_to_robot_base(self.plug_pos, self.plug_quat, as_matrix=False)
+        # plug_socket_pos_error, plug_socket_quat_error = fc.get_pose_error(
+        #     fingertip_midpoint_pos=plug_bottom_wrt_robot[0],
+        #     fingertip_midpoint_quat=plug_bottom_wrt_robot[1],
+        #     ctrl_target_fingertip_midpoint_pos=socket_pos_wrt_robot[0],
+        #     ctrl_target_fingertip_midpoint_quat=socket_pos_wrt_robot[1],
+        #     jacobian_type=self.cfg_ctrl['jacobian_type'],
+        #     rot_error_type='quat')
+        
         self.plug_socket_pos_error[...] = plug_socket_pos_error
         self.plug_socket_quat_error[...] = plug_socket_quat_error
 
@@ -688,8 +700,6 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.finger_normalized_forces[:, 0] = (1 - e) * normalize_forces(self.left_finger_force.clone()) + e * self.finger_normalized_forces[:, 0]
         self.finger_normalized_forces[:, 1] = (1 - e) * normalize_forces(self.right_finger_force.clone()) + e * self.finger_normalized_forces[:, 1]
         self.finger_normalized_forces[:, 2] = (1 - e) * normalize_forces(self.middle_finger_force.clone()) + e * self.finger_normalized_forces[:, 2]
-
-        # print(self.finger_normalized_forces[0])
 
         state_tensors = [
             #  add delta error
