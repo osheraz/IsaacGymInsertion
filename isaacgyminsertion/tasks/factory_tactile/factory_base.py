@@ -65,7 +65,7 @@ class FactoryBaseTactile(VecTask, FactoryABCBase):
         }
         self.grasps_folder = grasp_folders['2in_loose1mm']
         self.grasps_save_ctr = 0
-        self.total_grasps = 500
+        self.total_grasps = 4000
         self.total_init_grasp_count = 0
 
         self._get_base_yaml_params()

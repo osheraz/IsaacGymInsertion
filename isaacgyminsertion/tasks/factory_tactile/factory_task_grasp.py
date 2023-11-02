@@ -165,6 +165,9 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         self.ft_queue = torch.zeros((self.num_envs, self.ft_hist_len, 6), device=self.device, dtype=torch.float)
 
+        self.gt_extrinsic_contact = torch.zeros((self.num_envs, self.cfg_task.env.num_points),
+                                                device=self.device, dtype=torch.float)
+
     def _refresh_task_tensors(self, update_tactile=False):
         """Refresh tensors."""
         self.refresh_base_tensors()
@@ -677,7 +680,7 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         # # Move arm above the socket
         above_socket_pos_noise = (2 * (torch.randn((len(env_ids), 3), device=self.device) - 0.5)) * self.cfg_task.randomize.above_socket_noise
-        above_socket_pos_noise[:, 2] = torch.abs(above_socket_pos_noise[:, 2])  # Only +z
+        above_socket_pos_noise[:, 2] = torch.abs(above_socket_pos_noise[:, 2])/2 # Only +z
         self._move_arm_to_desired_pose(env_ids, self.above_socket_pos.clone() + above_socket_pos_noise,
                                        sim_steps=self.cfg_task.env.num_gripper_move_sim_steps * 2)
         self._refresh_task_tensors(update_tactile=True)
@@ -1251,6 +1254,7 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.obs_dict['tactile_hist'] = self.tactile_queue.to(self.rl_device)
         self.obs_dict['ft_hist'] = self.ft_queue.to(self.rl_device)
         self.obs_dict['priv_info'] = self.obs_dict['states']
+        self.obs_dict['contacts'] = self.gt_extrinsic_contact.to(self.rl_device)
         return self.obs_dict, self.rew_buf, self.reset_buf, self.extras
 
     def reset(self):
@@ -1258,4 +1262,5 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.obs_dict['priv_info'] = self.obs_dict['states']
         self.obs_dict['tactile_hist'] = self.tactile_queue.to(self.rl_device)
         self.obs_dict['ft_hist'] = self.ft_queue.to(self.rl_device)
+        self.obs_dict['contacts'] = self.gt_extrinsic_contact.to(self.rl_device)
         return self.obs_dict

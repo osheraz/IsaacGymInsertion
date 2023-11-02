@@ -693,13 +693,13 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             # socket_pos_wrt_robot[1],  # 4
             # plug_bottom_wrt_robot[0],  # 3
             # plug_bottom_wrt_robot[1],  # 4
-            # plug_hand_pos, # 3
-            # plug_hand_quat, # 4
-            # physics_params,  # 6 (plug_mass, plug_friction, socket_friction, left finger friction, right finger friction, middle finger friction)
-            # self.finger_normalized_forces,  # 3
+            plug_hand_pos, # 3
+            plug_hand_quat, # 4
+            physics_params,  # 6 (plug_mass, plug_friction, socket_friction, left finger friction, right finger friction, middle finger friction)
+            self.finger_normalized_forces,  # 3
             # self.socket_contact_force.clone()  # 3
             # TODO: add object shapes -- bring diameter
-            self.plug_heights,  # 1
+            # self.plug_heights,  # 1
             # TODO: add extrinsics contact (point cloud) -> this will encode the shape (check this)
         ]
 
