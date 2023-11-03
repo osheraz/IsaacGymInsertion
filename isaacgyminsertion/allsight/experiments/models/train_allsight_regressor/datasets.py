@@ -1,19 +1,20 @@
 import os
 import torch
 from torch.utils.data import DataLoader
-from isaacgyminsertion.allsight.experiments.models.train_allsight_regressor.misc import normalize, unnormalize, normalize_max_min, unnormalize_max_min #
+from misc import normalize, unnormalize, normalize_max_min, unnormalize_max_min  #
 import numpy as np
 import cv2
-from isaacgyminsertion.allsight.experiments.models.train_allsight_regressor.img_utils import circle_mask
+from img_utils import circle_mask
 import pandas as pd
 import random
 from glob import glob
 import json
+from PIL import Image
 
 np.set_printoptions(precision=4)
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")  # cuda or cpu
-pc_name = os.getlogin()
+pc_name = os.getcwd()
 
 output_map = {'pixel': 3,  # px, py, r
               'force': 3,  # fx, fy, f
@@ -42,7 +43,6 @@ sensor_dict = {'markers': {'rrrgggbbb': [2, 1, 0, 11],
 
 
 def get_buffer_paths(leds, gel, indenter, sensor_id=None):
-
     trained_sensor_id = []
     test_sensor_id = []
 
@@ -85,7 +85,7 @@ def get_buffer_paths(leds, gel, indenter, sensor_id=None):
     return buffer_paths_to_train, buffer_paths_to_test, list(set(trained_sensor_id)), list(set(test_sensor_id))
 
 
-def get_buffer_paths_clear(leds, indenter):
+def get_buffer_paths_clear(leds, indenter, params=None):
     if leds == 'combined':
         leds_list = ['rrrgggbbb', 'rgbrgbrgb', 'white']
     else:
@@ -93,9 +93,10 @@ def get_buffer_paths_clear(leds, indenter):
 
     buffer_paths = []
     for l in leds_list:
-        paths = [f"/home/roblab20/allsight_sim/experiments/dataset/clear/{l}/data/{ind}" for ind in indenter]
+        paths = [(f"/common/home/oa348/Downloads/isaacgym/python/IsaacGymInsertion/isaacgyminsertion/allsight/"
+                  f"experiments/allsight_dataset/clear/{l}/data/{ind}") for ind in indenter]
         for p in paths:
-            buffer_paths += [y for x in os.walk(p) for y in glob(os.path.join(x[0], '*.json'))]
+            buffer_paths += [y for x in os.walk(p) for y in glob(os.path.join(x[0], '*transformed_annotated.json'))]
 
     return buffer_paths
 
@@ -154,7 +155,7 @@ def get_inputs_and_targets(group, output_type):
 
 class TactileDataset(torch.utils.data.Dataset):
     def __init__(self, params, df, output_type='pose_force_pixel',
-                 transform=None, apply_mask=False, remove_ref=False, statistics=None):
+                 transform=None, apply_mask=False, remove_ref=True, statistics=None):
 
         self.df = df
         self.transform = transform
@@ -164,7 +165,6 @@ class TactileDataset(torch.utils.data.Dataset):
         self.apply_mask = apply_mask
         self.remove_ref = remove_ref
         self.w, self.h = 480, 480
-
         # define the labels:
         self.X, self.X_ref, self.Y = get_inputs_and_targets(df, self.output_type)
 
@@ -172,8 +172,11 @@ class TactileDataset(torch.utils.data.Dataset):
             self.mask = circle_mask((self.w, self.h))
 
         if pc_name != 'osher':
-            self.X = [f.replace('osher', 'roblab20') for f in self.X]
-            self.X_ref = [f.replace('osher', 'roblab20') for f in self.X_ref]
+            old_path = "/home/osher/catkin_ws/src/allsight/dataset/"
+            new_path = os.path.dirname(os.path.abspath(__file__)) + '/../../allsight_dataset/'
+
+            self.X = [f.replace(old_path, new_path) for f in self.X]
+            self.X_ref = [f.replace(old_path, new_path) for f in self.X_ref]
 
         self.Y_ref = [[0] if df.iloc[idx].ref_frame == df.iloc[idx].frame else [1] for idx in range(self.df.shape[0])]
 
@@ -193,22 +196,26 @@ class TactileDataset(torch.utils.data.Dataset):
     def __len__(self):
         return len(self.df)
 
+    def _subtract_bg(self, img1, img2, offset=0.5):
+        img1 = np.int32(img1)
+        img2 = np.int32(img2)
+        diff = img1 - img2
+        diff = diff / 255.0 + offset
+        return diff
+
     def __getitem__(self, idx):
 
         img = cv2.imread(self.X[idx])
         ref_img = cv2.imread(self.X_ref[idx])
 
-        masked_img = _structure(img, size=(224, 224))
-        masked_ref = _structure(ref_img, size=(224, 224))
-
         if self.remove_ref:
-            img = img - ref_img
+            img = self._subtract_bg(img, ref_img)
 
         if self.apply_mask:
-            img = (img * self.mask).astype(np.uint8)
+            img = (255 * img * self.mask).astype(np.uint8)
             ref_img = (ref_img * self.mask).astype(np.uint8)
 
-        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        img = cv2.cvtColor((255 * img).astype(np.uint8), cv2.COLOR_BGR2RGB)
         ref_img = cv2.cvtColor(ref_img, cv2.COLOR_BGR2RGB)
 
         if self.transform:
@@ -223,9 +230,7 @@ class TactileDataset(torch.utils.data.Dataset):
             ref_img = self.transform(ref_img).to(device)
 
         y = torch.Tensor(self.Y[idx])
-        y_ref = torch.Tensor(self.Y_ref[idx])
-        masked_img = torch.Tensor(masked_img).to(device)
-        masked_ref = torch.Tensor(masked_ref).to(device)
+        y_ref = torch.Tensor(self.Y_ref[idx])  # contact or no contact
 
         if self.normalize_output:
             if self.norm_method == 'maxmin':
@@ -233,12 +238,12 @@ class TactileDataset(torch.utils.data.Dataset):
             elif self.norm_method == 'meanstd':
                 y = normalize(y, self.data_statistics['mean'], self.data_statistics['std']).float()
 
-        return img, ref_img, masked_img, masked_ref, y, y_ref
+        return img, ref_img, y  # , y_ref
 
 
 class TactileSimDataset(torch.utils.data.Dataset):
     def __init__(self, params, df, output_type='pose',
-                 transform=None, apply_mask=True, remove_ref=False, statistics=None):
+                 transform=None, apply_mask=True, remove_ref=False, diff=True, statistics=None):
 
         self.df = df
         self.transform = transform
@@ -248,11 +253,11 @@ class TactileSimDataset(torch.utils.data.Dataset):
         self.apply_mask = apply_mask
         self.remove_ref = remove_ref
         self.w, self.h = 480, 480
-
+        self.diff = diff
         self.X = [df.iloc[idx].frame for idx in range(self.df.shape[0])]
         # self.X_ref = ['/'.join(df.iloc[0].frame.split('/')[:-1]) + '/ref_frame.jpg' for idx in range(self.df.shape[0])]
         self.X_ref = self.X
-        
+
         if self.apply_mask:
             self.mask = circle_mask((self.w, self.h))
 
@@ -279,6 +284,13 @@ class TactileSimDataset(torch.utils.data.Dataset):
     def __len__(self):
         return len(self.df)
 
+    def _subtract_bg(self, img1, img2, offset=0.5):
+        img1 = np.int32(img1)
+        img2 = np.int32(img2)
+        diff = img1 - img2
+        diff = diff / 255.0 + offset
+        return diff
+
     def __getitem__(self, idx):
 
         img = cv2.imread(self.X[idx])
@@ -296,6 +308,7 @@ class TactileSimDataset(torch.utils.data.Dataset):
         ref_img = cv2.cvtColor(ref_img, cv2.COLOR_BGR2RGB)
 
         if self.transform:
+            # Make sure both ref and frame has the same transfrom
             seed = np.random.randint(2147483647)
             random.seed(seed)
             torch.manual_seed(seed)
@@ -382,3 +395,34 @@ class TactileTouchDataset(torch.utils.data.Dataset):
         y = torch.Tensor([self.Y[idx]])
 
         return img, y
+
+
+class CircleMaskTransform(object):
+    """Apply a circular mask to an input image using OpenCV.
+
+    Args:
+        size (tuple): Desired size of the output mask.
+        border (int): Border thickness of the circular mask.
+    """
+
+    def __init__(self, size=(224, 224), border=10):
+        self.size = size
+        self.border = border
+
+    def __call__(self, image):
+        # Convert PIL image to NumPy array
+        image = np.array(image)
+
+        mask = np.zeros((self.size[0], self.size[1]), dtype=np.uint8)
+        m_center = (self.size[0] // 2, self.size[1] // 2)
+        m_radius = min(self.size[0], self.size[1]) // 2 - self.border
+        mask = cv2.circle(mask, m_center, m_radius, 1, thickness=-1)
+        mask = np.repeat(mask[:, :, np.newaxis], 3, axis=2)
+
+        # Apply the circular mask to the input image
+        masked_image = np.multiply(image, mask)
+
+        # Convert back to PIL image
+        masked_image = Image.fromarray(masked_image.astype('uint8'), 'RGB')
+
+        return masked_image

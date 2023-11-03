@@ -2,7 +2,7 @@ import numpy as np
 from scipy.spatial.transform import Rotation as R
 import matplotlib.pyplot as plt
 from scipy import spatial
-from train_allsight_regressor.geometry import concatenate_matrices, rotation_matrix #
+from geometry import concatenate_matrices, rotation_matrix #
 # from .vis_utils import data_for_cylinder_along_z, data_for_sphere_along_z, set_axes_equal
 
 # src.allsight.train.utils
