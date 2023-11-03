@@ -643,6 +643,8 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         # Actually this is the right representation
         plug_hand_pos, plug_hand_quat = self.pose_world_to_hand_base(self.plug_pos, self.plug_quat, as_matrix=False)
+        socket_pos_wrt_robot = self.pose_world_to_robot_base(self.socket_pos.clone(), self.socket_quat.clone(), as_matrix=False)
+
         self.plug_hand_pos[...] = plug_hand_pos
         self.plug_hand_quat[...] = plug_hand_quat
 
@@ -689,8 +691,8 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         state_tensors = [
             #  add delta error
-            # socket_pos_wrt_robot[0],  # 3
-            # socket_pos_wrt_robot[1],  # 4
+            socket_pos_wrt_robot[0],  # 3
+            socket_pos_wrt_robot[1],  # 4
             # plug_bottom_wrt_robot[0],  # 3
             # plug_bottom_wrt_robot[1],  # 4
             plug_hand_pos, # 3
