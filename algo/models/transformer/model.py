@@ -1,6 +1,7 @@
 from torch import nn
 import torch
 import math
+from algo.models.models import load_tactile_resnet
 
 
 class TactileTransformer(nn.Module):
@@ -14,9 +15,10 @@ class TactileTransformer(nn.Module):
         self.num_layers = num_layers
         self.max_sequence_length = max_sequence_length
 
-        self.linear_in = nn.Linear(lin_input_size, embed_size // 2) # removed embed_size // 2 for no cnn
-
+        self.linear_in = nn.Linear(lin_input_size, embed_size // 2)  # removed embed_size // 2 for no cnn
+        # for cnn_embedding, input is (B*T, C, W, H) and output is (B*T, embedding_size//2)
         self.cnn_embedding = ConvEmbedding(in_channels, out_channels, kernel_size)
+        # self.cnn_embedding = load_tactile_resnet(embed_size // 2, num_channels=in_channels)
 
         self.positonal_embedding = PositionalEncoding(embed_size, max_len=max_sequence_length)
 
@@ -39,7 +41,7 @@ class TactileTransformer(nn.Module):
         self.out = nn.Sequential(nn.Linear(embed_size, 16), nn.ReLU(), nn.Linear(16, output_size))
 
     def forward(self, cnn_input, lin_input, batch_size, embed_size, src_mask=None):
-        
+
         lin_x = self.linear_in(lin_input)
         cnn_x = self.cnn_embedding(cnn_input)
         cnn_x = cnn_x.view(batch_size, self.max_sequence_length, embed_size)
@@ -59,7 +61,7 @@ class TactileTransformer(nn.Module):
         # x = self.dropout(x)
         x = self.activation(x)
         x = self.out(x)
-        # x = torch.tanh(x)
+        x = torch.tanh(x)
         return x
 
 
@@ -102,17 +104,23 @@ class ConvEmbedding(nn.Module):
 
     def forward(self, x):
         x = self.conv1(x)
+
         # x = self.batchnorm1(x)
         x = self.activation(x)
+
         # x = self.maxpool1(x)
         # x = self.dropout1(x)
         x = self.conv2(x)
+
         # x = self.batchnorm2(x)
         x = self.activation(x)
+
         # x = self.max_pool2(x)
         # x = self.dropout2(x)
         x = self.global_avg_pool(x)
+
         x = x.flatten(start_dim=1)
+
         return x
 
 
