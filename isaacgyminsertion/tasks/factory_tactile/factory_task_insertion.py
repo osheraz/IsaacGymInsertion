@@ -687,6 +687,9 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.finger_normalized_forces[:, 1] = (1 - e) * normalize_forces(self.right_finger_force.clone()) + e * self.finger_normalized_forces[:, 1]
         self.finger_normalized_forces[:, 2] = (1 - e) * normalize_forces(self.middle_finger_force.clone()) + e * self.finger_normalized_forces[:, 2]
 
+
+        socket_pos_wrt_robot = self.pose_world_to_robot_base(self.socket_pos.clone(), self.socket_quat.clone(),
+                                                                as_matrix=False)
         state_tensors = [
             #  add delta error
             # socket_pos_wrt_robot[0],  # 3

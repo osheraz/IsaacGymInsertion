@@ -17,7 +17,7 @@ python trainV2.py task=FactoryTaskInsertionTactile headless=${HEADLESS} seed=${S
 task.env.numEnvs=${NUM_ENVS} \
 task.env.tactile=False \
 task.env.numObsHist=5 \
-task.env.compute_contact_gt=True \
+task.env.compute_contact_gt=False \
 task.env.numStates=16 \
 train.algo=PPO \
 train.ppo.priv_info=True \
