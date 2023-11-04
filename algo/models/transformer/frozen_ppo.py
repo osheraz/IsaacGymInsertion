@@ -33,7 +33,6 @@ from isaacgyminsertion.utils.misc import AverageScalarMeter
 from isaacgyminsertion.utils.misc import add_to_fifo, multi_gpu_aggregate_stats
 from tensorboardX import SummaryWriter
 
-
 class PPO(object):
     def __init__(self, env, output_dif, full_config):
 
@@ -106,6 +105,7 @@ class PPO(object):
             'tactile_input_dim': self.tactile_input_dim,
             'tactile_seq_length': self.tactile_seq_length,
             "tactile_decoder_embed_dim": self.network_config.tactile_mlp.units[0],
+            "shared_parameters": self.ppo_config.shared_parameters,
         }
 
         self.model = ActorCritic(net_config)
@@ -243,6 +243,9 @@ class PPO(object):
         self.rl_train_time = 0
         self.all_time = 0
 
+        # ---- wandb
+        # wandb.init(project="insertion", entity="isaacgym", config=full_config)
+
     def write_stats(self, a_losses, c_losses, b_losses, entropies, kls, grad_norms):
         self.writer.add_scalar('performance/RLTrainFPS', self.agent_steps / self.rl_train_time, self.agent_steps)
         self.writer.add_scalar('performance/EnvStepFPS', self.agent_steps / self.data_collect_time, self.agent_steps)
@@ -312,8 +315,9 @@ class PPO(object):
                           f'Last FPS: {last_fps:.1f} | ' \
                           f'Collect Time: {self.data_collect_time / 60:.1f} min | ' \
                           f'Train RL Time: {self.rl_train_time / 60:.1f} min | ' \
-                          f'Mean Reward: {self.best_rewards:.2f} | ' \
-                          f'Priv info: {self.full_config.train.ppo.priv_info}'
+                          f'Priv info: {self.full_config.train.ppo.priv_info} | ' \
+                          f'Extrinsic Contact: {self.full_config.task.env.compute_contact_gt}'
+                        #   f'Mean Reward: {self.best_rewards:.2f} | ' \
             print(info_string)
             self.write_stats(a_losses, c_losses, b_losses, entropies, kls, grad_norms)
             mean_rewards = self.episode_rewards.get_mean()
@@ -586,9 +590,12 @@ class PPO(object):
             rewards = rewards.unsqueeze(1)
             # update dones and rewards after env step
             self.storage.update_data('dones', n, self.dones)
-            shaped_rewards = 0.01 * rewards.clone()
             if self.value_bootstrap and 'time_outs' in infos:
+                # bootstrapping from "the value function". (reduced variance, but almost fake reward?)
+                shaped_rewards = 0.01 * rewards.clone()
                 shaped_rewards += self.gamma * res_dict['values'] * infos['time_outs'].unsqueeze(1).float()
+            else:
+                shaped_rewards = rewards.clone()
             self.storage.update_data('rewards', n, shaped_rewards)
 
             self.current_rewards += rewards

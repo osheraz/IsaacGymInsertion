@@ -23,13 +23,19 @@ class MLP(nn.Module):
         super(MLP, self).__init__()
         layers = []
         for output_size in units:
-            layers.append(nn.Linear(input_size, output_size))
-            layers.append(nn.ELU())
+            layers.append(self.layer_init(nn.Linear(input_size, output_size)))
+            layers.append(nn.Tanh())
             input_size = output_size
         self.mlp = nn.Sequential(*layers)
 
     def forward(self, x):
         return self.mlp(x)
+    
+    def layer_init(self, layer, std=np.sqrt(2), bias_const=0.0):
+        torch.nn.init.orthogonal_(layer.weight, std)
+        torch.nn.init.constant_(layer.bias, bias_const)
+        return layer
+
 
 
 class FTAdaptTConv(nn.Module):
@@ -77,6 +83,7 @@ class ActorCritic(nn.Module):
         self.priv_info = kwargs['priv_info']
         self.priv_info_stage2 = kwargs['extrin_adapt']
         self.priv_info_dim = kwargs['priv_info_dim']
+        self.shared_parameters = kwargs['shared_parameters']
 
         self.temp_latent = []
         self.temp_extrin = []
@@ -143,8 +150,10 @@ class ActorCritic(nn.Module):
                                                        ft_out_dim=self.ft_units[-1])
 
         self.actor_mlp = MLP(units=self.units, input_size=mlp_input_shape)
-        self.value = torch.nn.Linear(out_size, 1)
-        self.mu = torch.nn.Linear(out_size, actions_num)
+        if not self.shared_parameters:
+            self.critic_mlp = MLP(units=self.units, input_size=mlp_input_shape)
+        self.value = self.actor_mlp.layer_init(torch.nn.Linear(out_size, 1))
+        self.mu = self.actor_mlp.layer_init(torch.nn.Linear(out_size, actions_num))
         self.sigma = nn.Parameter(torch.zeros(actions_num, requires_grad=True, dtype=torch.float32), requires_grad=True)
 
         for m in self.modules():
@@ -249,9 +258,13 @@ class ActorCritic(nn.Module):
                     obs = torch.cat([obs, extrin], dim=-1)
 
         x = self.actor_mlp(obs)
-        value = self.value(x)
         mu = self.mu(x)
         sigma = self.sigma
+        if not self.shared_parameters:
+            v = self.critic_mlp(obs)
+            value = self.value(v)
+        else:
+            value = self.value(x)
         return mu, mu * 0 + sigma, value, extrin, extrin_gt
 
     def forward(self, input_dict):
