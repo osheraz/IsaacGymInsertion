@@ -17,11 +17,16 @@ train:
   latent_scale: 1.0
   action_scale: 1.0
 
-  # for on screen logging
+  # Train params for on screen logging
   print_every: 50
   eval_every: 5
   test_every: 10
-  test_episodes: 50
+
+  test_episodes: 50 # per epoch batch
+
+  # Only val/test ( val- dataset, test - env)
+  only_test: False
+  only_validate: False
 
   # normalize data
   normalize_keys: ["arm_joints", "eef_pos", "noisy_socket_pos", "target"]
