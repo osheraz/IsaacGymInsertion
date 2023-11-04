@@ -163,17 +163,19 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         # tactile buffers
         self.num_channels = self.cfg_tactile.decoder.num_channels
+        self.width = self.cfg_tactile.decoder.width // 2 if self.cfg_tactile.half_image else self.cfg_tactile.decoder.width
+        self.height = self.cfg_tactile.decoder.height
 
         self.tactile_imgs = torch.zeros(
             (self.num_envs, len(self.fingertips),  # left, right, bottom
-             self.cfg_tactile.decoder.width, self.cfg_tactile.decoder.height, self.num_channels),
+             self.width, self.height, self.num_channels),
             device=self.device,
             dtype=torch.float,
         )
         # Way too big tensor.
         self.tactile_queue = torch.zeros(
             (self.num_envs, self.tact_hist_len, len(self.fingertips),  # left, right, bottom
-             self.cfg_tactile.decoder.width, self.cfg_tactile.decoder.height, self.num_channels),
+             self.width, self.height, self.num_channels),
             device=self.device,
             dtype=torch.float,
         )
@@ -372,18 +374,15 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                 else:
                     force = 20
 
-                tactile_img, height_map, _ = self.tactile_handles[e][n].render(object_pose[e], force)
-                resized_img = cv2.resize(tactile_img, (self.cfg_tactile.decoder.width,
-                                                       self.cfg_tactile.decoder.height), interpolation=cv2.INTER_AREA)
+                tactile_img, height_map = self.tactile_handles[e][n].render(object_pose[e], force)
+                resized_img = cv2.resize(tactile_img, (self.width,
+                                                       self.height), interpolation=cv2.INTER_AREA)
 
                 if self.num_channels == 3:
-                    resized_img = resized_img
-                    self.tactile_imgs[e, n] = torch_jit_utils.rgb_transform(resized_img).to(self.device).permute(1, 2,
-                                                                                                                 0)
+                    self.tactile_imgs[e, n] = torch_jit_utils.rgb_transform(resized_img).to(self.device).permute(2, 1, 0)
                 else:
                     resized_img = cv2.cvtColor(resized_img.astype('float32'), cv2.COLOR_BGR2GRAY)
-                    self.tactile_imgs[e, n] = torch_jit_utils.gray_transform(resized_img).to(self.device).permute(1, 2,
-                                                                                                                  0)
+                    self.tactile_imgs[e, n] = torch_jit_utils.gray_transform(resized_img).to(self.device).permute(2, 1, 0)
 
                 tactile_imgs_per_env.append(tactile_img)
                 height_maps_per_env.append(height_map)
@@ -704,7 +703,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             self.finger_normalized_forces,  # 3
             # self.socket_contact_force.clone()  # 3
             # TODO: add object shapes -- bring diameter
-            self.plug_heights,  # 1
+            # self.plug_heights,  # 1
             # TODO: add extrinsics contact (point cloud) -> this will encode the shape (check this)
         ]
 

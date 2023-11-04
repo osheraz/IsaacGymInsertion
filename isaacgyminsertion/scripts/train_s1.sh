@@ -16,6 +16,7 @@ CUDA_VISIBLE_DEVICES=${GPUS} \
 python trainV2.py task=FactoryTaskInsertionTactile headless=${HEADLESS} seed=${SEED} \
 task.env.numEnvs=${NUM_ENVS} \
 task.env.tactile=False \
+task.env.smooth_force=True \
 task.env.numObsHist=5 \
 task.env.numObservations=215 \
 task.env.compute_contact_gt=True \

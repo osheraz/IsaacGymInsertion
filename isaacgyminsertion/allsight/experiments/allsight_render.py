@@ -73,6 +73,9 @@ class allsight_renderer:
 
         # Create renderer
         self.zrange = 0.002
+        width = cfg.tacto.width
+        height = cfg.tacto.height
+        self.half_image = cfg.half_image
 
         self.subtract_bg = True
         leds = 'white'
@@ -81,13 +84,13 @@ class allsight_renderer:
         conf_path = os.path.join(path_to_refs, f"experiments/conf/sensor/config_allsight_{leds}.yml")
 
         self.renderer = allsight_wrapper.Renderer(
-            width=cfg.tacto.width, height=cfg.tacto.width,
+            width=width, height=width,
             **{"config_path": conf_path},
             background=bg if cfg.with_bg else None,
             headless=True
         )
 
-        self.mask = circle_mask(size=(self.render_config.tacto.width, self.render_config.tacto.height))
+        self.mask = circle_mask(size=(width, height))
 
         if not DEBUG:
             self.bg_img, self.bg_depth = self.renderer.render()
@@ -191,8 +194,8 @@ class allsight_renderer:
             color = self._subtract_bg(color, self.bg_img) * self.mask
         # color[mask == 0] = 0
 
-        diff_depth = (self.bg_depth) - depth
-        contact_mask = diff_depth > np.abs(self.press_depth * 0.2)
+        # diff_depth = (self.bg_depth) - depth
+        # contact_mask = diff_depth > np.abs(self.press_depth * 0.2)
 
         gel_depth = depth
 
@@ -202,7 +205,12 @@ class allsight_renderer:
         if self.randomize_light:
             self.renderer.randomize_light()
 
-        return color, gel_depth, contact_mask
+        if self.half_image:
+            w = color.shape[0]
+            color = color[:w//2]
+            gel_depth = gel_depth[:w//2]
+
+        return color, gel_depth #, contact_mask
 
     def _subtract_bg(self, img1, img2, offset=0.5):
         img1 = np.int32(img1)

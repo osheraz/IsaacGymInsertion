@@ -20,25 +20,26 @@ data_logger:
 
 tactile:
   tacto:
-    width: 64 # 224 # 480 | 224
-    height: 64 # 224 # 480 | 224 for the gan
+    width: 224 # 224 # 480 | 224
+    height: 224 # 224 # 480 | 224 for the gan
     visualize_gui: True
 
   with_bg: True # add background reference frame
   show_depth: True # visualize depth
   show_detect: False # visulize detection work only if true and show_depth true
+  half_image: True # --> tacto & decoder width // 2
   tactile_freq: 2
 
   decoder:
     width: 64
     height: 64
-    num_channels: 3 # 1 (Grayscale), 3 (RGB)
+    num_channels: 1 # 1 (Grayscale), 3 (RGB)
 
 env:
     numEnvs: ${resolve_default:128,${...num_envs}}
     numObservations: 215 # 43 * 5
     numObsStudent: 792   #
-    numStates: 24 # 31 #
+    numStates: 16 # 31 #
     numActions: 6 # [position, ori]
     numTargets: 6 # [position, ori]
 
@@ -47,7 +48,7 @@ env:
     numObsStudentHist: 24
     ft_history_len: 30
     tactile_history_len: 3
-    smooth_force: False
+    smooth_force: True
 
     openhand:
         distal_open: 0.1
@@ -69,7 +70,7 @@ env:
 
     tactile: False
     tactile_display_viz: False
-    tactile_wrt_force: False
+    tactile_wrt_force: True
 
     compute_contact_gt: False
     num_points: 300

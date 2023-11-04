@@ -244,11 +244,11 @@ class ActorCritic(nn.Module):
                     extrin = torch.tanh(extrin)
 
                     # plot for latent viz
-                    plt.ylim(-1, 1)
-                    plt.scatter(list(range(extrin.shape[-1])), extrin.clone().detach().cpu().numpy()[0, :], color='b')
-                    plt.scatter(list(range(extrin.shape[-1])), obs_dict['latent1'].clone().cpu().numpy()[0, :], color='r')
-                    plt.pause(0.0001)
-                    plt.cla()
+                    # plt.ylim(-1, 1)
+                    # plt.scatter(list(range(extrin.shape[-1])), extrin.clone().detach().cpu().numpy()[0, :], color='b')
+                    # plt.scatter(list(range(extrin.shape[-1])), obs_dict['latent1'].clone().cpu().numpy()[0, :], color='r')
+                    # plt.pause(0.0001)
+                    # plt.cla()
 
                     obs = torch.cat([obs, extrin], dim=-1)
 

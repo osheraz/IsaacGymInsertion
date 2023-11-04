@@ -58,8 +58,8 @@ sensor:
 
   force:
     enable: True # flag for enable force feedback. When enabled, the larger normal force is, the closer object is adjusted to the sensor.  ---TODO---
-    range_force: [0, 20] # dynamic range of forces used to simulate the elastomer deformation
-    max_deformation: 0.006 # max pose depth adjustment, in meters
+    range_force: [0, 35] # dynamic range of forces used to simulate the elastomer deformation
+    max_deformation: 0.008 # max pose depth adjustment, in meters
 
   bg_calibration:
     enable: True

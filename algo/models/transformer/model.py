@@ -61,7 +61,7 @@ class TactileTransformer(nn.Module):
         # x = self.dropout(x)
         x = self.activation(x)
         x = self.out(x)
-        x = torch.tanh(x)
+        # x = torch.tanh(x)
         return x
 
 
