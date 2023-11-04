@@ -1,13 +1,12 @@
 import torch
 import torch.nn as nn
 import timm
-from experiments.models.train_allsight_regressor.datasets import output_map 
+from datasets import output_map
 
 # import resnets as srn
 import os
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")  # cuda or cpu
-pc_name = os.getlogin()
 
 
 def get_model(model_params):

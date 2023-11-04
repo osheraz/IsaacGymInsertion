@@ -7,9 +7,9 @@ from mpl_toolkits.mplot3d import proj3d
 from mpl_toolkits.mplot3d.proj3d import proj_transform
 from matplotlib.text import Annotation
 
-from train_allsight_regressor.geometry import convert_quat_xyzw_to_wxyz
+from geometry import convert_quat_xyzw_to_wxyz
 from transformations import quaternion_matrix
-from train_allsight_regressor.surface import create_finger_geometry
+from surface import create_finger_geometry
 from scipy import spatial
 
 

@@ -704,7 +704,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             self.finger_normalized_forces,  # 3
             # self.socket_contact_force.clone()  # 3
             # TODO: add object shapes -- bring diameter
-            # self.plug_heights,  # 1
+            self.plug_heights,  # 1
             # TODO: add extrinsics contact (point cloud) -> this will encode the shape (check this)
         ]
 

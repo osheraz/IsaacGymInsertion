@@ -6,7 +6,7 @@ output_dir: "/common/users/dm1487/isaacgym_new/python/IsaacGymInsertion/isaacgym
 train:
   # basic training hyperparameters
   epochs: 40
-  train_batch_size: 1
+  train_batch_size: 16
   val_batch_size: 16
   learning_rate: 0.001
   train_test_split: 0.95
@@ -17,24 +17,29 @@ train:
   latent_scale: 1.0
   action_scale: 1.0
 
-  # for on screen logging
+  # Train params for on screen logging
   print_every: 50
   eval_every: 5
-  test_every: 5
-  test_episodes: 50
+  test_every: 10
 
-  # normalize data 
+  test_episodes: 50 # per epoch batch
+
+  # Only val/test ( val- dataset, test - env)
+  only_test: False
+  only_validate: False
+
+  # normalize data
   normalize_keys: ["arm_joints", "eef_pos", "noisy_socket_pos", "target"]
   normalize_file: "/common/users/dm1487/isaacgym_new/python/IsaacGymInsertion/algo/models/transformer/normalization.pkl"
 
   # load checkpoint
   load_checkpoint: False
   ckpt_path: "/common/users/dm1487/isaacgym_new/python/IsaacGymInsertion/isaacgyminsertion/outputs/offline_student/2023-11-01_11-37-16/checkpoints/model_4.pt"
-  
+
 # model configuration
 model:
   # linear embedding
-  linear: 
+  linear:
     input_size: 33
     # TODO: add model layers here
 
@@ -53,7 +58,7 @@ model:
     hidden_size: 64
     num_layers: 2
     num_heads: 2
-    output_size: 4
+    output_size: 8
   
 # wandb logging
 wandb:

@@ -263,9 +263,13 @@ class ResNet(nn.Module):
 
     def _forward_impl(self, x, x_ref=None):
         # See note [TorchScript super()]
-
-        B, T, C, W, H = x.size()[0], x.size()[1], x.size()[2], x.size()[3], x.size()[4]
-        x = x.view([(B * T), C, W, H])
+        if len(x.size()) == 5:
+            B, T, C, W, H = x.size()[0], x.size()[1], x.size()[2], x.size()[3], x.size()[4]
+            x = x.view([(B * T), C, W, H])
+        else: # [B*T, C, W, H]
+            BT, C, W, H = x.size()[0], x.size()[1], x.size()[2], x.size()[3]
+            T = 32
+            B = BT // T
 
         x = self.conv1(x)
         x = self.bn1(x)
@@ -279,10 +283,10 @@ class ResNet(nn.Module):
 
         x = self.avgpool(x)
         x = torch.flatten(x, 1)
-
         _, C = x.size()
         x = x.view([B, T, C])
-        x = torch.mean(x, 1)
+
+        # x = torch.mean(x, 1)
 
         x = self.fc(x)
 

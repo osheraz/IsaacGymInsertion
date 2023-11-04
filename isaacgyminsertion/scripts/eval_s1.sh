@@ -1,8 +1,8 @@
 #!/bin/bash
 GPUS=${1:-0}
 SEED=${2:-42}
-CACHE=${3:-test}
-NUM_ENVS=${4:-32}
+CACHE=${3:-ext_and_delta_pos}
+NUM_ENVS=${4:-24}
 HEADLESS=${5:-True}
 
 array=( $@ )
@@ -18,6 +18,8 @@ python trainV2.py task=FactoryTaskInsertionTactile headless=${HEADLESS} seed=${S
 test=True \
 task.env.numEnvs=${NUM_ENVS} \
 task.env.tactile=True \
+task.env.numStates=24 \
+task.env.compute_contact_gt=True \
 task.tactile.tacto.width=224 \
 task.tactile.tacto.height=224 \
 task.tactile.decoder.width=224 \
@@ -30,8 +32,8 @@ task.env.numObsHist=5 \
 task.env.numObservations=215 \
 task.env.numStates=16 \
 task.data_logger.collect_data=True \
-task.data_logger.base_folder="/common/users/dm1487/inhand_manipulation_data_store" \
-task.data_logger.sub_folder="datastore_${SEED}" \
+task.data_logger.base_folder="/common/users/oa348/inhand_manipulation_data_store" \
+task.data_logger.sub_folder="datastore_${SEED}_${CACHE}" \
 train.algo=PPO \
 train.ppo.priv_info=True \
 train.ppo.extrin_adapt=False \
