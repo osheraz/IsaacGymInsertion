@@ -34,4 +34,4 @@ outputs/
 *.avi
 *.mp4
 *-checkpoint.ipynb
-allsight/experiments/allsight_dataset
+isaacgyminsertion/allsight/experiments/allsight_dataset

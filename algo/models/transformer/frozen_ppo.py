@@ -225,7 +225,7 @@ class PPO(object):
                                                          self.env.cfg_task.data_logger.total_trajectories,
                                                          save_trajectory=self.env.cfg_task.data_logger.collect_data,
                                                          **log_items)
-            
+
         batch_size = self.num_actors
         current_rewards_shape = (batch_size, 1)
         # get shape
@@ -598,7 +598,7 @@ class PPO(object):
             self.episode_rewards.update(self.current_rewards[done_indices])
             self.episode_lengths.update(self.current_lengths[done_indices])
             self.episode_success.update(self.current_success[done_indices])
-            
+
             assert isinstance(infos, dict), 'Info Should be a Dict'
             self.extra_info = {}
             for k, v in infos.items():
@@ -632,12 +632,12 @@ class PPO(object):
         # this will test either the student or the teacher model. (check if the student model can be tested within models)
         self.set_eval()
         milestone = 100
-        
+
         action, latent, done = None, None, None
 
         save_trajectory = self.env.cfg_task.data_logger.collect_data  # in data collection phase this will be true
         offline_test = self.full_config.offline_training_w_env  # in offline_test this will be true
-        
+
         # convert normalizing measures to torch and add to device
         if normalize_dict is not None:
             for key in normalize_dict.keys():
@@ -645,7 +645,7 @@ class PPO(object):
 
         # reset all envs
         self.obs = self.env.reset()
-        
+
         # logging initial data only if one of the above is true
         if save_trajectory or offline_test:
             if self.data_logger is None:
@@ -655,7 +655,7 @@ class PPO(object):
             if not save_trajectory:
                 # record initial data for latent inference (not needed if recording trajectory data, TODO: check why?)
                 self.log_trajectory_data(action, latent, done, save_trajectory=save_trajectory)
-        
+
         self.env_ids = torch.arange(self.env.num_envs).view(-1, 1)
         total_dones, num_success = 0, 0
         total_env_runs = self.full_config.offline_train.train.test_episodes # add this to config
@@ -686,7 +686,7 @@ class PPO(object):
             action, latent = self.model.act_inference(obs_dict)
             action = torch.clamp(action, -1.0, 1.0)
             self.obs, r, done, info = self.env.step(action)
-            
+
             num_success += self.env.success_reset_buf[done.nonzero()].sum()
             # logging data
             if save_trajectory or offline_test:
@@ -697,7 +697,7 @@ class PPO(object):
                 self.log_trajectory_data(action, latent, done, save_trajectory=save_trajectory)
 
         return num_success, total_dones
-        
+
     def _make_data(self, data, normalize_dict):
         # This function is used to make the data for the student model
 
@@ -712,10 +712,10 @@ class PPO(object):
         target = data["target"]
 
         if normalize_dict is not None:
-            arm_joints = (arm_joints - self.normalize_dict["mean"]["arm_joints"]) / self.normalize_dict["std"]["arm_joints"]
-            eef_pos = (eef_pos - self.normalize_dict["mean"]["eef_pos"]) / self.normalize_dict["std"]["eef_pos"]
-            noisy_socket_pos = (noisy_socket_pos - self.normalize_dict["mean"]["noisy_socket_pos"][:2]) / self.normalize_dict["std"]["noisy_socket_pos"][:2]
-            target = (target - self.normalize_dict["mean"]["target"]) / self.normalize_dict["std"]["target"]
+            arm_joints = (arm_joints - normalize_dict["mean"]["arm_joints"]) / normalize_dict["std"]["arm_joints"]
+            eef_pos = (eef_pos - normalize_dict["mean"]["eef_pos"]) / normalize_dict["std"]["eef_pos"]
+            noisy_socket_pos = (noisy_socket_pos - normalize_dict["mean"]["noisy_socket_pos"][:2]) / normalize_dict["std"]["noisy_socket_pos"][:2]
+            target = (target - normalize_dict["mean"]["target"]) / normalize_dict["std"]["target"]
 
         # making the inputs
         cnn_input = torch.cat([tactile[:, :, 0, ...], tactile[:, :,  1, ...], tactile[:, :,  2, ...]], dim=-1)
@@ -723,7 +723,7 @@ class PPO(object):
 
         if self.full_config.offline_train.model.transformer.full_sequence:
             return cnn_input, lin_input
-        
+
         padding_cnn = torch.zeros_like(cnn_input)
         padding_lin = torch.zeros_like(lin_input)
         for env_id in range(self.env.num_envs):
@@ -731,7 +731,7 @@ class PPO(object):
             padding_lin[env_id, -(self.env.progress_buf[env_id]+1):, :] = lin_input[env_id, :(self.env.progress_buf[env_id]+1), :]
         cnn_input = padding_cnn[:, -self.full_config.offline_train.model.transformer.sequence_length:, :].clone()
         lin_input = padding_lin[:, -self.full_config.offline_train.model.transformer.sequence_length:, :].clone()
-        
+
         return cnn_input, lin_input
 
 def policy_kl(p0_mu, p0_sigma, p1_mu, p1_sigma):

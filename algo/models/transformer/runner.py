@@ -262,9 +262,9 @@ class Runner:
 
         # training
         for epoch in range(epochs):
-            if self.cfg.only_test:
+            if self.cfg.train.only_test:
                 self.test()
-            elif self.cfg.only_validate:
+            elif self.cfg.train.only_validate:
                 self.validate(val_dl)
             else:
                 val_loss = self.train(train_dl, val_dl, ckpt_path, print_every=print_every, eval_every=eval_every,
