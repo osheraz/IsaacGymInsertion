@@ -643,6 +643,8 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         # Actually this is the right representation
         plug_hand_pos, plug_hand_quat = self.pose_world_to_hand_base(self.plug_pos, self.plug_quat, as_matrix=False)
+        socket_pos_wrt_robot = self.pose_world_to_robot_base(self.socket_pos.clone(), self.socket_quat.clone(), as_matrix=False)
+
         self.plug_hand_pos[...] = plug_hand_pos
         self.plug_hand_quat[...] = plug_hand_quat
 
@@ -738,7 +740,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         
         self.rew_buf[:] += (early_reset_reward * self.timeout_reset_buf)
-        self.rew_buf[:] += (self.timeout_reset_buf * self.success_reset_buf) * self.cfg_task.rl.success_bonus
+        # self.rew_buf[:] += (self.timeout_reset_buf * self.success_reset_buf) * self.cfg_task.rl.success_bonus
         self.extras['successes'] = ((self.timeout_reset_buf | distance_reset_buf) * self.success_reset_buf) * 1.0
 
         self.reward_log_buf[:] = self.rew_buf[:]
@@ -753,17 +755,18 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                       'Avg Ep Reward:', torch.mean(self.reward_log_buf).item(),
                       ' Success Reward:', self.rew_buf[success_dones].mean().item(),
                       ' Failure Reward:', self.rew_buf[failure_dones].mean().item())
-            self.extras["engaged_w_socket"] = torch.mean(is_plug_engaged_w_socket.float())
-            self.extras["plug_oriented"] = torch.mean(is_plug_oriented.float())
-            self.extras["successes"] = torch.mean(self.success_reset_buf.float())
-            self.extras["dist_plug_socket"] = torch.mean(self.dist_plug_socket)
-            self.extras["keypoint_reward"] = torch.mean(keypoint_reward.abs())
-            self.extras["action_penalty"] = torch.mean(action_penalty)
-            self.extras["mug_quat_penalty"] = torch.mean(plug_ori_penalty)
-            self.extras["steps"] = torch.mean(self.progress_buf.float())
-            self.extras["mean_time_complete_task"] = torch.mean(
-                self.time_complete_task.float()
-            )
+            
+            # self.extras["engaged_w_socket"] = torch.mean(is_plug_engaged_w_socket.float())
+            # self.extras["plug_oriented"] = torch.mean(is_plug_oriented.float())
+            # self.extras["successes"] = torch.mean(self.success_reset_buf.float())
+            # self.extras["dist_plug_socket"] = torch.mean(self.dist_plug_socket)
+            # self.extras["keypoint_reward"] = torch.mean(keypoint_reward.abs())
+            # self.extras["action_penalty"] = torch.mean(action_penalty)
+            # self.extras["mug_quat_penalty"] = torch.mean(plug_ori_penalty)
+            # self.extras["steps"] = torch.mean(self.progress_buf.float())
+            # self.extras["mean_time_complete_task"] = torch.mean(
+            #     self.time_complete_task.float()
+            # )
 
     def _update_reset_buf(self):
         """Assign environments for reset if successful or failed."""

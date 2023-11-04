@@ -38,7 +38,7 @@ env:
     numEnvs: ${resolve_default:128,${...num_envs}}
     numObservations: 215 # 43 * 5
     numObsStudent: 792   #
-    numStates: 17 # 31 #
+    numStates: 23 # 31 #
     numActions: 6 # [position, ori]
     numTargets: 6 # [position, ori]
 
@@ -120,12 +120,12 @@ rl:
     close_error_thresh: 0.005  # threshold below which plug is considered close enough to bolt
     success_height_thresh: 0.003  # threshold distance below which plug is considered successfully inserted
 
-    keypoint_reward_scale: -1.0  # scale on keypoint-based reward
+    keypoint_reward_scale: -0.5 # scale on keypoint-based reward
     action_penalty_scale: -0.0  # scale on action penalty
     orientation_penalty_scale: -0.0
     dist_penalty_scale: -0.0
     early_reset_reward_scale: -5.0
-    engagement_reward_scale: 0.05
+    engagement_reward_scale: 0.1
     # Success bonus
     success_bonus: 100.0  # bonus if plug is close enough to base of bolt shank
     # engagement_bonus: 0.01 # bonus if plug is engaged (partially inserted) with socket
