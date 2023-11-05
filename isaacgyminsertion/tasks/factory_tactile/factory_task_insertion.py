@@ -802,17 +802,27 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
     def _reset_environment(self, env_ids):
 
-        random_init_idx = torch.randint(0, self.total_init_poses, size=(len(env_ids),))
-        # self.env_to_grasp[env_ids] = random_init_idx
+        random_init_idx = {}
+        for subassembly in self.cfg_env.env.desired_subassemblies:
+            random_init_idx[subassembly] = torch.randint(0, self.total_init_poses[subassembly], size=(len(env_ids),))
 
-        kuka_dof_pos = self.init_dof_pos[random_init_idx]
-        # print(kuka_dof_pos.shape)
+        subassemblies = [self.envs_asset[e_id] for e_id in env_ids.clone().cpu().numpy().tolist()]
+
+        kuka_dof_pos = torch.zeros((len(env_ids), 15))
+        socket_pos = torch.zeros((len(env_ids), 3))
+        socket_quat = torch.zeros((len(env_ids), 4))
+        plug_pos = torch.zeros((len(env_ids), 3))
+        plug_quat = torch.zeros((len(env_ids), 4))
+
+        for e in env_ids:
+            subassembly = subassemblies[e]
+            kuka_dof_pos[e] = self.init_dof_pos[subassembly][random_init_idx[subassembly][e]]
+            socket_pos[e] = self.init_socket_pos[subassembly][random_init_idx[subassembly][e]]
+            socket_quat[e] = self.init_socket_quat[subassembly][random_init_idx[subassembly][e]]
+            plug_pos[e] = self.init_plug_pos[subassembly][random_init_idx[subassembly][e]]
+            plug_quat[e] = self.init_plug_quat[subassembly][random_init_idx[subassembly][e]]
+
         self._reset_kuka(env_ids, new_pose=kuka_dof_pos)
-
-        socket_pos = self.init_socket_pos[random_init_idx]
-        socket_quat = self.init_socket_quat[random_init_idx]
-        plug_pos = self.init_plug_pos[random_init_idx]
-        plug_quat = self.init_plug_quat[random_init_idx]
 
         if 0 in env_ids:
             self.init_plug_pos_cam[0, :] = plug_pos[0, :]

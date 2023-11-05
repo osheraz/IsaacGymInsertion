@@ -184,6 +184,16 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
     def __init__(self, cfg, rl_device, sim_device, graphics_device_id, headless, virtual_screen_capture, force_render):
         """Initialize instance variables. Initialize environment superclass. Acquire tensors."""
         self.cfg = cfg
+        self.video_frames = []
+        self.ft_frames = []
+        self.initial_grasp_poses = {}
+        self.total_init_poses = {}
+        self.init_socket_pos = {}
+        self.init_socket_quat = {}
+        self.init_plug_pos = {}
+        self.init_plug_quat = {}
+        self.init_dof_pos = {}
+
         self._get_env_yaml_params()
 
         super().__init__(cfg, rl_device, sim_device, graphics_device_id, headless, virtual_screen_capture, force_render)
@@ -198,9 +208,6 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
         self.record_now_ft = False
         self.complete_video_frames = None
         self.complete_ft_frames = None
-
-        self.video_frames = []
-        self.ft_frames = []
 
     def _get_env_yaml_params(self):
         """Initialize instance variables from YAML files."""
@@ -234,6 +241,39 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
         plug_assets, socket_assets = self._import_env_assets()
         self._create_actors(lower, upper, num_per_row, kuka_asset, plug_assets, socket_assets, table_asset)
         self.print_sdf_finish()
+
+        for subassembly in self.cfg_env.env.desired_subassemblies:
+            self._initialize_grasp_poses(subassembly)
+
+    def _initialize_grasp_poses(self, subassembly):
+
+        try:
+            self.initial_grasp_poses[subassembly] = np.load(f'initial_grasp_data/{subassembly}.npz')
+        except:
+            return
+
+        self.total_init_poses[subassembly] = self.initial_grasp_poses[subassembly]['socket_pos'].shape[0]
+        self.init_socket_pos[subassembly] = torch.zeros((self.total_init_poses[subassembly], 3))
+        self.init_socket_quat[subassembly] = torch.zeros((self.total_init_poses[subassembly], 4))
+        self.init_plug_pos[subassembly] = torch.zeros((self.total_init_poses[subassembly], 3))
+        self.init_plug_quat[subassembly] = torch.zeros((self.total_init_poses[subassembly], 4))
+        self.init_dof_pos[subassembly] = torch.zeros((self.total_init_poses[subassembly], 15))
+
+        socket_pos = self.initial_grasp_poses[subassembly]['socket_pos']
+        socket_quat = self.initial_grasp_poses[subassembly]['socket_quat']
+        plug_pos = self.initial_grasp_poses[subassembly]['plug_pos']
+        plug_quat = self.initial_grasp_poses[subassembly]['plug_quat']
+        dof_pos = self.initial_grasp_poses[subassembly]['dof_pos']
+
+        self.env_to_grasp = torch.zeros((self.num_envs,)).to(dtype=torch.int32)
+        from tqdm import tqdm
+        print("Loading Grasping poses for:", subassembly)
+        for i in tqdm(range(self.total_init_poses[subassembly])):
+            self.init_socket_pos[subassembly][i] = torch.from_numpy(socket_pos[i])
+            self.init_socket_quat[subassembly][i] = torch.from_numpy(socket_quat[i])
+            self.init_plug_pos[subassembly][i] = torch.from_numpy(plug_pos[i])
+            self.init_plug_quat[subassembly][i] = torch.from_numpy(plug_quat[i])
+            self.init_dof_pos[subassembly][i] = torch.from_numpy(dof_pos[i])
 
     def _import_env_assets(self):
         """Set plug and socket asset options. Import assets."""
@@ -517,7 +557,8 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
                                              gymapi.Vec3(0, 0, 0))
 
             # add Tactile modules for the tips
-            self.envs_asset[i] = {'subassembly': subassembly, 'components': components}
+            # self.envs_asset[i] = {'subassembly': subassembly, 'components': components}
+            self.envs_asset[i] = subassembly
             plug_file = self.asset_info_insertion[subassembly][components[0]]['urdf_path']
             plug_file += '_subdiv_3x.obj' if 'rectangular' in plug_file else '.obj'
             socket_file = self.asset_info_insertion[subassembly][components[1]]['urdf_path']
@@ -703,18 +744,3 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
         if self.complete_ft_frames is None:
             return []
         return self.complete_ft_frames
-
-    # def start_recording_eval(self):
-    #     self.complete_video_frames_eval = None
-    #     self.record_eval_now = True
-
-    # def pause_recording_eval(self):
-    #     self.complete_video_frames_eval = []
-    #     self.video_frames_eval = []
-    #     self.record_eval_now = False
-
-    # def get_complete_frames_eval(self):
-    #     if self.complete_video_frames_eval is None:
-    #         return []
-    #     return self.complete_video_frames_eval
-    ### end code for logging videos while training ###

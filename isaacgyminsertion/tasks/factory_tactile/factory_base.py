@@ -50,6 +50,7 @@ from isaacgyminsertion.tasks.factory_tactile.factory_schema_config_base import F
 from matplotlib import pyplot as plt
 from isaacgyminsertion.tasks.factory_tactile.factory_utils import quat2R
 
+
 class FactoryBaseTactile(VecTask, FactoryABCBase):
 
     def __init__(self, cfg, rl_device, sim_device, graphics_device_id, headless, virtual_screen_capture, force_render):
@@ -57,33 +58,19 @@ class FactoryBaseTactile(VecTask, FactoryABCBase):
 
         self.cfg = cfg
         self.cfg['headless'] = headless
-        
-        # TODO: put these in a config?
-        grasp_folders = {
-            '2in_loose1mm': 'init_grasps_plug2in_loose1mm_new',
-            '16mm_loose0.5mm': 'init_grasps_plug16mm_loose0.5mm',
-        }
-        self.grasps_folder = grasp_folders['2in_loose1mm']
-        self.grasps_save_ctr = 0
-        self.total_grasps = 4000
-        self.total_init_grasp_count = 0
 
         self._get_base_yaml_params()
 
         if self.cfg_base.mode.export_scene:
             sim_device = 'cpu'
 
-        
-
         super().__init__(cfg, rl_device, sim_device, graphics_device_id, headless, virtual_screen_capture,
                          force_render)  # create_sim() is called here
-        
+
         # defining video recording params, todo: where do we put this?
         self.record_now = False
         self.complete_video_frames = None
         self.video_frames = []
-
-
 
     def _get_base_yaml_params(self):
         """Initialize instance variables from YAML files."""
@@ -110,44 +97,11 @@ class FactoryBaseTactile(VecTask, FactoryABCBase):
                                       graphics_device=self.graphics_device_id,
                                       physics_engine=self.physics_engine,
                                       sim_params=self.sim_params)
-        self._initialize_grasp_poses()
         self._create_ground_plane()
         self.create_envs()  # defined in subclass
         # If randomizing, apply once immediately on startup before the fist sim step
         if self.randomize:
             self.apply_randomizations(self.randomization_params)
-        
-
-    def _initialize_grasp_poses(self):
-        # TODO: add this path to the config file
-        try:
-            self.initial_grasp_poses = np.load(f'initial_grasp_data/{self.grasps_folder}.npz')
-        except:
-            return
-        
-        self.total_init_poses = self.initial_grasp_poses['socket_pos'].shape[0]
-        self.init_socket_pos = torch.zeros((self.total_init_poses, 3))
-        self.init_socket_quat = torch.zeros((self.total_init_poses, 4))
-        self.init_plug_pos = torch.zeros((self.total_init_poses, 3))
-        self.init_plug_quat = torch.zeros((self.total_init_poses, 4))
-        self.init_dof_pos = torch.zeros((self.total_init_poses, 15))
-
-        socket_pos = self.initial_grasp_poses['socket_pos']
-        socket_quat = self.initial_grasp_poses['socket_quat']
-        plug_pos = self.initial_grasp_poses['plug_pos']
-        plug_quat = self.initial_grasp_poses['plug_quat']
-        dof_pos = self.initial_grasp_poses['dof_pos']
-
-        self.env_to_grasp = torch.zeros((self.num_envs,)).to(dtype=torch.int32)
-        from tqdm import tqdm
-        print("Loading Poses")
-        for i in tqdm(range(self.total_init_poses)):
-            self.init_socket_pos[i] = torch.from_numpy(socket_pos[i])
-            self.init_socket_quat[i] = torch.from_numpy(socket_quat[i])
-            self.init_plug_pos[i] = torch.from_numpy(plug_pos[i])
-            self.init_plug_quat[i] = torch.from_numpy(plug_quat[i])
-            self.init_dof_pos[i] = torch.from_numpy(dof_pos[i])
-
 
     def _create_ground_plane(self):
         """Set ground plane params. Add plane."""
@@ -260,8 +214,6 @@ class FactoryBaseTactile(VecTask, FactoryABCBase):
         # self.ft_sensor_tensor = self.ft_sensors.view(self.num_envs, (len(self.fingertip_handles) + 1) * 6)
         self.ft_sensor_tensor = self.ft_sensors.view(self.num_envs, 1 * 6)
 
-        
-
         self.arm_dof_pos = self.dof_pos[:, 0:7]
         self.arm_dof_vel = self.dof_vel[:, 0:7]
         self.arm_mass_matrix = self.mass_matrix[:, 0:7, 0:7]  # for kuka arm (not gripper)
@@ -273,27 +225,31 @@ class FactoryBaseTactile(VecTask, FactoryABCBase):
         self.hand_quat = self.body_quat[:, self.hand_body_id_env, 0:4]
         self.hand_linvel = self.body_linvel[:, self.hand_body_id_env, 0:3]
         self.hand_angvel = self.body_angvel[:, self.hand_body_id_env, 0:3]
-        self.hand_jacobian = self.jacobian[:, self.hand_body_id_env - self.robot_base_body_id_env- 1, 0:6, 0:7]  # minus 1 because base is fixed
+        self.hand_jacobian = self.jacobian[:, self.hand_body_id_env - self.robot_base_body_id_env - 1, 0:6,
+                             0:7]  # minus 1 because base is fixed
 
         self.left_finger_pos = self.body_pos[:, self.left_finger_body_id_env, 0:3]
         self.left_finger_quat = self.body_quat[:, self.left_finger_body_id_env, 0:4]
         self.left_finger_linvel = self.body_linvel[:, self.left_finger_body_id_env, 0:3]
         self.left_finger_angvel = self.body_angvel[:, self.left_finger_body_id_env, 0:3]
-        self.left_finger_jacobian = self.jacobian[:, self.left_finger_body_id_env - self.robot_base_body_id_env- 1, 0:6,
+        self.left_finger_jacobian = self.jacobian[:, self.left_finger_body_id_env - self.robot_base_body_id_env - 1,
+                                    0:6,
                                     0:7]  # minus 1 because base is fixed
 
         self.right_finger_pos = self.body_pos[:, self.right_finger_body_id_env, 0:3]
         self.right_finger_quat = self.body_quat[:, self.right_finger_body_id_env, 0:4]
         self.right_finger_linvel = self.body_linvel[:, self.right_finger_body_id_env, 0:3]
         self.right_finger_angvel = self.body_angvel[:, self.right_finger_body_id_env, 0:3]
-        self.right_finger_jacobian = self.jacobian[:, self.right_finger_body_id_env - self.robot_base_body_id_env- 1, 0:6,
+        self.right_finger_jacobian = self.jacobian[:, self.right_finger_body_id_env - self.robot_base_body_id_env - 1,
+                                     0:6,
                                      0:7]  # minus 1 because base is fixed
 
         self.middle_finger_pos = self.body_pos[:, self.middle_finger_body_id_env, 0:3]
         self.middle_finger_quat = self.body_quat[:, self.middle_finger_body_id_env, 0:4]
         self.middle_finger_linvel = self.body_linvel[:, self.middle_finger_body_id_env, 0:3]
         self.middle_finger_angvel = self.body_angvel[:, self.middle_finger_body_id_env, 0:3]
-        self.middle_finger_jacobian = self.jacobian[:, self.middle_finger_body_id_env - self.robot_base_body_id_env- 1, 0:6,
+        self.middle_finger_jacobian = self.jacobian[:, self.middle_finger_body_id_env - self.robot_base_body_id_env - 1,
+                                      0:6,
                                       0:7]  # minus 1 because base is fixed
 
         self.left_finger_force = self.contact_force[:, self.left_finger_body_id_env, 0:3]
@@ -307,7 +263,8 @@ class FactoryBaseTactile(VecTask, FactoryABCBase):
         self.fingertip_centered_quat = self.body_quat[:, self.fingertip_centered_body_id_env, 0:4]
         self.fingertip_centered_linvel = self.body_linvel[:, self.fingertip_centered_body_id_env, 0:3]
         self.fingertip_centered_angvel = self.body_angvel[:, self.fingertip_centered_body_id_env, 0:3]
-        self.fingertip_centered_jacobian = self.jacobian[:, self.fingertip_centered_body_id_env - self.robot_base_body_id_env- 1, 0:6,
+        self.fingertip_centered_jacobian = self.jacobian[:,
+                                           self.fingertip_centered_body_id_env - self.robot_base_body_id_env - 1, 0:6,
                                            0:7]  # minus 1 because base is fixed
 
         self.fingertip_midpoint_pos = self.fingertip_centered_pos.detach().clone()  # initial value
@@ -325,7 +282,8 @@ class FactoryBaseTactile(VecTask, FactoryABCBase):
         # Thus, angular velocity of midpoint w.r.t. world is equal to angular velocity of hand w.r.t. world.
 
         self.fingertip_midpoint_angvel = self.fingertip_centered_angvel  # always equal
-        self.fingertip_midpoint_jacobian = (self.left_finger_jacobian + self.right_finger_jacobian + self.middle_finger_jacobian) * 1 / 3  # approximation
+        self.fingertip_midpoint_jacobian = (
+                                                       self.left_finger_jacobian + self.right_finger_jacobian + self.middle_finger_jacobian) * 1 / 3  # approximation
 
         self.dof_torque = torch.zeros((self.num_envs, self.num_dofs), device=self.device)
         self.fingertip_contact_wrench = torch.zeros((self.num_envs, 6), device=self.device)
@@ -347,7 +305,7 @@ class FactoryBaseTactile(VecTask, FactoryABCBase):
 
         self.identity_quat = torch.tensor([0.0, 0.0, 0.0, 1.0], device=self.device).unsqueeze(0).repeat(self.num_envs,
                                                                                                         1)
-        
+
         # self.test_plot = []
 
     def refresh_base_tensors(self):
@@ -373,7 +331,6 @@ class FactoryBaseTactile(VecTask, FactoryABCBase):
         # plt.plot(self.test_plot[:])
         # plt.pause(0.00001)
         # plt.clf()
-
 
         # Privileged
         self.finger_midpoint_pos = (self.left_finger_pos + self.right_finger_pos + self.middle_finger_pos) * (1 / 3)

@@ -8,6 +8,9 @@ defaults:
 name: FactoryTaskInsertionTactile
 physics_engine: ${..physics_engine}
 
+grasp_logger:
+    total_grasp: 4000
+
 data_logger:
     # for data collection
     collect_data: False

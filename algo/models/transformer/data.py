@@ -59,7 +59,8 @@ class TactileDataset(Dataset):
         done = data["done"]
         done_idx = done.nonzero()[0][-1]
 
-        cnn_input = self.transform(self.to_torch(cnn_input).permute(0, 3, 1, 2)).permute(0, 2, 3, 1).numpy() # doing these operations to enable transform. They have no meeaning if written separately.
+        # doing these operations to enable transform. They have no meaning if written separately.
+        cnn_input = self.transform(self.to_torch(cnn_input).permute(0, 3, 1, 2)).permute(0, 2, 3, 1).numpy()
 
         if self.full_sequence:
             mask = np.zeros_like(done)
