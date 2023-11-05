@@ -18,6 +18,7 @@ import isaacgyminsertion.tasks.factory_tactile.factory_control as fc
 from isaacgyminsertion.tasks.factory_tactile.factory_utils import quat2R
 from time import time
 import numpy as np
+import omegaconf
 
 
 class HardwarePlayer(object):
@@ -74,6 +75,8 @@ class HardwarePlayer(object):
             "ft_units": self.deploy_config.network.ft_mlp.units,
             'tactile_input_dim': self.tactile_input_dim,
             'tactile_seq_length': self.tactile_seq_length,
+            "merge_units": self.deploy_config.network.merge_mlp.units
+
         }
 
         self.model = ActorCritic(net_config)
@@ -90,8 +93,9 @@ class HardwarePlayer(object):
         self.dp_dir = os.path.join(self.output_dir, 'deploy')
         os.makedirs(self.dp_dir, exist_ok=True)
 
-        tactile_info_path = '../allsight/experiments/conf/test.yaml'  # relative to Gym's Hydra search path (cfg dir)
-        self.cfg_tactile = hydra.compose(config_name=tactile_info_path)['']['']['']['allsight']['experiments']['conf']
+        # tactile_info_path = '../allsight/experiments/conf/test.yaml'  # relative to Gym's Hydra search path (cfg dir)
+        # self.cfg_tactile = hydra.compose(config_name=tactile_info_path)['']['']['']['allsight']['experiments']['conf']
+        self.cfg_tactile = omegaconf.OmegaConf.create(full_config['tactile'])
 
         asset_info_path = '../../assets/factory/yaml/factory_asset_info_insertion.yaml'  # relative to Gym's Hydra search path (cfg dir)
         self.asset_info_insertion = hydra.compose(config_name=asset_info_path)
@@ -103,21 +107,17 @@ class HardwarePlayer(object):
         self.running_mean_std.load_state_dict(checkpoint['running_mean_std'])
         self.model.load_state_dict(checkpoint['model'])
 
-    def _initialize_grasp_poses(self):
-        grasp_folders = {
-            '2in_loose1mm': 'init_grasps_plug2in_loose1mm_new',
-            '16mm_loose0.5mm': 'init_grasps_plug16mm_loose0.5mm',
-        }
-        self.grasps_folder = grasp_folders['2in_loose1mm']
+    def _initialize_grasp_poses(self, gp='yellow_round_peg_2in'):
 
-        self.initial_grasp_poses = np.load(f'initial_grasp_data/{self.grasps_folder}.npz')
+        self.initial_grasp_poses = np.load(f'initial_grasp_data/{gp}.npz')
 
         self.total_init_poses = self.initial_grasp_poses['socket_pos'].shape[0]
         self.init_dof_pos = torch.zeros((self.total_init_poses, 15))
         self.init_dof_pos = self.init_dof_pos[:, :7]
         dof_pos = self.initial_grasp_poses['dof_pos'][:, :7]
+
         from tqdm import tqdm
-        print("Loading Poses")
+        print("Loading init grasping poses for:", gp)
         for i in tqdm(range(self.total_init_poses)):
             self.init_dof_pos[i] = torch.from_numpy(dof_pos[i])
 
@@ -190,17 +190,21 @@ class HardwarePlayer(object):
         self.goal_noisy_queue_student = torch.zeros((1, self.deploy_config.env.stud_obs_seq_length, 12),
                                                     dtype=torch.float, device=self.device)
 
+        self.num_channels = self.cfg_tactile.decoder.num_channels
+        self.width = self.cfg_tactile.decoder.width // 2 if self.cfg_tactile.half_image else self.cfg_tactile.decoder.width
+        self.height = self.cfg_tactile.decoder.height
+
         # tactile buffers
         self.tactile_imgs = torch.zeros(
             (1, 3,  # left, right, bottom
-             self.cfg_tactile.decoder.width, self.cfg_tactile.decoder.height, 3),
+             self.width, self.height, self.num_channels),
             device=self.device,
             dtype=torch.float,
         )
         # Way too big tensor.
         self.tactile_queue = torch.zeros(
             (1, self.tactile_seq_length, 3,  # left, right, bottom
-             self.cfg_tactile.decoder.width, self.cfg_tactile.decoder.height, 3),
+             self.width, self.height, self.num_channels),
             device=self.device,
             dtype=torch.float,
         )
@@ -308,9 +312,14 @@ class HardwarePlayer(object):
         bottom = cv2.resize(bottom, (self.cfg_tactile.decoder.width, self.cfg_tactile.decoder.height),
                             interpolation=cv2.INTER_AREA)
 
-        self.tactile_imgs[0, 0] = torch_jit_utils.rgb_transform(left).to(self.device).permute(1, 2, 0)
-        self.tactile_imgs[0, 1] = torch_jit_utils.rgb_transform(right).to(self.device).permute(1, 2, 0)
-        self.tactile_imgs[0, 2] = torch_jit_utils.rgb_transform(bottom).to(self.device).permute(1, 2, 0)
+        if self.num_channels == 3:
+            self.tactile_imgs[0, 0] = torch_jit_utils.rgb_transform(left).to(self.device).permute(2, 1, 0)
+            self.tactile_imgs[0, 1] = torch_jit_utils.rgb_transform(right).to(self.device).permute(2, 1, 0)
+            self.tactile_imgs[0, 2] = torch_jit_utils.rgb_transform(bottom).to(self.device).permute(2, 1, 0)
+        else:
+            self.tactile_imgs[0, 0] = torch_jit_utils.gray_transform(cv2.cvtColor(left.astype('float32'),cv2.COLOR_BGR2GRAY)).to(self.device).permute(2, 1, 0)
+            self.tactile_imgs[0, 1] = torch_jit_utils.gray_transform(cv2.cvtColor(right.astype('float32'),cv2.COLOR_BGR2GRAY)).to(self.device).permute(2, 1, 0)
+            self.tactile_imgs[0, 2] = torch_jit_utils.gray_transform(cv2.cvtColor(bottom.astype('float32'),cv2.COLOR_BGR2GRAY)).to(self.device).permute(2, 1, 0)
 
         self.tactile_queue[:, 1:] = self.tactile_queue[:, :-1].clone().detach()
         self.tactile_queue[:, 0, :] = self.tactile_imgs
@@ -326,9 +335,8 @@ class HardwarePlayer(object):
                                                    dim=-1)
         self.goal_noisy_queue_student[:, 1:] = self.goal_noisy_queue_student[:, :-1].clone().detach()
         self.goal_noisy_queue_student[:, 0, :] = torch.cat((self.noisy_gripper_goal_pos.clone(),
-                                                            quat2R(self.noisy_gripper_goal_quat.clone()).reshape(1,
-                                                                                                                 -1)),
-                                                           dim=-1)
+                                                            quat2R(self.noisy_gripper_goal_quat.clone()).reshape(1, -1)), dim=-1)
+
         obs_tensors = [
             self.arm_joint_queue.reshape(1, -1),  # 7 * hist
             self.eef_queue.reshape(1, -1),  # (envs, 12 * hist)
@@ -495,7 +503,7 @@ class HardwarePlayer(object):
         # Wait for connections.
         rospy.sleep(0.5)
 
-        hz = 60
+        hz = 100
         ros_rate = rospy.Rate(hz)
 
         self._create_asset_info()
