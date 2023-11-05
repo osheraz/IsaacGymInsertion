@@ -286,7 +286,7 @@ class ResNet(nn.Module):
         _, C = x.size()
         x = x.view([B, T, C])
 
-        # x = torch.mean(x, 1)
+        x = torch.mean(x, 1)
 
         x = self.fc(x)
 

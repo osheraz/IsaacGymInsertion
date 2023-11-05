@@ -18,14 +18,18 @@ echo extra "${EXTRA_ARGS}"
 CUDA_VISIBLE_DEVICES=${GPUS} \
 python trainV2.py task=FactoryTaskInsertionTactile headless=${HEADLESS} seed=${SEED} \
 task.env.numEnvs=${NUM_ENVS} \
+offline_training=False \
+offline_training_w_env=False \
 task.env.tactile=True \
-task.env.tactile_history_len=3 \
+task.env.tactile_history_len=5 \
 task.tactile.tacto.width=224 \
 task.tactile.tacto.height=224 \
 task.tactile.decoder.width=224 \
 task.tactile.decoder.height=224 \
 task.env.tactile_wrt_force=True \
 task.tactile.decoder.num_channels=1 \
+task.tactile.half_image=True \
+task.env.smooth_force=True \
 train.ppo.tactile_info=True \
 train.ppo.obs_info=True \
 train.algo=ExtrinsicAdapt \

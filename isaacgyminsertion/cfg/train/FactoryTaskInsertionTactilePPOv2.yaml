@@ -14,7 +14,7 @@ network:
   tactile_mlp:
     units: [300, 128, 32]
   merge_mlp:
-    units: [128, 64, 4]
+    units: [128, 64, 8]
   contact_mlp:
     units: [ 128, 64, 16]
 

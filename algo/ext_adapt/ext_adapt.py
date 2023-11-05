@@ -40,15 +40,15 @@ class ExtrinsicAdapt(object):
             self.rank = -1
             self.device = full_config["rl_device"]
         # ------
+        self.full_config = full_config
+        self.task_config = full_config.task
         self.network_config = full_config.train.network
         self.ppo_config = full_config.train.ppo
         # ---- build environment ----
         self.env = env
         self.num_actors = self.ppo_config['num_actors']
-        self.observation_space = self.env.observation_space
-        self.obs_shape = self.observation_space.shape
-        self.action_space = self.env.action_space
-        self.actions_num = self.action_space.shape[0]
+        self.obs_shape = (self.task_config.env.numObservations,)
+        self.actions_num = self.task_config.env.numActions
         # ---- Tactile Info ---
         self.tactile_info = self.ppo_config["tactile_info"]
         self.tactile_seq_length = self.network_config.tactile_decoder.tactile_seq_length
@@ -56,6 +56,7 @@ class ExtrinsicAdapt(object):
         self.tactile_input_dim = (self.network_config.tactile_decoder.img_width,
                                   self.network_config.tactile_decoder.img_height,
                                   self.network_config.tactile_decoder.num_channels)
+        self.mlp_tactile_info_dim = self.network_config.tactile_mlp.units[0]
         # ---- ft Info ---
         self.ft_info = self.ppo_config["ft_info"]
         self.ft_seq_length = self.ppo_config["ft_seq_length"]
@@ -65,6 +66,9 @@ class ExtrinsicAdapt(object):
         self.priv_info = self.ppo_config['priv_info']
         self.priv_info_dim = self.ppo_config['priv_info_dim']
         self.extrin_adapt = self.ppo_config['extrin_adapt']
+        self.gt_contacts_info = self.ppo_config['compute_contact_gt']
+        self.num_contacts_points = self.ppo_config['num_points']
+        self.priv_info_embed_dim = self.network_config.priv_mlp.units[-1]
         # ---- Obs Info (student)----
         self.obs_info = self.ppo_config["obs_info"]
         self.student_obs_input_shape = self.ppo_config['student_obs_input_shape']
@@ -83,6 +87,9 @@ class ExtrinsicAdapt(object):
             "obs_units": self.network_config.obs_mlp.units,
             "obs_info": self.obs_info,
             'student_obs_input_shape': self.student_obs_input_shape,
+            "gt_contacts_info": self.gt_contacts_info,
+            "contacts_mlp_units": self.network_config.contact_mlp.units,
+            "num_contact_points": self.num_contacts_points,
 
             "tactile_info": self.tactile_info,
             "mlp_tactile_input_shape": self.mlp_tactile_info_dim,
@@ -90,6 +97,7 @@ class ExtrinsicAdapt(object):
             "mlp_tactile_units": self.network_config.tactile_mlp.units,
             'tactile_seq_length': self.tactile_seq_length,
             "tactile_decoder_embed_dim": self.network_config.tactile_mlp.units[0],
+            "shared_parameters": self.ppo_config.shared_parameters,
 
             "merge_units": self.network_config.merge_mlp.units
         }
@@ -121,9 +129,9 @@ class ExtrinsicAdapt(object):
         self.direct_info = {}
         # ---- Misc ----
         self.batch_size = self.num_actors
-        self.mean_eps_reward = AverageScalarMeter(window_size=100)
-        self.mean_eps_length = AverageScalarMeter(window_size=100)
-        self.mean_eps_success = AverageScalarMeter(window_size=100)
+        self.mean_eps_reward = AverageScalarMeter(window_size=50)
+        self.mean_eps_length = AverageScalarMeter(window_size=50)
+        self.mean_eps_success = AverageScalarMeter(window_size=50)
 
         self.best_rewards = -10000
         self.agent_steps = 0

@@ -349,9 +349,12 @@ class Runner:
             for norm_keys in normalize_keys:
                 data = []
                 for file in tqdm(random.sample(file_list, 1000)):
-                    d = np.load(file)
-                    done_idx = d['done'].nonzero()[0][-1]
-                    data.append(d[norm_keys][:done_idx, :])
+                    try:
+                        d = np.load(file)
+                        done_idx = d['done'].nonzero()[0][-1]
+                        data.append(d[norm_keys][:done_idx, :])
+                    except:
+                        print(file, 'shit file')
                 data = np.concatenate(data, axis=0)
                 normalize_dict['mean'][norm_keys] = np.mean(data, axis=0)
                 normalize_dict['std'][norm_keys] = np.std(data, axis=0)

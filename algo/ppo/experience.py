@@ -241,7 +241,7 @@ class DataLogger():
         if save_trajectory:
             self.pbar = tqdm(total=self.total_trajectories)
             self.total_trajectories = total_trajectories
-            self.num_workers = 24
+            self.num_workers = 12
             try:
                 self.q_s = [mp.JoinableQueue(maxsize=500) for _ in range(self.num_workers)]
                 self.workers = [mp.Process(target=self.worker, args=(q, idx)) for idx, q in enumerate(self.q_s)]

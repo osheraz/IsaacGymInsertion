@@ -1,7 +1,7 @@
 #!/bin/bash
 GPUS=${1:-0}
 SEED=${2:-42}
-CACHE=${3:-ext_and_delta_pos}
+CACHE=${3:-test}
 NUM_ENVS=${4:-24}
 HEADLESS=${5:-True}
 
@@ -18,15 +18,14 @@ python trainV2.py task=FactoryTaskInsertionTactile headless=${HEADLESS} seed=${S
 test=True \
 task.env.numEnvs=${NUM_ENVS} \
 task.env.tactile=True \
-task.env.numStates=24 \
-task.env.compute_contact_gt=True \
+task.env.numStates=16 \
 task.tactile.tacto.width=224 \
 task.tactile.tacto.height=224 \
 task.tactile.decoder.width=224 \
 task.tactile.decoder.height=224 \
+task.env.tactile_wrt_force=True \
 task.env.tactile_history_len=1 \
 task.tactile.decoder.num_channels=1 \
-task.env.tactile_wrt_force=True \
 task.env.compute_contact_gt=False \
 task.env.numObsHist=5 \
 task.env.numObservations=215 \

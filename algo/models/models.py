@@ -185,7 +185,7 @@ class ActorCritic(nn.Module):
         mu, logstd, value, latent, _ = self._actor_critic(obs_dict)
         return mu, latent
 
-    def _actor_critic(self, obs_dict):
+    def _actor_critic(self, obs_dict, display=False):
         obs = obs_dict['obs']
         extrin, extrin_gt = None, None
 
@@ -196,11 +196,14 @@ class ActorCritic(nn.Module):
             if 'priv_info' in obs_dict:
                 with torch.inference_mode():
                     priv_extrin = self.env_mlp(obs_dict['priv_info'])
-                    plt.ylim(-1, 1)
-                    plt.scatter(list(range(priv_extrin.shape[-1])), torch.tanh(priv_extrin).clone().cpu().numpy()[0, :], color='b')
-                    plt.scatter(list(range(priv_extrin.shape[-1])), extrin.clone().detach().cpu().numpy()[0, :], color='r')
-                    plt.pause(0.0001)
-                    plt.cla()
+                    priv_extrin = torch.tanh(priv_extrin)
+
+                    if display:
+                        plt.ylim(-1, 1)
+                        plt.scatter(list(range(priv_extrin.shape[-1])), priv_extrin.clone().cpu().numpy()[0, :], color='b')
+                        plt.scatter(list(range(priv_extrin.shape[-1])), extrin.clone().detach().cpu().numpy()[0, :], color='r')
+                        plt.pause(0.0001)
+                        plt.cla()
         else:
             if self.priv_info:
                 if self.priv_info_stage2:
@@ -244,11 +247,12 @@ class ActorCritic(nn.Module):
                     extrin = torch.tanh(extrin)
 
                     # plot for latent viz
-                    # plt.ylim(-1, 1)
-                    # plt.scatter(list(range(extrin.shape[-1])), extrin.clone().detach().cpu().numpy()[0, :], color='b')
-                    # plt.scatter(list(range(extrin.shape[-1])), obs_dict['latent1'].clone().cpu().numpy()[0, :], color='r')
-                    # plt.pause(0.0001)
-                    # plt.cla()
+                    if display:
+                        plt.ylim(-1, 1)
+                        plt.scatter(list(range(extrin.shape[-1])), extrin.clone().detach().cpu().numpy()[0, :], color='b')
+                        plt.scatter(list(range(extrin.shape[-1])), obs_dict['latent'].clone().cpu().numpy()[0, :], color='r')
+                        plt.pause(0.0001)
+                        plt.cla()
 
                     obs = torch.cat([obs, extrin], dim=-1)
 

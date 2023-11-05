@@ -82,6 +82,7 @@ class PPO(object):
         self.priv_info_embed_dim = self.network_config.priv_mlp.units[-1]
         # ---- Obs Info (student)----
         self.obs_info = self.ppo_config["obs_info"]
+
         # ---- Model ----
         net_config = {
             'actor_units': self.network_config.mlp.units,
@@ -106,6 +107,8 @@ class PPO(object):
             'tactile_seq_length': self.tactile_seq_length,
             "tactile_decoder_embed_dim": self.network_config.tactile_mlp.units[0],
             "shared_parameters": self.ppo_config.shared_parameters,
+            "merge_units": self.network_config.merge_mlp.units
+
         }
 
         self.model = ActorCritic(net_config)
@@ -647,8 +650,9 @@ class PPO(object):
 
         # convert normalizing measures to torch and add to device
         if normalize_dict is not None:
-            for key in normalize_dict.keys():
-                normalize_dict[key] = torch.tensor(normalize_dict[key], device=self.device)
+            for key in normalize_dict['mean'].keys():
+                normalize_dict['mean'][key] = torch.tensor(normalize_dict['mean'][key], device=self.device)
+                normalize_dict['std'][key] = torch.tensor(normalize_dict['std'][key], device=self.device)
 
         # reset all envs
         self.obs = self.env.reset()
