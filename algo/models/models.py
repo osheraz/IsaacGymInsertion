@@ -189,54 +189,70 @@ class ActorCritic(nn.Module):
         obs = obs_dict['obs']
         extrin, extrin_gt = None, None
 
+        # Transformer student ( latent pass is in frozen_ppo)
         if 'latent' in obs_dict and obs_dict['latent'] is not None:
             extrin = obs_dict['latent']
             obs = torch.cat([obs, extrin], dim=-1)
 
             if 'priv_info' in obs_dict:
-                with torch.inference_mode():
-                    priv_extrin = self.env_mlp(obs_dict['priv_info'])
-                    priv_extrin = torch.tanh(priv_extrin)
+                # with torch.inference_mode():
+                extrin_gt = self.env_mlp(obs_dict['priv_info'])
+                extrin_gt = torch.tanh(extrin_gt)
 
-                    if display:
-                        plt.ylim(-1, 1)
-                        plt.scatter(list(range(priv_extrin.shape[-1])), priv_extrin.clone().cpu().numpy()[0, :], color='b')
-                        plt.scatter(list(range(priv_extrin.shape[-1])), extrin.clone().detach().cpu().numpy()[0, :], color='r')
-                        plt.pause(0.0001)
-                        plt.cla()
+                if display:
+                    plt.ylim(-1, 1)
+                    plt.scatter(list(range(extrin_gt.shape[-1])), extrin_gt.clone().cpu().numpy()[0, :], color='b')
+                    plt.scatter(list(range(extrin_gt.shape[-1])), extrin.clone().detach().cpu().numpy()[0, :], color='r')
+                    plt.pause(0.0001)
+                    plt.cla()
+
+        # MLP models
         else:
+            # Contact obs with extrin/gt_extrin and pass to the actor
             if self.priv_info:
                 if self.priv_info_stage2:
                     if self.tactile_info:
                         extrin_tactile = self._tactile_encode(obs_dict['tactile_hist'])
                     if self.obs_info:
                         extrin_obs = self.obs_mlp(obs_dict['student_obs'])
-
+                    # If both, merge and create student extrin
                     if self.obs_info and self.tactile_info:
                         extrin = torch.cat([extrin_tactile, extrin_obs], dim=-1)
                         extrin = self.merge_mlp(extrin)
-
                     elif self.tactile_info:
                         extrin = extrin_tactile
                     else:
                         extrin = extrin_obs
 
-                    # during supervised training, extrin has gt label
-                    if self.priv_info:
+                    # During supervised training, pass to priv_mlp -> extrin has gt label
+                    if 'priv_info' in obs_dict:
                         if self.contact_info:
                             contact_features = self.contact_mlp(obs_dict['contacts'])
                             priv_obs = torch.cat([obs_dict['priv_info'], contact_features], dim=-1)
-                            extrin = self.env_mlp(priv_obs)
+                            extrin_gt = self.env_mlp(priv_obs)  # extrin
                         else:
                             extrin_gt = self.env_mlp(obs_dict['priv_info'])
                     else:
+                        # In case we are evaluating stage2
                         extrin_gt = extrin
 
                     # extrin_gt = self.env_mlp(obs_dict['priv_info']) if 'priv_info' in obs_dict else extrin
                     extrin_gt = torch.tanh(extrin_gt)
                     extrin = torch.tanh(extrin)
+
+                    # Applying action with student model
                     obs = torch.cat([obs, extrin], dim=-1)
+
+                    # plot for latent viz
+                    if display:
+                        plt.ylim(-1, 1)
+                        plt.scatter(list(range(extrin.shape[-1])), extrin.clone().detach().cpu().numpy()[0, :], color='b')
+                        plt.scatter(list(range(extrin.shape[-1])), extrin_gt.clone().cpu().numpy()[0, :], color='r')
+                        plt.pause(0.0001)
+                        plt.cla()
+
                 else:
+                    # Stage1 -> Getting extrin from the priv_mlp
                     if self.contact_info:
                         contact_features = self.contact_mlp(obs_dict['contacts'])
                         priv_obs = torch.cat([obs_dict['priv_info'], contact_features], dim=-1)
@@ -264,6 +280,7 @@ class ActorCritic(nn.Module):
             value = self.value(v)
         else:
             value = self.value(x)
+
         return mu, mu * 0 + sigma, value, extrin, extrin_gt
 
     def forward(self, input_dict):
