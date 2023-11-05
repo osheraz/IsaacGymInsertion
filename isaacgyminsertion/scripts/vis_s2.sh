@@ -1,7 +1,13 @@
 #!/bin/bash
-CACHE=$1
-python trainV2.py task=FactoryTaskInsertionTactile headless=False pipeline=gpu \
-task.env.numEnvs=1 test=True \
+GPUS=${1:-0}
+SEED=${2:-42}
+CACHE=${3:-test}
+NUM_ENVS=${4:-1}
+
+CUDA_VISIBLE_DEVICES=${GPUS} \
+python trainV2.py task=FactoryTaskInsertionTactile headless=False pipeline=gpu seed=${SEED} \
+task.env.numEnvs=${NUM_ENVS} \
+task.env.tactile_history_len=5 \
 train.algo=ExtrinsicAdapt \
 task.env.tactile=True \
 task.env.tactile_history_len=5 \
