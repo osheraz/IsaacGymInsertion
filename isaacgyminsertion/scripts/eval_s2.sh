@@ -2,15 +2,13 @@
 GPUS=${1:-0}
 SEED=${2:-42}
 CACHE=${3:-215}
-NUM_ENVS=${4:-1}
+NUM_ENVS=${4:-32}
 HEADLESS=${5:-True}
 
 array=( $@ )
 len=${#array[@]}
 EXTRA_ARGS=${array[@]:3:$len}
 EXTRA_ARGS_SLUG=${EXTRA_ARGS// /_}
-
-C=outputs/"${CACHE}"/stage2_nn/last.pth
 
 echo extra "${EXTRA_ARGS}"
 
@@ -35,4 +33,4 @@ train.ppo.tactile_info=True \
 train.ppo.obs_info=True \
 train.ppo.priv_info=True train.ppo.extrin_adapt=True \
 train.ppo.output_name="${CACHE}" \
-checkpoint="${C}"
+checkpoint=outputs/"${CACHE}"/stage2_nn/last.pth
