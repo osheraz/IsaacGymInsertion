@@ -147,13 +147,13 @@ def run(cfg: DictConfig):
                 f.write(OmegaConf.to_yaml(cfg))
 
         # check whether execute train by mistake:
-        best_ckpt_path = os.path.join(
-            "outputs",
-            cfg.train.ppo.output_name,
-            "stage1_nn" if cfg.train.algo == "PPO" else "stage2_nn",
-            "best.pth",
-        )
-        user_input = 'yes'
+        # best_ckpt_path = os.path.join(
+        #     "outputs",
+        #     cfg.train.ppo.output_name,
+        #     "stage1_nn" if cfg.train.algo == "PPO" else "stage2_nn",
+        #     "best.pth",
+        # )
+        # user_input = 'yes'
         # if os.path.exists(best_ckpt_path):
         #     user_input = input(
         #         f"are you intentionally going to overwrite files in {cfg.train.ppo.output_name}, type yes to continue \n"
