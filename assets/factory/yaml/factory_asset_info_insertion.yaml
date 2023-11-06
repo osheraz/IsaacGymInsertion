@@ -254,14 +254,14 @@ yellow_round_peg_2in:
         # width: 0.1016
         # length: 0.09144
 
-red_round_peg_15in:
-    round_peg_15in:
-        urdf_path: 'red_round_peg_15in'
+red_round_peg_1_5in:
+    round_peg_1_5in:
+        urdf_path: 'red_round_peg_1_5in'
         diameter: 0.0381
         length: 0.0762
         density: 2000.0
         friction: 0.5
-    round_hole_15in:
+    round_hole_1_5in:
         urdf_path: 'green_round_hole_1_5in'
         diameter: 0.05105
         height: 0.01 # actually the hole is 0.0381, but I bury half into the table
@@ -274,11 +274,11 @@ triangle:
     triangle_peg:
         urdf_path: 'triangle_peg'
         diameter: 0.0381
-        length: 0.0762
+        length: 0.050
         density: 5000.0
         friction: 0.5
-    triangle_hole:
-        urdf_path: 'triangle_hole'
+    red_triangle_hole:
+        urdf_path: 'red_triangle_hole'
         diameter: 0.05105
         height: 0.01 # actually the hole is 0.0381, but I bury half into the table
         density: 8000.0

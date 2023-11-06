@@ -107,6 +107,9 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
     def _acquire_task_tensors(self):
         """Acquire tensors."""
 
+        # 0.9 2in, 1.5in cylinder
+        # 0.7 triangle
+
         self.plug_grasp_pos_local = self.plug_heights * 0.9 * torch.tensor([0.0, 0.0, 1.0], device=self.device).repeat(
             (self.num_envs, 1))
         self.plug_grasp_quat_local = torch.tensor([0.0, 0.0, 0.0, 1.0], device=self.device).unsqueeze(0).repeat(
@@ -719,9 +722,9 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             dof_pos = self.dof_pos[valid_env_ids, :].clone().cpu().numpy()
 
             output_dir = './outputs/debug'
-            file_name = self.cfg_env.env.desired_subassemblies
+            file_name = self.cfg_env.env.desired_subassemblies[0]
 
-            if len(file_name) > 1:
+            if len(self.cfg_env.env.desired_subassemblies) > 1:
                 assert print('Currently can generate grasping poses for 1 object at a time')
 
             init_grasp_folder = os.path.join(output_dir, file_name)

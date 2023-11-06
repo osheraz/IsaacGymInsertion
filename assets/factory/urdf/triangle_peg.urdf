@@ -12,7 +12,6 @@
             <geometry>
                 <mesh filename="../mesh/factory_insertion/triangle_peg.obj"/>
             </geometry>
-            <sdf resolution="256" />
         </collision>
     </link>
 </robot>
