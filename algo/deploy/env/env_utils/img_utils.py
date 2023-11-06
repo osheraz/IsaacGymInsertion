@@ -186,7 +186,7 @@ def circle_mask(size=(640, 480), border=0, fix=(0,0)):
     return mask
 
 
-def align_center(img, mask, size=(640, 480)):
+def align_center_mask(img, mask, size=(640, 480)):
     m = mask[:, :, 0]
 
     col_sum = np.where(np.sum(m, axis=0) > 0)
@@ -206,6 +206,32 @@ def align_center(img, mask, size=(640, 480)):
     padded_img = np.pad(img[y1:y2, x1:x2], ((top, bottom), (left, right), (0, 0)), mode='constant')
 
     return padded_img
+
+def align_center(img, fix, size=(640, 480), pad=False):
+
+    center_x, center_y = size[0] // 2 - fix[0], size[1] // 2 - fix[1]
+    extra = max(abs(fix[0]), abs(fix[1]))
+
+    half_size = min(size[0], size[1]) // 2 - max(abs(fix[0]), abs(fix[1]))
+
+    # half_size = min(size) // 2
+    left = max(0, center_x - half_size)
+    top = max(0, center_y - half_size)
+    right = min(img.shape[1], center_x + half_size)
+    bottom = min(img.shape[0], center_y + half_size)
+
+    cropped_image = img[top:bottom, left:right]
+
+    if pad:
+        zero_axis_fill = (size[1] - cropped_image.shape[0])
+        one_axis_fill = (size[1] - cropped_image.shape[1])
+        top = zero_axis_fill // 2
+        bottom = zero_axis_fill - top
+        left = one_axis_fill // 2
+        right = one_axis_fill - left
+        cropped_image = np.pad(cropped_image, ((top, bottom), (left, right), (0, 0)), mode='constant')
+
+    return cropped_image
 
 def square_cut(img, size=480):
     col_sum = np.where(np.sum(img, axis=0) > 0)

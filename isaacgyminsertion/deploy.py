@@ -31,7 +31,7 @@ warnings.filterwarnings("ignore", category=DeprecationWarning)
 @hydra.main(config_name="config", config_path="./cfg")
 def main(config: DictConfig):
 
-    config.checkpoint = 'outputs/stupid/last.pth'
+    config.checkpoint = 'outputs/215_stage2_nn/stage2_nn/last.pth'
     if config.checkpoint:
         config.checkpoint = to_absolute_path(config.checkpoint)
 

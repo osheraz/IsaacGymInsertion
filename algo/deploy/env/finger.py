@@ -7,7 +7,7 @@ from algo.deploy.env.env_utils.img_utils import _mask, square_cut
 
 class Finger:
 
-    def __init__(self, serial=None, dev_name=None, fix=(0, 0)):  # 10,6
+    def __init__(self, serial=None, dev_name=None, fix=(0, 0)):
         """
         Initialize a Finger object.
 
@@ -36,9 +36,9 @@ class Finger:
 
         self.resolution = {"width": 640, "height": 480}
         self.fps = 60
-
+        self.fix = fix
         self.mask = circle_mask(fix=fix)
-        self.mask_resized = circle_mask(size=(480, 480), fix=fix)
+        self.mask_resized = None
 
         if self.serial is not None:
             print("Finger object constructed with serial {}".format(self.serial))
@@ -92,8 +92,11 @@ class Finger:
             self.find_center(frame)
 
         frame = (frame * self.mask).astype(np.uint8)
-        frame = align_center(frame, self.mask)
-        frame = square_cut(frame)
+        frame = align_center(frame, self.fix)
+        # frame = square_cut(frame)
+        if self.mask_resized is None:
+            rz_shape = frame.shape
+            self.mask_resized = circle_mask(size=(rz_shape[0], rz_shape[0]), fix=(0, 0))
 
         return frame
 
@@ -220,7 +223,7 @@ if __name__ == "__main__":
     # 4 (-3, 5) bottom
     # 0 (6, 2) right
     # 2 (0, -12)left
-    tactile = Finger(dev_name=device_id, serial='/dev/video', fix=(0, 0))
+    tactile = Finger(dev_name=device_id, serial='/dev/video', fix=(0, -12))
 
     tactile.connect()
 

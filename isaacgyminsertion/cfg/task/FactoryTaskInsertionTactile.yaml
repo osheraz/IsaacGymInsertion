@@ -21,7 +21,7 @@ data_logger:
     # for logging (tests) during student training
     collect_test_sim: ${...offline_training_w_env}
 
-tactile:
+tactile: # Pulling from task
   tacto:
     width: 224 # 224 # 480 | 224
     height: 224 # 224 # 480 | 224 for the gan
@@ -34,8 +34,8 @@ tactile:
   tactile_freq: 2
 
   decoder:
-    width: 64
-    height: 64
+    width: 224
+    height: 224
     num_channels: 1 # 1 (Grayscale), 3 (RGB)
 
 env:
@@ -50,7 +50,7 @@ env:
     numObsHist: 5
     numObsStudentHist: 5
     ft_history_len: 30
-    tactile_history_len: 3
+    tactile_history_len: 5
     smooth_force: True
 
     openhand:

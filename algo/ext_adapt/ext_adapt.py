@@ -255,7 +255,7 @@ class ExtrinsicAdapt(object):
         self.model.load_state_dict(checkpoint['model'], strict=False)
         self.running_mean_std.load_state_dict(checkpoint['running_mean_std'])
         self.priv_mean_std.load_state_dict(checkpoint['priv_mean_std'])
-        # self.running_mean_std_stud.load_state_dict(checkpoint['running_mean_std_stud'])
+        self.running_mean_std_stud.load_state_dict(checkpoint['running_mean_std_stud'])
 
         # self.ft_mean_std.load_state_dict(checkpoint['ft_mean_std'])
 

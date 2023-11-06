@@ -43,12 +43,12 @@ env:
 
 
 ppo:
-  priv_info: False
-  extrin_adapt: False
-  tactile_info: False
-  ft_info: False
-  ft_input_dim: 6
-  obs_info: False
+  priv_info: True
+  extrin_adapt: True
+  tactile_info: True
+
+  obs_info: True
+
   tactile_seq_length: ${...task.env.tactile_history_len}
   ft_seq_length: ${...task.env.ft_history_len}
   obs_seq_length: ${...task.env.numObsHist}
@@ -56,15 +56,9 @@ ppo:
   priv_info_dim: ${...task.env.numStates}
   student_obs_input_shape: ${...task.env.numObsStudent}
 
-#network:
-#  mlp:
-#    units: ${...train.network.mlp.units}
-#  priv_mlp:
-#    units: ${...train.network.priv_mlp.units}
-#  tactile_mlp:
-#    units: ${...train.network.tactile_mlp.units}
-#  ft_mlp:
-#    units: ${...train.network.ft_mlp.units}
+  ft_info: False
+  ft_input_dim: 6
+
 
 network:
   mlp:

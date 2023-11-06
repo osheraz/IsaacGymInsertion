@@ -23,7 +23,6 @@ class TactileSubscriberFinger:
         self._check_finger_ready()
 
         self._image_subscriber = rospy.Subscriber(self._topic_name, Image, self.image_callback, queue_size=2)
-        self.mask_resized = circle_mask(size=(480, 480), fix=fix)
 
     def _check_finger_ready(self):
 

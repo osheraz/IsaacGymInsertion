@@ -5,6 +5,7 @@ from algo.deploy.env.hand import Hand
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge, CvBridgeError
 import rospy
+from algo.deploy.env.env_utils.img_utils import ContactArea, circle_mask, align_center
 
 
 class HandROSSubscriberFinger():
@@ -25,9 +26,10 @@ class HandROSSubscriberFinger():
             fix[2] = (-3, 5)
 
         self.finger_left = TactileSubscriberFinger(dev_name=dev_names[0], fix=fix[0])
-        self.finger_right = TactileSubscriberFinger(dev_name=dev_names[1], fix=fix[0])
-        self.finger_bottom = TactileSubscriberFinger(dev_name=dev_names[2], fix=fix[0])
+        self.finger_right = TactileSubscriberFinger(dev_name=dev_names[1], fix=fix[1])
+        self.finger_bottom = TactileSubscriberFinger(dev_name=dev_names[2], fix=fix[2])
         self.init_success = True
+        self.mask_resized = None
         self.left_bg, self.right_bg, self.bottom_bg = self.get_frames(diff=False)
 
     def get_frames(self, diff=True):
@@ -41,10 +43,20 @@ class HandROSSubscriberFinger():
         right = self.finger_right.get_frame()
         bottom = self.finger_bottom.get_frame()
 
+        min_width = min(left.shape[1], right.shape[1], bottom.shape[1])
+        min_height = min(left.shape[0], right.shape[0], bottom.shape[0])
+
+        if self.mask_resized is None:
+            self.mask_resized = circle_mask((min_width, min_height))
+
+        left = cv2.resize(left, (min_width, min_height))
+        right = cv2.resize(right, (min_width, min_height))
+        bottom = cv2.resize(bottom, (min_width, min_height))
+
         if diff:
-            left = self._subtract_bg(left, self.left_bg) * self.finger_left.mask_resized
-            right = self._subtract_bg(right, self.right_bg) * self.finger_right.mask_resized
-            bottom = self._subtract_bg(bottom, self.bottom_bg) * self.finger_bottom.mask_resized
+            left = self._subtract_bg(left, self.left_bg) * self.mask_resized
+            right = self._subtract_bg(right, self.right_bg) * self.mask_resized
+            bottom = self._subtract_bg(bottom, self.bottom_bg) * self.mask_resized
 
         return left, right, bottom
 

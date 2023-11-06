@@ -36,7 +36,7 @@ class MoveManipulatorServiceWrap():
         rospy.Subscriber('/iiwa/Jacobian', Float32MultiArray, self.callback_jacob)
         rospy.Subscriber('/iiwa/Joints', JointPosition, self.callback_joints)
         rospy.Subscriber('/iiwa/Pose', PoseStamped, self.callback_pose)
-        self.pub_joints_api = rospy.Publisher('/iiwa/command/JointPosition', JointPosition, queue_size=1)
+        self.pub_joints_api = rospy.Publisher('/iiwa/command/JointPosition', JointPosition, queue_size=10)
 
         rospy.wait_for_message('/iiwa/Joints', JointPosition)
         rospy.wait_for_message('/iiwa/Pose', PoseStamped)
@@ -116,7 +116,7 @@ class MoveManipulatorServiceWrap():
         req.wait = wait
         self.moveit_move_eef_pose_srv(req)
 
-    def joint_traj(self, positions_array, wait=True, by_moveit=True):
+    def joint_traj(self, positions_array, wait=True, by_moveit=False):
 
         if by_moveit:
             js = JointQuantity()
@@ -138,7 +138,7 @@ class MoveManipulatorServiceWrap():
             msg = rospy.wait_for_message('/iiwa/state/JointPosition', JointPosition)
 
             js = JointPosition()
-            js.header.seq = 1
+            js.header.seq = 0
             js.header.stamp = rospy.Time(0)
             js.header.frame_id = "world"
             # js.header = msg.header
@@ -202,6 +202,23 @@ if __name__ == '__main__':
 
     #
     # # Move stuff
+    joint_start_insert = [0.00462375348434, 0.413038998842, -0.00556655274704, -1.79681813717, 0.00278532551602,
+                               0.931868672371, -1.57314860821]
+    joints_socket_pos = [-0.0564706847072, 0.476379305124, 0.0717663317919, -1.82776355743, -0.0441524721682,
+                              0.838986992836, -1.53421509266]
+    joints_grasp_pos = [0.214260026813, 0.469324231148, 0.174929410219, -1.6954228878, -0.0941470190883,
+                             0.984972000122, -1.14854979515]
+    joints_above_plug = [0.20592649281, 0.389553636312, 0.184911131859, -1.61935830116, -0.0766384452581,
+                              1.13970589638, -1.1620862484]
+    joints_above_socket = [0.00512505369261, 0.306541800499, -0.00611614901572, -1.69656717777, 0.00215246272273,
+                                1.13829433918, -1.57246220112]
     init_pose = [0.0064, 0.2375,  -0.0075,  -1.2022, 0.0015,  1.6900,  -1.5699]
-    moveit_test.joint_traj(init_pose, wait=True, by_moveit=False)
+
+    import random
+    all_lists = [joint_start_insert, joints_socket_pos, joints_grasp_pos, joints_above_plug, joints_above_socket,
+                 init_pose]
+    # Randomly select one list
+    while True:
+        random_list = random.choice(all_lists)
+        moveit_test.joint_traj(random_list, wait=True, by_moveit=False)
 
