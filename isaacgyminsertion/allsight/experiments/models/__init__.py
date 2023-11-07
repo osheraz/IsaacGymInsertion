@@ -19,7 +19,7 @@ See our template model class 'template_model.py' for more details.
 """
 
 import importlib
-from models.base_model import BaseModel
+from isaacgyminsertion.allsight.experiments.models.base_model import BaseModel
 
 
 def find_model_using_name(model_name):
@@ -58,8 +58,8 @@ def create_model(opt):
     This is the main interface between this package and 'train.py'/'test.py'
 
     Example:
-        >>> from models import create_model
-        >>> model = create_model(opt)
+        # >>> from models import create_model
+        # >>> model = create_model(opt)
     """
     model = find_model_using_name(opt.model)
     instance = model(opt)

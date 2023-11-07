@@ -20,7 +20,8 @@ import hydra
 from omegaconf import DictConfig
 import random
 from isaacgyminsertion.allsight.tacto_allsight_wrapper import allsight_wrapper
-
+from isaacgyminsertion.allsight.tacto_allsight_wrapper.util.util import tensor2im
+from time import time
 DEBUG = False
 from dataclasses import dataclass
 
@@ -57,7 +58,7 @@ class allsight_renderer:
             randomize: bool = False,
             bg_id=None,
             headless=False,
-            finger_idx: int = 0
+            finger_idx: int = 0,
     ):
 
         self.render_config = cfg
@@ -65,7 +66,7 @@ class allsight_renderer:
         self.finger_idx = finger_idx
 
         if randomize:
-            bg_id = random.randint(12, 19)
+            bg_id = 12 # random.randint(12, 19)
             obj_scale = 1.02 # 0.01 * random.randint(115, 130)
         else:
             bg_id = 15
@@ -106,7 +107,32 @@ class allsight_renderer:
             self.renderer.add_object(obj_trimesh, "object", orientation=obj_euler)
 
         self.press_depth = 0.001
-        self.randomize_light = False # TODO
+        self.randomize_light = False
+
+        self.sim2real = cfg.sim2real
+        if self.sim2real:
+            from isaacgyminsertion.allsight.experiments.models import networks, pre_process
+
+            opt = {
+                "preprocess": "resize_and_crop",
+                "crop_size": width,
+                "load_size": height,
+                "no_flip": True,
+            }
+
+            self.transform = pre_process.get_transform(opt=opt)
+
+            self.model_G = networks.define_G(input_nc=3,
+                                             output_nc=3,
+                                             ngf=64,
+                                             netG="resnet_9blocks",
+                                             norm="instance",
+                                             )
+
+            path_to_g = os.path.join(path_to_refs, f"experiments/models/GAN/{cfg.model_G}")
+
+            self.model_G.load_state_dict(torch.load(path_to_g))
+            self.model_G.eval()
 
     def get_background(self, frame="gel"):
         """
@@ -190,8 +216,14 @@ class allsight_renderer:
             depth[j] = self.renderer.depth0[j] - depth[j]
 
         color, depth = color[0], depth[0]
+
+        if self.sim2real:
+            # SLOW!
+            color_tensor = self.transform(color).unsqueeze(0)
+            color = tensor2im(self.model_G(color_tensor))
         if self.subtract_bg:
             color = self._subtract_bg(color, self.bg_img) * self.mask
+
         # color[mask == 0] = 0
 
         # diff_depth = (self.bg_depth) - depth
@@ -209,6 +241,7 @@ class allsight_renderer:
             w = color.shape[0]
             color = color[:w//2]
             gel_depth = gel_depth[:w//2]
+
 
         return color, gel_depth #, contact_mask
 

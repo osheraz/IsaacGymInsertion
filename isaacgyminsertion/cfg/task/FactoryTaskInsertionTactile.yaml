@@ -23,8 +23,8 @@ data_logger:
 
 tactile: # Pulling from task
   tacto:
-    width: 64 # 224 # 480 | 224
-    height: 64 # 224 # 480 | 224 for the gan
+    width: 224 # 224 # 480 | 224
+    height: 224 # 224 # 480 | 224 for the gan
     visualize_gui: True
 
   with_bg: True # add background reference frame
@@ -37,6 +37,9 @@ tactile: # Pulling from task
     width: 64
     height: 64
     num_channels: 1 # 1 (Grayscale), 3 (RGB)
+
+  sim2real: False
+  model_G: latest_net_G_B.pth # path for the pth model of the generator
 
 env:
     numEnvs: ${resolve_default:128,${...num_envs}}
@@ -71,8 +74,8 @@ env:
     socket_base_height: 0.003
     plug_grasp_threshold: 0.01
 
-    tactile: False
-    tactile_display_viz: False
+    tactile: True
+    tactile_display_viz: True
     tactile_wrt_force: True
 
     compute_contact_gt: False
