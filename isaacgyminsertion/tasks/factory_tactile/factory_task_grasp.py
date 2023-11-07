@@ -383,7 +383,7 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             tactile_imgs_per_env, height_maps_per_env = [], []
 
             for n in range(3):
-                tactile_img, height_map, _ = self.tactile_handles[e][n].render(object_pose[e])
+                tactile_img, height_map = self.tactile_handles[e][n].render(object_pose[e])
                 resized_img = cv2.resize(tactile_img, (self.cfg_tactile.decoder.width,
                                                        self.cfg_tactile.decoder.height), interpolation=cv2.INTER_AREA)
                 # resized_depth

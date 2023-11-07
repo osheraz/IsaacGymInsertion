@@ -178,7 +178,7 @@ class ExtrinsicAdapt(object):
                 'student_obs': self.running_mean_std_stud(obs_dict['student_obs'].detach()),
                 'tactile_hist': obs_dict['tactile_hist'].detach(),
             }
-            mu = self.model.act_inference(input_dict)
+            mu, _ = self.model.act_inference(input_dict)
             mu = torch.clamp(mu, -1.0, 1.0)
             obs_dict, r, done, info = self.env.step(mu)
 
@@ -222,14 +222,15 @@ class ExtrinsicAdapt(object):
             self.log_tensorboard()
 
             if self.agent_steps % 500 == 0:
-                self.save(os.path.join(self.nn_dir, f'{self.agent_steps // 1e8}00m'))
+                self.save(os.path.join(self.nn_dir, f'{self.agent_steps // 1e4}0k'))
                 self.save(os.path.join(self.nn_dir, f'last'))
 
             mean_rewards = self.mean_eps_reward.get_mean()
             self.best_rewards = mean_rewards
-            # if mean_rewards > self.best_rewards:
-            #     self.save(os.path.join(self.nn_dir, f'best'))
-            #     self.best_rewards = mean_rewards
+            if mean_rewards > self.best_rewards:
+                self.save(os.path.join(self.nn_dir, f'best'))
+                cprint('saved new best')
+                # self.best_rewards = mean_rewards
 
             all_fps = self.agent_steps / (time.time() - _t)
             last_fps = self.batch_size / (time.time() - _last_t)
