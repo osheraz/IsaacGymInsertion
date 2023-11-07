@@ -9,7 +9,7 @@ name: FactoryTaskInsertionTactile
 physics_engine: ${..physics_engine}
 
 grasp_logger:
-    total_grasp: 4000
+    total_grasp: 1000
 
 data_logger:
     # for data collection
@@ -23,8 +23,8 @@ data_logger:
 
 tactile: # Pulling from task
   tacto:
-    width: 224 # 224 # 480 | 224
-    height: 224 # 224 # 480 | 224 for the gan
+    width: 64 # 224 # 480 | 224
+    height: 64 # 224 # 480 | 224 for the gan
     visualize_gui: True
 
   with_bg: True # add background reference frame
@@ -34,8 +34,8 @@ tactile: # Pulling from task
   tactile_freq: 2
 
   decoder:
-    width: 224
-    height: 224
+    width: 64
+    height: 64
     num_channels: 1 # 1 (Grayscale), 3 (RGB)
 
 env:

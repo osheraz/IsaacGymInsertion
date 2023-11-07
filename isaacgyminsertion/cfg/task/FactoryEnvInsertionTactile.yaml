@@ -14,10 +14,10 @@ env:
     env_name: 'FactoryEnvInsertionTactile'
     aggregate_mode: True
 
-    desired_subassemblies: ['round_peg_hole_16mm_loose'
+    desired_subassemblies: ['red_round_peg_1_5in',
                              'round_peg_hole_16mm_loose',
                              'yellow_round_peg_2in']
-
+#    desired_subassemblies: ['rectangular_peg_hole_16mm_loose']
 #                            'red_round_peg_1_5in',
 #                             yellow_round_peg_2in,
 #                            'rectangular_peg_hole_16mm_loose' ]triangle
@@ -107,7 +107,7 @@ randomize:
                 rigid_shape_properties:
                     friction:
                         num_buckets: 250
-                        range: [ 0.8, 1.5 ]
+                        range: [ 0.7, 1.5 ]
                         operation: "scaling"
                         distribution: "uniform"
                         # schedule: "linear"  # "linear" will scale the current random sample by `min(current num steps, schedule_steps) / schedule_steps`
