@@ -50,6 +50,7 @@ from isaacgyminsertion.utils import torch_jit_utils
 from multiprocessing import Process, Queue, Manager
 import cv2
 # from isaacgyminsertion.allsight.experiments.allsight_render import allsight_renderer
+from isaacgyminsertion.allsight.tacto_allsight_wrapper.util.util import tensor2im
 
 
 torch.set_printoptions(sci_mode=False)
@@ -78,6 +79,33 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         if self.cfg_base.mode.export_scene:
             self.export_scene(label='kuka_task_insertion')
+
+        self.sim2real = self.cfg_tactile.sim2real
+        if self.sim2real:
+            from isaacgyminsertion.allsight.experiments.models import networks, pre_process
+            # That model only trained with 224 as inputs
+            opt = {
+                "preprocess": "resize_and_crop",
+                "crop_size": 224,
+                "load_size": 224,
+                "no_flip": True,
+            }
+
+            self.transform = pre_process.get_transform(opt=opt)
+
+            self.model_G = networks.define_G(input_nc=3,
+                                             output_nc=3,
+                                             ngf=64,
+                                             netG="resnet_9blocks",
+                                             norm="instance",
+                                             )
+
+            path_to_g = os.path.join(os.path.dirname(__file__), '..', '..',
+                                     f"allsight/experiments/models/GAN/{self.cfg_tactile.model_G}")
+
+            self.model_G.load_state_dict(torch.load(path_to_g))
+            self.model_G.to(self.device)
+            self.model_G.eval()
 
     def _get_task_yaml_params(self):
         """Initialize instance variables from YAML files."""
@@ -181,8 +209,6 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         )
 
         self.ft_queue = torch.zeros((self.num_envs, self.ft_hist_len, 6), device=self.device, dtype=torch.float)
-
-        
 
         # reset tensors
         self.timeout_reset_buf = torch.zeros_like(self.reset_buf)
@@ -375,6 +401,26 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                     force = 20
 
                 tactile_img, height_map = self.tactile_handles[e][n].render(object_pose[e], force)
+
+                if self.sim2real:
+                    # st = time()
+                    color_tensor = self.transform(tactile_img).unsqueeze(0).to(self.device)
+                    tactile_img = self.model_G(color_tensor)
+                    tactile_img = tensor2im(tactile_img)
+                    # print(time() - st)
+
+                # Pulled subtract here cuz off the GAN
+                if self.cfg_tactile.diff:
+                    tactile_img = self.tactile_handles[e][n].remove_bg(tactile_img, self.tactile_handles[e][n].bg_img)
+                    tactile_img *= self.tactile_handles[e][n].mask
+
+                # Cutting by half
+                if self.cfg_tactile.half_image:
+                    w = tactile_img.shape[0]
+                    tactile_img = tactile_img[:w // 2]
+                    height_map = height_map[:w // 2]
+
+                # Resizing to decoder size
                 resized_img = cv2.resize(tactile_img, (self.width,
                                                        self.height), interpolation=cv2.INTER_AREA)
 

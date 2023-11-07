@@ -20,7 +20,6 @@ import hydra
 from omegaconf import DictConfig
 import random
 from isaacgyminsertion.allsight.tacto_allsight_wrapper import allsight_wrapper
-from isaacgyminsertion.allsight.tacto_allsight_wrapper.util.util import tensor2im
 from time import time
 DEBUG = False
 from dataclasses import dataclass
@@ -85,7 +84,7 @@ class allsight_renderer:
         conf_path = os.path.join(path_to_refs, f"experiments/conf/sensor/config_allsight_{leds}.yml")
 
         self.renderer = allsight_wrapper.Renderer(
-            width=width, height=width,
+            width=width, height=height,
             **{"config_path": conf_path},
             background=bg if cfg.with_bg else None,
             headless=True
@@ -109,30 +108,6 @@ class allsight_renderer:
         self.press_depth = 0.001
         self.randomize_light = False
 
-        self.sim2real = cfg.sim2real
-        if self.sim2real:
-            from isaacgyminsertion.allsight.experiments.models import networks, pre_process
-
-            opt = {
-                "preprocess": "resize_and_crop",
-                "crop_size": width,
-                "load_size": height,
-                "no_flip": True,
-            }
-
-            self.transform = pre_process.get_transform(opt=opt)
-
-            self.model_G = networks.define_G(input_nc=3,
-                                             output_nc=3,
-                                             ngf=64,
-                                             netG="resnet_9blocks",
-                                             norm="instance",
-                                             )
-
-            path_to_g = os.path.join(path_to_refs, f"experiments/models/GAN/{cfg.model_G}")
-
-            self.model_G.load_state_dict(torch.load(path_to_g))
-            self.model_G.eval()
 
     def get_background(self, frame="gel"):
         """
@@ -217,12 +192,8 @@ class allsight_renderer:
 
         color, depth = color[0], depth[0]
 
-        if self.sim2real:
-            # SLOW!
-            color_tensor = self.transform(color).unsqueeze(0)
-            color = tensor2im(self.model_G(color_tensor))
-        if self.subtract_bg:
-            color = self._subtract_bg(color, self.bg_img) * self.mask
+        # if self.subtract_bg:
+        #     color = self.remove_bg(color, self.bg_img) * self.mask
 
         # color[mask == 0] = 0
 
@@ -237,15 +208,14 @@ class allsight_renderer:
         if self.randomize_light:
             self.renderer.randomize_light()
 
-        if self.half_image:
-            w = color.shape[0]
-            color = color[:w//2]
-            gel_depth = gel_depth[:w//2]
-
+        # if self.half_image:
+        #     w = color.shape[0]
+        #     color = color[:w//2]
+        #     gel_depth = gel_depth[:w//2]
 
         return color, gel_depth #, contact_mask
 
-    def _subtract_bg(self, img1, img2, offset=0.5):
+    def remove_bg(self, img1, img2, offset=0.5):
         img1 = np.int32(img1)
         img2 = np.int32(img2)
         diff = img1 - img2

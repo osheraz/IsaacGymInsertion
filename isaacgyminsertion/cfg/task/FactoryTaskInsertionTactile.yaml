@@ -29,7 +29,8 @@ tactile: # Pulling from task
 
   with_bg: True # add background reference frame
   show_depth: True # visualize depth
-  show_detect: False # visulize detection work only if true and show_depth true
+  show_detect: False #
+  diff: True
   half_image: True # --> tacto & decoder width // 2
   tactile_freq: 2
 
@@ -38,7 +39,7 @@ tactile: # Pulling from task
     height: 64
     num_channels: 1 # 1 (Grayscale), 3 (RGB)
 
-  sim2real: False
+  sim2real: True
   model_G: latest_net_G_B.pth # path for the pth model of the generator
 
 env:
