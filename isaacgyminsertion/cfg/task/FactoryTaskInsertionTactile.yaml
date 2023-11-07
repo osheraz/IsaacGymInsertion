@@ -134,6 +134,8 @@ rl:
     dist_penalty_scale: -0.0
     early_reset_reward_scale: -5.0
     engagement_reward_scale: 0.1
+    ori_reward_scale: -0.2
+
     # Success bonus
     success_bonus: 100.0  # bonus if plug is close enough to base of bolt shank
     # engagement_bonus: 0.01 # bonus if plug is engaged (partially inserted) with socket

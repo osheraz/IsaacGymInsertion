@@ -770,19 +770,22 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         keypoint_dist = self._get_keypoint_dist()
         action_penalty = torch.norm(self.actions, p=2, dim=-1)
         plug_ori_penalty = torch.norm(self.plug_quat - self.identity_quat, p=2, dim=-1)
+        ori_reward = keypoint_dist * self.cfg_task.rl.ori_reward_scale
+
         is_plug_oriented = plug_ori_penalty < self.cfg_task.rl.orientation_threshold
 
         is_plug_engaged_w_socket = self._check_plug_engaged_w_socket()
 
         keypoint_reward = keypoint_dist * self.cfg_task.rl.keypoint_reward_scale
+
+        engagement = self._get_engagement_reward_scale(is_plug_engaged_w_socket, self.cfg_task.rl.success_height_thresh)
+        engagement_reward = engagement * self.cfg_task.rl.engagement_reward_scale
+
+        self.rew_buf[:] = keypoint_reward + engagement_reward + ori_reward
+
         distance_reset_buf = (self.far_from_goal_buf | self.degrasp_buf)
         early_reset_reward = distance_reset_buf * self.cfg_task.rl.early_reset_reward_scale
-        engagement = self._get_engagement_reward_scale(is_plug_engaged_w_socket,
-                                                              self.cfg_task.rl.success_height_thresh)
-        engagement_reward = engagement * self.cfg_task.rl.engagement_reward_scale
-        self.rew_buf[:] = keypoint_reward + engagement_reward
 
-        
         self.rew_buf[:] += (early_reset_reward * self.timeout_reset_buf)
         # self.rew_buf[:] += (self.timeout_reset_buf * self.success_reset_buf) * self.cfg_task.rl.success_bonus
         self.extras['successes'] = ((self.timeout_reset_buf | distance_reset_buf) * self.success_reset_buf) * 1.0
