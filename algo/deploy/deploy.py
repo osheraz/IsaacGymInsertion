@@ -335,6 +335,7 @@ class HardwarePlayer(object):
             self.tactile_imgs[0, 1] = torch_jit_utils.rgb_transform(right).to(self.device).permute(1, 2, 0)
             self.tactile_imgs[0, 2] = torch_jit_utils.rgb_transform(bottom).to(self.device).permute(1, 2, 0)
         else:
+
             self.tactile_imgs[0, 0] = torch_jit_utils.gray_transform(
                 cv2.cvtColor(left.astype('float32'), cv2.COLOR_BGR2GRAY)).to(self.device).permute(1, 2, 0)
             self.tactile_imgs[0, 1] = torch_jit_utils.gray_transform(
@@ -545,11 +546,15 @@ class HardwarePlayer(object):
 
         self.env.move_to_joint_values(self.env.joints_above_plug, wait=True)
         # self.env.move_to_joint_values(self.env.joints_grasp_pos, wait=True)
-        grasp_joints = [0.3302, 0.4781, 0.1310, -1.6159, -0.0692, 1.0522, -1.0898]
+
+
+        grasp_joints_bit = [0.33339, 0.52470, 0.12685, -1.6501, -0.07662, 0.97147, -1.0839]
+        grasp_joints = [0.3347, 0.54166, 0.12498, -1.6596, -0.07943, 0.94501, -1.0817]
+
+        self.env.move_to_joint_values(grasp_joints_bit, wait=True)
         self.env.move_to_joint_values(grasp_joints, wait=True)
-
-        # self.env.grasp()
-
+        self.env.grasp()
+        self.env.move_to_joint_values(grasp_joints_bit, wait=True)
         self.env.move_to_joint_values(self.env.joints_above_plug, wait=True)
         self.env.move_to_joint_values(self.env.joints_above_socket, wait=True)
 
@@ -558,6 +563,7 @@ class HardwarePlayer(object):
         kuka_dof_pos = self.init_dof_pos[random_init_idx]
         kuka_dof_pos = kuka_dof_pos.cpu().detach().numpy().squeeze().tolist()
         self.env.move_to_joint_values(kuka_dof_pos, wait=True)
+        self.env.grasp()
 
         # above_plug_pose = [x + y for x, y in zip(true_plug_pose, [0, 0, 0.1])]
         # plug_grasp_pose = [x + y for x, y in zip(true_plug_pose, [0, 0, 0.05])]
@@ -589,6 +595,5 @@ class HardwarePlayer(object):
             start_time = time()
             self.update_and_apply_action(action, wait=False)
             ros_rate.sleep()
-            print("FPS: ", 1.0 / (time() - start_time))  # FPS = 1 / time to process loop
-            print(action)
+            print("Actions:", np.round(action[0].cpu().numpy(),3), "\tFPS: ", 1.0 / (time() - start_time))  # FPS = 1 / time to process loop
             obs, obs_stud, tactile = self.compute_observations()
