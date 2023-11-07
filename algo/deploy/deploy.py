@@ -26,8 +26,11 @@ class HardwarePlayer(object):
 
         self.deploy_config = full_config.deploy
 
-        self.pos_scale = self.deploy_config.rl.pos_action_scale
-        self.rot_scale = self.deploy_config.rl.rot_action_scale
+        self.pos_scale_deploy = self.deploy_config.rl.pos_action_scale
+        self.rot_scale_deploy = self.deploy_config.rl.rot_action_scale
+        self.pos_scale = full_config.task.rl.pos_action_scale
+        self.rot_scale = full_config.task.rl.rot_action_scale
+
         self.device = full_config["rl_device"]
 
         # ---- build environment ----
@@ -315,20 +318,21 @@ class HardwarePlayer(object):
                                                      quat2R(self.fingertip_centered_quat.clone()).reshape(1, -1)),
                                                     dim=-1)
 
-        left = cv2.resize(left, (self.cfg_tactile.decoder.width, self.cfg_tactile.decoder.height),
-                          interpolation=cv2.INTER_AREA)
-        right = cv2.resize(right, (self.cfg_tactile.decoder.width, self.cfg_tactile.decoder.height),
-                           interpolation=cv2.INTER_AREA)
-        bottom = cv2.resize(bottom, (self.cfg_tactile.decoder.width, self.cfg_tactile.decoder.height),
-                            interpolation=cv2.INTER_AREA)
+        # Cutting by half
+        if self.cfg_tactile.half_image:
+            w = left.shape[0]
+            left = left[:w, :, :]
+            right = right[:w, :, :]
+            bottom = bottom[:w, :, :]
+
+        # Resizing to decoder size
+        left = cv2.resize(left, (self.width, self.height), interpolation=cv2.INTER_AREA)
+        right = cv2.resize(right, (self.width, self.height), interpolation=cv2.INTER_AREA)
+        bottom = cv2.resize(bottom, (self.width, self.height), interpolation=cv2.INTER_AREA)
 
         if display_image:
             cv2.imshow("Hand View\tLeft\tRight\tMiddle", np.concatenate((left, right, bottom), axis=1))
             cv2.waitKey(1)
-
-        left = left[:self.width, :, :]
-        right = right[:self.width, :, :]
-        bottom = bottom[:self.width, :, :]
 
         if self.num_channels == 3:
             self.tactile_imgs[0, 0] = torch_jit_utils.rgb_transform(left).to(self.device).permute(1, 2, 0)
@@ -460,13 +464,13 @@ class HardwarePlayer(object):
         # Interpret actions as target pos displacements and set pos target
         pos_actions = actions[:, 0:3]
         if do_scale:
-            pos_actions = pos_actions @ torch.diag(torch.tensor(self.pos_scale, device=self.device))
+            pos_actions = pos_actions @ torch.diag(torch.tensor(self.pos_scale_deploy, device=self.device))
         self.ctrl_target_fingertip_centered_pos = self.fingertip_centered_pos + pos_actions
 
         # Interpret actions as target rot (axis-angle) displacements
         rot_actions = actions[:, 3:6]
         if do_scale:
-            rot_actions = rot_actions @ torch.diag(torch.tensor(self.rot_scale, device=self.device))
+            rot_actions = rot_actions @ torch.diag(torch.tensor(self.rot_scale_deploy, device=self.device))
 
         # Convert to quat and set rot target
         angle = torch.norm(rot_actions, p=2, dim=-1)
