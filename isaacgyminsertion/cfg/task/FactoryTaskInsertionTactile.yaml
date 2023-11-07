@@ -75,8 +75,8 @@ env:
     socket_base_height: 0.003
     plug_grasp_threshold: 0.01
 
-    tactile: True
-    tactile_display_viz: True
+    tactile: False
+    tactile_display_viz: False
     tactile_wrt_force: True
 
     compute_contact_gt: False
