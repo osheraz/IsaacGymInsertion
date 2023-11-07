@@ -35,12 +35,12 @@ tactile: # Pulling from task
   tactile_freq: 2
 
   decoder:
-    width: 64
-    height: 64
+    width: 224
+    height: 224
     num_channels: 1 # 1 (Grayscale), 3 (RGB)
 
-  sim2real: True
-  model_G: latest_net_G_B.pth # path for the pth model of the generator
+  sim2real: False
+  model_G: latest_net_G_B.pth # path for the generator
 
 env:
     numEnvs: ${resolve_default:128,${...num_envs}}

@@ -403,11 +403,10 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                 tactile_img, height_map = self.tactile_handles[e][n].render(object_pose[e], force)
 
                 if self.sim2real:
-                    # st = time()
+                    # Reducing FPS by half
                     color_tensor = self.transform(tactile_img).unsqueeze(0).to(self.device)
                     tactile_img = self.model_G(color_tensor)
                     tactile_img = tensor2im(tactile_img)
-                    # print(time() - st)
 
                 # Pulled subtract here cuz off the GAN
                 if self.cfg_tactile.diff:
