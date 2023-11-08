@@ -771,7 +771,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         keypoint_dist = self._get_keypoint_dist()
         action_penalty = torch.norm(self.actions, p=2, dim=-1)
         plug_ori_penalty = torch.norm(self.plug_quat - self.identity_quat, p=2, dim=-1)
-        ori_reward = keypoint_dist * self.cfg_task.rl.ori_reward_scale
+        ori_reward = plug_ori_penalty * self.cfg_task.rl.ori_reward_scale
 
         is_plug_oriented = plug_ori_penalty < self.cfg_task.rl.orientation_threshold
 
