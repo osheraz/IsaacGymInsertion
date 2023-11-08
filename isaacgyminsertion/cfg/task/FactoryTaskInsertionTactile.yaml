@@ -106,7 +106,7 @@ randomize:
 rl:
 
     pos_action_scale: [0.005, 0.005, 0.004]
-    rot_action_scale: [0.001, 0.001, 0.004]
+    rot_action_scale: [0.01, 0.01, 0.02]
 
     force_action_scale: [1.0, 1.0, 1.0]
     torque_action_scale: [1.0, 1.0, 1.0]
@@ -130,11 +130,10 @@ rl:
 
     keypoint_reward_scale: -0.5 # scale on keypoint-based reward
     action_penalty_scale: -0.0  # scale on action penalty
-    orientation_penalty_scale: -0.0
-    dist_penalty_scale: -0.0
+    ori_reward_scale: -0.2 # scale on ori-based reward
+
     early_reset_reward_scale: -5.0
     engagement_reward_scale: 0.1
-    ori_reward_scale: -0.2
 
     # Success bonus
     success_bonus: 100.0  # bonus if plug is close enough to base of bolt shank

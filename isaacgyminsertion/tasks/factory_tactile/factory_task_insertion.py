@@ -773,7 +773,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         plug_ori_penalty = torch.norm(self.plug_quat - self.identity_quat, p=2, dim=-1)
         ori_reward = plug_ori_penalty * self.cfg_task.rl.ori_reward_scale
 
-        is_plug_oriented = plug_ori_penalty < self.cfg_task.rl.orientation_threshold
+        # is_plug_oriented = plug_ori_penalty < self.cfg_task.rl.orientation_threshold
 
         is_plug_engaged_w_socket = self._check_plug_engaged_w_socket()
 
@@ -781,6 +781,8 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         engagement = self._get_engagement_reward_scale(is_plug_engaged_w_socket, self.cfg_task.rl.success_height_thresh)
         engagement_reward = engagement * self.cfg_task.rl.engagement_reward_scale
+
+        # print(keypoint_reward, ori_reward)
 
         self.rew_buf[:] = keypoint_reward + engagement_reward + ori_reward
 
