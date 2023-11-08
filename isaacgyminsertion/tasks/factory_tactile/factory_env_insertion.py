@@ -248,7 +248,7 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
     def _initialize_grasp_poses(self, subassembly):
 
         try:
-            self.initial_grasp_poses[subassembly] = np.load(f'initial_grasp_data/{subassembly}.npz')
+            self.initial_grasp_poses[subassembly] = np.load(f'initial_grasp_data/{subassembly}_noise.npz')
         except:
             return
 

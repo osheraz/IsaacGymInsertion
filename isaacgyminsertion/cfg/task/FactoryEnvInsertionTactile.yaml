@@ -20,7 +20,7 @@ env:
 #                             'red_round_peg_1_5in',
 #                             'rectangular_peg_hole_16mm_loose']
 
-    desired_subassemblies: ['triangle']
+    desired_subassemblies: ['yellow_round_peg_2in' ,'red_round_peg_1_5in']
 #                            'red_round_peg_1_5in',red_round_peg_1_5in
 #                             yellow_round_peg_2in,
 #                            'rectangular_peg_hole_16mm_loose' ]triangle

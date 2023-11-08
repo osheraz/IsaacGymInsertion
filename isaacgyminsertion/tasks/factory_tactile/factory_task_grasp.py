@@ -169,6 +169,7 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
     def _refresh_task_tensors(self, update_tactile=False):
         """Refresh tensors."""
+
         self.refresh_base_tensors()
         self.refresh_env_tensors()
         self.plug_grasp_quat, self.plug_grasp_pos = torch_jit_utils.tf_combine(self.plug_quat,
@@ -224,8 +225,6 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             self.noisy_socket_pos,
             self.gripper_normal_quat,
             self.socket_tip_pos_local)
-
-        # print('here 5 1 3 3 3 4')
 
         # Compute pos of keypoints on gripper, socket, and plug in world frame
         for idx, keypoint_offset in enumerate(self.keypoint_offsets):
@@ -644,139 +643,128 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
     def reset_idx(self, env_ids):
         """Reset specified environments."""
 
-        if self.randomize:
-            self.apply_randomizations(self.randomization_params)
+        while self.total_init_grasp_count < self.total_grasps:
 
-        self._reset_kuka(env_ids)
-        self._reset_object(env_ids)
+            if self.randomize:
+                self.apply_randomizations(self.randomization_params)
 
-        self._zero_velocities(env_ids)
-        self._refresh_task_tensors(update_tactile=True)
-        priv_depth = self.depth_maps.clone()
+            self._reset_kuka(env_ids)
+            self._reset_object(env_ids)
 
-        # # Move arm to grasp pose
-        plug_pos_noise = (2 * (torch.randn((len(env_ids), 3),
-                                           device=self.device) - 0.5)) * self.cfg_task.randomize.grasp_plug_noise
-        first_plug_pose = self.plug_grasp_pos.clone()
-        self._move_arm_to_desired_pose(env_ids, first_plug_pose + plug_pos_noise,
-                                       sim_steps=self.cfg_task.env.num_gripper_move_sim_steps * 2)
-        self._zero_velocities(env_ids)
-        self._refresh_task_tensors(update_tactile=False)
+            self._zero_velocities(env_ids)
+            self._refresh_task_tensors(update_tactile=True)
+            priv_depth = self.depth_maps.clone()
 
-        # # Grasp ~
-        # self.disable_gravity()
+            # # Move arm to grasp pose
+            plug_pos_noise = (2 * (torch.randn((len(env_ids), 3),
+                                               device=self.device) - 0.5)) * self.cfg_task.randomize.grasp_plug_noise
+            first_plug_pose = self.plug_grasp_pos.clone()
+            self._move_arm_to_desired_pose(env_ids, first_plug_pose + plug_pos_noise,
+                                           sim_steps=self.cfg_task.env.num_gripper_move_sim_steps * 2)
+            self._zero_velocities(env_ids)
+            self._refresh_task_tensors(update_tactile=False)
 
-        self._close_gripper(env_ids, self.cfg_task.env.num_gripper_close_sim_steps * 2)
-        self._refresh_task_tensors(update_tactile=False)
-        self._zero_velocities(env_ids)
+            # # Grasp ~
+            # self.disable_gravity()
 
-        # # Lift
-        self._lift_gripper(env_ids, self.ctrl_target_gripper_dof_pos)
-        self._refresh_task_tensors(update_tactile=False)
-        self._zero_velocities(env_ids)
+            self._close_gripper(env_ids, self.cfg_task.env.num_gripper_close_sim_steps * 2)
+            self._refresh_task_tensors(update_tactile=False)
+            self._zero_velocities(env_ids)
 
-        # # Move arm above the socket
-        above_socket_pos_noise = (2 * (torch.randn((len(env_ids), 3),
-                                                   device=self.device) - 0.5)) * self.cfg_task.randomize.above_socket_noise
-        above_socket_pos_noise[:, 2] = torch.abs(above_socket_pos_noise[:, 2]) / 2  # Only +z
-        self._move_arm_to_desired_pose(env_ids, self.above_socket_pos.clone() + above_socket_pos_noise,
-                                       sim_steps=self.cfg_task.env.num_gripper_move_sim_steps * 2)
-        self._refresh_task_tensors(update_tactile=True)
-        self._zero_velocities(env_ids)
+            # # Lift
+            self._lift_gripper(env_ids, self.ctrl_target_gripper_dof_pos)
+            self._refresh_task_tensors(update_tactile=False)
+            self._zero_velocities(env_ids)
 
-        # first_plug_pose[:, 2] += 0.0005
-        # self._move_arm_to_desired_pose(env_ids, first_plug_pose, sim_steps=self.cfg_task.env.num_gripper_move_sim_steps)
-        # self._zero_velocities(env_ids)
-        # self._refresh_task_tensors(update_tactile=False)
+            # # Move arm above the socket
+            above_socket_pos_noise = (2 * (torch.randn((len(env_ids), 3),
+                                                       device=self.device) - 0.5)) * self.cfg_task.randomize.above_socket_noise
+            above_socket_pos_noise[:, 2] = torch.abs(above_socket_pos_noise[:, 2]) / 2  # Only +z
+            self._move_arm_to_desired_pose(env_ids, self.above_socket_pos.clone() + above_socket_pos_noise,
+                                           sim_steps=self.cfg_task.env.num_gripper_move_sim_steps * 2)
+            self._refresh_task_tensors(update_tactile=True)
+            self._zero_velocities(env_ids)
 
-        # above_socket_pos_noise = (2 * (torch.randn((len(env_ids), 3), device=self.device) - 0.5)) * 0.005
-        # above_socket_pos_noise[:, :] = 0
-        # self._move_arm_to_desired_pose(env_ids, self.above_socket_pos.clone() + above_socket_pos_noise, sim_steps=self.cfg_task.env.num_gripper_move_sim_steps * 2)
-        # self._zero_velocities(env_ids)
-        # self._refresh_task_tensors(update_tactile=True)
 
-        # Insert
-        # socket_pos_noise = (2 * (torch.randn((len(env_ids), 3), device=self.device) - 0.5)) * 0.0
-        # socket_pos_noise[:, :] = 0
-        # self._move_arm_to_desired_pose(env_ids, self.socket_pos.clone() + socket_pos_noise, # socket_pos
-        #                                sim_steps=self.cfg_task.env.num_gripper_move_sim_steps // 2)
-        # self._refresh_task_tensors(update_tactile=True)
-        # self._zero_velocities(env_ids)
+            # Insert
+            # socket_pos_noise = (2 * (torch.randn((len(env_ids), 3), device=self.device) - 0.5)) * 0.0
+            # socket_pos_noise[:, :] = 0
+            # self._move_arm_to_desired_pose(env_ids, self.socket_pos.clone() + socket_pos_noise, # socket_pos
+            #                                sim_steps=self.cfg_task.env.num_gripper_move_sim_steps // 2)
+            # self._refresh_task_tensors(update_tactile=True)
+            # self._zero_velocities(env_ids)
 
-        # Check valid grasps
-        roll, pitch, yaw = get_euler_xyz(self.plug_quat)
-        roll[roll > np.pi] -= 2 * np.pi
-        pitch[pitch > np.pi] -= 2 * np.pi
+            # Check valid grasps
+            roll, pitch, yaw = get_euler_xyz(self.plug_quat)
+            roll[roll > np.pi] -= 2 * np.pi
+            pitch[pitch > np.pi] -= 2 * np.pi
+            yaw[yaw > np.pi] -= 2 * np.pi
 
-        cond = (abs(roll * 180 / np.pi) < 8) & (abs(pitch * 180 / np.pi) < 8)
-        cond &= (torch.sum(torch.sum((self.depth_maps - priv_depth), dim=(2, 3)) >= 0.0, dim=1) == 3)
-        valid_env_ids = env_ids[cond.nonzero()]
+            # Check orientation
+            cond = (abs(roll * 180 / np.pi) < 8) & (abs(pitch * 180 / np.pi) < 8) & (abs(yaw * 180 / np.pi) < 8)
+            # Check tactile imprint
+            cond &= (torch.sum(torch.sum((self.depth_maps - priv_depth), dim=(2, 3)) >= 0.0, dim=1) == 3)
 
-        print(len(valid_env_ids))
+            valid_env_ids = env_ids[cond.nonzero()]
 
-        if valid_env_ids.shape[0] > 0:
-            socket_pos = self.root_pos[valid_env_ids, self.socket_actor_id_env, :].clone().cpu().numpy()
-            socket_quat = self.root_quat[valid_env_ids, self.socket_actor_id_env, :].clone().cpu().numpy()
-            plug_pos = self.root_pos[valid_env_ids, self.plug_actor_id_env, :].clone().cpu().numpy()
-            plug_quat = self.root_quat[valid_env_ids, self.plug_actor_id_env, :].clone().cpu().numpy()
-            dof_pos = self.dof_pos[valid_env_ids, :].clone().cpu().numpy()
+            print('Valid grasp: ', len(valid_env_ids))
 
-            output_dir = './outputs/debug'
-            file_name = self.cfg_env.env.desired_subassemblies[0]
+            if valid_env_ids.shape[0] > 0:
 
-            if len(self.cfg_env.env.desired_subassemblies) > 1:
-                assert print('Currently can generate grasping poses for 1 object at a time')
+                socket_pos = self.root_pos[valid_env_ids, self.socket_actor_id_env, :].clone().cpu().numpy()
+                socket_quat = self.root_quat[valid_env_ids, self.socket_actor_id_env, :].clone().cpu().numpy()
+                plug_pos = self.root_pos[valid_env_ids, self.plug_actor_id_env, :].clone().cpu().numpy()
+                plug_quat = self.root_quat[valid_env_ids, self.plug_actor_id_env, :].clone().cpu().numpy()
+                dof_pos = self.dof_pos[valid_env_ids, :].clone().cpu().numpy()
 
-            init_grasp_folder = os.path.join(output_dir, file_name)
-            if not os.path.exists(init_grasp_folder):
-                os.makedirs(init_grasp_folder)
-            save_file = os.path.join(init_grasp_folder, f'data_{self.grasps_save_ctr}.npz')
-            np.savez_compressed(save_file,
-                                socket_pos=socket_pos,
-                                socket_quat=socket_quat,
-                                plug_pos=plug_pos,
-                                plug_quat=plug_quat,
-                                dof_pos=dof_pos)
+                output_dir = './outputs/debug'
+                file_name = self.cfg_env.env.desired_subassemblies[0] + '_noise'
 
-            self.grasps_save_ctr += 1
-            self.total_init_grasp_count += valid_env_ids.shape[0]
-            self.pbar.update(valid_env_ids.shape[0])
+                if len(self.cfg_env.env.desired_subassemblies) > 1:
+                    assert print('Currently can generate grasping poses for 1 object at a time')
 
-            if self.total_init_grasp_count >= self.total_grasps:
-                print('compiling all grasps')
-                socket_pos = np.zeros((self.total_init_grasp_count, 3))
-                socket_quat = np.zeros((self.total_init_grasp_count, 4))
-                plug_pos = np.zeros((self.total_init_grasp_count, 3))
-                plug_quat = np.zeros((self.total_init_grasp_count, 4))
-                dof_pos = np.zeros((self.total_init_grasp_count, 15))
-                last_ptr = 0
-                for i in range(self.grasps_save_ctr):
-                    data = np.load(os.path.join(init_grasp_folder, f'data_{i}.npz'))
-                    num_grasps = data['socket_pos'].shape[0]
-                    # print(data['socket_pos'].shape, np.squeeze(data['socket_pos'], axis=1).shape)
-                    socket_pos[last_ptr: last_ptr + num_grasps] = np.squeeze(data['socket_pos'], axis=1)
-                    socket_quat[last_ptr: last_ptr + num_grasps] = np.squeeze(data['socket_quat'], axis=1)
-                    plug_pos[last_ptr: last_ptr + num_grasps] = np.squeeze(data['plug_pos'], axis=1)
-                    plug_quat[last_ptr: last_ptr + num_grasps] = np.squeeze(data['plug_quat'], axis=1)
-                    dof_pos[last_ptr: last_ptr + num_grasps] = np.squeeze(data['dof_pos'], axis=1)
-                    last_ptr += num_grasps
+                init_grasp_folder = os.path.join(output_dir, file_name)
+                if not os.path.exists(init_grasp_folder):
+                    os.makedirs(init_grasp_folder)
 
-                final_grasps_folder = 'initial_grasp_data'
-                np.savez_compressed(os.path.join(final_grasps_folder, f'{file_name}.npz'), socket_pos=socket_pos,
-                                    socket_quat=socket_quat, plug_pos=plug_pos, plug_quat=plug_quat, dof_pos=dof_pos)
+                save_file = os.path.join(init_grasp_folder, f'data_{self.grasps_save_ctr}.npz')
+                np.savez_compressed(save_file,
+                                    socket_pos=socket_pos,
+                                    socket_quat=socket_quat,
+                                    plug_pos=plug_pos,
+                                    plug_quat=plug_quat,
+                                    dof_pos=dof_pos)
 
-                print('done')
-                exit()
+                self.grasps_save_ctr += 1
+                self.total_init_grasp_count += valid_env_ids.shape[0]
+                self.pbar.update(valid_env_ids.shape[0])
 
-        if self.cfg_task.env.record_video and 0 in env_ids:
-            if self.complete_video_frames is None:
-                self.complete_video_frames = []
-            else:
-                self.complete_video_frames = self.video_frames[:]
-            self.video_frames = []
+        print('compiling all grasps')
+        socket_pos = np.zeros((self.total_init_grasp_count, 3))
+        socket_quat = np.zeros((self.total_init_grasp_count, 4))
+        plug_pos = np.zeros((self.total_init_grasp_count, 3))
+        plug_quat = np.zeros((self.total_init_grasp_count, 4))
+        dof_pos = np.zeros((self.total_init_grasp_count, 15))
+        last_ptr = 0
 
-        self._reset_buffers(env_ids)
-        self.reset_idx(env_ids)
+        for i in range(self.grasps_save_ctr):
+            data = np.load(os.path.join(init_grasp_folder, f'data_{i}.npz'))
+            num_grasps = data['socket_pos'].shape[0]
+            # print(data['socket_pos'].shape, np.squeeze(data['socket_pos'], axis=1).shape)
+            socket_pos[last_ptr: last_ptr + num_grasps] = np.squeeze(data['socket_pos'], axis=1)
+            socket_quat[last_ptr: last_ptr + num_grasps] = np.squeeze(data['socket_quat'], axis=1)
+            plug_pos[last_ptr: last_ptr + num_grasps] = np.squeeze(data['plug_pos'], axis=1)
+            plug_quat[last_ptr: last_ptr + num_grasps] = np.squeeze(data['plug_quat'], axis=1)
+            dof_pos[last_ptr: last_ptr + num_grasps] = np.squeeze(data['dof_pos'], axis=1)
+            last_ptr += num_grasps
+
+        final_grasps_folder = 'initial_grasp_data'
+        np.savez_compressed(os.path.join(final_grasps_folder, f'{file_name}.npz'), socket_pos=socket_pos,
+                            socket_quat=socket_quat, plug_pos=plug_pos, plug_quat=plug_quat, dof_pos=dof_pos)
+
+        print('Done generating grasps')
+        exit()
+
 
     def _reset_kuka(self, env_ids):
         """Reset DOF states and DOF targets of kuka."""
@@ -873,15 +861,22 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self._simulate_and_refresh()
 
         # Randomize root state of socket
-        socket_noise_xy = 2 * (torch.rand((self.num_envs, 2), dtype=torch.float32, device=self.device) - 0.5)  # [-1, 1]
+        socket_noise_xy = 2 * (torch.rand((self.num_envs, 2), dtype=torch.float32, device=self.device) - 0.5)
         socket_noise_xy = socket_noise_xy @ torch.diag(
             torch.tensor(self.cfg_task.randomize.socket_pos_xy_noise, device=self.device))
+
+        socket_noise_z_mag = (self.cfg_task.randomize.socket_pos_z_noise_bounds[1]
+                            - self.cfg_task.randomize.socket_pos_z_noise_bounds[0])
+        socket_noise_z = (socket_noise_z_mag * torch.rand((len(env_ids)), dtype=torch.float32, device=self.device)
+                            + self.cfg_task.randomize.socket_pos_z_noise_bounds[0]
+        )
 
         self.root_pos[env_ids, self.socket_actor_id_env, 0] = self.cfg_task.randomize.socket_pos_xy_initial[0] \
                                                               + socket_noise_xy[env_ids, 0]
         self.root_pos[env_ids, self.socket_actor_id_env, 1] = self.cfg_task.randomize.socket_pos_xy_initial[1] \
                                                               + socket_noise_xy[env_ids, 1]
-        self.root_pos[env_ids, self.socket_actor_id_env, 2] = self.cfg_base.env.table_height
+
+        self.root_pos[env_ids, self.socket_actor_id_env, 2] = self.cfg_base.env.table_height + socket_noise_z
 
         self.root_quat[env_ids, self.socket_actor_id_env] = torch.tensor([0.0, 0.0, 0.0, 1.0], dtype=torch.float32,
                                                                          device=self.device).repeat(len(env_ids), 1)

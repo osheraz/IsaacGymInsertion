@@ -99,14 +99,15 @@ randomize:
     plug_pos_xy_initial: [0.5, 0.23]  # initial XY position of plug on table
     plug_pos_xy_noise: [0.02, 0.02] # noise on plug position
     socket_pos_xy_initial: [0.5, 0.0]  # initial XY position of plug on table # round_hole_2in  width = 0.1016, length = 0.09144
-    socket_pos_xy_noise: [0.0, 0.0]  # noise on plug position
+    socket_pos_xy_noise: [0.02, 0.02]  # noise on plug position
+    socket_pos_z_noise_bounds: [0.0, 0.02]  # noise on socket offset from table
     grasp_plug_noise: 0.0005
     above_socket_noise: 0.001
 
 rl:
 
     pos_action_scale: [0.005, 0.005, 0.004]
-    rot_action_scale: [0.01, 0.01, 0.02]
+    rot_action_scale: [0.001, 0.001, 0.02]
 
     force_action_scale: [1.0, 1.0, 1.0]
     torque_action_scale: [1.0, 1.0, 1.0]
@@ -126,7 +127,7 @@ rl:
     orientation_threshold: 0.1
     far_error_thresh: 0.100  # threshold above which plug is considered too far from bolt
     close_error_thresh: 0.005  # threshold below which plug is considered close enough to bolt
-    success_height_thresh: 0.003  # threshold distance below which plug is considered successfully inserted
+    success_height_thresh: 0.005  # threshold distance below which plug is considered successfully inserted
 
     keypoint_reward_scale: -0.5 # scale on keypoint-based reward
     action_penalty_scale: -0.0  # scale on action penalty
