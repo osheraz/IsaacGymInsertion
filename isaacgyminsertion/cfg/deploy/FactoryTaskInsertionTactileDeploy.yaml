@@ -20,7 +20,7 @@ tactile_display_viz: True
 # actually, we should write different config for each observation we test
 rl:
     pos_action_scale: [0.001, 0.001, 0.001]
-    rot_action_scale: ${...task.rl.rot_action_scale}
+    rot_action_scale: [0.001, 0.001, 0.001]
     clamp_rot: ${...task.rl.clamp_rot}
     clamp_rot_thresh: ${...task.rl.clamp_rot_thresh}
 

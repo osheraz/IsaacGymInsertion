@@ -321,14 +321,14 @@ class HardwarePlayer(object):
         # Cutting by half
         if self.cfg_tactile.half_image:
             w = left.shape[0]
-            left = left[:w, :, :]
-            right = right[:w, :, :]
-            bottom = bottom[:w, :, :]
+            left = left[:w // 2, :, :]
+            right = right[:w // 2, :, :]
+            bottom = bottom[:w // 2, :, :]
 
         # Resizing to decoder size
-        left = cv2.resize(left, (self.width, self.height), interpolation=cv2.INTER_AREA)
-        right = cv2.resize(right, (self.width, self.height), interpolation=cv2.INTER_AREA)
-        bottom = cv2.resize(bottom, (self.width, self.height), interpolation=cv2.INTER_AREA)
+        left = cv2.resize(left, (self.height, self.width), interpolation=cv2.INTER_AREA)
+        right = cv2.resize(right, (self.height, self.width), interpolation=cv2.INTER_AREA)
+        bottom = cv2.resize(bottom, (self.height, self.width), interpolation=cv2.INTER_AREA)
 
         if display_image:
             cv2.imshow("Hand View\tLeft\tRight\tMiddle", np.concatenate((left, right, bottom), axis=1))

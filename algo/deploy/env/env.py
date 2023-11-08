@@ -15,7 +15,7 @@ class ExperimentEnv:
         self.arm = RobotWithFtEnv()
         rospy.sleep(2)
         self.ready = self.arm.init_success and self.tactile.init_success
-
+        self.hand.set_gripper_joints_to_init()
         self.joint_start_insert = [0.00462375348434 ,  0.413038998842, -0.00556655274704, -1.79681813717, 0.00278532551602,  0.931868672371,  -1.57314860821]
         self.joints_socket_pos = [-0.0564706847072, 0.476379305124, 0.0717663317919,  -1.82776355743, -0.0441524721682, 0.838986992836, -1.53421509266]
         self.joints_grasp_pos = [0.214260026813, 0.469324231148, 0.174929410219, -1.6954228878, -0.0941470190883, 0.984972000122, -1.14854979515]
