@@ -130,8 +130,9 @@ rl:
     success_height_thresh: 0.005  # threshold distance below which plug is considered successfully inserted
 
     keypoint_reward_scale: -0.5 # scale on keypoint-based reward
-    action_penalty_scale: -0.0  # scale on action penalty
-    ori_reward_scale: -0.2 # scale on ori-based reward
+    action_penalty_scale: -0.002  # scale on action penalty
+    action_delta_scale: -0.02
+    ori_reward_scale: -0.1 # scale on ori-based reward
 
     early_reset_reward_scale: -5.0
     engagement_reward_scale: 0.1

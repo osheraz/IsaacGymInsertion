@@ -448,6 +448,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
     def pre_physics_step(self, actions):
         """Reset environments. Apply actions from policy as position/rotation targets, force/torque targets, and/or PD gains."""
 
+        self.prev_actions[:] = self.actions.clone()
         env_ids = self.reset_buf.nonzero(as_tuple=False).squeeze(-1)
 
         if len(env_ids) > 0:
@@ -494,7 +495,6 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                                             ctrl_target_gripper_dof_pos=self.ctrl_target_gripper_dof_pos,
                                             do_scale=True)
 
-        self.prev_actions[:] = self.actions.clone()
         self.prev_targets[:] = self.targets.clone()
 
     def post_physics_step(self):
@@ -768,17 +768,19 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
     def _update_rew_buf(self):
         """Compute reward at current timestep."""
 
-        keypoint_dist = self._get_keypoint_dist()
         action_penalty = torch.norm(self.actions, p=2, dim=-1)
+        action_reward = self.cfg_task.rl.action_penalty_scale * action_penalty
+
+        action_delta_penalty = torch.norm(self.actions - self.prev_actions, p=2, dim=-1)
+        action_delta_reward = self.cfg_task.rl.action_delta_scale * action_delta_penalty
+
         plug_ori_penalty = torch.norm(self.plug_quat - self.identity_quat, p=2, dim=-1)
         ori_reward = plug_ori_penalty * self.cfg_task.rl.ori_reward_scale
 
-        # is_plug_oriented = plug_ori_penalty < self.cfg_task.rl.orientation_threshold
-
-        is_plug_engaged_w_socket = self._check_plug_engaged_w_socket()
-
+        keypoint_dist = self._get_keypoint_dist()
         keypoint_reward = keypoint_dist * self.cfg_task.rl.keypoint_reward_scale
 
+        is_plug_engaged_w_socket = self._check_plug_engaged_w_socket()
         engagement = self._get_engagement_reward_scale(is_plug_engaged_w_socket, self.cfg_task.rl.success_height_thresh)
         engagement_reward = engagement * self.cfg_task.rl.engagement_reward_scale
 
@@ -805,18 +807,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                       'Avg Ep Reward:', torch.mean(self.reward_log_buf).item(),
                       ' Success Reward:', self.rew_buf[success_dones].mean().item(),
                       ' Failure Reward:', self.rew_buf[failure_dones].mean().item())
-            
-            # self.extras["engaged_w_socket"] = torch.mean(is_plug_engaged_w_socket.float())
-            # self.extras["plug_oriented"] = torch.mean(is_plug_oriented.float())
-            # self.extras["successes"] = torch.mean(self.success_reset_buf.float())
-            # self.extras["dist_plug_socket"] = torch.mean(self.dist_plug_socket)
-            # self.extras["keypoint_reward"] = torch.mean(keypoint_reward.abs())
-            # self.extras["action_penalty"] = torch.mean(action_penalty)
-            # self.extras["mug_quat_penalty"] = torch.mean(plug_ori_penalty)
-            # self.extras["steps"] = torch.mean(self.progress_buf.float())
-            # self.extras["mean_time_complete_task"] = torch.mean(
-            #     self.time_complete_task.float()
-            # )
+
 
     def _update_reset_buf(self):
         """Assign environments for reset if successful or failed."""
