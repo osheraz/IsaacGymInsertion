@@ -31,7 +31,7 @@ task.env.numObsHist=5 \
 task.env.numObservations=215 \
 task.env.numStates=16 \
 task.data_logger.collect_data=True \
-task.data_logger.base_folder="/common/users/oa348/inhand_manipulation_data_store" \
+ task.data_logger.base_folder="/common/users/oa348/inhand_manipulation_data_store" \
 task.data_logger.sub_folder="datastore_${SEED}_${CACHE}" \
 train.algo=PPO \
 train.ppo.priv_info=True \
@@ -40,3 +40,6 @@ train.ppo.tactile_info=False \
 train.ppo.output_name="${CACHE}" \
 checkpoint="${C}" \
 ${EXTRA_ARGS}
+
+# task.data_logger.base_folder="/common/users/oa348/inhand_manipulation_data_store" \
+#task.data_logger.base_folder="/home/osher/Desktop/isaacgym/python/IsaacGymInsertion/isaacgyminsertion/outputs/test/data" \

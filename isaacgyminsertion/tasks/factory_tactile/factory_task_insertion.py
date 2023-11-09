@@ -404,7 +404,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                     tactile_img = self.model_G(color_tensor)
                     tactile_img = tensor2im(tactile_img)
 
-                # Pulled subtract here cuz off the GAN
+                # Pulled subtract here cuz of the GAN
                 if self.cfg_tactile.diff:
                     tactile_img = self.tactile_handles[e][n].remove_bg(tactile_img, self.tactile_handles[e][n].bg_img)
                     tactile_img *= self.tactile_handles[e][n].mask
@@ -416,16 +416,13 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                     height_map = height_map[:w // 2]
 
                 # Resizing to decoder size
-                resized_img = cv2.resize(tactile_img, (self.width,
-                                                       self.height), interpolation=cv2.INTER_AREA)
+                resized_img = cv2.resize(tactile_img, (self.height, self.width), interpolation=cv2.INTER_AREA)
 
                 if self.num_channels == 3:
-                    self.tactile_imgs[e, n] = torch_jit_utils.rgb_transform(resized_img).to(self.device).permute(2, 1,
-                                                                                                                 0)
+                    self.tactile_imgs[e, n] = torch_jit_utils.rgb_transform(resized_img).to(self.device).permute(1, 2, 0)
                 else:
                     resized_img = cv2.cvtColor(resized_img.astype('float32'), cv2.COLOR_BGR2GRAY)
-                    self.tactile_imgs[e, n] = torch_jit_utils.gray_transform(resized_img).to(self.device).permute(2, 1,
-                                                                                                                  0)
+                    self.tactile_imgs[e, n] = torch_jit_utils.gray_transform(resized_img).to(self.device).permute(1, 2, 0)
 
                 tactile_imgs_per_env.append(tactile_img)
                 height_maps_per_env.append(height_map)
@@ -594,13 +591,11 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         # Define observations (for actor)
         obs_tensors = [
             self.arm_joint_queue.reshape(self.num_envs, -1),  # 7 * hist
-            # self.arm_vel_queue.reshape(self.num_envs, -1),
             self.eef_queue.reshape(self.num_envs, -1),  # (envs, 7 * hist)
             self.goal_noisy_queue.reshape(self.num_envs, -1),  # (envs, 7 * hist)
-
             self.actions_queue.reshape(self.num_envs, -1),  # (envs, 6 * hist)
             self.targets_queue.reshape(self.num_envs, -1),  # (envs, 6 * hist)
-        ]  #
+        ]
 
         obs_tensors_student = [
             self.arm_joint_queue_student.reshape(self.num_envs, -1),  # 7 * hist
@@ -613,6 +608,8 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         # Define state (for teacher)
         # eef_pose_wrt_robot = self.pose_world_to_robot_base(self.fingertip_centered_pos.clone(),
         #                                                    self.fingertip_centered_quat.clone(), as_matrix=False)
+        # socket_pos_wrt_robot = self.pose_world_to_robot_base(self.socket_pos.clone(), self.socket_quat.clone(),
+        #                                                      as_matrix=False)
         # plug_bottom_wrt_robot = self.pose_world_to_robot_base(self.plug_pos.clone(), self.plug_quat.clone(), as_matrix=False)
         # plug_hand_pos, plug_hand_quat = fc.get_pose_error(
         #     fingertip_midpoint_pos=plug_bottom_wrt_robot[0],
@@ -624,8 +621,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         # Actually this is the right representation
         plug_hand_pos, plug_hand_quat = self.pose_world_to_hand_base(self.plug_pos, self.plug_quat, as_matrix=False)
-        socket_pos_wrt_robot = self.pose_world_to_robot_base(self.socket_pos.clone(), self.socket_quat.clone(),
-                                                             as_matrix=False)
+
 
         self.plug_hand_pos[...] = plug_hand_pos
         self.plug_hand_quat[...] = plug_hand_quat
@@ -674,18 +670,15 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.finger_normalized_forces[:, 2] = (1 - e) * normalize_forces(
             self.middle_finger_force.clone()) + e * self.finger_normalized_forces[:, 2]
 
-        socket_pos_wrt_robot = self.pose_world_to_robot_base(self.socket_pos.clone(), self.socket_quat.clone(),
-                                                             as_matrix=False)
         state_tensors = [
             #  add delta error
             # socket_pos_wrt_robot[0],  # 3
             # socket_pos_wrt_robot[1],  # 4
             # plug_bottom_wrt_robot[0],  # 3
             # plug_bottom_wrt_robot[1],  # 4
-            plug_hand_pos,  # 3
+            plug_hand_pos,   # 3
             plug_hand_quat,  # 4
-            physics_params,
-            # 6 (plug_mass, plug_friction, socket_friction, left finger friction, right finger friction, middle finger friction)
+            physics_params,  # 6
             self.finger_normalized_forces,  # 3
             # self.socket_contact_force.clone()  # 3
             # TODO: add object shapes -- bring diameter
@@ -791,7 +784,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         for subassembly in self.cfg_env.env.desired_subassemblies:
             random_init_idx[subassembly] = torch.randint(0, self.total_init_poses[subassembly], size=(len(env_ids),))
 
-        subassemblies = [self.envs_asset[e_id] for e_id in env_ids.clone().cpu().numpy().tolist()]
+        # subassemblies = [self.envs_asset[e_id] for e_id in env_ids.clone().cpu().numpy().tolist()]
         subassemblies = [self.envs_asset[e_id] for e_id in range(self.num_envs)]
 
         kuka_dof_pos = torch.zeros((len(env_ids), 15))
@@ -819,8 +812,10 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             'plug_pose': plug_pos,
             'plug_quat': plug_quat
         }
+
         self._reset_object(env_ids, new_pose=object_pose)
         self._close_gripper(torch.arange(self.num_envs))
+
         # self._simulate_and_refresh()
 
     def reset_idx(self, env_ids):
@@ -865,44 +860,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         # shape of dof_pos = (num_envs, num_dofs)
         # shape of dof_vel = (num_envs, num_dofs)
 
-        # Initialize kuka to middle of joint limits, plus joint noise
-        # print('defaults', self.cfg_task.randomize.kuka_arm_initial_dof_pos)
-
-        # dof_pos at grasp pose tensor([[-0.0047,  0.2375,  0.0203, -1.2496, -0.0070,  1.6475, -1.5514,  0.6907,
-        #   1.8478,  0.1660, -0.6892,  1.8515,  0.1625,  1.8333,  0.1740]]),
-
         self.dof_pos[env_ids, :] = new_pose.to(device=self.device)  # .repeat((len(env_ids), 1))
-        #  = self.dof_pos[:, 7:]
-        # self.dof_pos[env_ids, :]
-
-        # self.
-        # print('dof_pos at grasp pose',self.gripper_dof_pos)
-        # print(self.gripper_dof_pos[0, list(self.dof_dict.values()).index(
-        #                     'base_to_finger_1_2') - 7])
-        # print(self.gripper_dof_pos[0, list(self.dof_dict.values()).index(
-        #                     'base_to_finger_2_2') - 7])
-        # print(self.gripper_dof_pos[0, list(self.dof_dict.values()).index(
-        #                     'base_to_finger_3_2') - 7])
-        # dont play with these joints (no actuation here)#
-        # self.dof_pos[
-        #     env_ids, list(self.dof_dict.values()).index('base_to_finger_1_1')] = self.cfg_task.env.openhand.base_angle
-        # self.dof_pos[
-        #     env_ids, list(self.dof_dict.values()).index('base_to_finger_2_1')] = -self.cfg_task.env.openhand.base_angle
-        # # dont play with these joints (no actuation here)#
-
-        # self.dof_pos[env_ids, list(self.dof_dict.values()).index(
-        #     'finger_1_1_to_finger_1_2')] = self.cfg_task.env.openhand.proximal_open
-        # self.dof_pos[env_ids, list(self.dof_dict.values()).index(
-        #     'finger_2_1_to_finger_2_2')] = self.cfg_task.env.openhand.proximal_open
-        # self.dof_pos[env_ids, list(self.dof_dict.values()).index(
-        #     'base_to_finger_3_2')] = self.cfg_task.env.openhand.proximal_open
-
-        # self.dof_pos[env_ids, list(self.dof_dict.values()).index(
-        #     'finger_1_2_to_finger_1_3')] = self.cfg_task.env.openhand.distal_open
-        # self.dof_pos[env_ids, list(self.dof_dict.values()).index(
-        #     'finger_2_2_to_finger_2_3')] = self.cfg_task.env.openhand.distal_open
-        # self.dof_pos[env_ids, list(self.dof_dict.values()).index(
-        #     'finger_3_2_to_finger_3_3')] = self.cfg_task.env.openhand.distal_open
 
         # Stabilize!
         self.dof_vel[env_ids] = 0.0  # shape = (num_envs, num_dofs)
@@ -928,6 +886,9 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             len(multi_env_ids_int32),
         )
 
+        # Simulate one step to apply changes
+        # self._simulate_and_refresh()
+
     def _reset_object(self, env_ids, new_pose=None):
         """Reset root state of plug."""
 
@@ -948,9 +909,8 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         plug_pose = new_pose['plug_pose']
         plug_quat = new_pose['plug_quat']
 
-        self.root_pos[env_ids, self.plug_actor_id_env, :] = plug_pose.to(device=self.device)  # .repeat(len(env_ids), 1)
-        self.root_quat[env_ids, self.plug_actor_id_env, :] = plug_quat.to(
-            device=self.device)  # .repeat(len(env_ids), 1)
+        self.root_pos[env_ids, self.plug_actor_id_env, :] = plug_pose.to(device=self.device)
+        self.root_quat[env_ids, self.plug_actor_id_env, :] = plug_quat.to(device=self.device)
 
         # Stabilize plug
         self.root_linvel[env_ids, self.plug_actor_id_env] = 0.0
@@ -981,10 +941,8 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         socket_pose = new_pose['socket_pose']
         socket_quat = new_pose['socket_quat']
 
-        self.root_pos[env_ids, self.socket_actor_id_env, :] = socket_pose.to(
-            device=self.device)  # .repeat(len(env_ids), 1)
-        self.root_quat[env_ids, self.socket_actor_id_env, :] = socket_quat.to(
-            device=self.device)  # .repeat(len(env_ids), 1)
+        self.root_pos[env_ids, self.socket_actor_id_env, :] = socket_pose.to(device=self.device)
+        self.root_quat[env_ids, self.socket_actor_id_env, :] = socket_quat.to(device=self.device)
 
         # Stabilize socket
         self.root_linvel[env_ids, self.socket_actor_id_env] = 0.0
@@ -1004,7 +962,8 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                                                      len(torch.cat([plug_actor_ids_sim_int32[env_ids],
                                                                     socket_actor_ids_sim_int32[env_ids]])))
 
-        # self._simulate_and_refresh()
+        # Simulate one step to apply changes
+        self._simulate_and_refresh()
 
     def _move_arm_to_desired_pose(self, env_ids, desired_pos, desired_rot=None, sim_steps=30):
         """Move gripper to desired pose."""
@@ -1068,8 +1027,6 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         """Simulate one step, refresh tensors, and render results."""
 
         self.gym.simulate(self.sim)
-        # self.refresh_base_tensors()
-        # self.refresh_env_tensors()
         self.render()
         self._refresh_task_tensors()
 

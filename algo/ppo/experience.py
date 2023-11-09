@@ -398,7 +398,6 @@ class SimLogger():
                                                      **log_items)
 
         self.data_logger = None
-        # self.data_logger = self.data_logger_init(None)
 
     def log_trajectory_data(self, action, latent, done, save_trajectory=True):
 
