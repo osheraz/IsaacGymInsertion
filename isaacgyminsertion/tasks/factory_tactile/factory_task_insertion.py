@@ -69,9 +69,6 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self._acquire_task_tensors()
         self.parse_controller_spec()
 
-        # if self.cfg_task.sim.disable_gravity:
-        #     self.disable_gravity()
-
         self.temp_ctr = 0
 
         if self.viewer is not None:
@@ -80,8 +77,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         if self.cfg_base.mode.export_scene:
             self.export_scene(label='kuka_task_insertion')
 
-        self.sim2real = self.cfg_tactile.sim2real
-        if self.sim2real:
+        if self.cfg_tactile.sim2real:
             from isaacgyminsertion.allsight.experiments.models import networks, pre_process
             # That model only trained with 224 as inputs
             opt = {
@@ -121,7 +117,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.asset_info_insertion = self.asset_info_insertion['']['']['']['']['']['']['assets']['factory'][
             'yaml']  # strip superfluous nesting
 
-        ppo_path = 'train/FactoryTaskInsertionTactilePPO.yaml'  # relative to Gym's Hydra search path (cfg dir)
+        ppo_path = 'train/FactoryTaskInsertionTactilePPOv2.yaml'  # relative to Gym's Hydra search path (cfg dir)
         self.cfg_ppo = hydra.compose(config_name=ppo_path)
         self.cfg_ppo = self.cfg_ppo['train']  # strip superfluous nesting
 
@@ -402,7 +398,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
                 tactile_img, height_map = self.tactile_handles[e][n].render(object_pose[e], force)
 
-                if self.sim2real:
+                if self.cfg_tactile.sim2real:
                     # Reducing FPS by half
                     color_tensor = self.transform(tactile_img).unsqueeze(0).to(self.device)
                     tactile_img = self.model_G(color_tensor)
@@ -533,9 +529,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                     targetx = ob + rotate_vec(quat, [1, 0, 0])
                     targety = ob + rotate_vec(quat, [0, 1, 0])
                     targetz = ob + rotate_vec(quat, [0, 0, 1])
-                    # print(ob)
-                    # print(targetx)
-                    # print((ob + rotate_vec(quat, [1, 0, 0]))[0], (ob + rotate_vec(quat, [0, 1, 0]))[1], (ob + rotate_vec(quat, [0, 0, 1]))[2])
+
                     self.gym.add_lines(self.viewer, self.envs[i], 1,
                                        [ob[0], ob[1], ob[2], targetx[0], targetx[1], targetx[2]], [0.85, 0.1, 0.1])
                     self.gym.add_lines(self.viewer, self.envs[i], 1,
@@ -553,72 +547,13 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                     targetx = ob + rotate_vec(quat, [1, 0, 0])
                     targety = ob + rotate_vec(quat, [0, 1, 0])
                     targetz = ob + rotate_vec(quat, [0, 0, 1])
-                    # print(ob)
-                    # print(targetx)
-                    # print((ob + rotate_vec(quat, [1, 0, 0]))[0], (ob + rotate_vec(quat, [0, 1, 0]))[1], (ob + rotate_vec(quat, [0, 0, 1]))[2])
+
                     self.gym.add_lines(self.viewer, self.envs[i], 1,
                                        [ob[0], ob[1], ob[2], targetx[0], targetx[1], targetx[2]], [0.1, 0.85, 0.1])
                     self.gym.add_lines(self.viewer, self.envs[i], 1,
                                        [ob[0], ob[1], ob[2], targety[0], targety[1], targety[2]], [0.1, 0.85, 0.1])
                     self.gym.add_lines(self.viewer, self.envs[i], 1,
                                        [ob[0], ob[1], ob[2], targetz[0], targetz[1], targetz[2]], [0.1, 0.85, 0.1])
-
-            #     # targetx = (self.socket_tip[i] + quat_apply(self.socket_quat[i],
-            #     #                                            to_torch([1, 0, 0], device=self.device) * 0.2)).cpu().numpy()
-            #     # targety = (self.socket_tip[i] + quat_apply(self.socket_quat[i],
-            #     #                                            to_torch([0, 1, 0], device=self.device) * 0.2)).cpu().numpy()
-            #     # targetz = (self.socket_tip[i] + quat_apply(self.socket_quat[i],
-            #     #                                            to_torch([0, 0, 1], device=self.device) * 0.2)).cpu().numpy()
-
-            #     # p0 = self.socket_tip[i].cpu().numpy()
-            #     # self.gym.add_lines(self.viewer, self.envs[i], 1,
-            #     #                    [p0[0], p0[1], p0[2], targetx[0], targetx[1], targetx[2]], [0.85, 0.1, 0.1])
-            #     # self.gym.add_lines(self.viewer, self.envs[i], 1,
-            #     #                    [p0[0], p0[1], p0[2], targety[0], targety[1], targety[2]], [0.1, 0.85, 0.1])
-            #     # self.gym.add_lines(self.viewer, self.envs[i], 1,
-            #     #                    [p0[0], p0[1], p0[2], targetz[0], targetz[1], targetz[2]], [0.1, 0.1, 0.85])
-
-            #     # objectx = (self.plug_com_pos[i] + quat_apply(self.plug_quat[i], to_torch([1, 0, 0],
-            #     #                                                                          device=self.device) * 0.2)).cpu().numpy()
-            #     # objecty = (self.plug_com_pos[i] + quat_apply(self.plug_quat[i], to_torch([0, 1, 0],
-            #     #                                                                          device=self.device) * 0.2)).cpu().numpy()
-            #     # objectz = (self.plug_com_pos[i] + quat_apply(self.plug_quat[i], to_torch([0, 0, 1],
-            #     #                                                                          device=self.device) * 0.2)).cpu().numpy()
-
-            #     # p0 = self.plug_com_pos[i].cpu().numpy()
-            #     # self.gym.add_lines(self.viewer, self.envs[i], 1,
-            #     #                    [p0[0], p0[1], p0[2], objectx[0], objectx[1], objectx[2]], [0.85, 0.1, 0.1])
-            #     # self.gym.add_lines(self.viewer, self.envs[i], 1,
-            #     #                    [p0[0], p0[1], p0[2], objecty[0], objecty[1], objecty[2]], [0.1, 0.85, 0.1])
-            #     # self.gym.add_lines(self.viewer, self.envs[i], 1,
-            #     #                    [p0[0], p0[1], p0[2], objectz[0], objectz[1], objectz[2]], [0.1, 0.1, 0.85])
-
-            #     # self.keypoint_offsets
-            #     # pass
-
-            # for i in range(num_envs):
-            #     ob = self.plug_pos[i].cpu().numpy()
-            #     quat = self.plug_quat[i, :]
-
-            #     targetx = ob + rotate_vec(quat, [1, 0, 0])
-            #     targety = ob + rotate_vec(quat, [0, 1, 0])
-            #     targetz = ob + rotate_vec(quat, [0, 0, 1])
-
-            #     self.gym.add_lines(self.viewer, self.envs[i], 1, [ob[0], ob[1], ob[2], targetx[0], targetx[1], targetx[2]], [0.85, 0.1, 0.1])
-            #     # self.gym.add_lines(self.viewer, self.envs[i], 1, [ob[0], ob[1], ob[2], targety[0], targety[1], targety[2]], [0.85, 0.1, 0.1])
-            #     # self.gym.add_lines(self.viewer, self.envs[i], 1, [ob[0], ob[1], ob[2], targetz[0], targetz[1], targetz[2]], [0.85, 0.1, 0.1])
-
-            # for i in range(num_envs):
-            #     ob = self.socket_tip[i].cpu().numpy()
-            #     quat = self.socket_quat[i, :]
-
-            #     targetx = ob + rotate_vec(quat, [1, 0, 0])
-            #     targety = ob + rotate_vec(quat, [0, 1, 0])
-            #     targetz = ob + rotate_vec(quat, [0, 0, 1])
-
-            #     self.gym.add_lines(self.viewer, self.envs[i], 1, [ob[0], ob[1], ob[2], targetx[0], targetx[1], targetx[2]], [0.1, 0.85, 0.1])
-            #     # self.gym.add_lines(self.viewer, self.envs[i], 1, [ob[0], ob[1], ob[2], targety[0], targety[1], targety[2]], [0.85, 0.1, 0.1])
-            #     # self.gym.add_lines(self.viewer, self.envs[i], 1, [ob[0], ob[1], ob[2], targetz[0], targetz[1], targetz[2]], [0.85, 0.1, 0.1])
 
         self._render_headless()
 
@@ -786,7 +721,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         # print(keypoint_reward, ori_reward)
 
-        self.rew_buf[:] = keypoint_reward + engagement_reward + ori_reward
+        self.rew_buf[:] = keypoint_reward + engagement_reward + ori_reward + action_reward + action_delta_reward
 
         distance_reset_buf = (self.far_from_goal_buf | self.degrasp_buf)
         early_reset_reward = distance_reset_buf * self.cfg_task.rl.early_reset_reward_scale
@@ -814,6 +749,8 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         # if successfully inserted to a certain threshold
         self.success_reset_buf[:] = self._check_plug_inserted_in_socket()
+
+        # if we are collecting data, reset at insertion
         if self.cfg_task.data_logger.collect_data or self.cfg_task.data_logger.collect_test_sim:
             self.reset_buf[:] |= self.success_reset_buf[:]
 
@@ -821,6 +758,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.timeout_reset_buf[:] = torch.where(self.progress_buf[:] >= (self.cfg_task.rl.max_episode_length - 1),
                                                 torch.ones_like(self.reset_buf),
                                                 self.reset_buf)
+
         self.reset_buf[:] = self.timeout_reset_buf[:]
 
         # check is object is grasped and reset if not
@@ -834,7 +772,8 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                     torch.norm(self.right_finger_pos - self.plug_pos, p=2, dim=-1) > 0.12) | (
                                            torch.norm(self.middle_finger_pos - self.plug_pos, p=2, dim=-1) > 0.12)
         self.degrasp_buf[:] |= fingertips_plug_dist
-        # reset_envs = d.nonzero()
+
+        # Reset at grasping fails
         # self.reset_buf[:] |= self.degrasp_buf[:]
 
         # If plug is too far from socket pos

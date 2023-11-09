@@ -23,6 +23,7 @@ import multiprocessing as mp
 import numpy as np
 from tqdm import tqdm
 
+
 def transform_op(arr):
     """
     swap and then flatten axes 0 and 1
@@ -34,7 +35,8 @@ def transform_op(arr):
 
 
 class ExperienceBuffer(Dataset):
-    def __init__(self, num_envs, horizon_length, batch_size, minibatch_size, obs_dim, act_dim, priv_dim, pts_dim, device):
+    def __init__(self, num_envs, horizon_length, batch_size, minibatch_size, obs_dim, act_dim, priv_dim, pts_dim,
+                 device):
         self.device = device
         self.num_envs = num_envs
         self.transitions_per_env = horizon_length
@@ -51,7 +53,7 @@ class ExperienceBuffer(Dataset):
             'priv_info': torch.zeros((self.transitions_per_env, self.num_envs, self.priv_dim), dtype=torch.float32,
                                      device=self.device),
             'contacts': torch.zeros((self.transitions_per_env, self.num_envs, self.pts_dim), dtype=torch.float32,
-                                     device=self.device),
+                                    device=self.device),
             'rewards': torch.zeros((self.transitions_per_env, self.num_envs, 1), dtype=torch.float32,
                                    device=self.device),
             'values': torch.zeros((self.transitions_per_env, self.num_envs, 1), dtype=torch.float32,
@@ -220,16 +222,16 @@ class DataLogger():
 
         self.buffer = []
         self.id = 0
-        if not os.path.exists(dir_path):
-            os.makedirs(dir_path, exist_ok=True)
-        self.dir = dir_path
         self.count = 0
-
         self.num_envs = num_envs
         self.device = device
         self.transitions_per_env = episode_length
-        
         self.data_shapes = {}
+
+        if not os.path.exists(dir_path):
+            os.makedirs(dir_path, exist_ok=True)
+        self.dir = dir_path
+
         for key, value in kwargs.items():
             if key.endswith("_shape"):
                 self.data_shapes[key.replace("_shape", "")] = value
@@ -237,7 +239,9 @@ class DataLogger():
         self.pbar = None
         self.trajectory_ctr = 0
         self.total_trajectories = None
+
         self._init_buffers()
+
         if save_trajectory:
             self.pbar = tqdm(total=self.total_trajectories)
             self.total_trajectories = total_trajectories
@@ -272,7 +276,7 @@ class DataLogger():
         self.env_step_counter = torch.zeros((self.num_envs, 1), dtype=torch.long, device=self.device).view(-1, 1)
 
         self.env_ids = torch.arange(self.num_envs, dtype=torch.long, device=self.device).unsqueeze(-1)
-    
+
     def _reset_buffers(self, env_ids):
         for key, buffer in self.log_data.items():
             buffer[env_ids, ...] = 0.
@@ -282,7 +286,7 @@ class DataLogger():
     def _save_batch_trajectories(self, data):
         q_id = np.random.randint(0, self.num_workers)
         self.q_s[q_id].put(data)
-        
+
     def update(self, save_trajectory=True, **kwargs):
 
         for key, value in kwargs.items():
@@ -290,13 +294,13 @@ class DataLogger():
                 continue
             if value is None:
                 value = torch.zeros((self.num_envs, self.data_shapes[key]), dtype=torch.float32, device=self.device)
-            
+
             # if key == "plug_pos":
             #     print(value[:, :3])
             self.log_data[key][self.env_ids, self.env_step_counter, ...] = value.clone().unsqueeze(1)
 
         # print("env steps", self.env_step_counter[0])
-        
+
         done = kwargs.get('done', None)
         if done is None:
             done = torch.zeros_like(self.done[:, 0, ...]).to(torch.bool)
@@ -342,13 +346,98 @@ class DataLogger():
                 for k, v in item.items():
                     if isinstance(item[k], torch.Tensor):
                         item[k] = item[k].numpy()
-                np.savez_compressed(os.path.join(data_path, f'{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}.npz'), **item)
+                np.savez_compressed(os.path.join(data_path, f'{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}.npz'),
+                                    **item)
                 q.task_done()
         except KeyboardInterrupt:
             print("Ctrl+C detected. Exiting gracefully.")
 
     def get_data(self):
         return self.log_data
-    
+
     def reset(self):
         self._reset_buffers(torch.arange(self.num_envs, dtype=torch.long, device=self.device).unsqueeze(-1))
+
+
+class SimLogger():
+
+    def __init__(self, env):
+        self.env = env
+        ROT_MAT_SIZE = 9
+
+        log_items = {
+            'arm_joints_shape': env.arm_dof_pos.shape[-1],
+            'eef_pos_shape': env.fingertip_centered_pos.size()[-1] + ROT_MAT_SIZE,
+            'socket_pos_shape': env.socket_pos.size()[-1] + ROT_MAT_SIZE,
+            'noisy_socket_pos_shape': env.socket_pos.size()[-1] + ROT_MAT_SIZE,
+            'plug_pos_shape': env.plug_pos.size()[-1] + ROT_MAT_SIZE,
+            'action_shape': env.cfg_task.env.numActions,
+            'target_shape': env.cfg_task.env.numTargets,
+            'tactile_shape': env.tactile_imgs.shape[1:],
+            'latent_shape': env.cfg_ppo.network.priv_mlp.units[-1],
+            'rigid_physics_params_shape': env.rigid_physics_params.shape[-1],
+            'plug_hand_pos_shape': env.plug_hand_pos.shape[-1],
+            'plug_hand_quat_shape': env.plug_hand_quat.shape[-1],
+            'finger_normalized_forces_shape': env.finger_normalized_forces.shape[-1],
+            'plug_heights_shape': env.plug_heights.shape[-1],
+            'obs_hist_shape': env.obs_buf.shape[-1],
+            'priv_obs_shape': env.states_buf.shape[-1],
+        }
+
+        log_folder = env.cfg_task.data_logger.base_folder
+        if 'oa348' in os.getcwd():
+            log_folder.replace("dm1487", "oa348")
+
+        self.data_logger_init = lambda x: DataLogger(env.num_envs,
+                                                     env.max_episode_length,
+                                                     env.device,
+                                                     os.path.join(log_folder,
+                                                                  env.cfg_task.data_logger.sub_folder),
+                                                     env.cfg_task.data_logger.total_trajectories,
+                                                     save_trajectory=env.cfg_task.data_logger.collect_data,
+                                                     **log_items)
+
+        self.data_logger = None
+        # self.data_logger = self.data_logger_init(None)
+
+    def log_trajectory_data(self, action, latent, done, save_trajectory=True):
+
+        eef_pos = torch.cat(self.env.pose_world_to_robot_base(self.env.fingertip_centered_pos.clone(),
+                                                              self.env.fingertip_centered_quat.clone()), dim=-1)
+        plug_pos = torch.cat(self.env.pose_world_to_robot_base(self.env.plug_pos.clone(),
+                                                               self.env.plug_quat.clone()), dim=-1)
+        socket_pos = torch.cat(self.env.pose_world_to_robot_base(self.env.socket_pos.clone(),
+                                                                 self.env.socket_quat.clone()), dim=-1)
+        noisy_socket_pos = torch.cat(self.env.pose_world_to_robot_base(self.env.noisy_gripper_goal_pos.clone(),
+                                                                       self.env.noisy_gripper_goal_quat.clone()), dim=-1)
+        rigid_physics_params = self.env.rigid_physics_params.clone()
+        plug_hand_pos = self.env.plug_hand_pos.clone()
+        plug_hand_quat = self.env.plug_hand_quat.clone()
+
+        finger_normalized_forces = self.env.finger_normalized_forces.clone()
+        plug_heights = self.env.plug_heights.clone()
+
+        obs_hist = self.env.obs_buf.clone()
+        priv_obs = self.env.states_buf.clone()
+
+        log_data = {
+            'arm_joints': self.env.arm_dof_pos,
+            'eef_pos': eef_pos,
+            'socket_pos': socket_pos,
+            'noisy_socket_pos': noisy_socket_pos,
+            'plug_pos': plug_pos,
+            'action': action,
+            'target': self.env.targets,
+            'tactile': self.env.tactile_imgs,
+            'latent': latent,
+            'rigid_physics_params': rigid_physics_params,
+            'plug_hand_pos': plug_hand_pos,
+            'plug_hand_quat': plug_hand_quat,
+            'finger_normalized_forces': finger_normalized_forces,
+            'plug_heights': plug_heights,
+            'obs_hist': obs_hist,
+            'priv_obs': priv_obs,
+            'done': done
+        }
+
+        self.data_logger.update(save_trajectory=save_trajectory, **log_data)
