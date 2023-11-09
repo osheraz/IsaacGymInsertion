@@ -2,6 +2,7 @@ import rospy
 from algo.deploy.env.hand_ros import HandROSSubscriberFinger
 from algo.deploy.env.openhand_env import OpenhandEnv
 from algo.deploy.env.robots import RobotWithFtEnv
+from std_msgs.msg import String, Float32MultiArray, Bool, Float32
 
 
 class ExperimentEnv:
@@ -10,9 +11,11 @@ class ExperimentEnv:
 
     def __init__(self, ):
         rospy.logwarn('Setting up the environment')
+
         self.hand = OpenhandEnv()
         self.tactile = HandROSSubscriberFinger()
         self.arm = RobotWithFtEnv()
+
         rospy.sleep(2)
         self.ready = self.arm.init_success and self.tactile.init_success
         self.hand.set_gripper_joints_to_init()
@@ -21,6 +24,11 @@ class ExperimentEnv:
         self.joints_grasp_pos = [0.214260026813, 0.469324231148, 0.174929410219, -1.6954228878, -0.0941470190883, 0.984972000122, -1.14854979515]
         self.joints_above_plug = [0.20592649281,0.389553636312, 0.184911131859,  -1.61935830116,  -0.0766384452581,1.13970589638, -1.1620862484]
         self.joints_above_socket = [0.00512505369261, 0.306541800499, -0.00611614901572, -1.69656717777, 0.00215246272273, 1.13829433918, -1.57246220112]
+
+        self.pub_regularize = rospy.Publisher('/iiwa/regularize', Bool, queue_size=10)
+
+    def regularize_force(self, status):
+        self.pub_regularize.publish(status)
 
     def get_obs(self):
         ft = self.arm.robotiq_wrench_filtered_state.tolist()

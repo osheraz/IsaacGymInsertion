@@ -141,7 +141,7 @@ class MoveManipulatorServiceWrap():
             js.header.seq = 0
             js.header.stamp = rospy.Time(0)
             js.header.frame_id = "world"
-            # js.header = msg.header
+
             js.position.a1 = positions_array[0]
             js.position.a2 = positions_array[1]
             js.position.a3 = positions_array[2]

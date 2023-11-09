@@ -96,6 +96,7 @@ def compute_dof_torque(cfg_ctrl,
     dof_torque = torch.zeros((cfg_ctrl['num_envs'], 15), device=device)
 
     if cfg_ctrl['gain_space'] == 'joint':
+
         pos_error, axis_angle_error = get_pose_error(
             fingertip_midpoint_pos=fingertip_midpoint_pos,
             fingertip_midpoint_quat=fingertip_midpoint_quat,
@@ -103,6 +104,7 @@ def compute_dof_torque(cfg_ctrl,
             ctrl_target_fingertip_midpoint_quat=ctrl_target_fingertip_midpoint_quat,
             jacobian_type=cfg_ctrl['jacobian_type'],
             rot_error_type='axis_angle')
+
         delta_fingertip_pose = torch.cat((pos_error, axis_angle_error), dim=1)
 
         # Set tau = k_p * joint_pos_error - k_d * joint_vel_error (ETH eq. 3.72)
@@ -110,6 +112,7 @@ def compute_dof_torque(cfg_ctrl,
                                                ik_method=cfg_ctrl['ik_method'],
                                                jacobian=jacobian,
                                                device=device)
+
         dof_torque[:, 0:7] = cfg_ctrl['joint_prop_gains'] * delta_arm_dof_pos + \
                              cfg_ctrl['joint_deriv_gains'] * (0.0 - dof_vel[:, 0:7])
 
@@ -170,8 +173,9 @@ def compute_dof_torque(cfg_ctrl,
         jacobian_T = torch.transpose(jacobian, dim0=1, dim1=2)
         dof_torque[:, 0:7] = (jacobian_T @ task_wrench.unsqueeze(-1)).squeeze(-1)
 
-    dof_torque[:, 7:10] = cfg_ctrl['gripper_prop_gains'] * (ctrl_target_gripper_dof_pos - dof_pos[:, 7:10]) + \
-                         cfg_ctrl['gripper_deriv_gains'] * (0.0 - dof_vel[:, 7:10])  # gripper finger joints
+    dof_torque[:, 7:] = cfg_ctrl['gripper_prop_gains'] * (ctrl_target_gripper_dof_pos - dof_pos[:, 7:]) + \
+                         cfg_ctrl['gripper_deriv_gains'] * (0.0 - dof_vel[:, 7:])  # gripper finger joints
+
     dof_torque = torch.clamp(dof_torque, min=-100.0, max=100.0)
 
     return dof_torque

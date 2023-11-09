@@ -587,6 +587,9 @@ class HardwarePlayer(object):
         # self._move_arm_to_desired_pose(above_socket_pose)
         # # self._move_arm_to_desired_pose(true_socket_pose)
 
+        # REGULARIZE FORCES
+        self.env.regularize_force(True)
+
         obs, obs_stud, tactile = self.compute_observations()
 
         # TODO: Should we fill the history buffs?
@@ -622,6 +625,6 @@ class HardwarePlayer(object):
 
             obs, obs_stud, tactile = self.compute_observations()
 
-            steps +=1
+            steps += 1
             if steps >= max_steps:
                 done = torch.tensor([[1]]).to(self.device)

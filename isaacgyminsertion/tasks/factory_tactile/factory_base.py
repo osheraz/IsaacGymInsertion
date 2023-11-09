@@ -549,7 +549,7 @@ class FactoryBaseTactile(VecTask, FactoryABCBase):
             fingertip_midpoint_angvel=self.fingertip_midpoint_angvel,
             left_finger_force=self.left_finger_force,
             right_finger_force=self.right_finger_force,
-            jacobian=self.fingertip_midpoint_jacobian_tf,
+            jacobian=self.fingertip_centered_jacobian_tf,
             arm_mass_matrix=self.arm_mass_matrix,
             ctrl_target_gripper_dof_pos=self.ctrl_target_gripper_dof_pos,
             ctrl_target_fingertip_midpoint_pos=self.ctrl_target_fingertip_midpoint_pos,
