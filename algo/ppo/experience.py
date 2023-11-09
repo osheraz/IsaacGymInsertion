@@ -381,7 +381,7 @@ class SimLogger():
             'finger_normalized_forces_shape': env.finger_normalized_forces.shape[-1],
             'plug_heights_shape': env.plug_heights.shape[-1],
             'obs_hist_shape': env.obs_buf.shape[-1],
-            'obs_hist_stud_shape': env.obs_buf_stud.shape[-1],
+            'obs_hist_stud_shape': env.obs_student_buf.shape[-1],
             'priv_obs_shape': env.states_buf.shape[-1],
         }
 
@@ -419,7 +419,7 @@ class SimLogger():
 
         obs_hist = self.env.obs_buf.clone()
         priv_obs = self.env.states_buf.clone()
-        obs_stud_hist = self.env.obs_buf_stud.clone()
+        obs_hist_stud = self.env.obs_student_buf.clone()
 
         log_data = {
             'arm_joints': self.env.arm_dof_pos,
@@ -437,7 +437,7 @@ class SimLogger():
             'finger_normalized_forces': finger_normalized_forces,
             'plug_heights': plug_heights,
             'obs_hist': obs_hist,
-            'obs_stud_hist': obs_stud_hist,
+            'obs_hist_stud': obs_hist_stud,
             'priv_obs': priv_obs,
             'done': done
         }
@@ -489,7 +489,7 @@ class RealLogger():
                                       self.env.noisy_gripper_goal_quat.clone()), dim=-1)
 
         obs_hist = self.env.obs_buf.clone()
-        obs_stud_hist = self.env.obs_buf_stud.clone()
+        obs_hist_stud = self.env.obs_student_buf.clone()
 
         log_data = {
             'arm_joints': self.env.arm_dof_pos,
@@ -501,7 +501,7 @@ class RealLogger():
             'tactile': self.env.tactile_imgs,
             'latent': latent,
             'obs_hist': obs_hist,
-            'obs_stud_hist': obs_stud_hist,
+            'obs_hist_stud': obs_hist_stud,
             'done': done
         }
 

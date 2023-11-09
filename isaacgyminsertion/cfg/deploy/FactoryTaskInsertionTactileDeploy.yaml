@@ -32,6 +32,7 @@ env:
 
   priv_info_dim: ${...task.env.numStates}
   numObservations: ${...task.env.numObservations}
+  numObsStudent: ${...task.env.numObsStudent}
   numActions: ${...task.env.numActions}
   numTargets: ${...task.env.numTargets}
   socket_pos_obs_noise: [ 0.001, 0.001, 0.0 ]

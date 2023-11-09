@@ -35,6 +35,8 @@ class HardwarePlayer(object):
 
         # ---- build environment ----
         self.obs_shape = (self.deploy_config.env.numObservations,)
+        self.obs_stud_shape = (self.deploy_config.env.numObsStudent,)
+
         self.num_actions = self.deploy_config.env.numActions
         self.num_targets = self.deploy_config.env.numTargets
 
@@ -226,7 +228,7 @@ class HardwarePlayer(object):
         self.ft_queue = torch.zeros((1, self.ft_seq_length, 6), device=self.device, dtype=torch.float)
 
         self.obs_buf = torch.zeros((1, self.obs_shape[0]), device=self.device, dtype=torch.float)
-
+        self.obs_student_buf = torch.zeros((1, self.obs_stud_shape[0]), device=self.device, dtype=torch.float)
     def _set_socket_pose(self, pos):
 
         self.socket_pos = torch.tensor(pos, device=self.device).unsqueeze(0)
@@ -383,9 +385,9 @@ class HardwarePlayer(object):
         ]
 
         self.obs_buf = torch.cat(obs_tensors, dim=-1)
-        self.obs_buf_stud = torch.cat(obs_tensors_student, dim=-1)
+        self.obs_student_buf = torch.cat(obs_tensors_student, dim=-1)
 
-        return self.obs_buf, self.obs_buf_stud, self.tactile_queue
+        return self.obs_buf, self.obs_student_buf, self.tactile_queue
 
     def _move_arm_to_desired_pose(self, desired_pos, desired_rot=None):
         """Move gripper to desired pose."""
