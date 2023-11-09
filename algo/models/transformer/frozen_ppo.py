@@ -718,7 +718,7 @@ class PPO(object):
                 if total_dones > milestone:
                     print('success rate:', num_success/total_dones)
                     milestone += 100
-                self.log_trajectory_data(action, latent, done, save_trajectory=save_trajectory)
+                self.data_logger.log_trajectory_data(action, latent, done, save_trajectory=save_trajectory)
 
         return num_success, total_dones
 
