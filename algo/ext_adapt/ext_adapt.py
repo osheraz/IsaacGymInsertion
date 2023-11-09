@@ -161,6 +161,11 @@ class ExtrinsicAdapt(object):
         self.last_recording_it = 0
         self.last_recording_it_ft = 0
 
+        # ---- Data Logger ----
+        if self.env.cfg_task.data_logger.collect_data:
+            from algo.ppo.experience import SimLogger
+            self.data_logger = SimLogger(env=self.env)
+
     def set_eval(self):
         self.model.eval()
         self.running_mean_std.eval()
@@ -169,18 +174,30 @@ class ExtrinsicAdapt(object):
         self.running_mean_std_stud.eval()
 
     def test(self):
+
+        if self.env.cfg_task.data_logger.collect_data:
+            if self.data_logger.data_logger is None:
+                self.data_logger.data_logger = self.data_logger.data_logger_init(None)
+            else:
+                self.data_logger.data_logger.reset()
+
         self.set_eval()
         obs_dict = self.env.reset()
+
         while True:
+
             input_dict = {
                 'obs': self.running_mean_std(obs_dict['obs']),
                 'ft_hist': self.ft_mean_std(obs_dict['ft_hist'].detach()),
                 'student_obs': self.running_mean_std_stud(obs_dict['student_obs'].detach()),
                 'tactile_hist': obs_dict['tactile_hist'].detach(),
             }
-            mu, _ = self.model.act_inference(input_dict)
+            mu, latent = self.model.act_inference(input_dict)
             mu = torch.clamp(mu, -1.0, 1.0)
             obs_dict, r, done, info = self.env.step(mu)
+
+            if self.env.cfg_task.data_logger.collect_data:
+                self.data_logger.log_trajectory_data(mu, latent, done)
 
     def train(self):
         _t = time.time()

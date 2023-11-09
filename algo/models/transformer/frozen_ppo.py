@@ -191,47 +191,9 @@ class PPO(object):
                                         self.device, )
 
         # ---- Data Logger ----
-        # getting the shapes for the data logger initialization
-        # self.data_logger = None
         if env is not None and (self.env.cfg_task.data_logger.collect_data or self.full_config.offline_training_w_env):
-            # getting the shapes for the data logger initialization
             from algo.ppo.experience import SimLogger
             self.data_logger = SimLogger(env=self.env)
-
-            # ROT_MAT_SIZE = 9
-            # log_items = {
-            #     'arm_joints_shape': self.env.arm_dof_pos.shape[-1],
-            #     'eef_pos_shape': self.env.fingertip_centered_pos.size()[-1] + ROT_MAT_SIZE,
-            #     'socket_pos_shape': self.env.socket_pos.size()[-1] + ROT_MAT_SIZE,
-            #     'noisy_socket_pos_shape': self.env.socket_pos.size()[-1] + ROT_MAT_SIZE,
-            #     'plug_pos_shape': self.env.plug_pos.size()[-1] + ROT_MAT_SIZE,
-            #     'action_shape': self.actions_num,
-            #     'target_shape': self.env.targets.shape[-1],
-            #     'tactile_shape': self.env.tactile_imgs.shape[1:],
-            #     'latent_shape': net_config['priv_mlp_units'][-1],
-            #     'rigid_physics_params_shape': self.env.rigid_physics_params.shape[-1],
-            #     'plug_hand_pos_shape': self.env.plug_hand_pos.shape[-1],
-            #     'plug_hand_quat_shape': self.env.plug_hand_quat.shape[-1],
-            #     'finger_normalized_forces_shape': self.env.finger_normalized_forces.shape[-1],
-            #     'plug_heights_shape': self.env.plug_heights.shape[-1],
-            #     'obs_hist_shape': self.env.obs_buf.shape[-1],
-            #     'priv_obs_shape': self.env.states_buf.shape[-1],
-            # }
-            #
-            # # initializing data logger, the device should be changed
-            #
-            # log_folder = self.env.cfg_task.data_logger.base_folder
-            # if 'oa348' in os.getcwd():
-            #     log_folder.replace("dm1487", "oa348")
-            #
-            # self.data_logger_init = lambda x: DataLogger(self.env.num_envs,
-            #                                              self.env.max_episode_length,
-            #                                              self.env.device,
-            #                                              os.path.join(log_folder,
-            #                                                           self.env.cfg_task.data_logger.sub_folder),
-            #                                              self.env.cfg_task.data_logger.total_trajectories,
-            #                                              save_trajectory=self.env.cfg_task.data_logger.collect_data,
-            #                                              **log_items)
 
         batch_size = self.num_actors
         current_rewards_shape = (batch_size, 1)
@@ -380,47 +342,6 @@ class PPO(object):
         action, latent = self.model.act_inference(input_dict)
         return action, latent
 
-    # def log_trajectory_data(self, action, latent, done, save_trajectory=True):
-    #
-    #     eef_pos = torch.cat(self.env.pose_world_to_robot_base(self.env.fingertip_centered_pos.clone(),
-    #                                                           self.env.fingertip_centered_quat.clone()), dim=-1)
-    #     plug_pos = torch.cat(self.env.pose_world_to_robot_base(self.env.plug_pos.clone(),
-    #                                                            self.env.plug_quat.clone()), dim=-1)
-    #     socket_pos = torch.cat(self.env.pose_world_to_robot_base(self.env.socket_pos.clone(),
-    #                                                              self.env.socket_quat.clone()), dim=-1)
-    #     noisy_socket_pos = torch.cat(self.env.pose_world_to_robot_base(self.env.noisy_gripper_goal_pos.clone(),
-    #                                                                    self.env.noisy_gripper_goal_quat.clone()), dim=-1)
-    #     rigid_physics_params = self.env.rigid_physics_params.clone()
-    #     plug_hand_pos = self.env.plug_hand_pos.clone()
-    #     plug_hand_quat = self.env.plug_hand_quat.clone()
-    #
-    #     finger_normalized_forces = self.env.finger_normalized_forces.clone()
-    #     plug_heights = self.env.plug_heights.clone()
-    #
-    #     obs_hist = self.env.obs_buf.clone()
-    #     priv_obs = self.env.states_buf.clone()
-    #
-    #     log_data = {
-    #         'arm_joints': self.env.arm_dof_pos,
-    #         'eef_pos': eef_pos,
-    #         'socket_pos': socket_pos,
-    #         'noisy_socket_pos': noisy_socket_pos,
-    #         'plug_pos': plug_pos,
-    #         'action': action,
-    #         'target': self.env.targets,
-    #         'tactile': self.env.tactile_imgs,
-    #         'latent': latent,
-    #         'rigid_physics_params': rigid_physics_params,
-    #         'plug_hand_pos': plug_hand_pos,
-    #         'plug_hand_quat': plug_hand_quat,
-    #         'finger_normalized_forces': finger_normalized_forces,
-    #         'plug_heights': plug_heights,
-    #         'obs_hist': obs_hist,
-    #         'priv_obs': priv_obs,
-    #         'done': done
-    #     }
-    #
-    #     self.data_logger.update(save_trajectory=save_trajectory, **log_data)
 
     def train_epoch(self):
         # collect minibatch data
@@ -511,7 +432,6 @@ class PPO(object):
     # TODO move all of this logging to an utils\misc folder
     def _write_video(self, frames, ft_frames, output_loc, frame_rate):
         writer = imageio.get_writer(output_loc, mode='I', fps=frame_rate)
-        # out = cv2.VideoWriter(output_loc, self.fourcc, frame_rate, (240, 360))
         for i in range(len(frames)):
             frame = np.uint8(frames[i])
             x, y = 30, 100
@@ -520,12 +440,8 @@ class PPO(object):
                 y += 30  # Move down to the next line
             frame = np.uint8(frame)
             writer.append_data(frame)
-            # cv2.imshow('frame', frames[i])
-            # cv2.waitKey(0)
-            # out.write(frames[i])
         writer.close()
-        # out.release()
-        # cv2.destroyAllWindows()
+
 
     def _write_ft(self, data, output_loc):
         import matplotlib.pyplot as plt
@@ -683,7 +599,7 @@ class PPO(object):
         total_dones, num_success = 0, 0
         total_env_runs = self.full_config.offline_train.train.test_episodes
 
-        while save_trajectory or (total_dones < total_env_runs): # or True for testing without saving
+        while save_trajectory or (total_dones < total_env_runs):  # or True for testing without saving
             # log video during test
             self.log_video()
             # getting data from data logger

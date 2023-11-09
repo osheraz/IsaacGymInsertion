@@ -25,7 +25,7 @@ class HardwarePlayer(object):
     def __init__(self, output_dir, full_config):
 
         self.deploy_config = full_config.deploy
-
+        self.full_config = full_config
         self.pos_scale_deploy = self.deploy_config.rl.pos_action_scale
         self.rot_scale_deploy = self.deploy_config.rl.rot_action_scale
         self.pos_scale = full_config.task.rl.pos_action_scale
@@ -107,6 +107,7 @@ class HardwarePlayer(object):
         self.asset_info_insertion = hydra.compose(config_name=asset_info_path)
         self.asset_info_insertion = self.asset_info_insertion['']['']['']['']['']['']['assets']['factory'][
             'yaml']  # strip superfluous nesting
+
 
     def restore(self, fn):
         checkpoint = torch.load(fn)
@@ -456,7 +457,7 @@ class HardwarePlayer(object):
 
         self.apply_action(self.actions, wait=wait)
 
-    def apply_action(self, actions, do_scale=True, do_clamp=True, wait=True):
+    def apply_action(self, actions, do_scale=True, do_clamp=False, wait=True):
 
         # Apply the action
         if do_clamp:
@@ -535,7 +536,6 @@ class HardwarePlayer(object):
 
         self._create_asset_info()
         self._acquire_task_tensors()
-        self.env.move_to_init_state()
 
         true_socket_pose = [self.deploy_config.env.kuka_depth, 0.0, self.deploy_config.env.table_height]
         self._set_socket_pose(pos=true_socket_pose)
@@ -545,12 +545,19 @@ class HardwarePlayer(object):
         self._set_plug_pose(pos=true_plug_pose)
         # above_plug_pose = [x + y for x, y in zip(true_plug_pose, [0, 0, 0.2])]
 
+        # ---- Data Logger ----
+        if self.full_config.task.data_logger.collect_data:
+            from algo.ppo.experience import RealLogger
+            data_logger = RealLogger(env=self)
+            data_logger.data_logger = data_logger.data_logger_init(None)
+
+        self.env.move_to_init_state()
+
         # self._move_arm_to_desired_pose([0.5, 0, 0.2])
         # self.env.move_to_joint_values(self.env.joints_above_socket_pos)
 
         self.env.move_to_joint_values(self.env.joints_above_plug, wait=True)
         # self.env.move_to_joint_values(self.env.joints_grasp_pos, wait=True)
-
 
         grasp_joints_bit = [0.33339, 0.52470, 0.12685, -1.6501, -0.07662, 0.97147, -1.0839]
         grasp_joints = [0.3347, 0.54166, 0.12498, -1.6596, -0.07943, 0.94501, -1.0817]
@@ -584,7 +591,12 @@ class HardwarePlayer(object):
         for i in range(self.deploy_config.env.obs_seq_length):
             pass
 
-        while True:
+        done = torch.tensor([[0]]).to(self.device)
+
+        steps = 0
+        max_steps = 500
+
+        while not done[0]:
 
             obs = self.running_mean_std(obs.clone())
             obs_stud = self.running_mean_std_stud(obs_stud.clone())
@@ -595,9 +607,19 @@ class HardwarePlayer(object):
                 'tactile_hist': tactile
             }
 
-            action, _ = self.model.act_inference(input_dict)
+            action, latent = self.model.act_inference(input_dict)
+            action = torch.clamp(action, -1.0, 1.0)
+
             start_time = time()
             self.update_and_apply_action(action, wait=False)
             ros_rate.sleep()
-            print("Actions:", np.round(action[0].cpu().numpy(),3), "\tFPS: ", 1.0 / (time() - start_time))  # FPS = 1 / time to process loop
+            print("Actions:", np.round(action[0].cpu().numpy(), 3), "\tFPS: ", 1.0 / (time() - start_time))
+
+            if self.full_config.task.data_logger.collect_data:
+                data_logger.log_trajectory_data(action, latent, done)
+
             obs, obs_stud, tactile = self.compute_observations()
+
+            steps +=1
+            if steps >= max_steps:
+                done = torch.tensor([[1]]).to(self.device)

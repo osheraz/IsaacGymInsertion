@@ -381,6 +381,7 @@ class SimLogger():
             'finger_normalized_forces_shape': env.finger_normalized_forces.shape[-1],
             'plug_heights_shape': env.plug_heights.shape[-1],
             'obs_hist_shape': env.obs_buf.shape[-1],
+            'obs_hist_stud_shape': env.obs_buf_stud.shape[-1],
             'priv_obs_shape': env.states_buf.shape[-1],
         }
 
@@ -400,7 +401,6 @@ class SimLogger():
         self.data_logger = None
 
     def log_trajectory_data(self, action, latent, done, save_trajectory=True):
-
         eef_pos = torch.cat(self.env.pose_world_to_robot_base(self.env.fingertip_centered_pos.clone(),
                                                               self.env.fingertip_centered_quat.clone()), dim=-1)
         plug_pos = torch.cat(self.env.pose_world_to_robot_base(self.env.plug_pos.clone(),
@@ -408,7 +408,8 @@ class SimLogger():
         socket_pos = torch.cat(self.env.pose_world_to_robot_base(self.env.socket_pos.clone(),
                                                                  self.env.socket_quat.clone()), dim=-1)
         noisy_socket_pos = torch.cat(self.env.pose_world_to_robot_base(self.env.noisy_gripper_goal_pos.clone(),
-                                                                       self.env.noisy_gripper_goal_quat.clone()), dim=-1)
+                                                                       self.env.noisy_gripper_goal_quat.clone()),
+                                     dim=-1)
         rigid_physics_params = self.env.rigid_physics_params.clone()
         plug_hand_pos = self.env.plug_hand_pos.clone()
         plug_hand_quat = self.env.plug_hand_quat.clone()
@@ -418,6 +419,7 @@ class SimLogger():
 
         obs_hist = self.env.obs_buf.clone()
         priv_obs = self.env.states_buf.clone()
+        obs_stud_hist = self.env.obs_buf_stud.clone()
 
         log_data = {
             'arm_joints': self.env.arm_dof_pos,
@@ -435,7 +437,71 @@ class SimLogger():
             'finger_normalized_forces': finger_normalized_forces,
             'plug_heights': plug_heights,
             'obs_hist': obs_hist,
+            'obs_stud_hist': obs_stud_hist,
             'priv_obs': priv_obs,
+            'done': done
+        }
+
+        self.data_logger.update(save_trajectory=save_trajectory, **log_data)
+
+
+class RealLogger():
+
+    def __init__(self, env):
+        self.env = env
+        ROT_MAT_SIZE = 9
+        POS_SIZE = 3
+        ACT_SIZE = 6
+        log_items = {
+            'arm_joints_shape': 7,
+            'eef_pos_shape': POS_SIZE + ROT_MAT_SIZE,
+            'socket_pos_shape': POS_SIZE + ROT_MAT_SIZE,
+            'noisy_socket_pos_shape': POS_SIZE + ROT_MAT_SIZE,
+            'action_shape': ACT_SIZE,
+            'target_shape': ACT_SIZE,
+            'obs_hist_shape': env.obs_buf.shape[-1],
+            'obs_hist_stud_shape': env.obs_buf_stud.shape[-1],
+            'tactile_shape': env.tactile_imgs.shape[1:],
+            'latent_shape': env.deploy_config.network.merge_mlp.units[-1],
+        }
+
+        log_folder = env.cfg_task.data_logger.base_folder
+        if 'oa348' in os.getcwd():
+            log_folder.replace("dm1487", "oa348")
+
+        self.data_logger_init = lambda x: DataLogger(env.num_envs,
+                                                     env.max_episode_length,
+                                                     env.device,
+                                                     os.path.join(log_folder,
+                                                                  env.cfg_task.data_logger.sub_folder),
+                                                     env.cfg_task.data_logger.total_trajectories,
+                                                     save_trajectory=env.cfg_task.data_logger.collect_data,
+                                                     **log_items)
+
+        self.data_logger = None
+
+    def log_trajectory_data(self, action, latent, done, save_trajectory=True):
+        eef_pos = torch.cat((self.env.fingertip_centered_pos.clone(),
+                             self.env.fingertip_centered_quat.clone()), dim=-1)
+        socket_pos = torch.cat((self.env.socket_pos.clone(),
+                                self.env.socket_quat.clone()), dim=-1)
+        noisy_socket_pos = torch.cat((self.env.noisy_gripper_goal_pos.clone(),
+                                      self.env.noisy_gripper_goal_quat.clone()), dim=-1)
+
+        obs_hist = self.env.obs_buf.clone()
+        obs_stud_hist = self.env.obs_buf_stud.clone()
+
+        log_data = {
+            'arm_joints': self.env.arm_dof_pos,
+            'eef_pos': eef_pos,
+            'socket_pos': socket_pos,
+            'noisy_socket_pos': noisy_socket_pos,
+            'action': action,
+            'target': self.env.targets,
+            'tactile': self.env.tactile_imgs,
+            'latent': latent,
+            'obs_hist': obs_hist,
+            'obs_stud_hist': obs_stud_hist,
             'done': done
         }
 

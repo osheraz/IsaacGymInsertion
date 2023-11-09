@@ -109,6 +109,7 @@ def run(cfg: DictConfig):
     output_dif = os.path.join(output_dif, str(datetime.now().strftime("%H-%M-%S")))
     os.makedirs(output_dif, exist_ok=True)
     agent = eval(cfg.train.algo)(envs, output_dif, full_config=cfg)
+
     if cfg.test:
         assert cfg.train.load_path
         agent.restore_test(cfg.train.load_path)
