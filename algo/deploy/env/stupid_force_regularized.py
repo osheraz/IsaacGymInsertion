@@ -4,12 +4,11 @@ import rospy
 from robotiq_force_torque_sensor.srv import sensor_accessor
 import robotiq_force_torque_sensor.srv as ft_srv
 from robotiq_force_torque_sensor.msg import *
-from algo.deploy.env.moveit_manipulator_wrap import MoveManipulatorServiceWrap
 import numpy as np
-from control_msgs.msg import JointTrajectoryControllerState
 from geometry_msgs.msg import WrenchStamped
 from iiwa_msgs.msg import JointQuantity, JointPosition
 from std_msgs.msg import String, Float32MultiArray, Bool, Float32
+from std_msgs.msg import Float32MultiArray, Time
 
 class RobotWithFt():
     """ Robot with Ft sensor
@@ -23,13 +22,13 @@ class RobotWithFt():
 
         # Define feedback callbacks
         self.ft_zero = rospy.ServiceProxy('/robotiq_force_torque_sensor_acc', sensor_accessor)
-        rospy.Subscriber('/iiwa/Joints', JointPosition, self._joint_state_callback)
+        rospy.Subscriber('/iiwa/state/JointPosition', JointPosition, self._joint_state_callback)
         rospy.Subscriber('/robotiq_force_torque_wrench_filtered_exp', WrenchStamped,
                          self._robotiq_wrench_states_callback)
         rospy.Subscriber('/iiwa/regularize', Bool, self.callback_regularize)
+        self.pub_joints_api = rospy.Publisher('/iiwa/command/JointPosition', JointPosition, queue_size=10)
 
         self.regularize = False
-        self.move_manipulator = MoveManipulatorServiceWrap()
 
     def callback_regularize(self, msg):
 
@@ -65,13 +64,13 @@ class RobotWithFt():
         while self.arm_joint_state is None and not rospy.is_shutdown():
             try:
                 self.arm_joint_state = rospy.wait_for_message(
-                    "/iiwa/Joints", JointPosition, timeout=5.0)
+                    "/iiwa/state/JointPosition", JointPosition, timeout=5.0)
                 rospy.logdebug(
                     "Current arm_controller/state READY=>")
 
             except:
                 rospy.logerr(
-                    "Current /iiwa/Joints not ready yet, retrying for getting State")
+                    "Current /iiwa/state/JointPosition not ready yet, retrying for getting State")
         return self.arm_joint_state
 
     def _joint_state_callback(self, msg):
@@ -88,9 +87,27 @@ class RobotWithFt():
 
     def stop_motion(self, wait=False):
 
-        result = self.move_manipulator.joint_traj(self.arm_joint_state, wait=wait)
+        msg = rospy.wait_for_message('/iiwa/state/JointPosition', JointPosition)
 
-        return result
+        js = JointPosition()
+        js.header.seq = 0
+        js.header.stamp = rospy.Time(0)
+        js.header.frame_id = "world"
+
+        positions_array = self.arm_joint_state
+        js.position.a1 = positions_array[0]
+        js.position.a2 = positions_array[1]
+        js.position.a3 = positions_array[2]
+        js.position.a4 = positions_array[3]
+        js.position.a5 = positions_array[4]
+        js.position.a6 = positions_array[5]
+        js.position.a7 = positions_array[6]
+
+        self.pub_joints_api.publish(js)
+
+        if wait:
+            rospy.wait_for_message('/iiwa/state/DestinationReached', Time)
+
 
     def calib_robotiq(self):
 
