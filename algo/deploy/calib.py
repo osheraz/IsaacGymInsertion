@@ -5,7 +5,7 @@
 # Copyright (c) 2023 Osher & Co.
 # Licensed under The MIT License [see LICENSE for details]
 # --------------------------------------------------------
-
+import isaacgym
 import rospy
 import torch
 from isaacgyminsertion.utils import torch_jit_utils
@@ -19,8 +19,8 @@ class HardwarePlayer():
 
     def __init__(self, ):
 
-        self.pos_scale_deploy = [0.0001, 0.0001, 0.0001]
-        self.rot_scale_deploy = [0.0001, 0.0001, 0.0001]
+        self.pos_scale_deploy = [0.001, 0.001, 0.001]
+        self.rot_scale_deploy = [0.001, 0.001, 0.001]
         self.device = 'cuda:0'
 
         self._initialize_trajectories()
@@ -28,10 +28,10 @@ class HardwarePlayer():
         from algo.deploy.env.env import ExperimentEnv
         rospy.init_node('DeployEnv')
 
-        self.env = ExperimentEnv()
+        self.env = ExperimentEnv(with_hand=False, with_tactile=False)
         rospy.logwarn('Finished setting the env, lets play.')
 
-    def _initialize_trajectories(self, gp='path'):
+    def _initialize_trajectories(self, gp='/home/robotics/Downloads'):
 
         from glob import glob
 
@@ -47,16 +47,14 @@ class HardwarePlayer():
             done_idx = data['done'].nonzero()[-1][0]
 
             self.arm_joints[i] = data['arm_joints']
-            self.actions = data['action']
+            self.actions[i] = data['action']
             self.dones[i] = done_idx
 
     def update_and_apply_action(self, actions, wait=True):
 
         actions = torch.tensor(actions, device=self.device, dtype=torch.float).unsqueeze(0)
 
-        self.actions = actions.clone().to(self.device)
-
-        self.apply_action(self.actions, wait=wait)
+        self.apply_action(actions, wait=wait)
 
     def apply_action(self, actions, do_scale=True, do_clamp=False, wait=True):
 
@@ -138,7 +136,7 @@ def hyper_param_tune(hw):
     hz = 100
     ros_rate = rospy.Rate(hz)
 
-    hw.env.move_to_init_state()
+    # hw.env.move_to_init_state()
 
     def objective(params):
         """
@@ -154,15 +152,16 @@ def hyper_param_tune(hw):
         hw.pos_scale_deploy[0] = params['pos_scale_x']
         hw.pos_scale_deploy[1] = params['pos_scale_y']
         hw.pos_scale_deploy[2] = params['pos_scale_z']
-        hw.rot_scale_deploy[0] = params['pos_scale_r']
-        hw.rot_scale_deploy[1] = params['pos_scale_p']
-        hw.rot_scale_deploy[2] = params['pos_scale_y']
+        hw.rot_scale_deploy[0] = params['rot_scale_r']
+        hw.rot_scale_deploy[1] = params['rot_scale_p']
+        hw.rot_scale_deploy[2] = params['rot_scale_y']
 
         hw.env.move_to_init_state()
 
         idx = np.random.randint(0, len(hw.arm_joints))
-        sim_joints = hw.arm_joints[idx][:hw.dones[idx], :]
-        sim_actions = hw.actions[idx][:hw.dones[idx], :]
+        done = int(hw.dones[idx][0])
+        sim_joints = hw.arm_joints[idx][:done, :]
+        sim_actions = hw.actions[idx][:done, :]
 
         # move to start of sim traj
         hw.env.move_to_joint_values(sim_joints[0], wait=True)
@@ -170,6 +169,7 @@ def hyper_param_tune(hw):
         traj = []
 
         for i in range(1, len(sim_joints)):
+
             joints = hw.env.arm.get_joint_values()
 
             traj.append(joints)
@@ -178,11 +178,13 @@ def hyper_param_tune(hw):
             start_time = time()
             hw.update_and_apply_action(action, wait=False)
             ros_rate.sleep()
-            print("Actions:", np.round(action, 3), "\tFPS: ", 1.0 / (time() - start_time))
+            # print("Actions:", np.round(action, 3), "  FPS: ", 1.0 / (time() - start_time))
+            # print("FPS: ", 1.0 / (time() - start_time))
 
         rospy.sleep(0.5)
 
         traj = np.array(traj)
+        sim_joints = sim_joints[:-1, :]
 
         # Loss function
         loss = np.sum((traj[:30] - sim_joints[:30]) ** 2) + 1 * np.sum((traj[30:] - sim_joints[30:]) ** 2)
@@ -194,9 +196,9 @@ def hyper_param_tune(hw):
     # Hyperparams space
     # Todo: we can optimize each scale individually if they are not correlated. it is faster.
     space = {
-        "pos_scale_x": hp.uniform("pos_scale_x", 0.0, 0.001),
-        "pos_scale_y": hp.uniform("pos_scale_x", 0.0, 0.001),
-        "pos_scale_z": hp.uniform("pos_scale_x", 0.0, 0.001),
+        "pos_scale_x": hp.uniform("pos_scale_x", 0.0, 0.003),
+        "pos_scale_y": hp.uniform("pos_scale_y", 0.0, 0.003),
+        "pos_scale_z": hp.uniform("pos_scale_z", 0.0, 0.003),
         "rot_scale_r": hp.uniform("rot_scale_r", 0.0, 0.001),
         "rot_scale_p": hp.uniform("rot_scale_p", 0.0, 0.001),
         "rot_scale_y": hp.uniform("rot_scale_y", 0.0, 0.01),
