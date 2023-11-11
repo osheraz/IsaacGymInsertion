@@ -3,7 +3,7 @@ import numpy as np
 from glob import glob
 import os
 #%%
-assem = 'round_peg_hole_16mm_loose'
+assem = 'round_peg_hole_16mm_loose_noise'
 data_folders = glob(f'../outputs/debug/{assem}/*.npz')
 #%%
 total_grasps = 0

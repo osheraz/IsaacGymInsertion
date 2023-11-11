@@ -1,8 +1,8 @@
 #!/bin/bash
 GPUS=${1:-0}
 SEED=${2:-42}
-CACHE=${3:-test}
-NUM_ENVS=${4:-32}
+CACHE=${3:-s2_w_noise}
+NUM_ENVS=${4:-12}
 HEADLESS=${5:-True}
 
 array=( $@ )
@@ -31,6 +31,9 @@ task.tactile.half_image=True \
 task.env.smooth_force=True \
 train.ppo.tactile_info=True \
 train.ppo.obs_info=True \
+task.data_logger.collect_data=False \
+task.data_logger.base_folder="/common/users/oa348/inhand_manipulation_data_store" \
+task.data_logger.sub_folder="datastore_${SEED}_${CACHE}" \
 train.ppo.priv_info=True train.ppo.extrin_adapt=True \
 train.ppo.output_name="${CACHE}" \
 checkpoint=outputs/"${CACHE}"/stage2_nn/last.pth
