@@ -29,13 +29,14 @@ class MoveManipulatorServiceWrap():
         self.moveit_get_joints_srv = rospy.ServiceProxy("/MoveItJoints", MoveitJoints)
         self.moveit_stop_motion_srv = rospy.ServiceProxy('/Stop', Empty)
 
-        self.pose = None
-        self.joints = None
-        self.jacob = None
+        self.pose = None    # We update by tf
+        self.joints = None  # We update by kuka api
+        self.jacob = None   # We update by moveit callback
 
         rospy.Subscriber('/iiwa/Jacobian', Float32MultiArray, self.callback_jacob)
         rospy.Subscriber('/iiwa/Joints', JointPosition, self.callback_joints)
         rospy.Subscriber('/iiwa/Pose', PoseStamped, self.callback_pose)
+
         self.pub_joints_api = rospy.Publisher('/iiwa/command/JointPosition', JointPosition, queue_size=10)
 
         rospy.wait_for_message('/iiwa/Joints', JointPosition)
@@ -116,7 +117,7 @@ class MoveManipulatorServiceWrap():
         req.wait = wait
         self.moveit_move_eef_pose_srv(req)
 
-    def joint_traj(self, positions_array, wait=True, by_moveit=False):
+    def joint_traj(self, positions_array, wait=False, by_moveit=False):
 
         if by_moveit:
             js = JointQuantity()
@@ -135,7 +136,7 @@ class MoveManipulatorServiceWrap():
             self.moveit_move_joints_srv(req)
         else:
 
-            msg = rospy.wait_for_message('/iiwa/state/JointPosition', JointPosition)
+            # msg = rospy.wait_for_message('/iiwa/state/JointPosition', JointPosition)
 
             js = JointPosition()
             js.header.seq = 0
@@ -151,6 +152,7 @@ class MoveManipulatorServiceWrap():
             js.position.a7 = positions_array[6]
 
             self.pub_joints_api.publish(js)
+
             if wait:
                 rospy.wait_for_message('/iiwa/state/DestinationReached', Time)
 
@@ -175,7 +177,7 @@ if __name__ == '__main__':
 
     rospy.init_node('moveit_test')
 
-    rate = rospy.Rate(100)
+    rate = rospy.Rate(200)
     moveit_test = MoveManipulatorServiceWrap()
 
     # Init tests

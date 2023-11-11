@@ -13,13 +13,16 @@ import isaacgyminsertion.tasks.factory_tactile.factory_control as fc
 from time import time
 import numpy as np
 from hyperopt import fmin, hp, tpe, space_eval
-
+import matplotlib.pyplot as plt
+# import matplotlib
+# matplotlib.use('TkAgg')
+# import pyformulas as pf
 
 class HardwarePlayer():
 
     def __init__(self, ):
 
-        self.pos_scale_deploy = [0.001, 0.001, 0.001]
+        self.pos_scale_deploy = [0.0015, 0.0015, 0.0015]
         self.rot_scale_deploy = [0.001, 0.001, 0.001]
         self.device = 'cuda:0'
 
@@ -37,28 +40,50 @@ class HardwarePlayer():
 
         all_paths = glob(f'{gp}/datastore_42_test/*/*.npz')
         print('Total trajectories:', len(all_paths))
+        from isaacgyminsertion.utils.torch_jit_utils import matrix_to_quaternion
 
         self.arm_joints = np.zeros((len(all_paths), 500, 7))
+        self.eef_pose_mat = np.zeros((len(all_paths), 500, 12))
+        self.eef_pose = np.zeros((len(all_paths), 500, 7))
+
         self.actions = np.zeros((len(all_paths), 500, 6))
         self.dones = np.zeros((len(all_paths), 1))
+
+        def convert_quat_wxyz_to_xyzw(q):
+            q[3], q[0], q[1], q[2] = q[0], q[1], q[2], q[3]
+            return q
 
         for i, p in enumerate(all_paths):
             data = np.load(p)
             done_idx = data['done'].nonzero()[-1][0]
 
             self.arm_joints[i] = data['arm_joints']
+            self.eef_pose_mat[i] = data['eef_pos']
+
+            to_matrix = self.eef_pose_mat[i][:, 3:].reshape(self.eef_pose_mat[i][:, 3:].shape[0], 3, 3)
+            quat = matrix_to_quaternion(torch.tensor(to_matrix)).numpy()
+            for j in range(len(quat)):
+                quat[j] = convert_quat_wxyz_to_xyzw(quat[j])
+
+            self.eef_pose[i][:, :3] = data['eef_pos'][:, :3]
+            self.eef_pose[i][:, 3:] = quat
+
             self.actions[i] = data['action']
             self.dones[i] = done_idx
 
-    def update_and_apply_action(self, actions, wait=True):
+        # well...
+
+
+
+    def apply_action(self, pose, actions, do_scale=True, do_clamp=False, wait=True, use_cur_pose=False):
 
         actions = torch.tensor(actions, device=self.device, dtype=torch.float).unsqueeze(0)
 
-        self.apply_action(actions, wait=wait)
+        if use_cur_pose:
+            pos, quat = self.env.arm.get_ee_pose()
+        else:
+            pos, quat = pose[:3], pose[3:]
 
-    def apply_action(self, actions, do_scale=True, do_clamp=False, wait=True):
-
-        pos, quat = self.env.arm.get_ee_pose()
         self.fingertip_centered_pos = torch.tensor(pos, device=self.device, dtype=torch.float).unsqueeze(0)
         self.fingertip_centered_quat = torch.tensor(quat, device=self.device, dtype=torch.float).unsqueeze(0)
 
@@ -89,14 +114,14 @@ class HardwarePlayer():
         self.ctrl_target_fingertip_centered_quat = torch_jit_utils.quat_mul_deploy(rot_actions_quat,
                                                                                    self.fingertip_centered_quat)
 
+
         self.generate_ctrl_signals(wait=wait)
 
     def generate_ctrl_signals(self, wait=True):
 
         ctrl_info = self.env.get_info_for_control()
 
-        fingertip_centered_jacobian_tf = torch.tensor(ctrl_info['jacob'],
-                                                      device=self.device).unsqueeze(0)
+        fingertip_centered_jacobian_tf = torch.tensor(ctrl_info['jacob'], device=self.device).unsqueeze(0)
 
         arm_dof_pos = torch.tensor(ctrl_info['joints'], device=self.device).unsqueeze(0)
 
@@ -121,6 +146,7 @@ class HardwarePlayer():
 
         try:
             self.env.move_to_joint_values(target_joints, wait=wait)
+
         except:
             print(f'failed to reach {target_joints}')
 
@@ -156,49 +182,98 @@ def hyper_param_tune(hw):
         hw.rot_scale_deploy[1] = params['rot_scale_p']
         hw.rot_scale_deploy[2] = params['rot_scale_y']
 
-        hw.env.move_to_init_state()
+        hw.env.arm.move_to_init()
 
         idx = np.random.randint(0, len(hw.arm_joints))
+        idx = 1
+
         done = int(hw.dones[idx][0])
         sim_joints = hw.arm_joints[idx][:done, :]
         sim_actions = hw.actions[idx][:done, :]
+        sim_pose = hw.eef_pose[idx][:done, :]
 
         # move to start of sim traj
         hw.env.move_to_joint_values(sim_joints[0], wait=True)
         rospy.sleep(1.0)
+
         traj = []
+        pose = []
 
         for i in range(1, len(sim_joints)):
 
-            joints = hw.env.arm.get_joint_values()
-
-            traj.append(joints)
-
-            action = sim_actions[i]
             start_time = time()
-            hw.update_and_apply_action(action, wait=False)
+            joints = hw.env.arm.get_joint_values()
+            traj.append(joints)
+            pos, quat = hw.env.arm.get_ee_pose()
+            eef_pos = sim_pose[i]
+            action = sim_actions[i]
+            #
+
+            if np.sign(quat[0]) != np.sign(eef_pos[3]):
+                quat[0] *= -1
+                quat[1] *= -1
+                quat[3] *= -1
+                if np.sign(quat[0]) != np.sign(eef_pos[3]):
+                    print('check')
+
+            pose.append(pos + quat)
+
+            hw.apply_action(pose=eef_pos, actions=action, wait=False)
+
             ros_rate.sleep()
+            # print("FPS: ", 1.0 / (time() - start_time))
+
             # print("Actions:", np.round(action, 3), "  FPS: ", 1.0 / (time() - start_time))
             # print("FPS: ", 1.0 / (time() - start_time))
+
+            # for j in range(len(ax)):
+            #     ax[j].plot(np.array(traj)[:, j], color='r')
+            #     ax[j].plot(sim_joints[:len(traj)][:, j], color='b')
+            #
+            # plt.pause(0.0001)
+            # plt.cla()
 
         rospy.sleep(0.5)
 
         traj = np.array(traj)
+        pose = np.array(pose)
+
         sim_joints = sim_joints[:-1, :]
+        sim_pose = sim_pose[:-1, :]
 
         # Loss function
-        loss = np.sum((traj[:30] - sim_joints[:30]) ** 2) + 1 * np.sum((traj[30:] - sim_joints[30:]) ** 2)
+        loss1 = np.sum((traj - sim_joints) ** 2)
+        loss2 = np.sum((pose[:,:3] - sim_pose[:,:3]) ** 2)
 
-        print(f"Total Error: {loss} \n")
+        ax1 = plt.subplot(7, 1, 1)
+        ax2 = plt.subplot(7, 1, 2)
+        ax3 = plt.subplot(7, 1, 3)
+        ax4 = plt.subplot(7, 1, 4)
+        ax5 = plt.subplot(7, 1, 5)
+        ax6 = plt.subplot(7, 1, 6)
+        ax7 = plt.subplot(7, 1, 7)
 
-        return loss
+        ax = [ax1, ax2, ax3, ax4, ax5, ax6, ax7]
+
+        for j in range(len(ax)):
+            ax[j].plot(np.array(pose)[:, j], color='r', label='real')
+            ax[j].plot(sim_pose[:len(pose)][:, j], color='b',label='sim')
+
+        plt.legend()
+        plt.title(f"Total Error: {loss2} \n")
+        plt.show()
+
+        print(f"Total Error: {loss2} \n")
+
+        return loss2
 
     # Hyperparams space
     # Todo: we can optimize each scale individually if they are not correlated. it is faster.
+
     space = {
-        "pos_scale_x": hp.uniform("pos_scale_x", 0.0, 0.003),
-        "pos_scale_y": hp.uniform("pos_scale_y", 0.0, 0.003),
-        "pos_scale_z": hp.uniform("pos_scale_z", 0.0, 0.003),
+        "pos_scale_x": hp.uniform("pos_scale_x", 0.0, 0.01),
+        "pos_scale_y": hp.uniform("pos_scale_y", 0.0, 0.01),
+        "pos_scale_z": hp.uniform("pos_scale_z", 0.0, 0.01),
         "rot_scale_r": hp.uniform("rot_scale_r", 0.0, 0.001),
         "rot_scale_p": hp.uniform("rot_scale_p", 0.0, 0.001),
         "rot_scale_y": hp.uniform("rot_scale_y", 0.0, 0.01),
@@ -211,7 +286,7 @@ def hyper_param_tune(hw):
         fn=objective,
         space=space,
         algo=algo,
-        max_evals=100)
+        max_evals=500)
 
     print(f"Best params: \n")
     print(space_eval(space, best_result))
