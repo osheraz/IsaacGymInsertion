@@ -246,8 +246,8 @@ class ActorCritic(nn.Module):
                     # plot for latent viz
                     if display:
                         plt.ylim(-1, 1)
-                        plt.scatter(list(range(extrin.shape[-1])), extrin.clone().detach().cpu().numpy()[0, :], color='b')
-                        plt.scatter(list(range(extrin.shape[-1])), extrin_gt.clone().cpu().numpy()[0, :], color='r')
+                        plt.scatter(list(range(extrin.shape[-1])), extrin.clone().detach().cpu().numpy()[0, :], color='r')
+                        plt.scatter(list(range(extrin.shape[-1])), extrin_gt.clone().cpu().numpy()[0, :], color='b')
                         plt.pause(0.0001)
                         plt.cla()
 

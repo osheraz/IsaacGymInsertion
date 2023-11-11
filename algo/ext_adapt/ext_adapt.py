@@ -191,6 +191,8 @@ class ExtrinsicAdapt(object):
                 'ft_hist': self.ft_mean_std(obs_dict['ft_hist'].detach()),
                 'student_obs': self.running_mean_std_stud(obs_dict['student_obs'].detach()),
                 'tactile_hist': obs_dict['tactile_hist'].detach(),
+                'priv_info': self.priv_mean_std(obs_dict['priv_info']),
+
             }
             mu, latent = self.model.act_inference(input_dict)
             mu = torch.clamp(mu, -1.0, 1.0)
