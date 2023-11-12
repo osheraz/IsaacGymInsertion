@@ -14,6 +14,8 @@ from time import time
 import numpy as np
 from hyperopt import fmin, hp, tpe, space_eval
 import matplotlib.pyplot as plt
+
+
 # import matplotlib
 # matplotlib.use('TkAgg')
 # import pyformulas as pf
@@ -73,13 +75,11 @@ class HardwarePlayer():
 
         # well...
 
-
-
-    def apply_action(self, pose, actions, do_scale=True, do_clamp=False, wait=True, use_cur_pose=False):
+    def apply_action(self, actions, pose=None, do_scale=True, do_clamp=False, wait=True):
 
         actions = torch.tensor(actions, device=self.device, dtype=torch.float).unsqueeze(0)
 
-        if use_cur_pose:
+        if pose is None:
             pos, quat = self.env.arm.get_ee_pose()
         else:
             pos, quat = pose[:3], pose[3:]
@@ -113,7 +113,6 @@ class HardwarePlayer():
 
         self.ctrl_target_fingertip_centered_quat = torch_jit_utils.quat_mul_deploy(rot_actions_quat,
                                                                                    self.fingertip_centered_quat)
-
 
         self.generate_ctrl_signals(wait=wait)
 
@@ -172,15 +171,14 @@ def hyper_param_tune(hw):
 
         """
 
-        print(f"Current params:")
-        print(params)
+        print(f"Current params:", params)
 
-        hw.pos_scale_deploy[0] = params['pos_scale_x']
-        hw.pos_scale_deploy[1] = params['pos_scale_y']
-        hw.pos_scale_deploy[2] = params['pos_scale_z']
-        hw.rot_scale_deploy[0] = params['rot_scale_r']
-        hw.rot_scale_deploy[1] = params['rot_scale_p']
-        hw.rot_scale_deploy[2] = params['rot_scale_y']
+        # hw.pos_scale_deploy[0] = params['pos_scale_x']
+        # hw.pos_scale_deploy[1] = params['pos_scale_y']
+        # hw.pos_scale_deploy[2] = params['pos_scale_z']
+        # hw.rot_scale_deploy[0] = params['rot_scale_r']
+        # hw.rot_scale_deploy[1] = params['rot_scale_p']
+        # hw.rot_scale_deploy[2] = params['rot_scale_y']
 
         hw.env.arm.move_to_init()
 
@@ -198,16 +196,20 @@ def hyper_param_tune(hw):
 
         traj = []
         pose = []
+        actions = []
 
         for i in range(1, len(sim_joints)):
 
             start_time = time()
+
             joints = hw.env.arm.get_joint_values()
             traj.append(joints)
             pos, quat = hw.env.arm.get_ee_pose()
+
             eef_pos = sim_pose[i]
             action = sim_actions[i]
-            #
+
+            action = [0,0,0,0,0,0]
 
             if np.sign(quat[0]) != np.sign(eef_pos[3]):
                 quat[0] *= -1
@@ -217,21 +219,10 @@ def hyper_param_tune(hw):
                     print('check')
 
             pose.append(pos + quat)
-
-            hw.apply_action(pose=eef_pos, actions=action, wait=False)
+            actions.append(action)
+            hw.apply_action(actions=action, wait=False) # pose=eef_pos,
 
             ros_rate.sleep()
-            # print("FPS: ", 1.0 / (time() - start_time))
-
-            # print("Actions:", np.round(action, 3), "  FPS: ", 1.0 / (time() - start_time))
-            # print("FPS: ", 1.0 / (time() - start_time))
-
-            # for j in range(len(ax)):
-            #     ax[j].plot(np.array(traj)[:, j], color='r')
-            #     ax[j].plot(sim_joints[:len(traj)][:, j], color='b')
-            #
-            # plt.pause(0.0001)
-            # plt.cla()
 
         rospy.sleep(0.5)
 
@@ -241,27 +232,42 @@ def hyper_param_tune(hw):
         sim_joints = sim_joints[:-1, :]
         sim_pose = sim_pose[:-1, :]
 
+        save = True
+        if save:
+            import os
+            from datetime import datetime
+            data_path = ''
+
+            dict_to_save = {'real_joints': traj,
+                            'real_pose': pose,
+                            'real_actions': actions
+                            }
+
+            np.savez_compressed(os.path.join(data_path, f'{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}.npz'),
+                                dict_to_save)
         # Loss function
         loss1 = np.sum((traj - sim_joints) ** 2)
-        loss2 = np.sum((pose[:,:3] - sim_pose[:,:3]) ** 2)
+        loss2 = np.sum((pose[:, :3] - sim_pose[:, :3]) ** 2)
 
-        ax1 = plt.subplot(7, 1, 1)
-        ax2 = plt.subplot(7, 1, 2)
-        ax3 = plt.subplot(7, 1, 3)
-        ax4 = plt.subplot(7, 1, 4)
-        ax5 = plt.subplot(7, 1, 5)
-        ax6 = plt.subplot(7, 1, 6)
-        ax7 = plt.subplot(7, 1, 7)
+        display = False
+        if display:
+            ax1 = plt.subplot(7, 1, 1)
+            ax2 = plt.subplot(7, 1, 2)
+            ax3 = plt.subplot(7, 1, 3)
+            ax4 = plt.subplot(7, 1, 4)
+            ax5 = plt.subplot(7, 1, 5)
+            ax6 = plt.subplot(7, 1, 6)
+            ax7 = plt.subplot(7, 1, 7)
 
-        ax = [ax1, ax2, ax3, ax4, ax5, ax6, ax7]
+            ax = [ax1, ax2, ax3, ax4, ax5, ax6, ax7]
 
-        for j in range(len(ax)):
-            ax[j].plot(np.array(pose)[:, j], color='r', label='real')
-            ax[j].plot(sim_pose[:len(pose)][:, j], color='b',label='sim')
+            for j in range(len(ax)):
+                ax[j].plot(np.array(pose)[:, j], color='r', label='real')
+                ax[j].plot(sim_pose[:len(pose)][:, j], color='b', label='sim')
 
-        plt.legend()
-        plt.title(f"Total Error: {loss2} \n")
-        plt.show()
+            plt.legend()
+            plt.title(f"Total Error: {loss2} \n")
+            plt.show()
 
         print(f"Total Error: {loss2} \n")
 
@@ -299,7 +305,6 @@ def hyper_param_tune(hw):
 
 
 if __name__ == '__main__':
-
     hw = HardwarePlayer()
 
     hyper_param_tune(hw)
