@@ -21,12 +21,89 @@ import numpy as np
 import tf
 
 
+def avoid_jumps(q_Current, q_Prev):
+    q_Current = np.array(q_Current)
+    q_Prev = np.array(q_Prev)
+
+    # norm_diff = np.linalg.norm(q_Prev - q_Current) ** 2
+    # norm_sum = np.linalg.norm(q_Prev + q_Current) ** 2
+
+    # if norm_diff < norm_sum:
+
+    if np.sign(q_Current[0]) != np.sign(q_Prev[0]):
+        return -q_Current
+    else:
+        return q_Current
+
+def VecToso3(omg):
+    """Converts a 3-vector to an so(3) representation
+
+    :param omg: A 3-vector
+    :return: The skew symmetric representation of omg
+
+    Example Input:
+        omg = np.array([1, 2, 3])
+    Output:
+        np.array([[ 0, -3,  2],
+                  [ 3,  0, -1],
+                  [-2,  1,  0]])
+    """
+    return np.array([[0,      -omg[2],  omg[1]],
+                     [omg[2],       0, -omg[0]],
+                     [-omg[1], omg[0],       0]])
+def TransToRp(T):
+    """Converts a homogeneous transformation matrix into a rotation matrix
+    and position vector
+
+    :param T: A homogeneous transformation matrix
+    :return R: The corresponding rotation matrix,
+    :return p: The corresponding position vector.
+
+    Example Input:
+        T = np.array([[1, 0,  0, 0],
+                      [0, 0, -1, 0],
+                      [0, 1,  0, 3],
+                      [0, 0,  0, 1]])
+    Output:
+        (np.array([[1, 0,  0],
+                   [0, 0, -1],
+                   [0, 1,  0]]),
+         np.array([0, 0, 3]))
+    """
+    T = np.array(T)
+    return T[0: 3, 0: 3], T[0: 3, 3]
+
+def Adjoint(T):
+    """Computes the adjoint representation of a homogeneous transformation
+    matrix
+
+    :param T: A homogeneous transformation matrix
+    :return: The 6x6 adjoint representation [AdT] of T
+
+    Example Input:
+        T = np.array([[1, 0,  0, 0],
+                      [0, 0, -1, 0],
+                      [0, 1,  0, 3],
+                      [0, 0,  0, 1]])
+    Output:
+        np.array([[1, 0,  0, 0, 0,  0],
+                  [0, 0, -1, 0, 0,  0],
+                  [0, 1,  0, 0, 0,  0],
+                  [0, 0,  3, 1, 0,  0],
+                  [3, 0,  0, 0, 0, -1],
+                  [0, 0,  0, 0, 1,  0]])
+    """
+    R, p = TransToRp(T)
+    return np.r_[np.c_[R, np.zeros((3, 3))],
+                 np.c_[np.dot(VecToso3(p), R), R]]
+
 class MoveManipulator():
 
     def __init__(self):
         rospy.logdebug("===== In MoveManipulator")
         moveit_commander.roscpp_initialize(sys.argv)
         arm_group_name = "manipulator"
+        self.tl = tf.TransformListener()
 
         self.robot = moveit_commander.RobotCommander("/iiwa/robot_description")
         self.scene = moveit_commander.PlanningSceneInterface(ns='/iiwa')
@@ -36,11 +113,26 @@ class MoveManipulator():
         self.group_names = self.robot.get_group_names()
         rospy.logdebug("===== Out MoveManipulator")
 
+    def tf_trans(self, target_frame, source_frame):
+        try:
+            # listen to transform, from source to target. if source is 0 and target is 1 than A_0^1
+            (trans, rot) = self.tl.lookupTransform(target_frame, source_frame, rospy.Time(0))
+            return trans, rot
+        except (tf.LookupException, tf.ConnectivityException, tf.ExtrapolationException):
+            return 'couldnt find mat', None, None
+
     def get_jacobian_matrix(self, joints=None):
+
         if joints is None:
             joints = self.group.get_current_joint_values()
+            print(joints)
 
         jacob = self.group.get_jacobian_matrix(joints)
+        # trans, rot = self.tf_trans('world', 'iiwa_link_ee')
+        # T = self.tl.fromTranslationRotation(trans, rot)
+        # Adj = Adjoint(T)
+        # ret = np.dot(Adj, jacob)
+        # print((ret - jacob).max())
 
         return jacob
 
@@ -297,14 +389,14 @@ class MoveManipulator():
         self.group.stop()
         self.group.clear_pose_targets()
 
-
 class ServiceWrap:
     def __init__(self):
-        '''
-        Just wraping everything cuz melodic dont like python3+
-        '''
+        """
+        Just wraping everything cuz melodic don't like python3+
+        """
         self.joints = None
         self.pose = None
+        self.rot = None
         self.tl = tf.TransformListener()
 
         self.moveit = MoveManipulator()
@@ -318,8 +410,41 @@ class ServiceWrap:
             return 'couldnt find mat', None, None
 
     def callback_iiwa_pose(self, msg):
-        # overwrite.
+
+        """
+        Overwrite but keep syncing the update
+        iiwa api publisher is w.r.t link7
+        our publisher is w.r.t to eef.
+        """
+
         trans, rot = self.tf_trans('world', 'iiwa_link_ee')
+
+        # T = self.tl.fromTranslationRotation(trans, rot)
+        # rot = tf.transformations.quaternion_from_matrix(T)
+        # print(np.array(np.round(T[:3,:3],2)))
+
+        # roll, pitch, yaw = tf.transformations.euler_from_quaternion((rot[0],
+        #                                                              rot[1],
+        #                                                              rot[2],
+        #                                                             rot[3]))
+        #
+        # if roll < 0:
+        #     roll = 2 * np.pi + roll
+        # if pitch < 0:
+        #     pitch = 2 * np.pi + pitch
+        # if yaw < 0:
+        #     yaw = 2 * np.pi + yaw
+        #
+        # rot = tf.transformations.quaternion_from_euler(roll, pitch, yaw)
+
+        # print(np.array(np.round([roll, pitch, yaw],2)))
+        # if self.rot is None:
+        #     self.prev_rot = rot
+        #     self.rot = rot
+        # else:
+        #     rot = avoid_jumps(rot, self.prev_rot)
+        #     self.rot = rot
+        #     self.prev_rot = rot
 
         msg.pose.position.x = trans[0]
         msg.pose.position.y = trans[1]
@@ -331,6 +456,8 @@ class ServiceWrap:
         msg.pose.orientation.w = rot[3]
 
         self.pose = msg
+
+
     def callback_iiwa_joints(self, msg):
         self.joints = msg
 
@@ -349,6 +476,18 @@ class ServiceWrap:
                   req.pos.a5,
                   req.pos.a6,
                   req.pos.a7]
+
+        current_js = [self.joints.position.a1,
+                  self.joints.position.a2,
+                  self.joints.position.a3,
+                  self.joints.position.a4,
+                  self.joints.position.a5,
+                  self.joints.position.a6,
+                  self.joints.position.a7]
+
+        rospy.logwarn('-------New Request -------')
+        rospy.logwarn('Current {}'.format([['%.3f' % n for n in current_js]]))
+        rospy.logwarn('Desired {}'.format([['%.3f' % n for n in joints]]))
 
         self.moveit.joint_traj(joints, wait=req.wait)
         return res
@@ -399,7 +538,8 @@ if __name__ == "__main__":
     '''
     rospy.init_node('arm_control', anonymous=True)
 
-    rate = rospy.Rate(100)
+    rate = rospy.Rate(200)
+
     wrap = ServiceWrap()
 
     rospy.Service("/MoveItMoveJointPosition", MoveitMoveJointPosition, wrap.callback_set_joints)
@@ -420,7 +560,7 @@ if __name__ == "__main__":
     rospy.wait_for_message('/iiwa/state/JointPosition', JointPosition)
     rospy.wait_for_message('/iiwa/state/CartesianPose', PoseStamped)
 
-    rospy.logwarn('Starting to pub')
+    rospy.logwarn('[arm_control] node is ready')
 
     while not rospy.is_shutdown():
 

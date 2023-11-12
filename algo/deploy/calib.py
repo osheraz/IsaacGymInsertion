@@ -24,8 +24,8 @@ class HardwarePlayer():
 
     def __init__(self, ):
 
-        self.pos_scale_deploy = [0.0015, 0.0015, 0.0015]
-        self.rot_scale_deploy = [0.001, 0.001, 0.001]
+        self.pos_scale_deploy = [0.0002, 0.0002, 0.0002]
+        self.rot_scale_deploy = [0.0002, 0.0002, 0.001]
         self.device = 'cuda:0'
 
         self._initialize_trajectories()
@@ -191,14 +191,23 @@ def hyper_param_tune(hw):
         sim_pose = hw.eef_pose[idx][:done, :]
 
         # move to start of sim traj
-        hw.env.move_to_joint_values(sim_joints[0], wait=True)
+        # hw.env.move_to_joint_values(sim_joints[0], wait=True)
+        hw.env.move_to_joint_values(hw.env.joints_above_socket, wait=True)
+
         rospy.sleep(1.0)
 
         traj = []
         pose = []
         actions = []
 
-        for i in range(1, len(sim_joints)):
+        import random
+        def generate_random_list(size=6):
+            return [random.choice([-1, 0, 1]) for _ in range(size)]
+
+        action_list = generate_random_list()
+        action_list[2] = -1
+        print(action_list)
+        for i in range(1, 3000):  # len(sim_joints)
 
             start_time = time()
 
@@ -206,21 +215,21 @@ def hyper_param_tune(hw):
             traj.append(joints)
             pos, quat = hw.env.arm.get_ee_pose()
 
-            eef_pos = sim_pose[i]
-            action = sim_actions[i]
+            # eef_pos = sim_pose[i]
+            # action = sim_actions[i]
 
-            action = [0,0,0,0,0,0]
+            action = action_list #[1, 1, -1, 0, 0, 1]
 
-            if np.sign(quat[0]) != np.sign(eef_pos[3]):
-                quat[0] *= -1
-                quat[1] *= -1
-                quat[3] *= -1
-                if np.sign(quat[0]) != np.sign(eef_pos[3]):
-                    print('check')
+            # if np.sign(quat[0]) != np.sign(eef_pos[3]):
+            #     quat[0] *= -1
+            #     quat[1] *= -1
+            #     quat[3] *= -1
+            #     if np.sign(quat[0]) != np.sign(eef_pos[3]):
+            #         print('check')
 
             pose.append(pos + quat)
             actions.append(action)
-            hw.apply_action(actions=action, wait=False) # pose=eef_pos,
+            hw.apply_action(actions=action, wait=False)  # pose=eef_pos,
 
             ros_rate.sleep()
 
@@ -236,7 +245,7 @@ def hyper_param_tune(hw):
         if save:
             import os
             from datetime import datetime
-            data_path = ''
+            data_path = '/home/robotics/Downloads/osher'
 
             dict_to_save = {'real_joints': traj,
                             'real_pose': pose,
@@ -246,10 +255,10 @@ def hyper_param_tune(hw):
             np.savez_compressed(os.path.join(data_path, f'{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}.npz'),
                                 dict_to_save)
         # Loss function
-        loss1 = np.sum((traj - sim_joints) ** 2)
-        loss2 = np.sum((pose[:, :3] - sim_pose[:, :3]) ** 2)
+        loss1 = 1  # np.sum((traj - sim_joints) ** 2)
+        loss2 = 1  # np.sum((pose[:, :3] - sim_pose[:, :3]) ** 2)
 
-        display = False
+        display = True
         if display:
             ax1 = plt.subplot(7, 1, 1)
             ax2 = plt.subplot(7, 1, 2)
@@ -263,7 +272,7 @@ def hyper_param_tune(hw):
 
             for j in range(len(ax)):
                 ax[j].plot(np.array(pose)[:, j], color='r', label='real')
-                ax[j].plot(sim_pose[:len(pose)][:, j], color='b', label='sim')
+                # ax[j].plot(sim_pose[:len(pose)][:, j], color='b', label='sim')
 
             plt.legend()
             plt.title(f"Total Error: {loss2} \n")
@@ -292,7 +301,7 @@ def hyper_param_tune(hw):
         fn=objective,
         space=space,
         algo=algo,
-        max_evals=500)
+        max_evals=50)
 
     print(f"Best params: \n")
     print(space_eval(space, best_result))
