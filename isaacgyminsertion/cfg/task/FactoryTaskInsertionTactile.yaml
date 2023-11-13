@@ -106,8 +106,8 @@ randomize:
 
 rl:
 
-    pos_action_scale: [0.005, 0.005, 0.004]
-    rot_action_scale: [0.001, 0.001, 0.02]
+    pos_action_scale: [0.0002, 0.0002, 0.0002]
+    rot_action_scale: [0.0002, 0.0002, 0.001]
 
     force_action_scale: [1.0, 1.0, 1.0]
     torque_action_scale: [1.0, 1.0, 1.0]
@@ -122,7 +122,7 @@ rl:
     keypoint_scale: 1.0  # length of line of keypoints
 
 
-    max_episode_length: 500 # 8192  # terminate episode after this number of timesteps (failure)
+    max_episode_length: 5000 # 8192  # terminate episode after this number of timesteps (failure)
 
     orientation_threshold: 0.1
     far_error_thresh: 0.100  # threshold above which plug is considered too far from bolt
