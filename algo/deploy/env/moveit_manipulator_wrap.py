@@ -224,3 +224,4 @@ if __name__ == '__main__':
         random_list = random.choice(all_lists)
         moveit_test.joint_traj(random_list, wait=True, by_moveit=False)
 
+# rosservice call /iiwa/configuration/pathParameters "{joint_relative_velocity: 0.05, joint_relative_acceleration: 0.05, override_joint_acceleration: 1}"

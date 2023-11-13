@@ -24,12 +24,12 @@ class HardwarePlayer():
 
     def __init__(self, ):
 
-        self.pos_scale_deploy = [0.0002, 0.0002, 0.0002]
+        self.pos_scale_deploy = [0.0003, 0.0003, 0.0003]
         self.rot_scale_deploy = [0.0002, 0.0002, 0.001]
         self.device = 'cuda:0'
 
         self._initialize_trajectories()
-
+        self._initialize_grasp_poses()
         from algo.deploy.env.env import ExperimentEnv
         rospy.init_node('DeployEnv')
 
@@ -116,6 +116,21 @@ class HardwarePlayer():
 
         self.generate_ctrl_signals(wait=wait)
 
+    def _initialize_grasp_poses(self, gp='yellow_round_peg_2in'):
+
+        pp = '/home/robotics/osher3_workspace/src/isaacgym/python/IsaacGymInsertion/isaacgyminsertion/'
+        self.initial_grasp_poses = np.load(f'{pp}initial_grasp_data/{gp}.npz')
+
+        self.total_init_poses = self.initial_grasp_poses['socket_pos'].shape[0]
+        self.init_dof_pos = torch.zeros((self.total_init_poses, 15))
+        self.init_dof_pos = self.init_dof_pos[:, :7]
+        dof_pos = self.initial_grasp_poses['dof_pos'][:, :7]
+
+        from tqdm import tqdm
+        print("Loading init grasping poses for:", gp)
+        for i in tqdm(range(self.total_init_poses)):
+            self.init_dof_pos[i] = torch.from_numpy(dof_pos[i])
+
     def generate_ctrl_signals(self, wait=True):
 
         ctrl_info = self.env.get_info_for_control()
@@ -162,7 +177,8 @@ def hyper_param_tune(hw):
     ros_rate = rospy.Rate(hz)
 
     # hw.env.move_to_init_state()
-
+    # hw.env.regularize_force(True)
+    hw.env.arm.move_to_init()
     def objective(params):
         """
         objective function to be minimized
@@ -180,19 +196,39 @@ def hyper_param_tune(hw):
         # hw.rot_scale_deploy[1] = params['rot_scale_p']
         # hw.rot_scale_deploy[2] = params['rot_scale_y']
 
-        hw.env.arm.move_to_init()
+        # hw.env.arm.move_to_init()
+        # hw.env.hand.set_gripper_joints_to_init()
 
-        idx = np.random.randint(0, len(hw.arm_joints))
-        idx = 1
+        # idx = np.random.randint(0, len(hw.arm_joints))
+        # idx = 1
+        #
+        # done = int(hw.dones[idx][0])
+        # sim_joints = hw.arm_joints[idx][:done, :]
+        # sim_actions = hw.actions[idx][:done, :]
+        # sim_pose = hw.eef_pose[idx][:done, :]
+        #
+        # # move to start of sim traj
+        # # hw.env.move_to_joint_values(sim_joints[0], wait=True)
+        # # hw.env.move_to_joint_values(hw.env.joints_above_socket, wait=True)
 
-        done = int(hw.dones[idx][0])
-        sim_joints = hw.arm_joints[idx][:done, :]
-        sim_actions = hw.actions[idx][:done, :]
-        sim_pose = hw.eef_pose[idx][:done, :]
+        # hw.env.move_to_init_state()
+        # grasp_joints_bit = [0.33339, 0.52470, 0.12685, -1.6501, -0.07662, 0.97147, -1.0839]
+        # grasp_joints = [0.3347, 0.54166, 0.12498, -1.6596, -0.07943, 0.94501, -1.0817]
+        #
+        # hw.env.move_to_joint_values(grasp_joints_bit, wait=True)
+        # hw.env.move_to_joint_values(grasp_joints, wait=True)
+        # hw.env.grasp()
+        # hw.env.move_to_joint_values(grasp_joints_bit, wait=True)
+        # hw.env.move_to_joint_values(hw.env.joints_above_plug, wait=True)
+        # hw.env.move_to_joint_values(hw.env.joints_above_socket, wait=True)
 
-        # move to start of sim traj
-        # hw.env.move_to_joint_values(sim_joints[0], wait=True)
-        hw.env.move_to_joint_values(hw.env.joints_above_socket, wait=True)
+        # Sample init error
+        random_init_idx = torch.randint(0, hw.total_init_poses, size=(1,))
+        kuka_dof_pos = hw.init_dof_pos[random_init_idx]
+        kuka_dof_pos = kuka_dof_pos.cpu().detach().numpy().squeeze().tolist()
+        hw.env.move_to_joint_values(kuka_dof_pos, wait=True)
+        # hw.env.grasp()
+        # hw.env.grasp()
 
         rospy.sleep(1.0)
 
@@ -206,19 +242,28 @@ def hyper_param_tune(hw):
 
         action_list = generate_random_list()
         action_list[2] = -1
+        # action_list += [0, 0, 0]
         print(action_list)
-        for i in range(1, 3000):  # len(sim_joints)
+
+        # action_list = [1, 1, -1, 0, 0, 0]
+
+        # hw.env.arm.calib_robotiq()
+        # rospy.sleep(2.0)
+        # hw.env.arm.calib_robotiq()
+
+        for i in range(1, 2000):  # len(sim_joints)
 
             start_time = time()
 
             joints = hw.env.arm.get_joint_values()
-            traj.append(joints)
             pos, quat = hw.env.arm.get_ee_pose()
 
             # eef_pos = sim_pose[i]
             # action = sim_actions[i]
+            # action_list = np.array(action_list)
+            # action = np.where(np.abs(hw.env.get_ft()) > 1.0, action_list * 0, action_list).tolist()
 
-            action = action_list #[1, 1, -1, 0, 0, 1]
+            action = action_list
 
             # if np.sign(quat[0]) != np.sign(eef_pos[3]):
             #     quat[0] *= -1
@@ -228,6 +273,8 @@ def hyper_param_tune(hw):
             #         print('check')
 
             pose.append(pos + quat)
+            traj.append(joints)
+
             actions.append(action)
             hw.apply_action(actions=action, wait=False)  # pose=eef_pos,
 
@@ -238,8 +285,8 @@ def hyper_param_tune(hw):
         traj = np.array(traj)
         pose = np.array(pose)
 
-        sim_joints = sim_joints[:-1, :]
-        sim_pose = sim_pose[:-1, :]
+        # sim_joints = sim_joints[:-1, :]
+        # sim_pose = sim_pose[:-1, :]
 
         save = True
         if save:

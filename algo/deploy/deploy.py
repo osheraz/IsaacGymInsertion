@@ -459,9 +459,12 @@ class HardwarePlayer(object):
 
         self.apply_action(self.actions, wait=wait)
 
-    def apply_action(self, actions, do_scale=True, do_clamp=False, wait=True):
+    def apply_action(self, actions, do_scale=True, do_clamp=False, regulize_force=True, wait=True):
 
         # Apply the action
+        if regulize_force:
+            ft = torch.tensor(self.env.get_ft(), device=self.device, dtype=torch.float).unsqueeze(0)
+            actions = np.where(torch.abs(ft) > 1.0, actions * 0, actions)
         if do_clamp:
             actions = torch.clamp(actions, -1.0, 1.0)
         # Interpret actions as target pos displacements and set pos target
