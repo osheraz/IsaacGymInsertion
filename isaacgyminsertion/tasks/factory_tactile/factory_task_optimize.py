@@ -722,7 +722,7 @@ class FactoryTaskOptimizeTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             # self.cfg_task.rl.rot_action_scale = [params['rot_scale_r'], params['rot_scale_p'], params['rot_scale_y']]
 
             idx_list = np.arange(0, min(self.num_paths, self.num_envs))
-            idx_list = np.random.randint(0, self.num_paths, size=(1, min(self.num_paths, self.num_envs)))
+            idx_list = np.random.randint(0, self.num_paths, size=(min(self.num_paths, self.num_envs), 1))
 
             kuka_joints_to_mimic = torch.zeros((len(env_ids), 1999, 15))
             eef_pose_to_mimic = torch.zeros((len(env_ids), 1999, 7))
@@ -730,9 +730,9 @@ class FactoryTaskOptimizeTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
             # Each env will try to mimic a random recorded trajectory
             for i in range(len(env_ids)):
-                kuka_joints_to_mimic[i][:, :7] = self.arm_joints_real[idx_list[i]]  # idx_list[i]
-                eef_pose_to_mimic[i] = self.eef_pose_real[idx_list[i]]
-                action_to_apply[i] = self.actions_real[idx_list[i]]
+                kuka_joints_to_mimic[i][:, :7] = self.arm_joints_real[i]  # idx_list[i]
+                eef_pose_to_mimic[i] = self.eef_pose_real[i]
+                action_to_apply[i] = self.actions_real[i]
 
             # first starting joint state
             self._reset_kuka(env_ids, new_pose=kuka_joints_to_mimic[env_ids.cpu().numpy(), 0, :])
@@ -846,13 +846,13 @@ class FactoryTaskOptimizeTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             fn=objective,
             space=space,
             algo=algo,
-            max_evals=500)
+            max_evals=1000)
 
         print(f"Best params: \n")
         print(space_eval(space, best_result))
 
         import yaml
-        with open('./best_params.yaml', 'w') as outfile:
+        with open('./best_params_joint_1000.yaml', 'w') as outfile:
             yaml.dump(space_eval(space, best_result), outfile, default_flow_style=False)
 
         print("Finished")
