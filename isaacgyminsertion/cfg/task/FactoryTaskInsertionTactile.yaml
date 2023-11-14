@@ -54,7 +54,7 @@ env:
     numObsHist: 5
     numObsStudentHist: 5
     ft_history_len: 30
-    tactile_history_len: 1
+    tactile_history_len: 5
     smooth_force: True
 
     openhand:
@@ -106,6 +106,8 @@ randomize:
 
 rl:
 
+#    pos_action_scale: [ 0.005, 0.005, 0.004 ]
+#    rot_action_scale: [ 0.001, 0.001, 0.001 ]
     pos_action_scale: [0.001, 0.001, 0.001]
     rot_action_scale: [0.001, 0.001, 0.01]
 
