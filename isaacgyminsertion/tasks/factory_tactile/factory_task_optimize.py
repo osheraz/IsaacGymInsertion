@@ -646,12 +646,13 @@ class FactoryTaskOptimizeTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         from glob import glob
 
-        all_paths = glob(f'{gp}/*/*.npz')
+        all_paths = glob(f'{gp}/*.npz')
         print('Total trajectories:', len(all_paths))
+
         self.num_paths = len(all_paths)
-        self.arm_joints_real = torch.zeros((len(all_paths), 2999, 7))
-        self.eef_pose_real = torch.zeros((len(all_paths), 2999, 7))
-        self.actions_real = torch.zeros((len(all_paths), 2999, 6))
+        self.arm_joints_real = torch.zeros((len(all_paths), 1999, 7))
+        self.eef_pose_real = torch.zeros((len(all_paths), 1999, 7))
+        self.actions_real = torch.zeros((len(all_paths), 1999, 6))
 
         for i, p in enumerate(all_paths):
             data = np.load(p, allow_pickle=True)['arr_0'][()]  # saved without keys :X
@@ -678,29 +679,32 @@ class FactoryTaskOptimizeTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             :param params: PID values
             :return: loss
 
+
             """
-            cfg_ctrl = {'joint_prop_gains': [params['joint_prop_gains_1'] if 'joint_prop_gains_1' in params else 400,
-                                             params['joint_prop_gains_2'] if 'joint_prop_gains_2' in params else 400,
-                                             params['joint_prop_gains_3'] if 'joint_prop_gains_3' in params else 400,
-                                             params['joint_prop_gains_4'] if 'joint_prop_gains_4' in params else 400,
-                                             params['joint_prop_gains_5'] if 'joint_prop_gains_5' in params else 400,
-                                             params['joint_prop_gains_6'] if 'joint_prop_gains_6' in params else 400,
-                                             params['joint_prop_gains_7'] if 'joint_prop_gains_7' in params else 400],
-                        'joint_deriv_gains': [params['joint_deriv_gains_1'] if 'joint_deriv_gains_1' in params else 10,
-                                              params['joint_deriv_gains_2'] if 'joint_deriv_gains_2' in params else 10,
-                                              params['joint_deriv_gains_3'] if 'joint_deriv_gains_3' in params else 10,
-                                              params['joint_deriv_gains_4'] if 'joint_deriv_gains_4' in params else 10,
-                                              params['joint_deriv_gains_5'] if 'joint_deriv_gains_5' in params else 10,
-                                              params['joint_deriv_gains_6'] if 'joint_deriv_gains_6' in params else 10,
-                                              params['joint_deriv_gains_7'] if 'joint_deriv_gains_7' in params else 10]
+
+            cfg_ctrl = {'joint_prop_gains': [params['joint_prop_gains_1'] if 'joint_prop_gains_1' in params else 308,
+                                             params['joint_prop_gains_2'] if 'joint_prop_gains_2' in params else 308,
+                                             params['joint_prop_gains_3'] if 'joint_prop_gains_3' in params else 76,
+                                             params['joint_prop_gains_4'] if 'joint_prop_gains_4' in params else 188,
+                                             params['joint_prop_gains_5'] if 'joint_prop_gains_5' in params else 213,
+                                             params['joint_prop_gains_6'] if 'joint_prop_gains_6' in params else 32,
+                                             params['joint_prop_gains_7'] if 'joint_prop_gains_7' in params else 174],
+                        'joint_deriv_gains': [params['joint_deriv_gains_1'] if 'joint_deriv_gains_1' in params else 78,
+                                              params['joint_deriv_gains_2'] if 'joint_deriv_gains_2' in params else 78,
+                                              params['joint_deriv_gains_3'] if 'joint_deriv_gains_3' in params else 61,
+                                              params['joint_deriv_gains_4'] if 'joint_deriv_gains_4' in params else 54,
+                                              params['joint_deriv_gains_5'] if 'joint_deriv_gains_5' in params else 82,
+                                              params['joint_deriv_gains_6'] if 'joint_deriv_gains_6' in params else 9,
+                                              params['joint_deriv_gains_7'] if 'joint_deriv_gains_7' in params else 87]
                         }
+
 
             prop_gains = torch.cat((torch.tensor(cfg_ctrl['joint_prop_gains']).repeat((self.num_envs, 1)).to(self.device),
                                     self.cfg_ctrl['gripper_prop_gains']), dim=-1).to('cpu')
             deriv_gains = torch.cat((torch.tensor(cfg_ctrl['joint_deriv_gains']).repeat((self.num_envs, 1)).to(self.device),
                                      self.cfg_ctrl['gripper_deriv_gains']), dim=-1).to('cpu')
 
-            # print(f"Current params:", params)
+            print(f"Current params:", params)
 
             for env_ptr, kuka_handle, prop_gain, deriv_gain in zip(self.envs,
                                                                    self.kuka_handles,
@@ -718,25 +722,26 @@ class FactoryTaskOptimizeTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             # self.cfg_task.rl.rot_action_scale = [params['rot_scale_r'], params['rot_scale_p'], params['rot_scale_y']]
 
             idx_list = np.arange(0, min(self.num_paths, self.num_envs))
+            idx_list = np.random.randint(0, self.num_paths, size=(1, min(self.num_paths, self.num_envs)))
 
-            kuka_joints_to_mimic = torch.zeros((len(env_ids), 2999, 15))
-            eef_pose_to_mimic = torch.zeros((len(env_ids), 2999, 7))
-            action_to_apply = torch.zeros((len(env_ids), 2999, 6))
+            kuka_joints_to_mimic = torch.zeros((len(env_ids), 1999, 15))
+            eef_pose_to_mimic = torch.zeros((len(env_ids), 1999, 7))
+            action_to_apply = torch.zeros((len(env_ids), 1999, 6))
 
             # Each env will try to mimic a random recorded trajectory
             for i in range(len(env_ids)):
-                kuka_joints_to_mimic[i][:, :7] = self.arm_joints_real[i]  # idx_list[i]
-                eef_pose_to_mimic[i] = self.eef_pose_real[i]
-                action_to_apply[i] = self.actions_real[i]
+                kuka_joints_to_mimic[i][:, :7] = self.arm_joints_real[idx_list[i]]  # idx_list[i]
+                eef_pose_to_mimic[i] = self.eef_pose_real[idx_list[i]]
+                action_to_apply[i] = self.actions_real[idx_list[i]]
 
             # first starting joint state
             self._reset_kuka(env_ids, new_pose=kuka_joints_to_mimic[env_ids.cpu().numpy(), 0, :])
             # self._simulate_and_refresh()
 
-            sim_joints = torch.zeros((len(env_ids), 2999, 7))
-            sim_pose = torch.zeros((len(env_ids), 2999, 7))
+            sim_joints = torch.zeros((len(env_ids), 1999, 7))
+            sim_pose = torch.zeros((len(env_ids), 1999, 7))
 
-            up_to = 2999
+            up_to = 1500
             for j in range(up_to):
 
                 self._apply_actions_as_ctrl_targets(actions=torch.tensor(action_to_apply[:, j, :]).to(self.device),
@@ -755,18 +760,53 @@ class FactoryTaskOptimizeTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             loss2 = torch.sum((sim_joints[:, :up_to, joints] - kuka_joints_to_mimic[:, :up_to, joints]) ** 2).cpu().numpy().item()
 
             # plots
-            display = True
+            display = False
             if display:
+
+                sim_joints = sim_joints[0, :up_to, joints].cpu().numpy()
+                kuka_joints = kuka_joints_to_mimic[0, :up_to, joints].cpu().numpy()
+
                 import matplotlib.pyplot as plt
                 ax = [plt.subplot(len(joints), 1, i + 1) for i in range(len(joints))]
-                sim_pose = sim_pose[0, :up_to, joints].cpu().numpy()
-                real_pose = eef_pose_to_mimic[0, :up_to, joints].cpu().numpy()
+
                 for j in range(len(ax)):
-                    ax[j].plot(real_pose[:, j], color='r', label='real')
-                    ax[j].plot(sim_pose[:, j], color='b', label='sim')
+                    ax[j].plot(kuka_joints[:, j], color='r', marker='o', markersize=1, label='real')
+                    ax[j].plot(sim_joints[:, j], color='b', marker='o',  markersize=1, label='sim')
 
                 plt.legend()
                 plt.title(f"Total Error: {loss2} \n")
+                plt.show()
+
+                sim_pose = sim_pose[0, :up_to, :].cpu().numpy()
+                eef_pose_to_mimic = eef_pose_to_mimic[0, :up_to, :].cpu().numpy()
+                ax = plt.figure(figsize=(12, 12)).add_subplot(projection='3d')
+                ax.plot(sim_pose[:, 0], sim_pose[:, 1], zs=sim_pose[:, 2], marker='o', color='b',  markersize=1,
+                        label='sim')
+                ax.plot(eef_pose_to_mimic[:, 0], eef_pose_to_mimic[:, 1], zs=eef_pose_to_mimic[:, 2], marker='o',
+                        color='r', markersize=1,   label='real')
+
+                ax.set_xlabel('$X$', fontsize=20, rotation=150)
+                ax.set_ylabel('$Y$', fontsize=20, rotation=150)
+                ax.set_zlabel('$Z$', fontsize=30, rotation=60)
+                plt.legend()
+                plt.title(f"Total Error: {loss1} \n")
+
+                plt.show()
+
+                ax = [plt.subplot(1, 3, i + 1) for i in range(3)]
+                ax[0].plot(sim_pose[:, 0], sim_pose[:, 1] , marker='o', color='b',  markersize=1,label='sim')
+                ax[0].plot(eef_pose_to_mimic[:, 0], eef_pose_to_mimic[:, 1], marker='o', color='r', markersize=1,label='real')
+                ax[0].set_xlabel('$X$', fontsize=10, rotation=150)
+                ax[0].set_ylabel('$Y$', fontsize=10, rotation=150)
+                ax[1].plot(sim_pose[:, 0], sim_pose[:, 2] , marker='o', color='b',  markersize=1,label='sim')
+                ax[1].plot(eef_pose_to_mimic[:, 0], eef_pose_to_mimic[:, 2], marker='o', color='r', markersize=1,label='real')
+                ax[1].set_xlabel('$X$', fontsize=10, rotation=150)
+                ax[1].set_ylabel('$Z$', fontsize=10, rotation=150)
+                ax[2].plot(sim_pose[:, 1], sim_pose[:, 2] , marker='o', color='b',  markersize=1,label='sim')
+                ax[2].plot(eef_pose_to_mimic[:, 1], eef_pose_to_mimic[:, 2], marker='o', color='r', markersize=1,label='real')
+                ax[2].set_xlabel('$Y$', fontsize=10, rotation=150)
+                ax[2].set_ylabel('$Z$', fontsize=10, rotation=150)
+                plt.legend()
                 plt.show()
 
             print(f"Total Error: {loss2} \n")
@@ -783,20 +823,20 @@ class FactoryTaskOptimizeTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         # }
 
         space = {
-            "joint_prop_gains_1": hp.randint("joint_prop_gains_1", 0, 1000),
-            "joint_prop_gains_2": hp.randint("joint_prop_gains_2", 0, 1000),
-            "joint_prop_gains_3": hp.randint("joint_prop_gains_3", 0, 1000),
-            "joint_prop_gains_4": hp.randint("joint_prop_gains_4", 0, 1000),
-            "joint_prop_gains_5": hp.randint("joint_prop_gains_5", 0, 1000),
-            "joint_prop_gains_6": hp.randint("joint_prop_gains_6", 0, 1000),
-            "joint_prop_gains_7": hp.randint("joint_prop_gains_7", 0, 1000),
-            "joint_deriv_gains_1": hp.randint("joint_deriv_gains_1", 0, 100),
-            "joint_deriv_gains_2": hp.randint("joint_deriv_gains_2", 0, 100),
-            "joint_deriv_gains_3": hp.randint("joint_deriv_gains_3", 0, 100),
-            "joint_deriv_gains_4": hp.randint("joint_deriv_gains_4", 0, 100),
-            "joint_deriv_gains_5": hp.randint("joint_deriv_gains_5", 0, 100),
-            "joint_deriv_gains_6": hp.randint("joint_deriv_gains_6", 0, 100),
-            "joint_deriv_gains_7": hp.randint("joint_deriv_gains_7", 0, 100),
+            "joint_prop_gains_1": hp.randint("joint_prop_gains_1", 200, 400),
+            "joint_prop_gains_2": hp.randint("joint_prop_gains_2", 200, 400),
+            "joint_prop_gains_3": hp.randint("joint_prop_gains_3", 50, 250),
+            "joint_prop_gains_4": hp.randint("joint_prop_gains_4", 50, 250),
+            "joint_prop_gains_5": hp.randint("joint_prop_gains_5", 50, 250),
+            "joint_prop_gains_6": hp.randint("joint_prop_gains_6", 50, 250),
+            "joint_prop_gains_7": hp.randint("joint_prop_gains_7", 50, 250),
+            "joint_deriv_gains_1": hp.randint("joint_deriv_gains_1", 5, 100),
+            "joint_deriv_gains_2": hp.randint("joint_deriv_gains_2", 5, 100),
+            "joint_deriv_gains_3": hp.randint("joint_deriv_gains_3", 5, 100),
+            "joint_deriv_gains_4": hp.randint("joint_deriv_gains_4", 5, 100),
+            "joint_deriv_gains_5": hp.randint("joint_deriv_gains_5", 5, 100),
+            "joint_deriv_gains_6": hp.randint("joint_deriv_gains_6", 5, 100),
+            "joint_deriv_gains_7": hp.randint("joint_deriv_gains_7", 5, 100),
         }
 
         # TPE algo based on bayesian optimization
@@ -806,7 +846,7 @@ class FactoryTaskOptimizeTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             fn=objective,
             space=space,
             algo=algo,
-            max_evals=1000)
+            max_evals=500)
 
         print(f"Best params: \n")
         print(space_eval(space, best_result))
