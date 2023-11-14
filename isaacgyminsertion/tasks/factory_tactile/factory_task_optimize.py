@@ -681,21 +681,38 @@ class FactoryTaskOptimizeTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
 
             """
+            '''
+            {'joint_deriv_gains_1': 96,
+             'joint_deriv_gains_2': 72,
+             'joint_deriv_gains_3': 95,
+             'joint_deriv_gains_4': 73,
+             'joint_deriv_gains_5': 26,
+             'joint_deriv_gains_6': 61,
+             'joint_deriv_gains_7': 27,
+             'joint_prop_gains_1': 275,
+             'joint_prop_gains_2': 245,
+             'joint_prop_gains_3': 58,
+             'joint_prop_gains_4': 240,
+             'joint_prop_gains_5': 208,
+             'joint_prop_gains_6': 181,
+             'joint_prop_gains_7': 190}
+            
+            '''
 
-            cfg_ctrl = {'joint_prop_gains': [params['joint_prop_gains_1'] if 'joint_prop_gains_1' in params else 308,
-                                             params['joint_prop_gains_2'] if 'joint_prop_gains_2' in params else 308,
-                                             params['joint_prop_gains_3'] if 'joint_prop_gains_3' in params else 76,
-                                             params['joint_prop_gains_4'] if 'joint_prop_gains_4' in params else 188,
-                                             params['joint_prop_gains_5'] if 'joint_prop_gains_5' in params else 213,
-                                             params['joint_prop_gains_6'] if 'joint_prop_gains_6' in params else 32,
-                                             params['joint_prop_gains_7'] if 'joint_prop_gains_7' in params else 174],
-                        'joint_deriv_gains': [params['joint_deriv_gains_1'] if 'joint_deriv_gains_1' in params else 78,
-                                              params['joint_deriv_gains_2'] if 'joint_deriv_gains_2' in params else 78,
-                                              params['joint_deriv_gains_3'] if 'joint_deriv_gains_3' in params else 61,
-                                              params['joint_deriv_gains_4'] if 'joint_deriv_gains_4' in params else 54,
-                                              params['joint_deriv_gains_5'] if 'joint_deriv_gains_5' in params else 82,
-                                              params['joint_deriv_gains_6'] if 'joint_deriv_gains_6' in params else 9,
-                                              params['joint_deriv_gains_7'] if 'joint_deriv_gains_7' in params else 87]
+            cfg_ctrl = {'joint_prop_gains': [params['joint_prop_gains_1'] if '1joint_prop_gains_1' in params else 290,
+                                             params['joint_prop_gains_2'] if '1joint_prop_gains_2' in params else 208,
+                                             params['joint_prop_gains_3'] if '1joint_prop_gains_3' in params else 145,
+                                             params['joint_prop_gains_4'] if '1joint_prop_gains_4' in params else 145,
+                                             params['joint_prop_gains_5'] if '1joint_prop_gains_5' in params else 232,
+                                             params['joint_prop_gains_6'] if '1joint_prop_gains_6' in params else 204,
+                                             params['joint_prop_gains_7'] if '1joint_prop_gains_7' in params else 176],
+                        'joint_deriv_gains': [params['joint_deriv_gains_1'] if '1joint_deriv_gains_1' in params else 81,
+                                              params['joint_deriv_gains_2'] if '1joint_deriv_gains_2' in params else 80,
+                                              params['joint_deriv_gains_3'] if '1joint_deriv_gains_3' in params else 40,
+                                              params['joint_deriv_gains_4'] if '1joint_deriv_gains_4' in params else 43,
+                                              params['joint_deriv_gains_5'] if '1joint_deriv_gains_5' in params else 75,
+                                              params['joint_deriv_gains_6'] if '1joint_deriv_gains_6' in params else 82,
+                                              params['joint_deriv_gains_7'] if '1joint_deriv_gains_7' in params else 47]
                         }
 
 
@@ -730,9 +747,9 @@ class FactoryTaskOptimizeTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
             # Each env will try to mimic a random recorded trajectory
             for i in range(len(env_ids)):
-                kuka_joints_to_mimic[i][:, :7] = self.arm_joints_real[i]  # idx_list[i]
-                eef_pose_to_mimic[i] = self.eef_pose_real[i]
-                action_to_apply[i] = self.actions_real[i]
+                kuka_joints_to_mimic[i][:, :7] = self.arm_joints_real[idx_list[i]]  # idx_list[i]
+                eef_pose_to_mimic[i] = self.eef_pose_real[idx_list[i]]
+                action_to_apply[i] = self.actions_real[idx_list[i]]
 
             # first starting joint state
             self._reset_kuka(env_ids, new_pose=kuka_joints_to_mimic[env_ids.cpu().numpy(), 0, :])
@@ -741,7 +758,7 @@ class FactoryTaskOptimizeTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             sim_joints = torch.zeros((len(env_ids), 1999, 7))
             sim_pose = torch.zeros((len(env_ids), 1999, 7))
 
-            up_to = 1500
+            up_to = 1000
             for j in range(up_to):
 
                 self._apply_actions_as_ctrl_targets(actions=torch.tensor(action_to_apply[:, j, :]).to(self.device),
@@ -810,6 +827,20 @@ class FactoryTaskOptimizeTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                 plt.show()
 
             print(f"Total Error: {loss2} \n")
+
+            save = True
+            if save:
+                import os
+                from datetime import datetime
+                data_path = '/home/osher/Downloads/osher'
+
+                dict_to_save = {'sim_joints': sim_joints.cpu().numpy().squeeze(),
+                                'sim_pose': sim_pose.cpu().numpy().squeeze(),
+                                'sim_actions': action_to_apply.cpu().numpy().squeeze()
+                                }
+
+                np.savez_compressed(os.path.join(data_path, f'{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}.npz'),
+                                    dict_to_save)
 
             return loss2
 

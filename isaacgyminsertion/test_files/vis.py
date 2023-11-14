@@ -9,7 +9,7 @@ import random
 
 # %%
 import yaml
-with open('best_params_joint_task.yaml', 'r') as file:
+with open('best_params_task.yaml', 'r') as file:
     file = yaml.load(file, Loader=yaml.Loader)
 
 all_paths = glob('/home/osher/Desktop/isaacgym/python/IsaacGymInsertion/isaacgyminsertion/outputs/test/data/datastore_42_test/*/*.npz')
