@@ -37,8 +37,8 @@ from .factory_tactile.factory_task_optimize import FactoryTaskOptimizeTactile
 # Pick one, yup we are lazy.
 isaacgym_task_map = {
     # "FactoryTaskInsertionTactile": FactoryTaskInsertionTactile,
-    # "FactoryTaskInsertionTactile": FactoryTaskGraspTactile,
-    "FactoryTaskInsertionTactile": FactoryTaskOptimizeTactile,
+    "FactoryTaskInsertionTactile": FactoryTaskGraspTactile,
+    # "FactoryTaskInsertionTactile": FactoryTaskOptimizeTactile,
 
 }
 
