@@ -36,42 +36,67 @@ class HardwarePlayer():
         self.env = ExperimentEnv(with_hand=False, with_tactile=False)
         rospy.logwarn('Finished setting the env, lets play.')
 
-    def _initialize_trajectories(self, gp='/home/robotics/Downloads'):
+    def _initialize_trajectories(self, gp='test_files/sim_traj/'):
 
         from glob import glob
-
-        all_paths = glob(f'{gp}/datastore_42_test/*/*.npz')
+        abs_path = '/home/robotics/osher3_workspace/src/isaacgym/python/IsaacGymInsertion/isaacgyminsertion'
+        all_paths = glob(f'{abs_path}/{gp}/*.npz')
         print('Total trajectories:', len(all_paths))
         from isaacgyminsertion.utils.torch_jit_utils import matrix_to_quaternion
 
-        self.arm_joints = np.zeros((len(all_paths), 500, 7))
-        self.eef_pose_mat = np.zeros((len(all_paths), 500, 12))
-        self.eef_pose = np.zeros((len(all_paths), 500, 7))
-
-        self.actions = np.zeros((len(all_paths), 500, 6))
-        self.dones = np.zeros((len(all_paths), 1))
+        self.arm_joints_sim = np.zeros((len(all_paths), 1999, 7))
+        self.eef_pose_sim = np.zeros((len(all_paths), 1999, 7))
+        lz = 1000
+        self.actions_sim = np.zeros((len(all_paths), 1999, 6))
+        # self.dones = np.zeros((len(all_paths), 1))
 
         def convert_quat_wxyz_to_xyzw(q):
             q[3], q[0], q[1], q[2] = q[0], q[1], q[2], q[3]
             return q
 
         for i, p in enumerate(all_paths):
-            data = np.load(p)
-            done_idx = data['done'].nonzero()[-1][0]
+            # data = np.load(p)
+            data = np.load(p, allow_pickle=True)['arr_0'][()]  # saved without keys :X
+            # done_idx = data['done'].nonzero()[-1][0]
 
-            self.arm_joints[i] = data['arm_joints']
-            self.eef_pose_mat[i] = data['eef_pos']
+            self.arm_joints_sim[i] = data['sim_joints']
+            # to_matrix = data['sim_pose'][:, 3:].reshape(data['sim_pose'][:, 3:].shape[0], 3, 3)
+            # quat = matrix_to_quaternion(torch.tensor(to_matrix)).numpy()
+            # for j in range(len(quat)):f
+            #     quat[j] = convert_quat_wxyz_to_xyzw(quat[j])
 
-            to_matrix = self.eef_pose_mat[i][:, 3:].reshape(self.eef_pose_mat[i][:, 3:].shape[0], 3, 3)
-            quat = matrix_to_quaternion(torch.tensor(to_matrix)).numpy()
-            for j in range(len(quat)):
-                quat[j] = convert_quat_wxyz_to_xyzw(quat[j])
+            self.eef_pose_sim[i][:, :] = data['sim_pose']#[:, :3]
+            # self.eef_pose_sim[i][:, 3:] = quat
 
-            self.eef_pose[i][:, :3] = data['eef_pos'][:, :3]
-            self.eef_pose[i][:, 3:] = quat
+            self.actions_sim[i] = data['sim_actions']
+            # self.dones[i] = done_idx
 
-            self.actions[i] = data['action']
-            self.dones[i] = done_idx
+        lz = 1000
+        self.arm_joints_sim = self.arm_joints_sim[:,:lz, :]
+        self.eef_pose_sim = self.eef_pose_sim[:,:lz,:]
+        self.actions_sim = self.actions_sim[:,:lz,:]
+        #
+        # for i in range(len(self.arm_joints_sim)):
+        #     display = True
+        #
+        #     if display:
+        #         ax1 = plt.subplot(7, 1, 1)
+        #         ax2 = plt.subplot(7, 1, 2)
+        #         ax3 = plt.subplot(7, 1, 3)
+        #         ax4 = plt.subplot(7, 1, 4)
+        #         ax5 = plt.subplot(7, 1, 5)
+        #         ax6 = plt.subplot(7, 1, 6)
+        #         ax7 = plt.subplot(7, 1, 7)
+        #
+        #         ax = [ax1, ax2, ax3, ax4, ax5, ax6, ax7]
+        #         traj = self.arm_joints_sim[i]
+        #         for j in range(len(ax)):
+        #             ax[j].plot(np.array(traj)[:, j], color='r', label='real')
+        #             # ax[j].plot(sim_joints[:len(traj)][:, j], color='b', label='sim')
+        #
+        #         plt.legend()
+        #         # plt.title(f"Total Error: {loss2} \n")
+        #         plt.show()
 
         # well...
 
@@ -165,6 +190,7 @@ class HardwarePlayer():
             print(f'failed to reach {target_joints}')
 
 
+
 def hyper_param_tune(hw):
     """
     Find best simulated PID values to fit real PID values
@@ -199,22 +225,20 @@ def hyper_param_tune(hw):
         # hw.env.arm.move_to_init()
         # hw.env.hand.set_gripper_joints_to_init()
 
-        # idx = np.random.randint(0, len(hw.arm_joints))
-        # idx = 1
-        #
+        # Sample trajectory from the sim
+        idx = np.random.randint(0, len(hw.arm_joints_sim))
         # done = int(hw.dones[idx][0])
-        # sim_joints = hw.arm_joints[idx][:done, :]
-        # sim_actions = hw.actions[idx][:done, :]
-        # sim_pose = hw.eef_pose[idx][:done, :]
-        #
-        # # move to start of sim traj
-        # # hw.env.move_to_joint_values(sim_joints[0], wait=True)
-        # # hw.env.move_to_joint_values(hw.env.joints_above_socket, wait=True)
+        sim_joints = hw.arm_joints_sim[idx][:, :]
+        sim_actions = hw.actions_sim[idx][:, :]
+        sim_pose = hw.eef_pose_sim[idx][:, :]
 
+        # Move to start of sim traj
+        hw.env.move_to_joint_values(sim_joints[0], wait=True)
+
+        # Pick and Place
         # hw.env.move_to_init_state()
         # grasp_joints_bit = [0.33339, 0.52470, 0.12685, -1.6501, -0.07662, 0.97147, -1.0839]
         # grasp_joints = [0.3347, 0.54166, 0.12498, -1.6596, -0.07943, 0.94501, -1.0817]
-        #
         # hw.env.move_to_joint_values(grasp_joints_bit, wait=True)
         # hw.env.move_to_joint_values(grasp_joints, wait=True)
         # hw.env.grasp()
@@ -223,10 +247,12 @@ def hyper_param_tune(hw):
         # hw.env.move_to_joint_values(hw.env.joints_above_socket, wait=True)
 
         # Sample init error
-        random_init_idx = torch.randint(0, hw.total_init_poses, size=(1,))
-        kuka_dof_pos = hw.init_dof_pos[random_init_idx]
-        kuka_dof_pos = kuka_dof_pos.cpu().detach().numpy().squeeze().tolist()
-        hw.env.move_to_joint_values(kuka_dof_pos, wait=True)
+        # random_init_idx = torch.randint(0, hw.total_init_poses, size=(1,))
+        # kuka_dof_pos = hw.init_dof_pos[random_init_idx]
+        # kuka_dof_pos = kuka_dof_pos.cpu().detach().numpy().squeeze().tolist()
+        # hw.env.move_to_joint_values(kuka_dof_pos, wait=True)
+
+        # Squeeze Squeeze
         # hw.env.grasp()
         # hw.env.grasp()
 
@@ -236,22 +262,24 @@ def hyper_param_tune(hw):
         pose = []
         actions = []
 
-        import random
-        def generate_random_list(size=6):
-            return [random.choice([-1, 0, 1]) for _ in range(size)]
-
-        action_list = generate_random_list()
-        action_list[2] = -1
+        # import random
+        # def generate_random_list(size=6):
+        #     return [random.choice([-1, 0, 1]) for _ in range(size)]
+        #
+        # action_list = generate_random_list()
+        # action_list[2] = -1
         # action_list += [0, 0, 0]
-        print(action_list)
+
+        # print(action_list)
 
         # action_list = [1, 1, -1, 0, 0, 0]
 
-        # hw.env.arm.calib_robotiq()
-        # rospy.sleep(2.0)
-        # hw.env.arm.calib_robotiq()
+        hw.env.arm.calib_robotiq()
+        rospy.sleep(2.0)
+        hw.env.arm.calib_robotiq()
 
-        for i in range(1, 2000):  # len(sim_joints)
+        skip = 4
+        for i in range(1, skip * len(sim_joints)):  # len(sim_joints)
 
             start_time = time()
 
@@ -259,16 +287,18 @@ def hyper_param_tune(hw):
             pos, quat = hw.env.arm.get_ee_pose()
 
             # eef_pos = sim_pose[i]
-            # action = sim_actions[i]
+            action = sim_actions[0]
             # action_list = np.array(action_list)
-            # action = np.where(np.abs(hw.env.get_ft()) > 1.0, action_list * 0, action_list).tolist()
 
-            action = action_list
+            print(action)
+            # Regularize Ft
+            action = np.where(np.abs(hw.env.get_ft()) > 1.0, action * 0, action).tolist()
 
+            # action = action_list
+            #
             # if np.sign(quat[0]) != np.sign(eef_pos[3]):
             #     quat[0] *= -1
             #     quat[1] *= -1
-            #     quat[3] *= -1
             #     if np.sign(quat[0]) != np.sign(eef_pos[3]):
             #         print('check')
 
@@ -285,10 +315,10 @@ def hyper_param_tune(hw):
         traj = np.array(traj)
         pose = np.array(pose)
 
-        # sim_joints = sim_joints[:-1, :]
-        # sim_pose = sim_pose[:-1, :]
+        sim_joints = sim_joints[:-1, :]
+        sim_pose = sim_pose[:-1, :]
 
-        save = True
+        save = False
         if save:
             import os
             from datetime import datetime
@@ -318,8 +348,8 @@ def hyper_param_tune(hw):
             ax = [ax1, ax2, ax3, ax4, ax5, ax6, ax7]
 
             for j in range(len(ax)):
-                ax[j].plot(np.array(pose)[:, j], color='r', label='real')
-                # ax[j].plot(sim_pose[:len(pose)][:, j], color='b', label='sim')
+                ax[j].plot(np.array(traj)[::skip, j], color='r', label='real', marker='o', markersize=0.2)
+                ax[j].plot(sim_joints[:len(traj)][:, j], color='b', marker='o', label='sim', markersize=0.2)
 
             plt.legend()
             plt.title(f"Total Error: {loss2} \n")
