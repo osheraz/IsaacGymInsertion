@@ -16,7 +16,7 @@ network:
   merge_mlp:
     units: [128, 64, 8]
   contact_mlp:
-    units: [ 128, 64, 16]
+    units: [128, 64, 16]
 
   tactile_decoder:
     num_channels: ${....task.tactile.decoder.num_channels}
@@ -36,10 +36,10 @@ ppo:
   normalize_advantage: True
   gamma: 0.99
   tau: 0.95
-  learning_rate: 0.00025
+  learning_rate: 5e-4
   kl_threshold: 0.02
   # PPO batch collection
-  horizon_length: 64 # 64 , 8
+  horizon_length: 24 # 64 , 8
   mini_epochs: 8 # 8
   minibatch_size: 24 # batch size = num_envs * horizon_length; minibatch_size = batch_size / num_minibatches
 

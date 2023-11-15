@@ -2,7 +2,7 @@
 GPUS=${1:-0}
 SEED=${2:-42}
 CACHE=${3:-test}
-NUM_ENVS=${4:-4096}
+NUM_ENVS=${4:-2048}
 HEADLESS=${5:-True}
 
 array=( $@ )
@@ -17,10 +17,9 @@ python trainV2.py task=FactoryTaskInsertionTactile headless=${HEADLESS} seed=${S
 task.env.numEnvs=${NUM_ENVS} \
 task.env.tactile=False \
 task.env.smooth_force=True \
-task.env.numObsHist=5 \
-task.env.numObservations=215 \
+task.env.numObsHist=2 \
+task.env.numObservations=74 \
 task.env.compute_contact_gt=False \
-task.env.numStates=16 \
 train.algo=PPO \
 train.ppo.priv_info=True \
 train.ppo.extrin_adapt=False \
