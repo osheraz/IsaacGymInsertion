@@ -152,8 +152,9 @@ class ExtrinsicContact:
         d = self.socket.compute_distance(o3d.core.Tensor.from_numpy(query_points.astype(np.float32))).numpy()
 
         if display:
+            display_id = 3
             self.ax.plot(self.socket_pcl[:, 0], self.socket_pcl[:, 1], self.socket_pcl[:, 2], 'yo')
-            self.ax.plot(query_points[0, :, 0], query_points[0, :, 1], query_points[0, :, 2], 'ko')
+            self.ax.plot(query_points[display_id, :, 0], query_points[display_id, :, 1], query_points[display_id, :, 2], 'ko')
             self.ax.set_xlabel('X')
             self.ax.set_ylabel('Y')
 
@@ -161,7 +162,7 @@ class ExtrinsicContact:
             contacts = np.zeros_like(query_points)
             contacts[intersecting_indices] = query_points[intersecting_indices]
             print(contacts.shape)
-            for c in contacts[0]:
+            for c in contacts[display_id]:
                 if np.linalg.norm(c, axis=0):
                     print(c, np.linalg.norm(c, axis=0))
                     self.ax.plot(c[0], c[1], c[2], 'ro')
@@ -637,7 +638,7 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
                                                                os.path.join(mesh_root, plug_file), randomize=True,
                                                                finger_idx=i) for i in range(len(self.fingertips))])
             if self.cfg['env']['compute_contact_gt']:
-                socket_pos = [0.5, 0, self.cfg_base.env.table_height]
+                socket_pos = [0.5, 0, 0.003]
                 if subassembly not in self.subassembly_extrinsic_contact:
                     print(subassembly, mesh_root, plug_file, socket_file)
                     self.subassembly_extrinsic_contact[subassembly] = ExtrinsicContact(mesh_obj=os.path.join(mesh_root, plug_file),

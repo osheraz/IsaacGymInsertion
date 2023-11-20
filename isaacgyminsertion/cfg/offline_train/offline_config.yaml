@@ -19,7 +19,7 @@ train:
 
   # Train params for on screen logging
   print_every: 50
-  eval_every: 30
+  eval_every: 250
   test_every: 25
   test_episodes: 2 # per epoch batch
 
@@ -57,7 +57,7 @@ model:
     hidden_size: 64
     num_layers: 2
     num_heads: 2
-    output_size: 4
+    output_size: 10
   
 # wandb logging
 wandb:

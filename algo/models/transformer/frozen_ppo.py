@@ -33,7 +33,7 @@ from isaacgyminsertion.utils.misc import AverageScalarMeter
 from isaacgyminsertion.utils.misc import add_to_fifo, multi_gpu_aggregate_stats
 from tqdm import tqdm
 from tensorboardX import SummaryWriter
-import wandb
+# import wandb
 
 class PPO(object):
     def __init__(self, env, output_dif, full_config):
@@ -215,7 +215,7 @@ class PPO(object):
         self.all_time = 0
 
         # ---- wandb
-        wandb.init()
+        # wandb.init()
 
     def write_stats(self, a_losses, c_losses, b_losses, entropies, kls, grad_norms, returns_list):
         self.writer.add_scalar('performance/RLTrainFPS', self.agent_steps / self.rl_train_time, self.agent_steps)
@@ -233,25 +233,25 @@ class PPO(object):
         self.writer.add_scalar("info/returns_list", torch.mean(torch.stack(returns_list)).item(), self.agent_steps)
 
 
-        wandb.log({
-            'losses/actor_loss': torch.mean(torch.stack(a_losses)).item(),
-            'losses/bounds_loss': torch.mean(torch.stack(b_losses)).item(),
-            'losses/critic_loss': torch.mean(torch.stack(c_losses)).item(),
-            'losses/entropy': torch.mean(torch.stack(entropies)).item(),
-            'info/last_lr': self.last_lr,
-            'info/e_clip': self.e_clip,
-            'info/kl': torch.mean(torch.stack(kls)).item(),
-            'info/grad_norms': torch.mean(torch.stack(grad_norms)).item(),
-            'info/returns_list': torch.mean(torch.stack(returns_list)).item(),
-            'performance/RLTrainFPS': self.agent_steps / self.rl_train_time,
-            'performance/EnvStepFPS': self.agent_steps / self.data_collect_time,
-        })
+        # wandb.log({
+        #     'losses/actor_loss': torch.mean(torch.stack(a_losses)).item(),
+        #     'losses/bounds_loss': torch.mean(torch.stack(b_losses)).item(),
+        #     'losses/critic_loss': torch.mean(torch.stack(c_losses)).item(),
+        #     'losses/entropy': torch.mean(torch.stack(entropies)).item(),
+        #     'info/last_lr': self.last_lr,
+        #     'info/e_clip': self.e_clip,
+        #     'info/kl': torch.mean(torch.stack(kls)).item(),
+        #     'info/grad_norms': torch.mean(torch.stack(grad_norms)).item(),
+        #     'info/returns_list': torch.mean(torch.stack(returns_list)).item(),
+        #     'performance/RLTrainFPS': self.agent_steps / self.rl_train_time,
+        #     'performance/EnvStepFPS': self.agent_steps / self.data_collect_time,
+        # })
 
         for k, v in self.extra_info.items():
             self.writer.add_scalar(f'{k}', v, self.agent_steps)
-            wandb.log({
-                f'{k}': v,
-            })
+            # wandb.log({
+            #     f'{k}': v,
+            # })
 
     def set_eval(self):
         self.model.eval()

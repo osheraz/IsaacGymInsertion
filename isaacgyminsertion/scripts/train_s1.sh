@@ -27,10 +27,10 @@ train.algo=PPO \
 train.ppo.priv_info=False \
 train.ppo.extrin_adapt=False \
 train.ppo.tactile_info=False \
-task.tactile.tacto.width=224 \
-task.tactile.tacto.height=224 \
-task.tactile.decoder.width=224 \
-task.tactile.decoder.height=224 \
+task.tactile.tacto.width=64 \
+task.tactile.tacto.height=64 \
+task.tactile.decoder.width=64 \
+task.tactile.decoder.height=64 \
 task.env.tactile_history_len=1 \
 train.ppo.output_name="${CACHE}" \
 ${EXTRA_ARGS}

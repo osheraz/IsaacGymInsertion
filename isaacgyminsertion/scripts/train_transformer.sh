@@ -21,10 +21,10 @@ path_norm=/common/home/dm1487/Downloads/isaacgym/python/IsaacGymInsertion/algo/m
 CUDA_VISIBLE_DEVICES=${GPUS} \
 python trainV2.py task=FactoryTaskInsertionTactile headless=${HEADLESS} seed=${SEED} \
 task.env.numEnvs=${NUM_ENVS} \
-offline_training=False \
-offline_training_w_env=True \
-test=True \
-offline_train.train.action_regularization=True \
+offline_training=True \
+offline_training_w_env=False \
+test=False \
+offline_train.train.action_regularization=False \
 offline_train.model.transformer.full_sequence=False \
 offline_train.model.transformer.sequence_length=32 \
 offline_train.train.load_checkpoint=False \

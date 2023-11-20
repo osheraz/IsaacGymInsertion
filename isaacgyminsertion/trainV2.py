@@ -81,12 +81,7 @@ def run(cfg: DictConfig):
         from algo.models.transformer.frozen_ppo import PPO
 
         agent = None
-        # initializing control (ppo) model if we are doing actor regularization
-        if cfg.offline_train.train.action_regularization:
-            agent = PPO(None, None, full_config=cfg)
-            agent.restore_test(cfg.train.load_path)
-            agent.set_eval()
-
+        
         # perform train
         runner = TransformerRunner(cfg.offline_train, agent=agent)
         runner.run()
