@@ -44,15 +44,15 @@ tactile: # Pulling from task
 
 env:
     numEnvs: ${resolve_default:128,${...num_envs}}
-    numObservations: 340 # 43 * 5
-    numObsStudent: 105 #
-    numStates: 17 # 31 #
+    numObservations: 48 # 43 * 5
+    numObsStudent: 21 #
+    numStates: 16 # 31 #
     numActions: 6 # [position, ori]
     numTargets: 6 # [position, ori]
 
     # Should be the same as in EnvPPO
     numObsHist: 2
-    numObsStudentHist: 5
+    numObsStudentHist: 1
     ft_history_len: 30
     tactile_history_len: 1
     smooth_force: True
@@ -96,13 +96,14 @@ randomize:
     fingertip_midpoint_rot_initial: [-3.14159265359, 0.0, -1.57079632679]  # initial rotation of fingertips (Euler)
 
     # for grasp generations
-    plug_pos_xy_initial: [0.5, 0.0, 0.02]  # initial XY position of plug on table
+    plug_pos_xy_initial: [0.5075, 0.0, 0.02]  # initial XY position of plug on table
     plug_pos_xy_noise: [0.01, 0.01, 0.003] # noise on plug position
     socket_pos_xy_initial: [0.5, 0.0]  # initial XY position of plug on table # round_hole_2in  width = 0.1016, length = 0.09144
     socket_pos_xy_noise: [0.00, 0.00]  # noise on plug position
     socket_pos_z_noise_bounds: [0.0, 0.002]  # noise on socket offset from table
-    grasp_plug_noise: 0.001 # xy noise on plug position during grasp
+    grasp_plug_noise: 0.001 # xyz noise on plug position during grasp
     above_socket_noise: [0.03, 0.03, 0.001]
+    plug_rot_noise: [0.01, 0.01, 0.01]
 
 rl:
 
