@@ -791,7 +791,7 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                 dof_pos = self.dof_pos[valid_env_ids, :].clone().cpu().numpy()
 
                 output_dir = './outputs/debug'
-                file_name = self.cfg_env.env.desired_subassemblies[0] + '_noise4'
+                file_name = self.cfg_env.env.desired_subassemblies[0] + '_noise'
 
                 if len(self.cfg_env.env.desired_subassemblies) > 1:
                     assert print('Currently can generate grasping poses for 1 object at a time')

@@ -157,6 +157,8 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                                         device=self.device)
 
         # Keep track of history
+        self.obs_queue =  torch.zeros((self.num_envs, self.cfg_task.env.numObsHist * self.num_observations),
+                                        dtype=torch.float, device=self.device)
         self.arm_joint_queue = torch.zeros((self.num_envs, self.cfg_task.env.numObsHist, 7),
                                            dtype=torch.float, device=self.device)
         self.arm_vel_queue = torch.zeros((self.num_envs, self.cfg_task.env.numObsHist, 7),
@@ -173,6 +175,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                                             dtype=torch.float, device=self.device)
 
         # Bad, should queue the obs!
+        
         self.arm_joint_queue_student = torch.zeros((self.num_envs, self.cfg_task.env.numObsStudentHist, 7),
                                                    dtype=torch.float, device=self.device)
         self.arm_vel_queue_student = torch.zeros((self.num_envs, self.cfg_task.env.numObsStudentHist, 7),
@@ -624,6 +627,15 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.delta_pos_noisy_queue[:, 1:] = self.delta_pos_noisy_queue[:, :-1].clone().detach()
         self.delta_pos_noisy_queue[:, 0, :] = noisy_delta_pos
 
+        eef_pos = torch.cat(self.pose_world_to_robot_base(self.fingertip_centered_pos.clone(),
+                                                                          self.fingertip_centered_quat.clone()), dim=-1)
+        actions = self.actions.clone()
+        targets = self.targets.clone()
+        
+        obs = torch.cat([eef_pos, actions, targets], dim=-1)
+        self.obs_queue[:, :-self.num_observations] = self.obs_queue[:, self.num_observations:]
+        self.obs_queue[:, -self.num_observations:] = obs
+
         # Define observations (for actor)
         obs_tensors = [
             # self.arm_joint_queue.reshape(self.num_envs, -1),  # 7 * hist
@@ -691,7 +703,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.rigid_physics_params[...] = physics_params
 
         if self.cfg_task.env.compute_contact_gt:
-            display_key = 'red_round_peg_1_5in' # ['triangle', 'red_round_peg_1_5in', 'yellow_round_peg_2in']
+            display_key = 'yellow_round_peg_2in' # ['triangle', 'red_round_peg_1_5in', 'yellow_round_peg_2in']
             for k, v in self.subassembly_extrinsic_contact.items():
                 self.gt_extrinsic_contact[self.subassembly_to_env_ids[k], ...] = v.get_extrinsic_contact(
                     obj_pos=self.plug_pos[self.subassembly_to_env_ids[k], ...].clone(), 
@@ -739,7 +751,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             # TODO: add extrinsics contact (point cloud) -> this will encode the shape (check this)
         ]
 
-        self.obs_buf = torch.cat(obs_tensors, dim=-1)  # shape = (num_envs, num_observations)
+        self.obs_buf = self.obs_queue.clone() # torch.cat(obs_tensors, dim=-1)  # shape = (num_envs, num_observations)
         self.obs_student_buf = torch.cat(obs_tensors_student, dim=-1)  # shape = (num_envs, num_observations_student)
         self.states_buf = torch.cat(state_tensors, dim=-1)  # shape = (num_envs, num_states)
 
@@ -1104,6 +1116,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.ft_queue[env_ids] = 0
         self.tactile_queue[env_ids] = 0
 
+        self.obs_queue[env_ids, ...] = 0.
         self.actions_queue[env_ids] *= 0
         self.arm_joint_queue[env_ids] *= 0
         self.arm_vel_queue[env_ids] *= 0

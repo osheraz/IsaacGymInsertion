@@ -81,10 +81,10 @@ class ExtrinsicContact:
         T[0:3, -1] = socket_pos
         self.socket_trimesh.apply_transform(T)
 
-        o3d_mesh = o3d.geometry.TriangleMesh()
-        o3d_mesh.vertices = o3d.utility.Vector3dVector(self.socket_trimesh.vertices)
-        o3d_mesh.triangles = o3d.utility.Vector3iVector(self.socket_trimesh.faces)
-        o3d.visualization.draw_geometries([o3d_mesh])
+        # o3d_mesh = o3d.geometry.TriangleMesh()
+        # o3d_mesh.vertices = o3d.utility.Vector3dVector(self.socket_trimesh.vertices)
+        # o3d_mesh.triangles = o3d.utility.Vector3iVector(self.socket_trimesh.faces)
+        # o3d.visualization.draw_geometries([o3d_mesh])
 
         self.socket = o3d.t.geometry.RaycastingScene()
         self.socket.add_triangles(
@@ -126,7 +126,7 @@ class ExtrinsicContact:
         transformed = np.transpose(transformed, (0, 2, 1))[..., :3]
         return transformed
 
-    def get_extrinsic_contact(self, obj_pos, obj_quat, socket_pos, socket_quat, threshold=0.002, display=False):
+    def get_extrinsic_contact(self, obj_pos, obj_quat, socket_pos, socket_quat, threshold=0.002, display=True):
         
         object_poses = torch.cat((obj_pos, obj_quat), dim=1)
         object_poses = self._xyzquat_to_tf_numpy(object_poses.cpu().numpy())
@@ -138,6 +138,47 @@ class ExtrinsicContact:
             object_poses = object_poses[None, ...]
         if len(socket_poses.shape) == 2:
             socket_poses = socket_poses[None, ...]
+
+        query_points = self.apply_transform(object_poses, self.object_pc.copy().vertices)
+        
+        # query_points = np.array(transforemd_object_pc.vertices)
+        # socket_trimesh_1 = self.socket_trimesh.copy()
+        # socket_trimesh_1.apply_transform(socket_poses[0])
+        # self.socket = o3d.t.geometry.RaycastingScene()
+        # self.socket.add_triangles(
+        #     o3d.t.geometry.TriangleMesh.from_legacy(socket_trimesh_1.as_open3d)
+        # )
+
+        d = self.socket.compute_distance(o3d.core.Tensor.from_numpy(query_points.astype(np.float32))).numpy()
+
+        if display:
+            self.ax.plot(self.socket_pcl[:, 0], self.socket_pcl[:, 1], self.socket_pcl[:, 2], 'yo')
+            self.ax.plot(query_points[0, :, 0], query_points[0, :, 1], query_points[0, :, 2], 'ko')
+            self.ax.set_xlabel('X')
+            self.ax.set_ylabel('Y')
+
+            intersecting_indices = d < threshold
+            contacts = np.zeros_like(query_points)
+            contacts[intersecting_indices] = query_points[intersecting_indices]
+            print(contacts.shape)
+            for c in contacts[0]:
+                if np.linalg.norm(c, axis=0):
+                    print(c, np.linalg.norm(c, axis=0))
+                    self.ax.plot(c[0], c[1], c[2], 'ro')
+
+            plt.pause(0.0001)
+            self.ax.cla()
+
+        d = d.flatten()
+        idx_2 = np.where(d > threshold)[0]
+        d[idx_2] = threshold
+        d = np.clip(d, 0.0, threshold)
+
+        d = 1.0 - d / threshold
+        d = np.clip(d, 0.0, 1.0)
+        d[d > 0.1] = 1.0
+
+        return torch.from_numpy(np.array(d)).view(-1, self.n_points)
 
         for i in range(object_poses.shape[0]):
             object_pc = trimesh.points.PointCloud(self.pointcloud_obj.copy())
@@ -151,6 +192,8 @@ class ExtrinsicContact:
             )
 
             d = self.socket.compute_distance(o3d.core.Tensor.from_numpy(object_verts.astype(np.float32))).numpy()
+
+            
 
             if i == 0 and display:
                 socket_pcl = trimesh.sample.sample_surface_even(socket_trimesh_1, self.n_points, seed=42)[0]
@@ -594,7 +637,7 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
                                                                os.path.join(mesh_root, plug_file), randomize=True,
                                                                finger_idx=i) for i in range(len(self.fingertips))])
             if self.cfg['env']['compute_contact_gt']:
-                socket_pos = [0, 0, self.cfg_base.env.table_height]
+                socket_pos = [0.5, 0, self.cfg_base.env.table_height]
                 if subassembly not in self.subassembly_extrinsic_contact:
                     print(subassembly, mesh_root, plug_file, socket_file)
                     self.subassembly_extrinsic_contact[subassembly] = ExtrinsicContact(mesh_obj=os.path.join(mesh_root, plug_file),

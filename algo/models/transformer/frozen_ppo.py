@@ -60,7 +60,7 @@ class PPO(object):
         self.actions_num = self.task_config.env.numActions
         # self.observation_space = self.env.observation_space
         # self.obs_shape = self.observation_space.shape
-        self.obs_shape = (self.task_config.env.numObservations,)
+        self.obs_shape = (self.task_config.env.numObservations * self.task_config.env.numObsHist,)
         # print("OBS", self.obs_shape)
 
         # ---- Tactile Info ---
@@ -449,7 +449,7 @@ class PPO(object):
                     torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.grad_norm)
                 self.optimizer.step()
 
-                a_losses.append(a_loss)
+                a_losses.append(a_loss)             
                 c_losses.append(c_loss)
                 returns_list.append(returns)
                 if self.bounds_loss_coef is not None:

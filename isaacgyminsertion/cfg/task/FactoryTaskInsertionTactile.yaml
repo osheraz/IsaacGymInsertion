@@ -80,7 +80,7 @@ env:
     tactile_wrt_force: True
 
     compute_contact_gt: False
-    num_points: 10
+    num_points: 300
 
     record_video: True
     record_ft: True
@@ -98,6 +98,7 @@ randomize:
     # for grasp generations
     plug_pos_xy_initial: [0.5, 0.0, 0.02]  # initial XY position of plug on table
     plug_pos_xy_noise: [0.01, 0.01, 0.003] # noise on plug position
+    plug_quat_noise: [0.0, 0.0, 0.0, 0.0]
     socket_pos_xy_initial: [0.5, 0.0]  # initial XY position of plug on table # round_hole_2in  width = 0.1016, length = 0.09144
     socket_pos_xy_noise: [0.00, 0.00]  # noise on plug position
     socket_pos_z_noise_bounds: [0.0, 0.002]  # noise on socket offset from table
