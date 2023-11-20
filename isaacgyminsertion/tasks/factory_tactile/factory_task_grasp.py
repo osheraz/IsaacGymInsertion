@@ -869,7 +869,7 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.dof_pos[env_ids, list(self.dof_dict.values()).index(
             'finger_2_1_to_finger_2_2')] = self.cfg_task.env.openhand.proximal_open
         self.dof_pos[env_ids, list(self.dof_dict.values()).index(
-            'base_to_finger_3_2')] = self.cfg_task.env.openhand.proximal_open
+            'base_to_finger_3_2')] = self.cfg_task.env.openhand.proximal_open + 0.15
 
         self.dof_pos[env_ids, list(self.dof_dict.values()).index(
             'finger_1_2_to_finger_1_3')] = self.cfg_task.env.openhand.distal_open
