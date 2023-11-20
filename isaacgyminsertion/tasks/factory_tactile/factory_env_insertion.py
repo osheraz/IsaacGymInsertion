@@ -161,10 +161,8 @@ class ExtrinsicContact:
             intersecting_indices = d < threshold
             contacts = np.zeros_like(query_points)
             contacts[intersecting_indices] = query_points[intersecting_indices]
-            print(contacts.shape)
             for c in contacts[display_id]:
                 if np.linalg.norm(c, axis=0):
-                    print(c, np.linalg.norm(c, axis=0))
                     self.ax.plot(c[0], c[1], c[2], 'ro')
 
             plt.pause(0.0001)

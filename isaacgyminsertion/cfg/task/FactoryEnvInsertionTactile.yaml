@@ -110,7 +110,7 @@ randomize:
                 rigid_shape_properties:
                     friction:
                         num_buckets: 250
-                        range: [ 0.0, 1.0 ]
+                        range: [ 0.0, 0.0 ]
                         operation: "scaling"
                         distribution: "uniform"
                         # schedule: "linear"  # "linear" will scale the current random sample by `min(current num steps, schedule_steps) / schedule_steps`
@@ -119,7 +119,7 @@ randomize:
                 rigid_shape_properties:
                     friction:
                         num_buckets: 250
-                        range: [ 0.5, 1.5 ]
+                        range: [ 0.0, 0.0 ]
                         operation: "scaling"
                         distribution: "uniform"
 
@@ -127,6 +127,6 @@ randomize:
                 rigid_shape_properties:
                     friction:
                         num_buckets: 250
-                        range: [ 0.0, 1.0 ]
+                        range: [ 0.0, 0.0 ]
                         operation: "scaling"
                         distribution: "uniform"
