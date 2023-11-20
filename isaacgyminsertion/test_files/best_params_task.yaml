@@ -1,0 +1,69 @@
+joint_deriv_gains_1: !!python/object/apply:numpy.core.multiarray.scalar
+- &id001 !!python/object/apply:numpy.dtype
+  args:
+  - i8
+  - false
+  - true
+  state: !!python/tuple
+  - 3
+  - <
+  - null
+  - null
+  - null
+  - -1
+  - -1
+  - 0
+- !!binary |
+  YAAAAAAAAAA=
+joint_deriv_gains_2: !!python/object/apply:numpy.core.multiarray.scalar
+- *id001
+- !!binary |
+  SAAAAAAAAAA=
+joint_deriv_gains_3: !!python/object/apply:numpy.core.multiarray.scalar
+- *id001
+- !!binary |
+  XwAAAAAAAAA=
+joint_deriv_gains_4: !!python/object/apply:numpy.core.multiarray.scalar
+- *id001
+- !!binary |
+  SQAAAAAAAAA=
+joint_deriv_gains_5: !!python/object/apply:numpy.core.multiarray.scalar
+- *id001
+- !!binary |
+  GgAAAAAAAAA=
+joint_deriv_gains_6: !!python/object/apply:numpy.core.multiarray.scalar
+- *id001
+- !!binary |
+  PQAAAAAAAAA=
+joint_deriv_gains_7: !!python/object/apply:numpy.core.multiarray.scalar
+- *id001
+- !!binary |
+  GwAAAAAAAAA=
+joint_prop_gains_1: !!python/object/apply:numpy.core.multiarray.scalar
+- *id001
+- !!binary |
+  EwEAAAAAAAA=
+joint_prop_gains_2: !!python/object/apply:numpy.core.multiarray.scalar
+- *id001
+- !!binary |
+  9QAAAAAAAAA=
+joint_prop_gains_3: !!python/object/apply:numpy.core.multiarray.scalar
+- *id001
+- !!binary |
+  OgAAAAAAAAA=
+joint_prop_gains_4: !!python/object/apply:numpy.core.multiarray.scalar
+- *id001
+- !!binary |
+  8AAAAAAAAAA=
+joint_prop_gains_5: !!python/object/apply:numpy.core.multiarray.scalar
+- *id001
+- !!binary |
+  0AAAAAAAAAA=
+joint_prop_gains_6: !!python/object/apply:numpy.core.multiarray.scalar
+- *id001
+- !!binary |
+  tQAAAAAAAAA=
+joint_prop_gains_7: !!python/object/apply:numpy.core.multiarray.scalar
+- *id001
+- !!binary |
+  vgAAAAAAAAA=

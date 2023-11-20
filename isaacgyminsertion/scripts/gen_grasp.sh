@@ -1,7 +1,7 @@
 #!/bin/bash
 
-python trainV2.py task=FactoryTaskInsertionTactile headless=True pipeline=gpu \
-task.env.numEnvs=32 \
+python trainV2.py task=FactoryTaskInsertionTactile headless=False pipeline=gpu \
+task.env.numEnvs=2 \
 task.sim.substeps=5 \
 task.env.tactile=True \
 task.env.tactile_display_viz=False \

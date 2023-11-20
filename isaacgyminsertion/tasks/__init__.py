@@ -29,12 +29,16 @@
 
 from .factory_tactile.factory_task_insertion import FactoryTaskInsertionTactile
 from .factory_tactile.factory_task_grasp import FactoryTaskGraspTactile
+from .factory_tactile.factory_task_optimize import FactoryTaskOptimizeTactile
 
 
 
 # Mappings from strings to environments
+# Pick one, yup we are lazy.
 isaacgym_task_map = {
-    "FactoryTaskInsertionTactile": FactoryTaskInsertionTactile,
-    # "FactoryTaskInsertionTactile": FactoryTaskGraspTactile
+    # "FactoryTaskInsertionTactile": FactoryTaskInsertionTactile,
+    "FactoryTaskInsertionTactile": FactoryTaskGraspTactile,
+    # "FactoryTaskInsertionTactile": FactoryTaskOptimizeTactile,
+
 }
 

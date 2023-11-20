@@ -251,10 +251,11 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
         for subassembly in self.cfg_env.env.desired_subassemblies:
             self._initialize_grasp_poses(subassembly)
 
-    def _initialize_grasp_poses(self, subassembly):
+    def _initialize_grasp_poses(self, subassembly, with_noise=True):
 
         try:
-            self.initial_grasp_poses[subassembly] = np.load(f'initial_grasp_data/{subassembly}_noise.npz')
+            sf = subassembly + '_noise' if with_noise else subassembly
+            self.initial_grasp_poses[subassembly] = np.load(f'initial_grasp_data/{sf}.npz')
         except:
             print('Failed to load initial grasp data for, ', subassembly)
             return

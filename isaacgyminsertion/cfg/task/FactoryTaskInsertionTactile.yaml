@@ -44,14 +44,14 @@ tactile: # Pulling from task
 
 env:
     numEnvs: ${resolve_default:128,${...num_envs}}
-    numObservations: 215 # 43 * 5
-    numObsStudent: 215   #
-    numStates: 16 # 31 #
+    numObservations: 340 # 43 * 5
+    numObsStudent: 105 #
+    numStates: 17 # 31 #
     numActions: 6 # [position, ori]
     numTargets: 6 # [position, ori]
 
     # Should be the same as in EnvPPO
-    numObsHist: 5
+    numObsHist: 2
     numObsStudentHist: 5
     ft_history_len: 30
     tactile_history_len: 1

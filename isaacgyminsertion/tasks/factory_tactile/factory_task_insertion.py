@@ -167,7 +167,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                                          dtype=torch.float, device=self.device)
         self.eef_queue = torch.zeros((self.num_envs, self.cfg_task.env.numObsHist, 12),
                                      dtype=torch.float, device=self.device)
-        self.goal_noisy_queue = torch.zeros((self.num_envs, self.cfg_task.env.numObsHist, 12),
+        self.goal_noisy_queue = torch.zeros((self.num_envs, self.cfg_task.env.numObsHist, 3),
                                             dtype=torch.float, device=self.device)
         self.delta_pos_noisy_queue = torch.zeros((self.num_envs, self.cfg_task.env.numObsHist, 3),
                                             dtype=torch.float, device=self.device)
@@ -183,7 +183,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                                                  dtype=torch.float, device=self.device)
         self.eef_queue_student = torch.zeros((self.num_envs, self.cfg_task.env.numObsStudentHist, 12),
                                              dtype=torch.float, device=self.device)
-        self.goal_noisy_queue_student = torch.zeros((self.num_envs, self.cfg_task.env.numObsStudentHist, 12),
+        self.goal_noisy_queue_student = torch.zeros((self.num_envs, self.cfg_task.env.numObsStudentHist, 3),
                                                     dtype=torch.float, device=self.device)
 
         # tactile buffers
@@ -485,9 +485,10 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.targets_queue[:, 0, :] = self.targets
 
         self.goal_noisy_queue[:, 1:] = self.goal_noisy_queue[:, :-1].clone().detach()
-        self.goal_noisy_queue[:, 0, :] = torch.cat(self.pose_world_to_robot_base(self.noisy_gripper_goal_pos.clone(),
-                                                                                 self.noisy_gripper_goal_quat.clone()),
-                                                   dim=-1)
+        self.goal_noisy_queue[:, 0, :] = self.noisy_gripper_goal_pos.clone()
+        # self.goal_noisy_queue[:, 0, :] = torch.cat(self.pose_world_to_robot_base(self.noisy_gripper_goal_pos.clone(),
+        #                                                                          self.noisy_gripper_goal_quat.clone()),
+        #                                            dim=-1)
         # Bad ,  should queue the obs
         self.actions_queue_student[:, 1:] = self.actions_queue_student[:, :-1].clone().detach()
         self.actions_queue_student[:, 0, :] = self.actions
@@ -496,9 +497,10 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.targets_queue_student[:, 0, :] = self.targets
 
         self.goal_noisy_queue_student[:, 1:] = self.goal_noisy_queue_student[:, :-1].clone().detach()
-        self.goal_noisy_queue_student[:, 0, :] = torch.cat(
-            self.pose_world_to_robot_base(self.noisy_gripper_goal_pos.clone(),
-                                          self.noisy_gripper_goal_quat.clone()), dim=-1)
+        self.goal_noisy_queue_student[:, 0, :] = self.noisy_gripper_goal_pos.clone()
+        # self.goal_noisy_queue_student[:, 0, :] = torch.cat(
+        #     self.pose_world_to_robot_base(self.noisy_gripper_goal_pos.clone(),
+        #                                   self.noisy_gripper_goal_quat.clone()), dim=-1)
 
         self._apply_actions_as_ctrl_targets(actions=self.actions,
                                             ctrl_target_gripper_dof_pos=self.ctrl_target_gripper_dof_pos,
@@ -588,8 +590,11 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
     def compute_observations(self):
         """Compute observations."""
         # update the queue
-        self.arm_vel_queue[:, 1:] = self.arm_vel_queue[:, :-1].clone().detach()
-        self.arm_vel_queue[:, 0, :] = self.arm_dof_vel.clone()
+        # self.arm_vel_queue[:, 1:] = self.arm_vel_queue[:, :-1].clone().detach()
+        # self.arm_vel_queue[:, 0, :] = self.arm_dof_vel.clone()
+
+        # self.delta_noisy_queue[:, 1:] = self.delta_noisy_queue[:, :-1].clone().detach()
+        # self.delta_noisy_queue[:, 0, :] = self.noisy_gripper_goal_pos - self.fingertip_centered_pos
 
         self.arm_joint_queue[:, 1:] = self.arm_joint_queue[:, :-1].clone().detach()
         self.arm_joint_queue[:, 0, :] = self.arm_dof_pos.clone()
@@ -626,15 +631,16 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             # self.goal_noisy_queue.reshape(self.num_envs, -1),  # (envs, 12 * hist)
             # self.delta_pos_noisy_queue.reshape(self.num_envs, -1),
             self.actions_queue.reshape(self.num_envs, -1),  # (envs, 6 * hist)
+            # self.delta_noisy_queue.reshape(self.num_envs, -1),  # (envs, 3 * hist)
             self.targets_queue.reshape(self.num_envs, -1),  # (envs, 6 * hist)
         ]
 
         obs_tensors_student = [
-            self.arm_joint_queue_student.reshape(self.num_envs, -1),  # 7 * hist
+            # self.arm_joint_queue_student.reshape(self.num_envs, -1),  # 7 * hist
             self.eef_queue_student.reshape(self.num_envs, -1),  # (envs, 12 * hist)
-            self.goal_noisy_queue_student.reshape(self.num_envs, -1),  # (envs, 12 * hist)
+            self.goal_noisy_queue_student.reshape(self.num_envs, -1),  # (envs, 3 * hist)
             self.actions_queue_student.reshape(self.num_envs, -1),  # (envs, 6 * hist)
-            self.targets_queue_student.reshape(self.num_envs, -1),  # (envs, 6 * hist)
+            # self.targets_queue_student.reshape(self.num_envs, -1),  # (envs, 6 * hist)
         ]
 
         # Define state (for teacher)
@@ -1102,6 +1108,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.arm_joint_queue[env_ids] *= 0
         self.arm_vel_queue[env_ids] *= 0
         self.eef_queue[env_ids] *= 0
+        # self.delta_noisy_queue[env_ids] *= 0
         self.goal_noisy_queue[env_ids] *= 0
         self.targets_queue[env_ids] *= 0
         self.prev_targets[env_ids] *= 0

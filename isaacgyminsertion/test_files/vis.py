@@ -8,6 +8,9 @@ from glob import glob
 import random
 
 # %%
+import yaml
+with open('best_params_task.yaml', 'r') as file:
+    file = yaml.load(file, Loader=yaml.Loader)
 
 all_paths = glob('/home/osher/Desktop/isaacgym/python/IsaacGymInsertion/isaacgyminsertion/outputs/test/data/datastore_42_test/*/*.npz')
 print(len(all_paths))
@@ -23,7 +26,7 @@ done_idx = data['done'].nonzero()[-1][0]
 print(done_idx)
 ax = plt.figure(figsize=(10, 20)).add_subplot(projection='3d')
 
-if True:
+if False:
     # ax.scatter(data['socket_pos'][:done_idx, 0],
     #            data['socket_pos'][:done_idx, 1],
     #            zs=data['socket_pos'][:done_idx, 2],  color='r')

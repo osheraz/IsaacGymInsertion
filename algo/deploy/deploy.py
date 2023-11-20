@@ -19,6 +19,7 @@ from isaacgyminsertion.tasks.factory_tactile.factory_utils import quat2R
 from time import time
 import numpy as np
 import omegaconf
+from matplotlib import pyplot as plt
 
 
 class HardwarePlayer(object):
@@ -28,6 +29,7 @@ class HardwarePlayer(object):
         self.full_config = full_config
         self.pos_scale_deploy = self.deploy_config.rl.pos_action_scale
         self.rot_scale_deploy = self.deploy_config.rl.rot_action_scale
+
         self.pos_scale = full_config.task.rl.pos_action_scale
         self.rot_scale = full_config.task.rl.rot_action_scale
 
@@ -294,6 +296,7 @@ class HardwarePlayer(object):
             self.socket_tip_pos_local,
         )
 
+
     def compute_observations(self, display_image=True):
 
         obses = self.env.get_obs()
@@ -459,9 +462,12 @@ class HardwarePlayer(object):
 
         self.apply_action(self.actions, wait=wait)
 
-    def apply_action(self, actions, do_scale=True, do_clamp=False, wait=True):
+    def apply_action(self, actions, do_scale=True, do_clamp=False, regulize_force=True, wait=True):
 
         # Apply the action
+        if regulize_force:
+            ft = torch.tensor(self.env.get_ft(), device=self.device, dtype=torch.float).unsqueeze(0)
+            actions = torch.where(torch.abs(ft) > 1.0, actions * 0, actions)
         if do_clamp:
             actions = torch.clamp(actions, -1.0, 1.0)
         # Interpret actions as target pos displacements and set pos target
@@ -578,6 +584,10 @@ class HardwarePlayer(object):
         self.env.move_to_joint_values(kuka_dof_pos, wait=True)
         self.env.grasp()
 
+        self.env.arm.calib_robotiq()
+        rospy.sleep(2.0)
+        self.env.arm.calib_robotiq()
+
         # above_plug_pose = [x + y for x, y in zip(true_plug_pose, [0, 0, 0.1])]
         # plug_grasp_pose = [x + y for x, y in zip(true_plug_pose, [0, 0, 0.05])]
         # # Move & grasp the object
@@ -588,7 +598,7 @@ class HardwarePlayer(object):
         # # self._move_arm_to_desired_pose(true_socket_pose)
 
         # REGULARIZE FORCES
-        self.env.regularize_force(True)
+        # self.env.regularize_force(True)
 
         obs, obs_stud, tactile = self.compute_observations()
 
@@ -599,9 +609,9 @@ class HardwarePlayer(object):
         done = torch.tensor([[0]]).to(self.device)
 
         steps = 0
-        max_steps = 500
+        max_steps = 1500
 
-        while not done[0]:
+        while True:  # not done[0]
 
             obs = self.running_mean_std(obs.clone())
             obs_stud = self.running_mean_std_stud(obs_stud.clone())
@@ -611,7 +621,8 @@ class HardwarePlayer(object):
                 'student_obs': obs_stud,
                 'tactile_hist': tactile
             }
-
+            if steps == 5:
+                print(5)
             action, latent = self.model.act_inference(input_dict)
             action = torch.clamp(action, -1.0, 1.0)
 
@@ -622,6 +633,12 @@ class HardwarePlayer(object):
 
             if self.full_config.task.data_logger.collect_data:
                 data_logger.log_trajectory_data(action, latent, done)
+
+            if True:
+                plt.ylim(-1, 1)
+                plt.scatter(list(range(latent.shape[-1])), latent.clone().cpu().numpy()[0, :], color='b')
+                plt.pause(0.0001)
+                plt.cla()
 
             obs, obs_stud, tactile = self.compute_observations()
 
