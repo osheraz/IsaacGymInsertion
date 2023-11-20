@@ -17,13 +17,17 @@ import torch.nn as nn
 import torch.nn.functional as F
 from matplotlib import pyplot as plt
 
+def layer_init(layer, std=np.sqrt(2), bias_const=0.0):
+    torch.nn.init.orthogonal_(layer.weight, std)
+    torch.nn.init.constant_(layer.bias, bias_const)
+    return layer
 
 class MLP(nn.Module):
     def __init__(self, units, input_size):
         super(MLP, self).__init__()
         layers = []
         for output_size in units:
-            layers.append(self.layer_init(nn.Linear(input_size, output_size)))
+            layers.append(layer_init(nn.Linear(input_size, output_size)))
             layers.append(nn.Tanh())
             input_size = output_size
         self.mlp = nn.Sequential(*layers)
@@ -31,12 +35,7 @@ class MLP(nn.Module):
     def forward(self, x):
         return self.mlp(x)
     
-    def layer_init(self, layer, std=np.sqrt(2), bias_const=0.0):
-        torch.nn.init.orthogonal_(layer.weight, std)
-        torch.nn.init.constant_(layer.bias, bias_const)
-        return layer
-
-
+    
 
 class FTAdaptTConv(nn.Module):
     def __init__(self, ft_dim=6 * 5, ft_out_dim=32):
@@ -147,8 +146,9 @@ class ActorCritic(nn.Module):
         self.actor_mlp = MLP(units=self.units, input_size=mlp_input_shape)
         if not self.shared_parameters:
             self.critic_mlp = MLP(units=self.units, input_size=mlp_input_shape)
-        self.value = self.actor_mlp.layer_init(torch.nn.Linear(out_size, 1))
-        self.mu = self.actor_mlp.layer_init(torch.nn.Linear(out_size, actions_num))
+
+        self.value = layer_init(torch.nn.Linear(out_size, 1), std=1.0)
+        self.mu = layer_init(torch.nn.Linear(out_size, actions_num), std=0.01)
         self.sigma = nn.Parameter(torch.zeros(actions_num, requires_grad=True, dtype=torch.float32), requires_grad=True)
 
         for m in self.modules():
@@ -185,7 +185,7 @@ class ActorCritic(nn.Module):
         mu, logstd, value, latent, _ = self._actor_critic(obs_dict)
         return mu, latent
 
-    def _actor_critic(self, obs_dict, display=False):
+    def _actor_critic(self, obs_dict, display=True):
         obs = obs_dict['obs']
         extrin, extrin_gt = None, None
 
@@ -201,8 +201,8 @@ class ActorCritic(nn.Module):
 
                 if display:
                     plt.ylim(-1, 1)
-                    plt.scatter(list(range(extrin_gt.shape[-1])), extrin_gt.clone().cpu().numpy()[0, :], color='b')
                     plt.scatter(list(range(extrin_gt.shape[-1])), extrin.clone().detach().cpu().numpy()[0, :], color='r')
+                    plt.scatter(list(range(extrin_gt.shape[-1])), extrin_gt.clone().cpu().numpy()[0, :], color='b')
                     plt.pause(0.0001)
                     plt.cla()
 

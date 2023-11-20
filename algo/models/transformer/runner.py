@@ -197,7 +197,8 @@ class Runner:
 
     def test(self):
         with torch.inference_mode():
-            num_success, total_trials = self.agent.test(self.predict, self.normalize_dict.copy())
+            normalize_dict = self.normalize_dict.copy()
+            num_success, total_trials = self.agent.test(self.predict, normalize_dict)
             if total_trials > 0:
                 print(f'{num_success}/{total_trials}, success rate on :', num_success / total_trials)
                 self._wandb_log({
@@ -282,6 +283,7 @@ class Runner:
         from datetime import datetime
         from glob import glob
         from tqdm import tqdm
+        from pathlib import Path
 
         # Load trajectories
         if 'oa348' in os.getcwd():
@@ -336,6 +338,8 @@ class Runner:
 
         # TODO Move to function, make clean run
         normalization_path = self.cfg.train.normalize_file
+        if Path(normalization_path).parent.absolute().exists() is False:
+            Path(normalization_path).parent.absolute().mkdir(parents=True, exist_ok=True)
         if os.path.exists(normalization_path):
             # if already exisits, just load
             with open(normalization_path, 'rb') as f:

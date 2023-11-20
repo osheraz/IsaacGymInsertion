@@ -27,11 +27,13 @@ task.env.tactile_wrt_force=True \
 task.env.tactile_history_len=1 \
 task.tactile.decoder.num_channels=1 \
 task.env.compute_contact_gt=False \
-task.env.numObsHist=5 \
-task.env.numObservations=215 \
+task.env.numObsHist=10 \
+task.env.numObservations=240 \
 task.env.numStates=16 \
+task.tactile.half_image=False \
+task.env.smooth_force=False \
 task.data_logger.collect_data=True \
-task.data_logger.base_folder="/common/users/oa348/inhand_manipulation_data_store" \
+task.data_logger.base_folder="/common/users/dm1487/inhand_manipulation_data_store" \
 task.data_logger.sub_folder="datastore_${SEED}_${CACHE}" \
 train.algo=PPO \
 train.ppo.priv_info=True \
@@ -41,5 +43,5 @@ train.ppo.output_name="${CACHE}" \
 checkpoint="${C}" \
 ${EXTRA_ARGS}
 
-# task.data_logger.base_folder="/common/users/oa348/inhand_manipulation_data_store" \
+# task.data_logger.base_folder="/common/users/dm1487/inhand_manipulation_data_store" \
 #task.data_logger.base_folder="/home/osher/Desktop/isaacgym/python/IsaacGymInsertion/isaacgyminsertion/outputs/test/data" \

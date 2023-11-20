@@ -271,7 +271,8 @@ class FactoryBaseTactile(VecTask, FactoryABCBase):
         self.fingertip_midpoint_quat = self.fingertip_centered_quat  # always equal
         self.fingertip_midpoint_linvel = self.fingertip_centered_linvel.detach().clone()  # initial value
 
-        self.init_plug_pos_cam = torch.zeros((1, 3), device=self.device)
+        self.init_plug_pos_cam = torch.zeros((self.num_envs, 3), device=self.device)
+        self.shape_one_hot = torch.zeros((self.num_envs, 4), device=self.device)
 
         # From sum of angular velocities
         # (https://physics.stackexchange.com/questions/547698/understanding-addition-of-angular-velocity),
@@ -305,6 +306,10 @@ class FactoryBaseTactile(VecTask, FactoryABCBase):
 
         self.identity_quat = torch.tensor([0.0, 0.0, 0.0, 1.0], device=self.device).unsqueeze(0).repeat(self.num_envs,
                                                                                                         1)
+        
+
+        # self.rigid_contacts = self.gym.get_rigid_contacts(self.sim)
+        # print(self.rigid_contacts)
 
         # self.test_plot = []
 
@@ -578,15 +583,20 @@ class FactoryBaseTactile(VecTask, FactoryABCBase):
         """Enable gravity."""
 
         sim_params = self.gym.get_sim_params(self.sim)
-        sim_params.gravity.z = -gravity_mag
+        sim_params.gravity.z = -9.81
+        sim_params.gravity.x = 0.0
+        sim_params.gravity.y = 0.0
         self.gym.set_sim_params(self.sim, sim_params)
 
     def disable_gravity(self):
         """Disable gravity."""
 
         sim_params = self.gym.get_sim_params(self.sim)
+        sim_params.gravity.x = 0.0
+        sim_params.gravity.y = 0.0
         sim_params.gravity.z = 0.0
         self.gym.set_sim_params(self.sim, sim_params)
+        # print(sim_params.gravity.x, sim_params.gravity.y, sim_params.gravity.z)
 
     def export_scene(self, label):
         """Export scene to USD."""

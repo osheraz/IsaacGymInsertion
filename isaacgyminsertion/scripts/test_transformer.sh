@@ -14,9 +14,9 @@ echo extra "${EXTRA_ARGS}"
 
 C=outputs/${CACHE}/stage1_nn/last.pth
 # D=outputs/${CACHE}/data
-D=/common/users/oa348/inhand_manipulation_data_store/datastore_${SEED}_${CACHE}
+D=/common/users/dm1487/inhand_manipulation_data_store/datastore_${SEED}_${CACHE}
 DD=outputs/${CACHE}
-N=/common/home/oa348/Downloads/isaacgym/python/IsaacGymInsertion/algo/models/transformer/normalization.pkl
+N=/common/home/dm1487/Downloads/isaacgym/python/IsaacGymInsertion/algo/models/transformer/normalization.pkl
 
 CUDA_VISIBLE_DEVICES=${GPUS} \
 python trainV2.py task=FactoryTaskInsertionTactile headless=${HEADLESS} seed=${SEED} \
@@ -39,7 +39,7 @@ task.tactile.decoder.height=224 \
 task.tactile.decoder.num_channels=1 \
 task.env.tactile_history_len=1 \
 task.env.tactile_wrt_force=True \
-task.data_logger.base_folder="/common/users/oa348/inhand_manipulation_data_store" \
+task.data_logger.base_folder="/common/users/dm1487/inhand_manipulation_data_store" \
 task.data_logger.sub_folder="datastore_${SEED}_${CACHE}" \
 offline_train.data_folder="${D}" \
 offline_train.output_dir="${DD}" \

@@ -169,6 +169,8 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                                      dtype=torch.float, device=self.device)
         self.goal_noisy_queue = torch.zeros((self.num_envs, self.cfg_task.env.numObsHist, 12),
                                             dtype=torch.float, device=self.device)
+        self.delta_pos_noisy_queue = torch.zeros((self.num_envs, self.cfg_task.env.numObsHist, 3),
+                                            dtype=torch.float, device=self.device)
 
         # Bad, should queue the obs!
         self.arm_joint_queue_student = torch.zeros((self.num_envs, self.cfg_task.env.numObsStudentHist, 7),
@@ -304,6 +306,16 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                                                                        (
                                                                                    keypoint_offset * self.socket_heights) + socket_tip_pos_local)[
                 1]
+            
+        # fingertip forces
+        e = 0.9 if self.cfg_task.env.smooth_force else 0
+        normalize_forces = lambda x: (torch.clamp(torch.norm(x, dim=-1), 0, 50) / 50).view(-1)
+        self.finger_normalized_forces[:, 0] = (1 - e) * normalize_forces(
+            self.left_finger_force.clone()) + e * self.finger_normalized_forces[:, 0]
+        self.finger_normalized_forces[:, 1] = (1 - e) * normalize_forces(
+            self.right_finger_force.clone()) + e * self.finger_normalized_forces[:, 1]
+        self.finger_normalized_forces[:, 2] = (1 - e) * normalize_forces(
+            self.middle_finger_force.clone()) + e * self.finger_normalized_forces[:, 2]
 
         if update_tactile and self.cfg_task.env.tactile:
             left_allsight_poses = torch.cat((self.left_finger_pos, self.left_finger_quat), dim=-1)
@@ -454,6 +466,8 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         # test actions for whenever we want to see some axis motion
         # self.actions[:, :] = 0.
         # self.actions[:, 0] = 1.
+        # self.actions[:, 1] = 1.
+        # self.actions[:, 2] = 1.
 
         delta_targets = torch.cat([
             self.actions[:, :3] @ torch.diag(torch.tensor(self.cfg_task.rl.pos_action_scale, device=self.device)),  # 3
@@ -519,40 +533,55 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             rotate_vec = lambda q, x: quat_apply(q, to_torch(x, device=self.device) * 0.2).cpu().numpy()
             num_envs = 1
             for i in range(num_envs):
+                
+                actions = self.actions[i, :].clone().cpu().numpy()
                 keypoints = self.keypoints_plug[i].clone().cpu().numpy()
                 quat = self.plug_quat[i, :]
-                # print(keypoints)
 
                 for j in range(self.cfg_task.rl.num_keypoints):
                     ob = keypoints[j]
-                    targetx = ob + rotate_vec(quat, [1, 0, 0])
-                    targety = ob + rotate_vec(quat, [0, 1, 0])
-                    targetz = ob + rotate_vec(quat, [0, 0, 1])
+                    targetx = ob + rotate_vec(quat, [actions[0], 0, 0])
+                    targety = ob + rotate_vec(quat, [0, actions[1], 0])
+                    targetz = ob + rotate_vec(quat, [0, 0, actions[2]])
 
                     self.gym.add_lines(self.viewer, self.envs[i], 1,
                                        [ob[0], ob[1], ob[2], targetx[0], targetx[1], targetx[2]], [0.85, 0.1, 0.1])
                     self.gym.add_lines(self.viewer, self.envs[i], 1,
-                                       [ob[0], ob[1], ob[2], targety[0], targety[1], targety[2]], [0.85, 0.1, 0.1])
-                    self.gym.add_lines(self.viewer, self.envs[i], 1,
-                                       [ob[0], ob[1], ob[2], targetz[0], targetz[1], targetz[2]], [0.85, 0.1, 0.1])
-
-            for i in range(num_envs):
-                keypoints = self.keypoints_socket[i].clone().cpu().numpy()
-                quat = self.socket_quat[i, :]
-                # print(keypoints)
-
-                for j in range(self.cfg_task.rl.num_keypoints):
-                    ob = keypoints[j]
-                    targetx = ob + rotate_vec(quat, [1, 0, 0])
-                    targety = ob + rotate_vec(quat, [0, 1, 0])
-                    targetz = ob + rotate_vec(quat, [0, 0, 1])
-
-                    self.gym.add_lines(self.viewer, self.envs[i], 1,
-                                       [ob[0], ob[1], ob[2], targetx[0], targetx[1], targetx[2]], [0.1, 0.85, 0.1])
-                    self.gym.add_lines(self.viewer, self.envs[i], 1,
                                        [ob[0], ob[1], ob[2], targety[0], targety[1], targety[2]], [0.1, 0.85, 0.1])
                     self.gym.add_lines(self.viewer, self.envs[i], 1,
-                                       [ob[0], ob[1], ob[2], targetz[0], targetz[1], targetz[2]], [0.1, 0.85, 0.1])
+                                       [ob[0], ob[1], ob[2], targetz[0], targetz[1], targetz[2]], [0.1, 0.1, 0.85])
+                # print(keypoints)
+
+            #     for j in range(self.cfg_task.rl.num_keypoints):
+            #         ob = keypoints[j]
+            #         targetx = ob + rotate_vec(quat, [1, 0, 0])
+            #         targety = ob + rotate_vec(quat, [0, 1, 0])
+            #         targetz = ob + rotate_vec(quat, [0, 0, 1])
+
+            #         self.gym.add_lines(self.viewer, self.envs[i], 1,
+            #                            [ob[0], ob[1], ob[2], targetx[0], targetx[1], targetx[2]], [0.85, 0.1, 0.1])
+            #         self.gym.add_lines(self.viewer, self.envs[i], 1,
+            #                            [ob[0], ob[1], ob[2], targety[0], targety[1], targety[2]], [0.85, 0.1, 0.1])
+            #         self.gym.add_lines(self.viewer, self.envs[i], 1,
+            #                            [ob[0], ob[1], ob[2], targetz[0], targetz[1], targetz[2]], [0.85, 0.1, 0.1])
+
+            # for i in range(num_envs):
+            #     keypoints = self.keypoints_socket[i].clone().cpu().numpy()
+            #     quat = self.socket_quat[i, :]
+            #     # print(keypoints)
+
+            #     for j in range(self.cfg_task.rl.num_keypoints):
+            #         ob = keypoints[j]
+            #         targetx = ob + rotate_vec(quat, [1, 0, 0])
+            #         targety = ob + rotate_vec(quat, [0, 1, 0])
+            #         targetz = ob + rotate_vec(quat, [0, 0, 1])
+
+            #         self.gym.add_lines(self.viewer, self.envs[i], 1,
+            #                            [ob[0], ob[1], ob[2], targetx[0], targetx[1], targetx[2]], [0.1, 0.85, 0.1])
+            #         self.gym.add_lines(self.viewer, self.envs[i], 1,
+            #                            [ob[0], ob[1], ob[2], targety[0], targety[1], targety[2]], [0.1, 0.85, 0.1])
+            #         self.gym.add_lines(self.viewer, self.envs[i], 1,
+            #                            [ob[0], ob[1], ob[2], targetz[0], targetz[1], targetz[2]], [0.1, 0.85, 0.1])
 
         self._render_headless()
 
@@ -586,13 +615,16 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         # Compute Observation and state at current timestep
         # delta_pos = self.socket_tip - self.fingertip_centered_pos
-        # noisy_delta_pos = self.noisy_gripper_goal_pos - self.fingertip_centered_pos
+        noisy_delta_pos = self.noisy_gripper_goal_pos - self.fingertip_centered_pos
+        self.delta_pos_noisy_queue[:, 1:] = self.delta_pos_noisy_queue[:, :-1].clone().detach()
+        self.delta_pos_noisy_queue[:, 0, :] = noisy_delta_pos
 
         # Define observations (for actor)
         obs_tensors = [
-            self.arm_joint_queue.reshape(self.num_envs, -1),  # 7 * hist
-            self.eef_queue.reshape(self.num_envs, -1),  # (envs, 7 * hist)
-            self.goal_noisy_queue.reshape(self.num_envs, -1),  # (envs, 7 * hist)
+            # self.arm_joint_queue.reshape(self.num_envs, -1),  # 7 * hist
+            self.eef_queue.reshape(self.num_envs, -1),  # (envs, 12 * hist)
+            # self.goal_noisy_queue.reshape(self.num_envs, -1),  # (envs, 12 * hist)
+            # self.delta_pos_noisy_queue.reshape(self.num_envs, -1),
             self.actions_queue.reshape(self.num_envs, -1),  # (envs, 6 * hist)
             self.targets_queue.reshape(self.num_envs, -1),  # (envs, 6 * hist)
         ]
@@ -621,8 +653,6 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         # Actually this is the right representation
         plug_hand_pos, plug_hand_quat = self.pose_world_to_hand_base(self.plug_pos, self.plug_quat, as_matrix=False)
-
-
         self.plug_hand_pos[...] = plug_hand_pos
         self.plug_hand_quat[...] = plug_hand_quat
 
@@ -655,34 +685,51 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.rigid_physics_params[...] = physics_params
 
         if self.cfg_task.env.compute_contact_gt:
-            self.gt_extrinsic_contact = self.extrinsic_contact_gt.get_extrinsic_contact(
-                obj_pos=self.plug_pos, obj_quat=self.plug_quat, socket_pos=self.socket_pos,
-                socket_quat=self.socket_quat
-            )
+            display_key = 'red_round_peg_1_5in' # ['triangle', 'red_round_peg_1_5in', 'yellow_round_peg_2in']
+            for k, v in self.subassembly_extrinsic_contact.items():
+                self.gt_extrinsic_contact[self.subassembly_to_env_ids[k], ...] = v.get_extrinsic_contact(
+                    obj_pos=self.plug_pos[self.subassembly_to_env_ids[k], ...].clone(), 
+                    obj_quat=self.plug_quat[self.subassembly_to_env_ids[k], ...].clone(), 
+                    socket_pos=self.socket_pos[self.subassembly_to_env_ids[k], ...].clone(),
+                    socket_quat=self.socket_quat[self.subassembly_to_env_ids[k], ...].clone(),
+                    display = display_key == k
+                ).to(self.device)
+            
+            # self.gt_extrinsic_contact = self.extrinsic_contact_gt.get_extrinsic_contact(
+            #     obj_pos=self.plug_pos, obj_quat=self.plug_quat, socket_pos=self.socket_pos,
+            #     socket_quat=self.socket_quat
+            # )
+
 
         # fingertip forces
-        e = 0.9 if self.cfg_task.env.smooth_force else 0
-        normalize_forces = lambda x: (torch.clamp(torch.norm(x, dim=-1), 0, 50) / 50).view(-1)
-        self.finger_normalized_forces[:, 0] = (1 - e) * normalize_forces(
-            self.left_finger_force.clone()) + e * self.finger_normalized_forces[:, 0]
-        self.finger_normalized_forces[:, 1] = (1 - e) * normalize_forces(
-            self.right_finger_force.clone()) + e * self.finger_normalized_forces[:, 1]
-        self.finger_normalized_forces[:, 2] = (1 - e) * normalize_forces(
-            self.middle_finger_force.clone()) + e * self.finger_normalized_forces[:, 2]
-
+        # e = 0.9 if self.cfg_task.env.smooth_force else 0
+        # normalize_forces = lambda x: (torch.clamp(torch.norm(x, dim=-1), 0, 50) / 50).view(-1)
+        # self.finger_normalized_forces[:, 0] = (1 - e) * normalize_forces(
+        #     self.left_finger_force.clone()) + e * self.finger_normalized_forces[:, 0]
+        # self.finger_normalized_forces[:, 1] = (1 - e) * normalize_forces(
+        #     self.right_finger_force.clone()) + e * self.finger_normalized_forces[:, 1]
+        # self.finger_normalized_forces[:, 2] = (1 - e) * normalize_forces(
+        #     self.middle_finger_force.clone()) + e * self.finger_normalized_forces[:, 2]
+        # print(self.plug_pcd.device, plug_hand_pos.device)
         state_tensors = [
             #  add delta error
             # socket_pos_wrt_robot[0],  # 3
             # socket_pos_wrt_robot[1],  # 4
             # plug_bottom_wrt_robot[0],  # 3
             # plug_bottom_wrt_robot[1],  # 4
+            # self.socket_pos.clone(), # 3
+            # self.socket_quat.clone(), # 4
+
             plug_hand_pos,   # 3
             plug_hand_quat,  # 4
             physics_params,  # 6
             self.finger_normalized_forces,  # 3
+            # self.plug_pcd.view(self.num_envs, -1),  # 3 * num_points =  3 * 10 = 30
+
+            # self.assembly_one_hot, # 4
             # self.socket_contact_force.clone()  # 3
             # TODO: add object shapes -- bring diameter
-            # self.plug_heights,  # 1
+            # self.plug_heights,  # 1?
             # TODO: add extrinsics contact (point cloud) -> this will encode the shape (check this)
         ]
 
@@ -717,16 +764,20 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         engagement = self._get_engagement_reward_scale(is_plug_engaged_w_socket, self.cfg_task.rl.success_height_thresh)
         engagement_reward = engagement * self.cfg_task.rl.engagement_reward_scale
 
-        # print(keypoint_reward, ori_reward)
+        # print(keypoint_reward[0], engagement_reward[0], ori_reward[0])
 
-        self.rew_buf[:] = keypoint_reward + engagement_reward + ori_reward + action_reward + action_delta_reward
+
+        self.rew_buf[:] = keypoint_reward + engagement_reward + ori_reward # + action_reward + action_delta_reward
 
         distance_reset_buf = (self.far_from_goal_buf | self.degrasp_buf)
         early_reset_reward = distance_reset_buf * self.cfg_task.rl.early_reset_reward_scale
 
-        self.rew_buf[:] += (early_reset_reward * self.timeout_reset_buf)
+        # self.rew_buf[:] += (early_reset_reward * self.timeout_reset_buf)
         # self.rew_buf[:] += (self.timeout_reset_buf * self.success_reset_buf) * self.cfg_task.rl.success_bonus
         self.extras['successes'] = ((self.timeout_reset_buf | distance_reset_buf) * self.success_reset_buf) * 1.0
+        self.extras['keypoint_reward'] = keypoint_reward
+        self.extras['engagement_reward'] = engagement_reward
+        self.extras['ori_reward'] = ori_reward
 
         self.reward_log_buf[:] = self.rew_buf[:]
 
@@ -781,10 +832,9 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
     def _reset_environment(self, env_ids):
 
         random_init_idx = {}
+        
         for subassembly in self.cfg_env.env.desired_subassemblies:
             random_init_idx[subassembly] = torch.randint(0, self.total_init_poses[subassembly], size=(len(env_ids),))
-
-        # subassemblies = [self.envs_asset[e_id] for e_id in env_ids.clone().cpu().numpy().tolist()]
         subassemblies = [self.envs_asset[e_id] for e_id in range(self.num_envs)]
 
         kuka_dof_pos = torch.zeros((len(env_ids), 15))
@@ -803,8 +853,8 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         self._reset_kuka(env_ids, new_pose=kuka_dof_pos)
 
-        if 0 in env_ids:
-            self.init_plug_pos_cam[0, :] = plug_pos[0, :]
+        for _, v  in self.all_rendering_camera.items():
+            self.init_plug_pos_cam[v[0], :] = plug_pos[v[0], :]
 
         object_pose = {
             'socket_pose': socket_pos,
@@ -1056,6 +1106,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.targets_queue[env_ids] *= 0
         self.prev_targets[env_ids] *= 0
         self.prev_actions[env_ids] *= 0
+        self.delta_pos_noisy_queue[env_ids] *= 0
 
         self.actions_queue_student[env_ids] *= 0
         self.arm_joint_queue_student[env_ids] *= 0
@@ -1068,8 +1119,8 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
     def _set_viewer_params(self):
         """Set viewer parameters."""
-        bx, by, bz = -0.0012, -0.0093, 0.4335
-        cam_pos = gymapi.Vec3(bx - 0.2, by - 0.2, bz + 0.2)
+        bx, by, bz = 0.5, 0.0, 0.05
+        cam_pos = gymapi.Vec3(bx - 0.1, by - 0.1, bz + 0.07)
         cam_target = gymapi.Vec3(bx, by, bz)
         self.gym.viewer_camera_look_at(self.viewer, None, cam_pos, cam_target)
 
@@ -1313,6 +1364,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.obs_dict['priv_info'] = self.obs_dict['states'].to(self.rl_device)
         self.obs_dict['student_obs'] = self.obs_student_buf.to(self.rl_device)
         self.obs_dict['contacts'] = self.gt_extrinsic_contact.to(self.rl_device)
+        self.obs_dict['socket_pos'] = self.socket_pos.clone().to(self.rl_device)
         return self.obs_dict, self.rew_buf, self.reset_buf, self.extras
 
     def reset(self):
@@ -1325,5 +1377,6 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.obs_dict['tactile_hist'] = self.tactile_queue.to(self.rl_device)
         self.obs_dict['ft_hist'] = self.ft_queue.to(self.rl_device)
         self.obs_dict['contacts'] = self.gt_extrinsic_contact.to(self.rl_device)
+        self.obs_dict['socket_pos'] = self.socket_pos.clone().to(self.rl_device)
 
         return self.obs_dict

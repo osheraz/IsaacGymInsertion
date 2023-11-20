@@ -32,7 +32,7 @@ task.env.smooth_force=True \
 train.ppo.tactile_info=True \
 train.ppo.obs_info=True \
 task.data_logger.collect_data=False \
-task.data_logger.base_folder="/common/users/oa348/inhand_manipulation_data_store" \
+task.data_logger.base_folder="/common/users/dm1487/inhand_manipulation_data_store" \
 task.data_logger.sub_folder="datastore_${SEED}_${CACHE}" \
 train.ppo.priv_info=True train.ppo.extrin_adapt=True \
 train.ppo.output_name="${CACHE}" \

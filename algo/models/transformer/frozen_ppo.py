@@ -31,7 +31,9 @@ from algo.models.running_mean_std import RunningMeanStd
 
 from isaacgyminsertion.utils.misc import AverageScalarMeter
 from isaacgyminsertion.utils.misc import add_to_fifo, multi_gpu_aggregate_stats
+from tqdm import tqdm
 from tensorboardX import SummaryWriter
+import wandb
 
 class PPO(object):
     def __init__(self, env, output_dif, full_config):
@@ -213,9 +215,9 @@ class PPO(object):
         self.all_time = 0
 
         # ---- wandb
-        # wandb.init(project="insertion", entity="isaacgym", config=full_config)
+        wandb.init()
 
-    def write_stats(self, a_losses, c_losses, b_losses, entropies, kls, grad_norms):
+    def write_stats(self, a_losses, c_losses, b_losses, entropies, kls, grad_norms, returns_list):
         self.writer.add_scalar('performance/RLTrainFPS', self.agent_steps / self.rl_train_time, self.agent_steps)
         self.writer.add_scalar('performance/EnvStepFPS', self.agent_steps / self.data_collect_time, self.agent_steps)
 
@@ -228,9 +230,28 @@ class PPO(object):
         self.writer.add_scalar('info/e_clip', self.e_clip, self.agent_steps)
         self.writer.add_scalar('info/kl', torch.mean(torch.stack(kls)).item(), self.agent_steps)
         self.writer.add_scalar("info/grad_norms", torch.mean(torch.stack(grad_norms)).item(), self.agent_steps)
+        self.writer.add_scalar("info/returns_list", torch.mean(torch.stack(returns_list)).item(), self.agent_steps)
+
+
+        wandb.log({
+            'losses/actor_loss': torch.mean(torch.stack(a_losses)).item(),
+            'losses/bounds_loss': torch.mean(torch.stack(b_losses)).item(),
+            'losses/critic_loss': torch.mean(torch.stack(c_losses)).item(),
+            'losses/entropy': torch.mean(torch.stack(entropies)).item(),
+            'info/last_lr': self.last_lr,
+            'info/e_clip': self.e_clip,
+            'info/kl': torch.mean(torch.stack(kls)).item(),
+            'info/grad_norms': torch.mean(torch.stack(grad_norms)).item(),
+            'info/returns_list': torch.mean(torch.stack(returns_list)).item(),
+            'performance/RLTrainFPS': self.agent_steps / self.rl_train_time,
+            'performance/EnvStepFPS': self.agent_steps / self.data_collect_time,
+        })
 
         for k, v in self.extra_info.items():
             self.writer.add_scalar(f'{k}', v, self.agent_steps)
+            wandb.log({
+                f'{k}': v,
+            })
 
     def set_eval(self):
         self.model.eval()
@@ -274,7 +295,7 @@ class PPO(object):
 
         while self.agent_steps < self.max_agent_steps:
             self.epoch_num += 1
-            a_losses, c_losses, b_losses, entropies, kls, grad_norms = self.train_epoch()
+            a_losses, c_losses, b_losses, entropies, kls, grad_norms, returns_list = self.train_epoch()
             self.storage.data_dict = None
 
             all_fps = self.agent_steps / (time.time() - _t)
@@ -288,7 +309,7 @@ class PPO(object):
                           f'Extrinsic Contact: {self.full_config.task.env.compute_contact_gt}'
                         #   f'Mean Reward: {self.best_rewards:.2f} | ' \
             print(info_string)
-            self.write_stats(a_losses, c_losses, b_losses, entropies, kls, grad_norms)
+            self.write_stats(a_losses, c_losses, b_losses, entropies, kls, grad_norms, returns_list)
             mean_rewards = self.episode_rewards.get_mean()
             mean_lengths = self.episode_lengths.get_mean()
             mean_success = self.episode_success.get_mean()
@@ -354,11 +375,15 @@ class PPO(object):
         self.set_train()
         a_losses, b_losses, c_losses = [], [], []
         entropies, kls, grad_norms = [], [], []
+        returns_list = []
+        continue_training = True
         for _ in range(0, self.mini_epochs_num):
             ep_kls = []
+            approx_kl_divs = []
+            
             for i in range(len(self.storage)):
                 value_preds, old_action_log_probs, advantage, old_mu, old_sigma, \
-                returns, actions, obs, priv_info, contacts = self.storage[i]
+                returns, actions, obs, priv_info, contacts, socket_pos = self.storage[i]
 
                 obs = self.running_mean_std(obs)
                 priv_info = self.priv_mean_std(priv_info)
@@ -398,6 +423,23 @@ class PPO(object):
 
                 loss = a_loss + 0.5 * c_loss * self.critic_coef - entropy * self.entropy_coef + b_loss * self.bounds_loss_coef
 
+                with torch.no_grad():
+                    kl_dist = policy_kl(mu.detach(), sigma.detach(), old_mu, old_sigma)
+                    log_ratio = action_log_probs - old_action_log_probs
+                    approx_kl_div = torch.mean((torch.exp(log_ratio) - 1) - log_ratio).cpu().numpy()
+                    approx_kl_divs.append(approx_kl_div)
+
+                kl = kl_dist
+                ep_kls.append(kl)
+                entropies.append(entropy)
+
+                # print(returns[0], kl_dist)
+
+                if approx_kl_div > (1.5 * self.kl_threshold):
+                    continue_training = False
+                    print(f"Early stopping at step due to reaching max kl: {approx_kl_div:.2f}")
+                    break
+
                 self.optimizer.zero_grad()
                 loss.backward()
                 grad_norms.append(torch.norm(
@@ -407,27 +449,26 @@ class PPO(object):
                     torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.grad_norm)
                 self.optimizer.step()
 
-                with torch.no_grad():
-                    kl_dist = policy_kl(mu.detach(), sigma.detach(), old_mu, old_sigma)
-
-                kl = kl_dist
                 a_losses.append(a_loss)
                 c_losses.append(c_loss)
-                ep_kls.append(kl)
-                entropies.append(entropy)
+                returns_list.append(returns)
                 if self.bounds_loss_coef is not None:
                     b_losses.append(b_loss)
 
                 self.storage.update_mu_sigma(mu.detach(), sigma.detach())
 
             av_kls = torch.mean(torch.stack(ep_kls))
-            self.last_lr = self.scheduler.update(self.last_lr, av_kls.item())
+            # self.last_lr = self.scheduler.update(self.last_lr, av_kls.item())
             for param_group in self.optimizer.param_groups:
                 param_group['lr'] = self.last_lr
             kls.append(av_kls)
+            
+            if not continue_training:
+                break
+
 
         self.rl_train_time += (time.time() - _t)
-        return a_losses, c_losses, b_losses, entropies, kls, grad_norms
+        return a_losses, c_losses, b_losses, entropies, kls, grad_norms, returns_list
 
     # TODO move all of this logging to an utils\misc folder
     def _write_video(self, frames, ft_frames, output_loc, frame_rate):
@@ -482,7 +523,7 @@ class PPO(object):
             video_dir = os.path.join(self.output_dir, 'videos1')
             if not os.path.exists(video_dir):
                 os.makedirs(video_dir)
-            self._write_video(frames, ft_frames, f"{video_dir}/{self.it:05d}.mp4", frame_rate=10)
+            self._write_video(frames, ft_frames, f"{video_dir}/{self.it:05d}.mp4", frame_rate=30)
             print(f"LOGGING VIDEO {self.it:05d}.mp4")
 
             ft_dir = os.path.join(self.output_dir, 'ft')
@@ -507,6 +548,7 @@ class PPO(object):
             self.storage.update_data('obses', n, self.obs['obs'])
             self.storage.update_data('priv_info', n, self.obs['priv_info'])
             self.storage.update_data('contacts', n, self.obs['contacts'])
+            self.storage.update_data('socket_pos', n, self.obs['socket_pos'])
 
             for k in ['actions', 'neglogpacs', 'values', 'mus', 'sigmas']:
                 self.storage.update_data(k, n, res_dict[k])
@@ -578,9 +620,13 @@ class PPO(object):
 
         # convert normalizing measures to torch and add to device
         if normalize_dict is not None:
+            new_normalize_dict = {
+                'mean': {},
+                'std': {}
+            }
             for key in normalize_dict['mean'].keys():
-                normalize_dict['mean'][key] = torch.tensor(normalize_dict['mean'][key], device=self.device)
-                normalize_dict['std'][key] = torch.tensor(normalize_dict['std'][key], device=self.device)
+                new_normalize_dict['mean'][key] = torch.tensor(normalize_dict['mean'][key], device=self.device)
+                new_normalize_dict['std'][key] = torch.tensor(normalize_dict['std'][key], device=self.device)
 
         # reset all envs
         self.obs = self.env.reset()
@@ -599,7 +645,8 @@ class PPO(object):
         total_dones, num_success = 0, 0
         total_env_runs = self.full_config.offline_train.train.test_episodes
 
-        while save_trajectory or (total_dones < total_env_runs):  # or True for testing without saving
+        # while save_trajectory or (total_dones < total_env_runs):  # or True for testing without saving
+        for _ in tqdm(range(1000)):
             # log video during test
             self.log_video()
             # getting data from data logger
@@ -609,7 +656,7 @@ class PPO(object):
                 data = self.data_logger.data_logger.get_data()
                 if get_latent is not None:
                     # Making data for the latent prediction from student model
-                    cnn_input, lin_input = self._make_data(data, normalize_dict)
+                    cnn_input, lin_input = self._make_data(data, new_normalize_dict)
                     # getting the latent data from the student model
                     if self.full_config.offline_train.model.transformer.full_sequence:
                         latent = get_latent(cnn_input, lin_input)[self.env_ids, self.env.progress_buf.view(-1, 1), :].squeeze(1)
@@ -631,11 +678,11 @@ class PPO(object):
             # logging data
             if save_trajectory or offline_test:
                 total_dones += len(done.nonzero())
-                if total_dones > milestone:
-                    print('success rate:', num_success/total_dones)
-                    milestone += 100
+                # if total_dones > milestone:
+                #     milestone += 100
                 self.data_logger.log_trajectory_data(action, latent, done, save_trajectory=save_trajectory)
 
+        print('success rate:', num_success/total_dones)
         return num_success, total_dones
 
     def _make_data(self, data, normalize_dict):

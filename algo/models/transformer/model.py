@@ -42,11 +42,11 @@ class TactileTransformer(nn.Module):
 
     def forward(self, cnn_input, lin_input, batch_size, embed_size, src_mask=None):
 
-        lin_x = self.linear_in(lin_input)
+        # lin_x = self.linear_in(lin_input)
         cnn_x = self.cnn_embedding(cnn_input)
-        cnn_x = cnn_x.view(batch_size, self.max_sequence_length, embed_size)
-        x = torch.cat([lin_x, cnn_x], dim=-1)
-        # x = cnn_x
+        cnn_x = cnn_x.view(batch_size, self.max_sequence_length, embed_size * 2)
+        # x = torch.cat([lin_x, cnn_x], dim=-1)
+        x = cnn_x
         # if self.layer_norm:
         #     x = self.layer_norm_in(x)
         # x = self.dropout(x)
@@ -98,7 +98,7 @@ class ConvEmbedding(nn.Module):
         self.maxpool1 = nn.MaxPool2d(kernel_size=3, stride=2)
         self.max_pool2 = nn.MaxPool2d(kernel_size=2, stride=3)
 
-        self.global_avg_pool = nn.AdaptiveAvgPool2d(4)
+        self.global_avg_pool = nn.AdaptiveAvgPool2d((8, 4))
 
         self.activation = nn.ReLU()
 

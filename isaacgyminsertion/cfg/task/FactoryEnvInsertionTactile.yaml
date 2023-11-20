@@ -20,10 +20,10 @@ env:
 #                             'red_round_peg_1_5in',
 #                             'rectangular_peg_hole_16mm_loose']
 
-    desired_subassemblies: ['yellow_round_peg_2in' ,'red_round_peg_1_5in']
-#                            'red_round_peg_1_5in',red_round_peg_1_5in
-#                             yellow_round_peg_2in,
-#                            'rectangular_peg_hole_16mm_loose' ]triangle
+    desired_subassemblies: [ 'yellow_round_peg_2in' ]
+                        #    'red_round_peg_1_5in',red_round_peg_1_5in
+                        #     yellow_round_peg_2in, 'rectangular_peg_hole_16mm_loose', 'triangle'
+                        #   ]
 
     plug_lateral_offset: 0.1  # Y-axis offset of plug before initial reset to prevent initial interpenetration with socket
     plug_friction: 0.99
@@ -88,7 +88,7 @@ randomize:
                 rigid_shape_properties:
                     friction:
                         num_buckets: 250
-                        range: [ 0.9, 1.1 ]
+                        range: [ 2.0, 2.1 ]
                         operation: "scaling"
                         distribution: "uniform"
             plug:
@@ -110,7 +110,7 @@ randomize:
                 rigid_shape_properties:
                     friction:
                         num_buckets: 250
-                        range: [ 0.7, 1.5 ]
+                        range: [ 0.0, 1.0 ]
                         operation: "scaling"
                         distribution: "uniform"
                         # schedule: "linear"  # "linear" will scale the current random sample by `min(current num steps, schedule_steps) / schedule_steps`
@@ -127,6 +127,6 @@ randomize:
                 rigid_shape_properties:
                     friction:
                         num_buckets: 250
-                        range: [ 0.5, 0.75 ]
+                        range: [ 0.0, 1.0 ]
                         operation: "scaling"
                         distribution: "uniform"

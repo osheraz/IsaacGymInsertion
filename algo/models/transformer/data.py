@@ -36,7 +36,7 @@ class TactileDataset(Dataset):
         arm_joints = data["arm_joints"]
         eef_pos = data['eef_pos']
         noisy_socket_pos = data["noisy_socket_pos"][:, :2]
-        action = data["action"] 
+        action = data["action"]
         target = data["target"]
 
         if self.normalize_dict is not None:

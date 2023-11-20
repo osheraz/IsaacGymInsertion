@@ -54,6 +54,8 @@ class ExperienceBuffer(Dataset):
                                      device=self.device),
             'contacts': torch.zeros((self.transitions_per_env, self.num_envs, self.pts_dim), dtype=torch.float32,
                                     device=self.device),
+            'socket_pos': torch.zeros((self.transitions_per_env, self.num_envs, 3), dtype=torch.float32,
+                                    device=self.device),
             'rewards': torch.zeros((self.transitions_per_env, self.num_envs, 1), dtype=torch.float32,
                                    device=self.device),
             'values': torch.zeros((self.transitions_per_env, self.num_envs, 1), dtype=torch.float32,
@@ -74,6 +76,7 @@ class ExperienceBuffer(Dataset):
         self.batch_size = batch_size
         self.minibatch_size = minibatch_size
         self.length = self.batch_size // self.minibatch_size
+        self.indices = torch.randperm(self.batch_size, requires_grad=False, device=self.device)
 
     def __len__(self):
         return self.length
@@ -82,22 +85,24 @@ class ExperienceBuffer(Dataset):
         start = idx * self.minibatch_size
         end = (idx + 1) * self.minibatch_size
         self.last_range = (start, end)
+        batch_idx = self.indices[start:end]
         input_dict = {}
         for k, v in self.data_dict.items():
             if type(v) is dict:
-                v_dict = {kd: vd[start:end] for kd, vd in v.items()}
+                v_dict = {kd: vd[batch_idx] for kd, vd in v.items()}
                 input_dict[k] = v_dict
             else:
-                input_dict[k] = v[start:end]
+                input_dict[k] = v[batch_idx]
         return input_dict['values'], input_dict['neglogpacs'], input_dict['advantages'], input_dict['mus'], \
                input_dict['sigmas'], input_dict['returns'], input_dict['actions'], \
-               input_dict['obses'], input_dict['priv_info'], input_dict['contacts']
+               input_dict['obses'], input_dict['priv_info'], input_dict['contacts'], input_dict['socket_pos']
 
     def update_mu_sigma(self, mu, sigma):
         start = self.last_range[0]
         end = self.last_range[1]
-        self.data_dict['mus'][start:end] = mu
-        self.data_dict['sigmas'][start:end] = sigma
+        batch_idx = self.indices[start:end]
+        self.data_dict['mus'][batch_idx] = mu
+        self.data_dict['sigmas'][batch_idx] = sigma
 
     def update_data(self, name, index, val):
         if type(val) is dict:
@@ -245,7 +250,7 @@ class DataLogger():
         if save_trajectory:
             self.pbar = tqdm(total=self.total_trajectories)
             self.total_trajectories = total_trajectories
-            self.num_workers = 12
+            self.num_workers = 24
             try:
                 self.q_s = [mp.JoinableQueue(maxsize=500) for _ in range(self.num_workers)]
                 self.workers = [mp.Process(target=self.worker, args=(q, idx)) for idx, q in enumerate(self.q_s)]
