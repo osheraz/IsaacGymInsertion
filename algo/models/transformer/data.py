@@ -62,8 +62,6 @@ class TactileDataset(Dataset):
         # doing these operations to enable transform. They have no meaning if written separately.
         cnn_input = self.transform(self.to_torch(cnn_input).permute(0, 3, 1, 2)).permute(0, 2, 3, 1).numpy()
 
-        latent = np.concatenate([priv_obs[:, :7], priv_obs[:, 13:]], axis=-1)
-
         if self.full_sequence:
             mask = np.zeros_like(done)
             mask[:done_idx] = 1
