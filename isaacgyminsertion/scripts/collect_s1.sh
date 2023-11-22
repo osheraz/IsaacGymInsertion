@@ -27,12 +27,16 @@ task.env.tactile_wrt_force=True \
 task.env.tactile_history_len=1 \
 task.tactile.decoder.num_channels=1 \
 task.env.compute_contact_gt=True \
+<<<<<<< HEAD
 task.env.numObsHist=5 \
+=======
+task.env.numObsHist=2 \
+>>>>>>> origin/dev-osher
 task.env.numObservations=24 \
 task.tactile.half_image=False \
 task.env.smooth_force=True \
 task.data_logger.collect_data=True \
-task.data_logger.base_folder="/common/users/dm1487/inhand_manipulation_data_store" \
+task.data_logger.base_folder="/common/users/oa348/inhand_manipulation_data_store" \
 task.data_logger.sub_folder="datastore_${SEED}_${CACHE}" \
 train.algo=PPO \
 train.ppo.priv_info=True \
