@@ -33,7 +33,7 @@ task.tactile.half_image=True \
 task.env.compute_contact_gt=True \
 task.env.smooth_force=True \
 train.ppo.tactile_info=True \
-train.ppo.obs_info=Falsecd  \
+train.ppo.obs_info=False \
 train.algo=ExtrinsicAdapt \
 train.ppo.priv_info=True train.ppo.extrin_adapt=True \
 train.ppo.output_name="${CACHE}" \
