@@ -299,12 +299,8 @@ class DataLogger():
                 continue
             if value is None:
                 value = torch.zeros((self.num_envs, self.data_shapes[key]), dtype=torch.float32, device=self.device)
-
-            # if key == "plug_pos":
-            #     print(value[:, :3])
+            
             self.log_data[key][self.env_ids, self.env_step_counter, ...] = value.clone().unsqueeze(1)
-
-        # print("env steps", self.env_step_counter[0])
 
         done = kwargs.get('done', None)
         if done is None:
@@ -385,7 +381,7 @@ class SimLogger():
             'plug_hand_quat_shape': env.plug_hand_quat.shape[-1],
             'finger_normalized_forces_shape': env.finger_normalized_forces.shape[-1],
             'plug_heights_shape': env.plug_heights.shape[-1],
-            'obs_hist_shape': env.obs_buf.shape[-1],
+            'obs_hist_shape': env.obs_queue.shape[-1],
             'obs_hist_stud_shape': env.obs_student_buf.shape[-1],
             'priv_obs_shape': env.states_buf.shape[-1],
         }

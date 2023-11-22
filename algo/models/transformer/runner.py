@@ -54,22 +54,28 @@ class Runner:
         latent_loss_list, action_loss_list = [], []
         for i, (cnn_input, lin_input, obs_hist, latent, action, mask) in tqdm(enumerate(dl)):
             self.model.train()
-
-            cnn_input = cnn_input.to(self.device)
-            cnn_input = cnn_input.view(cnn_input.shape[0] * self.sequence_length, *cnn_input.size()[-3:])
-            cnn_input = cnn_input.permute(0, 3, 1, 2)
+            cnn_inputs = []
+            for finger in cnn_input:
+                # for i in range(self.sequence_length):
+                #     plt.imshow(finger[0, i, :, :].clone().cpu().numpy())
+                #     plt.pause(0.0001)
+                #     plt.cla()
+                finger = finger.to(self.device)
+                finger = finger.view(finger.shape[0] * self.sequence_length, *finger.size()[-3:])
+                finger = finger.permute(0, 3, 1, 2)
+                cnn_inputs.append(finger)
 
             lin_input = lin_input.to(self.device)
             latent = latent.to(self.device)
             action = action.to(self.device)
             mask = mask.to(self.device).unsqueeze(-1)
 
-            out = self.model(cnn_input, lin_input,
+            out = self.model(cnn_inputs, lin_input,
                              batch_size=lin_input.shape[0],
                              embed_size=self.cfg.model.transformer.embed_size // 2,
                              src_mask=self.src_mask)
 
-            loss_action = 0
+            loss_action = 0 # torch.nn.Parameter(torch.zeros(1), requires_grad=True).to(self.device)
             if self.full_sequence:
                 loss_latent = torch.sum(self.loss_fn(out, latent), dim=-1).unsqueeze(-1)
                 loss_latent = torch.sum(loss_latent * mask) / torch.sum(mask)
@@ -92,7 +98,7 @@ class Runner:
                     loss_action = self.loss_fn_mean(pred_action, action[:, -1, :].squeeze(1))
 
             # TODO: add scaling loss coefficients
-            loss = (1 * loss_latent) + + (1 * loss_action)
+            loss = (2 * loss_latent) + (0.25 * loss_action)
 
             self.optimizer.zero_grad()
             loss.backward()
@@ -122,10 +128,10 @@ class Runner:
                 # val_loss = 0.
 
             if (i + 1) % test_every == 0:
-                try:
-                    self.test()
-                except:
-                    pass
+                self.test()
+                # try:
+                # except:
+                #     pass
                 self.model.train()
 
         return val_loss
@@ -137,15 +143,19 @@ class Runner:
             latent_loss_list, action_loss_list = [], []
             for i, (cnn_input, lin_input, obs_hist, latent, action, mask) in tqdm(enumerate(dl)):
                 # [envs, seq_len, W, H, C] => [envs*seq_len, C, W, H]
-                cnn_input = cnn_input.to(self.device)
-                cnn_input = cnn_input.view(cnn_input.shape[0] * self.sequence_length, *cnn_input.size()[-3:])
-                cnn_input = cnn_input.permute(0, 3, 1, 2)
+                
+                cnn_inputs = []
+                for finger in cnn_input:
+                    finger = finger.to(self.device)
+                    finger = finger.view(finger.shape[0] * self.sequence_length, *finger.size()[-3:])
+                    finger = finger.permute(0, 3, 1, 2)
+                    cnn_inputs.append(finger)
 
                 lin_input = lin_input.to(self.device)
                 latent = latent.to(self.device)
                 action = action.to(self.device)
                 mask = mask.to(self.device).unsqueeze(-1)
-                out = self.model(cnn_input, lin_input,
+                out = self.model(cnn_inputs, lin_input,
                                  batch_size=lin_input.shape[0],
                                  embed_size=self.cfg.model.transformer.embed_size // 2,
                                  src_mask=self.src_mask)
@@ -177,7 +187,7 @@ class Runner:
                         # loss += loss_action
 
                 # TODO: add scaling loss coefficients
-                loss = (1 * loss_latent) + (1 * loss_action)
+                loss = (2 * loss_latent) + (0.25 * loss_action)
 
                 val_loss.append(loss.item())
                 latent_loss_list.append(loss_latent.item())
@@ -216,13 +226,16 @@ class Runner:
         self.model.eval()
         with torch.inference_mode():
             # [envs, seq_len, W, H, C] => [envs*seq_len, C, W, H]
-            cnn_input = cnn_input.to(self.device)
-            cnn_input = cnn_input.view(cnn_input.shape[0] * self.sequence_length, *cnn_input.size()[-3:])
-            cnn_input = cnn_input.permute(0, 3, 1, 2)
+            cnn_inputs = []
+            for finger in cnn_input:
+                finger = finger.to(self.device)
+                finger = finger.view(finger.shape[0] * self.sequence_length, *finger.size()[-3:])
+                finger = finger.permute(0, 3, 1, 2)
+                cnn_inputs.append(finger)
 
             lin_input = lin_input.to(self.device)
 
-            out = self.model(cnn_input, lin_input,
+            out = self.model(cnn_inputs, lin_input,
                              src_mask=self.src_mask,
                              batch_size=lin_input.shape[0],
                              embed_size=self.cfg.model.transformer.embed_size // 2)

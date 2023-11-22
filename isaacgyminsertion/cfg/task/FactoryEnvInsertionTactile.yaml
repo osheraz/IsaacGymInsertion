@@ -113,6 +113,7 @@ randomize:
                         range: [ 0.0, 2.0 ]
                         operation: "scaling"
                         distribution: "uniform"
+                        
                         # schedule: "linear"  # "linear" will scale the current random sample by `min(current num steps, schedule_steps) / schedule_steps`
                         # schedule_steps: 30000
             table:

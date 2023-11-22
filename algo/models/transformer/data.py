@@ -18,7 +18,7 @@ class TactileDataset(Dataset):
         self.transform = transforms.Compose([
             # transforms.ToTensor(),
             # transforms.Normalize((0.5, ), (0.5, )),
-            transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
+            transforms.Normalize([0.5], [0.5])
         ])
         
     def __len__(self):
@@ -30,8 +30,10 @@ class TactileDataset(Dataset):
         
         # cnn input
         tactile = data["tactile"]
-        cnn_input = np.concatenate([tactile[:, 0, ...], tactile[:, 1, ...], tactile[:, 2, ...]], axis=-1)
-        
+        cnn_input_1 = tactile[:, 0, ...]
+        cnn_input_2 = tactile[:, 1, ...] 
+        cnn_input_3 = tactile[:, 2, ...]
+
         # linear input
         arm_joints = data["arm_joints"]
         eef_pos = data['eef_pos']
@@ -59,14 +61,19 @@ class TactileDataset(Dataset):
         done = data["done"]
         done_idx = done.nonzero()[0][-1]
 
+
         # doing these operations to enable transform. They have no meaning if written separately.
-        cnn_input = self.transform(self.to_torch(cnn_input).permute(0, 3, 1, 2)).permute(0, 2, 3, 1).numpy()
+        cnn_input_1 = self.transform(self.to_torch(cnn_input_1).permute(0, 3, 1, 2)).permute(0, 2, 3, 1).numpy()
+        cnn_input_2 = self.transform(self.to_torch(cnn_input_2).permute(0, 3, 1, 2)).permute(0, 2, 3, 1).numpy()
+        cnn_input_3 = self.transform(self.to_torch(cnn_input_3).permute(0, 3, 1, 2)).permute(0, 2, 3, 1).numpy()
+
+        # latent = priv_obs # change here for supervised
 
         if self.full_sequence:
             mask = np.zeros_like(done)
             mask[:done_idx] = 1
             mask = mask.astype(bool)
-            return self.to_torch(cnn_input), self.to_torch(lin_input), self.to_torch(obs_hist), self.to_torch(latent), self.to_torch(action), self.to_torch(mask)
+            return (self.to_torch(cnn_input_1), self.to_torch(cnn_input_2), self.to_torch(cnn_input_3)), self.to_torch(lin_input), self.to_torch(obs_hist), self.to_torch(latent), self.to_torch(action), self.to_torch(mask)
         
         # if full_sequence is False
         # we find a random index, and then take the previous sequence_length number of frames from that index
@@ -84,7 +91,9 @@ class TactileDataset(Dataset):
         mask[:padding_length] = 0
         mask = mask.astype(bool)
 
-        cnn_input = create_data(cnn_input)
+        cnn_input_1 = create_data(cnn_input_1)
+        cnn_input_2 = create_data(cnn_input_2)
+        cnn_input_3 = create_data(cnn_input_3)
         lin_input = create_data(lin_input)
         
         action = create_data(action)
@@ -95,7 +104,9 @@ class TactileDataset(Dataset):
         # priv_obs = create_data(priv_obs)
         
         # converting to torch tensors
-        cnn_input = self.to_torch(cnn_input)
+        cnn_input_1 = self.to_torch(cnn_input_1)
+        cnn_input_2 = self.to_torch(cnn_input_2)
+        cnn_input_3 = self.to_torch(cnn_input_3)
         lin_input = self.to_torch(lin_input)
         obs_hist = self.to_torch(obs_hist)
         latent = self.to_torch(latent)
@@ -103,18 +114,17 @@ class TactileDataset(Dataset):
         mask = self.to_torch(mask)
         # priv_obs = self.to_torch(priv_obs)
 
-        return cnn_input, lin_input, obs_hist, latent, action, mask
+        return (cnn_input_1, cnn_input_2, cnn_input_3), lin_input, obs_hist, latent, action, mask
 
-# for tests   
-# if __name__ == "__main__":
+# # for tests   
+if __name__ == "__main__":
 
-#     files = glob("/common/users/dm1487/inhand_manipulation_data_store/*/*/*.npz")
-#     ds = TactileDataset(files, sequence_length=100, full_sequence=False)
+    files = glob("/common/users/dm1487/inhand_manipulation_data_store/*/*/*.npz")
+    ds = TactileDataset(files, sequence_length=100, full_sequence=False)
     
-#     cnn_input, lin_input, obs_hist, latent, action, mask = next(iter(ds))
-#     print(obs_hist.shape)
-#     print(action.shape)
-#     print(cnn_input.shape)
-#     print(lin_input.shape)
-#     print(latent.shape)
-#     print(mask.shape)
+    cnn_input, lin_input, obs_hist, latent, action, mask = next(iter(ds))
+    print(obs_hist.shape)
+    print(action.shape)
+    print(lin_input.shape)
+    print(latent.shape)
+    print(mask.shape)

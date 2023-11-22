@@ -34,6 +34,8 @@ from isaacgyminsertion.utils.misc import add_to_fifo, multi_gpu_aggregate_stats
 from tqdm import tqdm
 from tensorboardX import SummaryWriter
 # import wandb
+from torchvision import transforms
+
 
 class PPO(object):
     def __init__(self, env, output_dif, full_config):
@@ -609,10 +611,13 @@ class PPO(object):
         # this will test either the student or the teacher model.
         # (check if the student model can be tested within models)
         # TODO move all of the transformer related functions to other file
-
         self.set_eval()
         milestone = 100
 
+        self.transform = transforms.Compose([
+            transforms.Normalize([0.5], [0.5])
+        ])
+        
         action, latent, done = None, None, None
 
         save_trajectory = self.env.cfg_task.data_logger.collect_data  # in data collection phase this will be true
@@ -678,12 +683,15 @@ class PPO(object):
             # logging data
             if save_trajectory or offline_test:
                 total_dones += len(done.nonzero())
-                # if total_dones > milestone:
-                #     milestone += 100
+                if total_dones > milestone:
+                    print('success rate:', num_success/total_dones)
+                    milestone += 100
                 self.data_logger.log_trajectory_data(action, latent, done, save_trajectory=save_trajectory)
 
         print('success rate:', num_success/total_dones)
         return num_success, total_dones
+    
+
 
     def _make_data(self, data, normalize_dict):
         # This function is used to make the data for the student model
@@ -705,21 +713,39 @@ class PPO(object):
             target = (target - normalize_dict["mean"]["target"]) / normalize_dict["std"]["target"]
 
         # making the inputs
-        cnn_input = torch.cat([tactile[:, :, 0, ...], tactile[:, :,  1, ...], tactile[:, :,  2, ...]], dim=-1)
+        # cnn_input = torch.cat([tactile[:, :, 0, ...], tactile[:, :,  1, ...], tactile[:, :,  2, ...]], dim=-1)
+        cnn_input_1 = tactile[:, :, 0, ...]
+        cnn_input_2 = tactile[:, :, 1, ...] 
+        cnn_input_3 = tactile[:, :, 2, ...]
+
         lin_input = torch.cat([arm_joints, eef_pos, noisy_socket_pos, action, target], dim=-1)
+        
+        # check here
+        # doing these operations to enable transform. They have no meaning if written separately.
+        cnn_input_1 = self.transform(cnn_input_1.permute(0, 1, 4, 2, 3)).permute(0, 1, 3, 4, 2)
+        cnn_input_2 = self.transform(cnn_input_2.permute(0, 1, 4, 2, 3)).permute(0, 1, 3, 4, 2)
+        cnn_input_3 = self.transform(cnn_input_3.permute(0, 1, 4, 2, 3)).permute(0, 1, 3, 4, 2)
 
         if self.full_config.offline_train.model.transformer.full_sequence:
-            return cnn_input, lin_input
+            return (cnn_input_1, cnn_input_2, cnn_input_3), lin_input
 
-        padding_cnn = torch.zeros_like(cnn_input)
+        padding_cnn1 = torch.zeros_like(cnn_input_1)
+        padding_cnn2 = torch.zeros_like(cnn_input_2)
+        padding_cnn3 = torch.zeros_like(cnn_input_3)
         padding_lin = torch.zeros_like(lin_input)
         for env_id in range(self.env.num_envs):
-            padding_cnn[env_id, -(self.env.progress_buf[env_id]+1):, :] = cnn_input[env_id, :(self.env.progress_buf[env_id]+1), :]
+            padding_cnn1[env_id, -(self.env.progress_buf[env_id]+1):, :] = cnn_input_1[env_id, :(self.env.progress_buf[env_id]+1), :]
+            padding_cnn2[env_id, -(self.env.progress_buf[env_id]+1):, :] = cnn_input_2[env_id, :(self.env.progress_buf[env_id]+1), :]
+            padding_cnn3[env_id, -(self.env.progress_buf[env_id]+1):, :] = cnn_input_3[env_id, :(self.env.progress_buf[env_id]+1), :]
             padding_lin[env_id, -(self.env.progress_buf[env_id]+1):, :] = lin_input[env_id, :(self.env.progress_buf[env_id]+1), :]
-        cnn_input = padding_cnn[:, -self.full_config.offline_train.model.transformer.sequence_length:, :].clone()
+
+        cnn_input_1 = padding_cnn1[:, -self.full_config.offline_train.model.transformer.sequence_length:, :].clone()
+        cnn_input_2 = padding_cnn2[:, -self.full_config.offline_train.model.transformer.sequence_length:, :].clone()
+        cnn_input_3 = padding_cnn3[:, -self.full_config.offline_train.model.transformer.sequence_length:, :].clone()
+
         lin_input = padding_lin[:, -self.full_config.offline_train.model.transformer.sequence_length:, :].clone()
 
-        return cnn_input, lin_input
+        return (cnn_input_1, cnn_input_2, cnn_input_3), lin_input
 
 def policy_kl(p0_mu, p0_sigma, p1_mu, p1_sigma):
     c1 = torch.log(p1_sigma / p0_sigma + 1e-5)

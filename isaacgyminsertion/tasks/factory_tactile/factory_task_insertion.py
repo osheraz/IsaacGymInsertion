@@ -740,7 +740,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
             plug_hand_pos,   # 3
             plug_hand_quat,  # 4
-            # physics_params,  # 6
+            physics_params,  # 6
             self.finger_normalized_forces,  # 3
             # self.plug_pcd.view(self.num_envs, -1),  # 3 * num_points =  3 * 10 = 30
 

@@ -35,7 +35,6 @@ class MLP(nn.Module):
     def forward(self, x):
         return self.mlp(x)
     
-    
 
 class FTAdaptTConv(nn.Module):
     def __init__(self, ft_dim=6 * 5, ft_out_dim=32):
@@ -185,7 +184,7 @@ class ActorCritic(nn.Module):
         mu, logstd, value, latent, _ = self._actor_critic(obs_dict)
         return mu, latent
 
-    def _actor_critic(self, obs_dict, display=False):
+    def _actor_critic(self, obs_dict, display=True):
         obs = obs_dict['obs']
         extrin, extrin_gt = None, None
 
@@ -197,7 +196,7 @@ class ActorCritic(nn.Module):
             if 'priv_info' in obs_dict:
                 # with torch.inference_mode():
                 extrin_gt = self.env_mlp(obs_dict['priv_info'])
-                extrin_gt = torch.tanh(extrin_gt)
+                # extrin_gt = torch.tanh(extrin_gt)
 
                 if display:
                     plt.ylim(-1, 1)
@@ -237,8 +236,8 @@ class ActorCritic(nn.Module):
                         extrin_gt = extrin
 
                     # extrin_gt = self.env_mlp(obs_dict['priv_info']) if 'priv_info' in obs_dict else extrin
-                    extrin_gt = torch.tanh(extrin_gt)
-                    extrin = torch.tanh(extrin)
+                    # extrin_gt = torch.tanh(extrin_gt)
+                    # extrin = torch.tanh(extrin)
 
                     # Applying action with student model
                     obs = torch.cat([obs, extrin], dim=-1)
@@ -260,7 +259,7 @@ class ActorCritic(nn.Module):
                     else:
                         extrin = self.env_mlp(obs_dict['priv_info'])
 
-                    extrin = torch.tanh(extrin)
+                    # extrin = torch.tanh(extrin)
 
                     # plot for latent viz
                     if display:
