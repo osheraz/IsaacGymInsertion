@@ -367,6 +367,7 @@ class SimLogger():
         ROT_MAT_SIZE = 9
 
         log_items = {
+            'contacts_shape': env.gt_extrinsic_contact.shape[-1],
             'arm_joints_shape': env.arm_dof_pos.shape[-1],
             'eef_pos_shape': env.fingertip_centered_pos.size()[-1] + ROT_MAT_SIZE,
             'socket_pos_shape': env.socket_pos.size()[-1] + ROT_MAT_SIZE,
@@ -423,6 +424,7 @@ class SimLogger():
         obs_hist_stud = self.env.obs_student_buf.clone()
 
         log_data = {
+            'contacts': self.env.gt_extrinsic_contact,
             'arm_joints': self.env.arm_dof_pos,
             'eef_pos': eef_pos,
             'socket_pos': socket_pos,

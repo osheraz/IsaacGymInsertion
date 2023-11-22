@@ -40,18 +40,18 @@ class TactileDataset(Dataset):
         noisy_socket_pos = data["noisy_socket_pos"][:, :2]
         action = data["action"]
         target = data["target"]
+        priv_obs = data["priv_obs"]
+        latent = data["latent"]
+        obs_hist = data["obs_hist"]
 
         if self.normalize_dict is not None:
             arm_joints = (arm_joints - self.normalize_dict["mean"]["arm_joints"]) / self.normalize_dict["std"]["arm_joints"]
             eef_pos = (eef_pos - self.normalize_dict["mean"]["eef_pos"]) / self.normalize_dict["std"]["eef_pos"]
             noisy_socket_pos = (noisy_socket_pos - self.normalize_dict["mean"]["noisy_socket_pos"][:2]) / self.normalize_dict["std"]["noisy_socket_pos"][:2]
             target = (target - self.normalize_dict["mean"]["target"]) / self.normalize_dict["std"]["target"]
-        
-        # output
-        latent = data["latent"]
-        obs_hist = data["obs_hist"]
-        priv_obs = data["priv_obs"]
+            priv_obs = (priv_obs - self.normalize_dict["mean"]["priv_obs"]) / self.normalize_dict["std"]["priv_obs"]
 
+        # output
         # providing a_{t-1} to input
         shift_action_right = np.concatenate([np.zeros((1, action.shape[-1])), action[:-1, :]], axis=0)
         shift_target_right = np.concatenate([np.zeros((1, action.shape[-1])), target[:-1, :]], axis=0)
@@ -67,13 +67,26 @@ class TactileDataset(Dataset):
         cnn_input_2 = self.transform(self.to_torch(cnn_input_2).permute(0, 3, 1, 2)).permute(0, 2, 3, 1).numpy()
         cnn_input_3 = self.transform(self.to_torch(cnn_input_3).permute(0, 3, 1, 2)).permute(0, 2, 3, 1).numpy()
 
-        # latent = priv_obs # change here for supervised
+        '''
+            plug_hand_pos,   # 3
+            plug_hand_quat,  # 4
+            physics_params,  # 6
+            self.finger_normalized_forces,  # 3
+        '''
+        latent = priv_obs[:, : 3 + 4]  # change here for supervised
 
         if self.full_sequence:
             mask = np.zeros_like(done)
             mask[:done_idx] = 1
             mask = mask.astype(bool)
-            return (self.to_torch(cnn_input_1), self.to_torch(cnn_input_2), self.to_torch(cnn_input_3)), self.to_torch(lin_input), self.to_torch(obs_hist), self.to_torch(latent), self.to_torch(action), self.to_torch(mask)
+            return ((self.to_torch(cnn_input_1),
+                    self.to_torch(cnn_input_2),
+                    self.to_torch(cnn_input_3)),
+                    self.to_torch(lin_input),
+                    self.to_torch(obs_hist),
+                    self.to_torch(latent),
+                    self.to_torch(action),
+                    self.to_torch(mask))
         
         # if full_sequence is False
         # we find a random index, and then take the previous sequence_length number of frames from that index

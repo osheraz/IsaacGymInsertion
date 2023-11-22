@@ -16,7 +16,7 @@ class TactileTransformer(nn.Module):
         self.max_sequence_length = max_sequence_length
 
         self.linear_in = nn.Linear(lin_input_size, 14)  # removed embed_size // 2 for no cnn
-        # for cnn_embedding, input is (B*T, C, W, H) and output is (B*T, embedding_size//2)
+        # for cnn_embedding, input is (B*T, C=1, W, H) and output is (B*T, 6)
         self.cnn_embedding = ConvEmbedding(in_channels, out_channels, kernel_size)
         # self.cnn_embedding = load_tactile_resnet(embed_size , num_channels=in_channels)
 
@@ -48,7 +48,8 @@ class TactileTransformer(nn.Module):
             cnn_embeddings.append(self.cnn_embedding(cnn_input[i]))
         cnn_x = torch.cat(cnn_embeddings, dim=-1)
         cnn_x = cnn_x.view(batch_size, self.max_sequence_length, 18)
-        x = torch.cat([lin_x, cnn_x], dim=-1)
+        # x = torch.cat([lin_x, cnn_x], dim=-1)
+        x = cnn_x
         # x = lin_x
         # if self.layer_norm:
         #     x = self.layer_norm_in(x)

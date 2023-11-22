@@ -1,7 +1,7 @@
 #!/bin/bash
 GPUS=${1:-0}
 SEED=${2:-42}
-CACHE=${3:-ext_new}
+CACHE=${3:-ext}
 NUM_ENVS=${4:-4096}
 HEADLESS=${5:-True}
 
@@ -21,6 +21,7 @@ task.env.numStates=16 \
 task.env.tactile_history_len=1 \
 task.env.compute_contact_gt=True \
 task.env.numObsHist=2 \
+task.env.numObservations=24 \
 train.algo=PPO \
 task.env.tactile=False \
 task.env.smooth_force=True \

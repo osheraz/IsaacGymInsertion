@@ -219,7 +219,7 @@ class ExtrinsicAdapt(object):
             }
             mu, _, _, e, e_gt = self.model._actor_critic(input_dict)
             # loss = ((e - e_gt.detach()) ** 2).mean()
-            loss = loss_fn(e, e_gt)
+            loss = loss_fn(e, e_gt.detach())
             self.optim.zero_grad()
             loss.backward()
             self.optim.step()
