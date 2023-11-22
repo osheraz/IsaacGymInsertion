@@ -67,6 +67,7 @@ ppo:
   priv_info_dim: ${...task.env.numStates}
   compute_contact_gt: ${...task.env.compute_contact_gt}
   num_points: ${...task.env.num_points}
+  sim2real: ${...task.tactile.sim2real}
 
   student_obs_input_shape: ${...task.env.numObsStudent}
   save_buffer: False

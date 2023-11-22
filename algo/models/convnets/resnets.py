@@ -266,7 +266,7 @@ class ResNet(nn.Module):
         if len(x.size()) == 5:
             B, T, C, W, H = x.size()[0], x.size()[1], x.size()[2], x.size()[3], x.size()[4]
             x = x.view([(B * T), C, W, H])
-        else: # [B*T, C, W, H]
+        else:  # [B*T, C, W, H]
             BT, C, W, H = x.size()[0], x.size()[1], x.size()[2], x.size()[3]
             T = 32
             B = BT // T

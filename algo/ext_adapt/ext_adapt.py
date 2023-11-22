@@ -47,7 +47,8 @@ class ExtrinsicAdapt(object):
         # ---- build environment ----
         self.env = env
         self.num_actors = self.ppo_config['num_actors']
-        self.obs_shape = (self.task_config.env.numObservations,)
+        self.obs_shape = (self.task_config.env.numObservations * self.task_config.env.numObsHist,)
+        # self.obs_shape = (self.task_config.env.numObservations,)
         self.actions_num = self.task_config.env.numActions
         # ---- Tactile Info ---
         self.tactile_info = self.ppo_config["tactile_info"]
@@ -69,7 +70,7 @@ class ExtrinsicAdapt(object):
         self.gt_contacts_info = self.ppo_config['compute_contact_gt']
         self.num_contacts_points = self.ppo_config['num_points']
         self.priv_info_embed_dim = self.network_config.priv_mlp.units[-1]
-        # ---- Obs Info (student)----
+        # ---- Obs Info (student)----co
         self.obs_info = self.ppo_config["obs_info"]
         self.student_obs_input_shape = self.ppo_config['student_obs_input_shape']
         # ---- Model ----
@@ -137,10 +138,12 @@ class ExtrinsicAdapt(object):
         self.agent_steps = 0
 
         # ---- Optim ----
+        print('Training the following layers:')
         adapt_params = []
         for name, p in self.model.named_parameters():
-            if 'tactile_decoder' in name or 'tactile_mlp' in name or 'obs_mlp' in name or 'merge_mlp' in name:
+            if 'tactile_decoder' in name or 'tactile_mlp' in name or 'obs_mlp' in name or 'merge_mlp' in name or 'tactile_decoder_m' in name:
                 adapt_params.append(p)
+                print(name)
             else:
                 p.requires_grad = False
 
@@ -170,7 +173,7 @@ class ExtrinsicAdapt(object):
         self.model.eval()
         self.running_mean_std.eval()
         self.priv_mean_std.eval()
-        self.ft_mean_std.eval()
+        # self.ft_mean_std.eval()
         self.running_mean_std_stud.eval()
 
     def test(self):
@@ -188,16 +191,14 @@ class ExtrinsicAdapt(object):
 
             input_dict = {
                 'obs': self.running_mean_std(obs_dict['obs']),
-                'ft_hist': self.ft_mean_std(obs_dict['ft_hist'].detach()),
-                'student_obs': self.running_mean_std_stud(obs_dict['student_obs'].detach()),
-                'tactile_hist': obs_dict['tactile_hist'].detach(),
                 'priv_info': self.priv_mean_std(obs_dict['priv_info']),
-
+                'contacts': obs_dict['contacts'].detach(),
+                'tactile_hist': obs_dict['tactile_hist'].detach(),
+                # 'student_obs': self.running_mean_std_stud(obs_dict['student_obs'].detach()),
             }
             mu, latent = self.model.act_inference(input_dict)
             mu = torch.clamp(mu, -1.0, 1.0)
             obs_dict, r, done, info = self.env.step(mu)
-
             if self.env.cfg_task.data_logger.collect_data:
                 self.data_logger.log_trajectory_data(mu, latent, done)
 
@@ -215,6 +216,7 @@ class ExtrinsicAdapt(object):
                 'priv_info': self.priv_mean_std(obs_dict['priv_info']).detach(),
                 'student_obs': self.running_mean_std_stud(obs_dict['student_obs'].detach()),
                 'tactile_hist': obs_dict['tactile_hist'].detach(),
+                'contacts': obs_dict['contacts'].detach(),
             }
             mu, _, _, e, e_gt = self.model._actor_critic(input_dict)
             loss = ((e - e_gt.detach()) ** 2).mean()
@@ -241,8 +243,10 @@ class ExtrinsicAdapt(object):
             self.log_tensorboard()
 
             if self.agent_steps % 500 == 0:
-                self.save(os.path.join(self.nn_dir, f'{self.agent_steps // 1e4}0k'))
+                # self.save(os.path.join(self.nn_dir, f'{self.agent_steps // 1e4}0k'))
                 self.save(os.path.join(self.nn_dir, f'last'))
+            if self.agent_steps % 3000 == 0:
+                self.save(os.path.join(self.nn_dir, f'{self.agent_steps // 1e4}0k'))
 
             mean_rewards = self.mean_eps_reward.get_mean()
             self.best_rewards = mean_rewards
@@ -256,7 +260,9 @@ class ExtrinsicAdapt(object):
             _last_t = time.time()
             info_string = f'Agent Steps: {int(self.agent_steps // 1e6):04}M | FPS: {all_fps:.1f} | ' \
                           f'Last FPS: {last_fps:.1f} | ' \
-                          f'Mean Best: {self.best_rewards:.2f}'
+                          f'Mean Best: {self.best_rewards:.2f} | ' \
+                          f'GAN: {self.ppo_config.sim2real}'
+
             cprint(info_string)
 
     def log_tensorboard(self):
@@ -275,9 +281,6 @@ class ExtrinsicAdapt(object):
         self.model.load_state_dict(checkpoint['model'], strict=False)
         self.running_mean_std.load_state_dict(checkpoint['running_mean_std'])
         self.priv_mean_std.load_state_dict(checkpoint['priv_mean_std'])
-        # self.running_mean_std_stud.load_state_dict(checkpoint['running_mean_std_stud'])
-
-        # self.ft_mean_std.load_state_dict(checkpoint['ft_mean_std'])
 
     def restore_test(self, fn):
         if not fn:
@@ -285,9 +288,9 @@ class ExtrinsicAdapt(object):
         checkpoint = torch.load(fn)
         self.running_mean_std.load_state_dict(checkpoint['running_mean_std'])
         self.model.load_state_dict(checkpoint['model'])
-        self.ft_mean_std.load_state_dict(checkpoint['ft_mean_std'])
+        # self.ft_mean_std.load_state_dict(checkpoint['ft_mean_std'])
         self.priv_mean_std.load_state_dict(checkpoint['priv_mean_std'])
-        self.running_mean_std_stud.load_state_dict(checkpoint['running_mean_std_stud'])
+        # self.running_mean_std_stud.load_state_dict(checkpoint['running_mean_std_stud'])
 
     def save(self, name):
         weights = {

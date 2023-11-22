@@ -445,8 +445,6 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             height_maps.append(height_maps_per_env)
             tactile_imgs_list.append(tactile_imgs_per_env)
 
-        # self.tactile_imgs = torch.tensor(tactile_imgs_list, dtype=torch.float32, device=self.device)
-
         if self.cfg_task.env.tactile_display_viz and self.cfg_task.env.tactile:
             env_to_show = 0
             self.tactile_handles[env_to_show][0].updateGUI(tactile_imgs_list[env_to_show],
@@ -1379,8 +1377,8 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
     def step(self, actions):
         super().step(actions)
-        self.obs_dict['tactile_hist'] = self.tactile_queue.to(self.rl_device)
-        self.obs_dict['ft_hist'] = self.ft_queue.to(self.rl_device)
+        self.obs_dict['tactile_hist'] = self.tactile_queue.clone().to(self.rl_device)
+        self.obs_dict['ft_hist'] = self.ft_queue.clone().to(self.rl_device)
         self.obs_dict['priv_info'] = self.obs_dict['states'].to(self.rl_device)
         self.obs_dict['student_obs'] = self.obs_student_buf.to(self.rl_device)
         self.obs_dict['contacts'] = self.gt_extrinsic_contact.to(self.rl_device)
@@ -1394,8 +1392,8 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         super().reset()
         self.obs_dict['priv_info'] = self.obs_dict['states'].to(self.rl_device)
         self.obs_dict['student_obs'] = self.obs_student_buf.to(self.rl_device)
-        self.obs_dict['tactile_hist'] = self.tactile_queue.to(self.rl_device)
-        self.obs_dict['ft_hist'] = self.ft_queue.to(self.rl_device)
+        self.obs_dict['tactile_hist'] = self.tactile_queue.clone().to(self.rl_device)
+        self.obs_dict['ft_hist'] = self.ft_queue.clone().to(self.rl_device)
         self.obs_dict['contacts'] = self.gt_extrinsic_contact.to(self.rl_device)
         self.obs_dict['socket_pos'] = self.socket_pos.clone().to(self.rl_device)
 
