@@ -650,8 +650,8 @@ class PPO(object):
         total_dones, num_success = 0, 0
         total_env_runs = self.full_config.offline_train.train.test_episodes
 
-        # while save_trajectory or (total_dones < total_env_runs):  # or True for testing without saving
-        for _ in tqdm(range(1000)):
+        while save_trajectory or (total_dones < total_env_runs):  # or True for testing without saving
+        # for _ in tqdm(range(1000)):
             # log video during test
             self.log_video()
             # getting data from data logger

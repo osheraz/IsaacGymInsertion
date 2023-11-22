@@ -190,7 +190,7 @@ class ActorCritic(nn.Module):
         mu, logstd, value, latent, _ = self._actor_critic(obs_dict)
         return mu, latent
 
-    def _actor_critic(self, obs_dict, display=True):
+    def _actor_critic(self, obs_dict, display=False):
 
         obs = obs_dict['obs']
         extrin, extrin_gt = None, None
@@ -236,7 +236,7 @@ class ActorCritic(nn.Module):
                         extrin = extrin_obs
 
                     # During supervised training, pass to priv_mlp -> extrin has gt label
-                    with torch.inference_mode():
+                    with torch.no_grad():
                         if 'priv_info' in obs_dict:
                             if self.contact_info:
                                 contact_features = self.contact_mlp(obs_dict['contacts'])

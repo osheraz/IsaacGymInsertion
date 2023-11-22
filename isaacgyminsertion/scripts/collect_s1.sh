@@ -1,8 +1,8 @@
 #!/bin/bash
 GPUS=${1:-0}
-SEED=${2:-42}
-CACHE=${3:-ext_new}
-NUM_ENVS=${4:-16}
+SEED=${2:-12}
+CACHE=${3:-ext}
+NUM_ENVS=${4:-32}
 HEADLESS=${5:-True}
 
 array=( $@ )

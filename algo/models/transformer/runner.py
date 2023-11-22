@@ -56,8 +56,8 @@ class Runner:
             self.model.train()
             cnn_inputs = []
             for finger in cnn_input:
-                # for i in range(self.sequence_length):
-                #     plt.imshow(finger[0, i, :, :].clone().cpu().numpy())
+                # for ii in range(self.sequence_length):
+                #     plt.imshow(finger[0, ii, :, :].clone().cpu().numpy())
                 #     plt.pause(0.0001)
                 #     plt.cla()
                 finger = finger.to(self.device)
@@ -98,7 +98,7 @@ class Runner:
                     loss_action = self.loss_fn_mean(pred_action, action[:, -1, :].squeeze(1))
 
             # TODO: add scaling loss coefficients
-            loss = (2 * loss_latent) + (0.25 * loss_action)
+            loss = (1. * loss_latent) + (0.25 * loss_action)
 
             self.optimizer.zero_grad()
             loss.backward()
@@ -128,10 +128,10 @@ class Runner:
                 # val_loss = 0.
 
             if (i + 1) % test_every == 0:
-                self.test()
-                # try:
-                # except:
-                #     pass
+                try:
+                    self.test()
+                except:
+                    pass
                 self.model.train()
 
         return val_loss
@@ -187,7 +187,7 @@ class Runner:
                         # loss += loss_action
 
                 # TODO: add scaling loss coefficients
-                loss = (2 * loss_latent) + (0.25 * loss_action)
+                loss = (1. * loss_latent) + (0.25 * loss_action)
 
                 val_loss.append(loss.item())
                 latent_loss_list.append(loss_latent.item())
@@ -302,7 +302,7 @@ class Runner:
         if 'oa348' in os.getcwd():
             self.cfg.data_folder.replace("dm1487", "oa348")
             self.cfg.output_dir.replace("dm1487", "oa348")
-        file_list = glob(os.path.join(self.cfg.data_folder, '*/*.npz'))
+        file_list = glob(os.path.join(self.cfg.data_folder, '*/*/*.npz'))
         save_folder = f'{to_absolute_path(self.cfg.output_dir)}/{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}'
         os.makedirs(save_folder, exist_ok=True)
 
@@ -365,7 +365,8 @@ class Runner:
             }
             for norm_keys in normalize_keys:
                 data = []
-                for file in tqdm(random.sample(file_list, 1000)):
+                print('Creating new normalization file:')
+                for file in tqdm(random.sample(file_list, min(1000, len(file_list)))):
                     try:
                         d = np.load(file)
                         done_idx = d['done'].nonzero()[0][-1]
@@ -375,6 +376,7 @@ class Runner:
                 data = np.concatenate(data, axis=0)
                 normalize_dict['mean'][norm_keys] = np.mean(data, axis=0)
                 normalize_dict['std'][norm_keys] = np.std(data, axis=0)
+            print('Saved new normalization file at: ', normalization_path)
             with open(f'{normalization_path}', 'wb') as f:
                 pickle.dump(normalize_dict, f)
 
