@@ -21,8 +21,8 @@ task.env.smooth_force=True \
 task.tactile.sim2real=False \
 task.tactile.half_image=True \
 train.ppo.tactile_info=True \
-train.ppo.obs_info=False \
+train.ppo.obs_info=True \
 task.env.tactile_display_viz=True \
 train.ppo.priv_info=True train.ppo.extrin_adapt=True \
 train.ppo.output_name="${CACHE}" \
-checkpoint=outputs/"${CACHE}"/19-59-04/stage2_nn/last.pth
+checkpoint=outputs/"${CACHE}"/22-32-19/stage2_nn/110.00k.pth

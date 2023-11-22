@@ -35,7 +35,6 @@ class MLP(nn.Module):
     def forward(self, x):
         return self.mlp(x)
     
-    
 
 class FTAdaptTConv(nn.Module):
     def __init__(self, ft_dim=6 * 5, ft_out_dim=32):
@@ -191,7 +190,7 @@ class ActorCritic(nn.Module):
         mu, logstd, value, latent, _ = self._actor_critic(obs_dict)
         return mu, latent
 
-    def _actor_critic(self, obs_dict, display=False):
+    def _actor_critic(self, obs_dict, display=True):
 
         obs = obs_dict['obs']
         extrin, extrin_gt = None, None
@@ -351,13 +350,13 @@ def load_tactile_resnet(embed_dim, num_channels,
     import algo.models.convnets.resnets as resnet
     import os
 
-    tactile_decoder = resnet.resnet18(False, False, num_classes=embed_dim,
+    tactile_encoder = resnet.resnet18(False, False, num_classes=embed_dim,
                                       num_channels=num_channels)
 
     if pre_trained:
-        tactile_decoder.load_state_dict(os.path.join(root_dir, path_checkpoint))
-        tactile_decoder.eval()
-        for param in tactile_decoder.parameters():
+        tactile_encoder.load_state_dict(os.path.join(root_dir, path_checkpoint))
+        tactile_encoder.eval()
+        for param in tactile_encoder.parameters():
             param.requires_grad = False
 
-    return tactile_decoder
+    return tactile_encoder

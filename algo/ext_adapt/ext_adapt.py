@@ -147,7 +147,7 @@ class ExtrinsicAdapt(object):
             else:
                 p.requires_grad = False
 
-        self.optim = torch.optim.Adam(adapt_params, lr=3e-4)
+        self.optim = torch.optim.Adam(adapt_params, lr=0.001)
         # ---- Training Misc
         self.internal_counter = 0
         self.latent_loss_stat = 0
@@ -194,7 +194,7 @@ class ExtrinsicAdapt(object):
                 'priv_info': self.priv_mean_std(obs_dict['priv_info']),
                 'contacts': obs_dict['contacts'].detach(),
                 'tactile_hist': obs_dict['tactile_hist'].detach(),
-                # 'student_obs': self.running_mean_std_stud(obs_dict['student_obs'].detach()),
+                'student_obs': self.running_mean_std_stud(obs_dict['student_obs'].detach()),
             }
             mu, latent = self.model.act_inference(input_dict)
             mu = torch.clamp(mu, -1.0, 1.0)
@@ -243,9 +243,8 @@ class ExtrinsicAdapt(object):
             self.log_tensorboard()
 
             if self.agent_steps % 500 == 0:
-                # self.save(os.path.join(self.nn_dir, f'{self.agent_steps // 1e4}0k'))
                 self.save(os.path.join(self.nn_dir, f'last'))
-            if self.agent_steps % 3000 == 0:
+            if self.agent_steps % 1e4 == 0:
                 self.save(os.path.join(self.nn_dir, f'{self.agent_steps // 1e4}0k'))
 
             mean_rewards = self.mean_eps_reward.get_mean()
@@ -290,7 +289,7 @@ class ExtrinsicAdapt(object):
         self.model.load_state_dict(checkpoint['model'])
         # self.ft_mean_std.load_state_dict(checkpoint['ft_mean_std'])
         self.priv_mean_std.load_state_dict(checkpoint['priv_mean_std'])
-        # self.running_mean_std_stud.load_state_dict(checkpoint['running_mean_std_stud'])
+        self.running_mean_std_stud.load_state_dict(checkpoint['running_mean_std_stud'])
 
     def save(self, name):
         weights = {

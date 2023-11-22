@@ -648,9 +648,9 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         obs_tensors_student = [
             # self.arm_joint_queue_student.reshape(self.num_envs, -1),  # 7 * hist
             self.eef_queue_student.reshape(self.num_envs, -1),  # (envs, 12 * hist)
-            self.goal_noisy_queue_student.reshape(self.num_envs, -1),  # (envs, 3 * hist)
+            # self.goal_noisy_queue_student.reshape(self.num_envs, -1),  # (envs, 3 * hist)
             self.actions_queue_student.reshape(self.num_envs, -1),  # (envs, 6 * hist)
-            # self.targets_queue_student.reshape(self.num_envs, -1),  # (envs, 6 * hist)
+            self.targets_queue_student.reshape(self.num_envs, -1),  # (envs, 6 * hist)
         ]
 
         # Define state (for teacher)
@@ -701,7 +701,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.rigid_physics_params[...] = physics_params
 
         if self.cfg_task.env.compute_contact_gt:
-            display_key = 'triangle' # ['triangle', 'red_round_peg_1_5in', 'yellow_round_peg_2in']
+            display_key = 'yellow_round_peg_2in' # ['triangle', 'red_round_peg_1_5in', 'yellow_round_peg_2in']
             for k, v in self.subassembly_extrinsic_contact.items():
                 self.gt_extrinsic_contact[self.subassembly_to_env_ids[k], ...] = v.get_extrinsic_contact(
                     obj_pos=self.plug_pos[self.subassembly_to_env_ids[k], ...].clone(), 

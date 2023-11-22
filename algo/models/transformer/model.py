@@ -15,10 +15,10 @@ class TactileTransformer(nn.Module):
         self.num_layers = num_layers
         self.max_sequence_length = max_sequence_length
 
-        self.linear_in = nn.Linear(lin_input_size, embed_size // 2)  # removed embed_size // 2 for no cnn
+        self.linear_in = nn.Linear(lin_input_size, 14)  # removed embed_size // 2 for no cnn
         # for cnn_embedding, input is (B*T, C, W, H) and output is (B*T, embedding_size//2)
         self.cnn_embedding = ConvEmbedding(in_channels, out_channels, kernel_size)
-        # self.cnn_embedding = load_tactile_resnet(embed_size // 2, num_channels=in_channels)
+        # self.cnn_embedding = load_tactile_resnet(embed_size , num_channels=in_channels)
 
         self.positonal_embedding = PositionalEncoding(embed_size, max_len=max_sequence_length)
 
@@ -42,11 +42,14 @@ class TactileTransformer(nn.Module):
 
     def forward(self, cnn_input, lin_input, batch_size, embed_size, src_mask=None):
 
-        # lin_x = self.linear_in(lin_input)
-        cnn_x = self.cnn_embedding(cnn_input)
-        cnn_x = cnn_x.view(batch_size, self.max_sequence_length, embed_size * 2)
-        # x = torch.cat([lin_x, cnn_x], dim=-1)
-        x = cnn_x
+        lin_x = self.linear_in(lin_input)
+        cnn_embeddings = []
+        for i in range(len(cnn_input)):
+            cnn_embeddings.append(self.cnn_embedding(cnn_input[i]))
+        cnn_x = torch.cat(cnn_embeddings, dim=-1)
+        cnn_x = cnn_x.view(batch_size, self.max_sequence_length, 18)
+        x = torch.cat([lin_x, cnn_x], dim=-1)
+        # x = lin_x
         # if self.layer_norm:
         #     x = self.layer_norm_in(x)
         # x = self.dropout(x)
@@ -98,7 +101,7 @@ class ConvEmbedding(nn.Module):
         self.maxpool1 = nn.MaxPool2d(kernel_size=3, stride=2)
         self.max_pool2 = nn.MaxPool2d(kernel_size=2, stride=3)
 
-        self.global_avg_pool = nn.AdaptiveAvgPool2d((8, 4))
+        self.global_avg_pool = nn.AdaptiveAvgPool2d((3, 2))
 
         self.activation = nn.ReLU()
 
@@ -127,7 +130,7 @@ class ConvEmbedding(nn.Module):
 # for tests
 if __name__ == "__main__":
     lin_input_size = 33
-    in_channels = 3
+    in_channels = 1
     out_channels = 1
     kernel_size = 3
     embed_size = 32
@@ -141,8 +144,8 @@ if __name__ == "__main__":
                                      num_heads, max_sequence_length, num_layers, output_size)
 
     lin_x = torch.randn(2, 100, 33)
-    cnn_x = torch.randn(2, 100, 3, 224, 224)
-    cnn_x = cnn_x.view(2 * 100, 3, 224, 224)
+    cnn_x = [torch.randn(2 * 100, 1, 224, 224) for _ in range(3)]
+    # cnn_x = cnn_x.view(2 * 100, 1, 224, 224)
 
     x = transformer(cnn_x, lin_x, 2, 16)
     print(x.shape)

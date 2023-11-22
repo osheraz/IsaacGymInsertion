@@ -2,7 +2,7 @@
 GPUS=${1:-0}
 SEED=${2:-42}
 CACHE=${3:-ext_new}
-NUM_ENVS=${4:-16}
+NUM_ENVS=${4:-32}
 HEADLESS=${5:-True}
 
 
@@ -33,7 +33,7 @@ task.tactile.half_image=True \
 task.env.compute_contact_gt=True \
 task.env.smooth_force=True \
 train.ppo.tactile_info=True \
-train.ppo.obs_info=False \
+train.ppo.obs_info=Falsecd  \
 train.algo=ExtrinsicAdapt \
 train.ppo.priv_info=True train.ppo.extrin_adapt=True \
 train.ppo.output_name="${CACHE}" \

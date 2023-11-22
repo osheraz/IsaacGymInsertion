@@ -85,7 +85,7 @@ class ExtrinsicContact:
         # o3d_mesh.vertices = o3d.utility.Vector3dVector(self.socket_trimesh.vertices)
         # o3d_mesh.triangles = o3d.utility.Vector3iVector(self.socket_trimesh.faces)
         # o3d.visualization.draw_geometries([o3d_mesh])
-
+        self.socket_pos = socket_pos
         self.socket = o3d.t.geometry.RaycastingScene()
         self.socket.add_triangles(
             o3d.t.geometry.TriangleMesh.from_legacy(self.socket_trimesh.as_open3d)
@@ -126,13 +126,20 @@ class ExtrinsicContact:
         transformed = np.transpose(transformed, (0, 2, 1))[..., :3]
         return transformed
 
-    def get_extrinsic_contact(self, obj_pos, obj_quat, socket_pos, socket_quat, threshold=0.002, display=True):
+    def reset_socket_pos(self, socket_pos):
+        self.socket_pos = socket_pos
+        self.socket = o3d.t.geometry.RaycastingScene()
+        self.socket.add_triangles(
+            o3d.t.geometry.TriangleMesh.from_legacy(self.socket_trimesh.as_open3d)
+        )
+        self.socket_pcl = trimesh.sample.sample_surface_even(self.socket_trimesh, self.n_points, seed=42)[0]
+
+    def get_extrinsic_contact(self, obj_pos, obj_quat, socket_pos, socket_quat, threshold=0.002, display=False):
         
         object_poses = torch.cat((obj_pos, obj_quat), dim=1)
         object_poses = self._xyzquat_to_tf_numpy(object_poses.cpu().numpy())
         socket_poses = torch.cat((socket_pos, socket_quat), dim=1)
         socket_poses = self._xyzquat_to_tf_numpy(socket_poses.cpu().numpy())
-        contact_gt = []
 
         if len(object_poses.shape) == 2:
             object_poses = object_poses[None, ...]
@@ -140,18 +147,10 @@ class ExtrinsicContact:
             socket_poses = socket_poses[None, ...]
 
         query_points = self.apply_transform(object_poses, self.object_pc.copy().vertices)
-        
-        # query_points = np.array(transforemd_object_pc.vertices)
-        # socket_trimesh_1 = self.socket_trimesh.copy()
-        # socket_trimesh_1.apply_transform(socket_poses[0])
-        # self.socket = o3d.t.geometry.RaycastingScene()
-        # self.socket.add_triangles(
-        #     o3d.t.geometry.TriangleMesh.from_legacy(socket_trimesh_1.as_open3d)
-        # )
 
         d = self.socket.compute_distance(o3d.core.Tensor.from_numpy(query_points.astype(np.float32))).numpy()
 
-        if display:
+        if False:
             display_id = 3
             self.ax.plot(self.socket_pcl[:, 0], self.socket_pcl[:, 1], self.socket_pcl[:, 2], 'yo')
             self.ax.plot(query_points[display_id, :, 0], query_points[display_id, :, 1], query_points[display_id, :, 2], 'ko')
@@ -178,54 +177,6 @@ class ExtrinsicContact:
         d[d > 0.1] = 1.0
 
         return torch.from_numpy(np.array(d)).view(-1, self.n_points)
-
-        for i in range(object_poses.shape[0]):
-            object_pc = trimesh.points.PointCloud(self.pointcloud_obj.copy())
-            object_pc.apply_transform(object_poses[i])
-            object_verts = np.array(object_pc.vertices)
-            socket_trimesh_1 = self.socket_trimesh.copy()
-            socket_trimesh_1.apply_transform(socket_poses[i])
-            self.socket = o3d.t.geometry.RaycastingScene()
-            self.socket.add_triangles(
-                o3d.t.geometry.TriangleMesh.from_legacy(socket_trimesh_1.as_open3d)
-            )
-
-            d = self.socket.compute_distance(o3d.core.Tensor.from_numpy(object_verts.astype(np.float32))).numpy()
-
-            
-
-            if i == 0 and display:
-                socket_pcl = trimesh.sample.sample_surface_even(socket_trimesh_1, self.n_points, seed=42)[0]
-                socket_pcl = np.array(socket_pcl)
-                
-                self.ax.plot(socket_pcl[:, 0], socket_pcl[:, 1], socket_pcl[:, 2], 'yo')
-                self.ax.plot(object_verts[:, 0], object_verts[:, 1], object_verts[:, 2], 'ko')
-                self.ax.set_xlabel('X')
-                self.ax.set_ylabel('Y')
-
-                intersecting_indices = d < threshold
-                contacts = np.zeros_like(object_verts)
-                contacts[intersecting_indices] = object_verts[intersecting_indices]
-                for c in contacts:
-                    if np.linalg.norm(c, axis=0):
-                        self.ax.plot(c[0], c[1], c[2], 'ro')
-
-                plt.pause(0.0001)
-                self.ax.cla()
-
-            d = d.flatten()
-            idx_2 = np.where(d > threshold)[0]
-            d[idx_2] = threshold
-            d = np.clip(d, 0.0, threshold)
-
-            d = 1.0 - d / threshold
-            d = np.clip(d, 0.0, 1.0)
-            d[d > 0.1] = 1.0
-            contact_gt.append(d)
-
-        self.gt_extrinsic_contact = torch.from_numpy(np.array(contact_gt))
-        return self.gt_extrinsic_contact
-
 
 class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
 

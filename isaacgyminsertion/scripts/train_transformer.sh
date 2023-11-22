@@ -1,8 +1,8 @@
 #!/bin/bash
 GPUS=${1:-0}
 SEED=${2:-42}
-CACHE=${3:-test}
-NUM_ENVS=${4:-1}
+CACHE=${3:-"11-21-23/18-16-32"}
+NUM_ENVS=${4:-4}
 HEADLESS=${5:-True}
 
 array=( $@ )
@@ -21,9 +21,9 @@ path_norm=/common/home/dm1487/Downloads/isaacgym/python/IsaacGymInsertion/algo/m
 CUDA_VISIBLE_DEVICES=${GPUS} \
 python trainV2.py task=FactoryTaskInsertionTactile headless=${HEADLESS} seed=${SEED} \
 task.env.numEnvs=${NUM_ENVS} \
-offline_training=True \
-offline_training_w_env=False \
-test=False \
+offline_training=False \
+test=True \
+offline_training_w_env=True \
 offline_train.train.action_regularization=False \
 offline_train.model.transformer.full_sequence=False \
 offline_train.model.transformer.sequence_length=32 \
@@ -35,12 +35,12 @@ task.tactile.tacto.height=224 \
 task.tactile.decoder.width=224 \
 task.tactile.decoder.height=224 \
 task.tactile.decoder.num_channels=1 \
-task.tactile.half_image=True \
+task.tactile.half_image=False \
 task.env.smooth_force=True \
 task.env.tactile_history_len=1 \
 task.env.tactile_wrt_force=True \
-task.env.numObsHist=10 \
-task.env.numObservations=240 \
+task.env.numObsHist=5 \
+task.env.numObservations=24 \
 task.data_logger.base_folder="${data}" \
 task.data_logger.sub_folder="datastore_${SEED}_${CACHE}" \
 offline_train.train.normalize_file="${path_norm}" \

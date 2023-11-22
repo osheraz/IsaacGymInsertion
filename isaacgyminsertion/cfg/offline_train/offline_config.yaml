@@ -6,10 +6,10 @@ output_dir: "/common/users/dm1487/isaacgym_new/python/IsaacGymInsertion/isaacgym
 train:
   # basic training hyperparameters
   epochs: 20
-  train_batch_size: 8
+  train_batch_size: 1
   val_batch_size: 8
   learning_rate: 0.001
-  train_test_split: 0.95
+  train_test_split: 0.99
   action_regularization: False # propogate gradients for action loss
   action_regularization_weight: 0.0 # weight for action regularization
 
@@ -20,7 +20,7 @@ train:
   # Train params for on screen logging
   print_every: 50
   eval_every: 250
-  test_every: 25
+  test_every: 50
   test_episodes: 2 # per epoch batch
 
   # Only val/test ( val- dataset, test - env)
@@ -44,7 +44,7 @@ model:
 
   # tactile embedding
   cnn:
-    in_channels: 3
+    in_channels: 1
     out_channels: 1 # 32
     kernel_size: 3
     # TODO: add model layers here
@@ -57,7 +57,7 @@ model:
     hidden_size: 64
     num_layers: 2
     num_heads: 2
-    output_size: 10
+    output_size: 8
   
 # wandb logging
 wandb:
