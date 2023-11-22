@@ -184,7 +184,7 @@ class ActorCritic(nn.Module):
         mu, logstd, value, latent, _ = self._actor_critic(obs_dict)
         return mu, latent
 
-    def _actor_critic(self, obs_dict, display=True):
+    def _actor_critic(self, obs_dict, display=False):
         obs = obs_dict['obs']
         extrin, extrin_gt = None, None
 

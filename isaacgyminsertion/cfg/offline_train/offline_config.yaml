@@ -57,7 +57,7 @@ model:
     hidden_size: 64
     num_layers: 2
     num_heads: 2
-    output_size: 16
+    output_size: 8
   
 # wandb logging
 wandb:
