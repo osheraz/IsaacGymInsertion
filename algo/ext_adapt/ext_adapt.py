@@ -205,21 +205,21 @@ class ExtrinsicAdapt(object):
     def train(self):
         _t = time.time()
         _last_t = time.time()
-
+        loss_fn = torch.nn.MSELoss()
         obs_dict = self.env.reset()
         self.agent_steps += self.batch_size
         while self.agent_steps <= 1e9:
             self.log_video()
             self.it += 1
             input_dict = {
-                'obs': self.running_mean_std(obs_dict['obs']).detach(),
-                'priv_info': self.priv_mean_std(obs_dict['priv_info']).detach(),
-                'student_obs': self.running_mean_std_stud(obs_dict['student_obs'].detach()),
-                'tactile_hist': obs_dict['tactile_hist'].detach(),
-                'contacts': obs_dict['contacts'].detach(),
+                'obs': self.running_mean_std(obs_dict['obs']),
+                'priv_info': self.priv_mean_std(obs_dict['priv_info']),
+                'student_obs': self.running_mean_std_stud(obs_dict['student_obs']),
+                'tactile_hist': obs_dict['tactile_hist'],
             }
             mu, _, _, e, e_gt = self.model._actor_critic(input_dict)
-            loss = ((e - e_gt.detach()) ** 2).mean()
+            # loss = ((e - e_gt.detach()) ** 2).mean()
+            loss = loss_fn(e, e_gt)
             self.optim.zero_grad()
             loss.backward()
             self.optim.step()

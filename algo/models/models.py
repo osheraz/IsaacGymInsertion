@@ -217,6 +217,7 @@ class ActorCritic(nn.Module):
             # Contact obs with extrin/gt_extrin and pass to the actor
             if self.priv_info:
                 if self.priv_info_stage2:
+                    
                     if self.tactile_info:
                         extrin_tactile = self._tactile_encode_multi(obs_dict['tactile_hist'])
                         # if self.flag:
@@ -235,16 +236,17 @@ class ActorCritic(nn.Module):
                         extrin = extrin_obs
 
                     # During supervised training, pass to priv_mlp -> extrin has gt label
-                    if 'priv_info' in obs_dict:
-                        if self.contact_info:
-                            contact_features = self.contact_mlp(obs_dict['contacts'])
-                            priv_obs = torch.cat([obs_dict['priv_info'], contact_features], dim=-1)
-                            extrin_gt = self.env_mlp(priv_obs)  # extrin
+                    with torch.inference_mode():
+                        if 'priv_info' in obs_dict:
+                            if self.contact_info:
+                                contact_features = self.contact_mlp(obs_dict['contacts'])
+                                priv_obs = torch.cat([obs_dict['priv_info'], contact_features], dim=-1)
+                                extrin_gt = self.env_mlp(priv_obs)  # extrin
+                            else:
+                                extrin_gt = self.env_mlp(obs_dict['priv_info'])
                         else:
-                            extrin_gt = self.env_mlp(obs_dict['priv_info'])
-                    else:
-                        # In case we are evaluating stage2
-                        extrin_gt = extrin
+                            # In case we are evaluating stage2
+                            extrin_gt = extrin
 
                     # extrin_gt = self.env_mlp(obs_dict['priv_info']) if 'priv_info' in obs_dict else extrin
                     # extrin_gt = torch.tanh(extrin_gt)
