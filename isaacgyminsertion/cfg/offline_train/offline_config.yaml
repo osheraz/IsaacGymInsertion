@@ -6,12 +6,12 @@ output_dir: "/common/users/dm1487/isaacgym_new/python/IsaacGymInsertion/isaacgym
 train:
   # basic training hyperparameters
   epochs: 20
-  train_batch_size: 1
-  val_batch_size: 8
+  train_batch_size: 2
+  val_batch_size: 2
   learning_rate: 0.001
   train_test_split: 0.99
   action_regularization: False # propogate gradients for action loss
-  action_regularization_weight: 0.0 # weight for action regularization
+  action_regularization_weight: 0.0 # weight for action regularization\
 
   # loss scaling
   latent_scale: 1.0

@@ -2,7 +2,7 @@
 GPUS=${1:-0}
 SEED=${2:-42}
 CACHE=${3:-"11-21-23/18-16-32"}
-NUM_ENVS=${4:-4}
+NUM_ENVS=${4:-2}
 HEADLESS=${5:-True}
 
 array=( $@ )
@@ -25,8 +25,8 @@ offline_training=False \
 test=True \
 offline_training_w_env=True \
 offline_train.train.action_regularization=False \
-offline_train.model.transformer.full_sequence=False \
-offline_train.model.transformer.sequence_length=32 \
+offline_train.model.transformer.full_sequence=True \
+offline_train.model.transformer.sequence_length=256 \
 offline_train.train.load_checkpoint=False \
 offline_train.train.ckpt_path="${DD}/16/model_9.pt" \
 task.env.tactile=True \

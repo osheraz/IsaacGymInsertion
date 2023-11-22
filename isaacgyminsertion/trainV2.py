@@ -112,12 +112,12 @@ def run(cfg: DictConfig):
             num_success, total_trials = agent.test()
             print(f"Success rate: {num_success / total_trials}")
         else:
-            from algo.models.transformer.runner import Runner as TransformerRunner 
-            from algo.models.transformer.frozen_ppo import PPO as PPOv3
-            agent = PPOv3(envs, output_dif, full_config=cfg)
+            # from algo.models.transformer.frozen_ppo import PPO as PPOv3
+            # agent = PPOv3(envs, output_dif, full_config=cfg)
             agent.restore_test(cfg.train.load_path)
             agent.set_eval()
 
+            from algo.models.transformer.runner import Runner as TransformerRunner 
             runner = TransformerRunner(cfg.offline_train, agent, action_regularization=cfg.offline_train.train.action_regularization)
             runner.run()
 

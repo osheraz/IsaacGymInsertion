@@ -74,7 +74,7 @@ class Runner:
                              batch_size=lin_input.shape[0],
                              embed_size=self.cfg.model.transformer.embed_size // 2,
                              src_mask=self.src_mask)
-
+            
             loss_action = 0 # torch.nn.Parameter(torch.zeros(1), requires_grad=True).to(self.device)
             if self.full_sequence:
                 loss_latent = torch.sum(self.loss_fn(out, latent), dim=-1).unsqueeze(-1)
@@ -107,6 +107,15 @@ class Runner:
             latent_loss_list.append(loss_latent.item())
             if self.ppo_step is not None:
                 action_loss_list.append(loss_action.item())
+
+            out1 = out.clone().detach().cpu().numpy()
+            latent1 = latent.clone().detach().cpu().numpy()
+           
+            for ii in tqdm(range(100)):
+                plt.scatter(list(range(latent.shape[-1])), latent1[0, ii, :], c='b')
+                plt.scatter(list(range(latent.shape[-1])), out1[0, ii, :], c='r')
+                plt.pause(0.0001)
+                plt.cla()
 
             if (i + 1) % print_every == 0:
                 print(f'step {i + 1}:', np.mean(train_loss))
