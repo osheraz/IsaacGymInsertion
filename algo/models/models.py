@@ -85,7 +85,7 @@ class ActorCritic(nn.Module):
 
         self.temp_latent = []
         self.temp_extrin = []
-
+        self.flag = True
         if self.priv_info:
             mlp_input_shape += self.priv_mlp_units[-1]
 
@@ -119,10 +119,14 @@ class ActorCritic(nn.Module):
                     tactile_input_dim = kwargs['tactile_input_dim']
                     num_channels = tactile_input_dim[-1]
                     num_fingers = 3
+
+                    # self.tactile_decoder_m = load_tactile_resnet(tactile_decoder_embed_dim, 3 * num_channels)
                     self.tactile_decoder = load_tactile_resnet(tactile_decoder_embed_dim // num_fingers, num_channels)
 
                     # add tactile mlp to the decoded features
                     self.tactile_units = kwargs["mlp_tactile_units"]
+                    if not self.obs_info and self.tactile_info:
+                        self.tactile_units[-1] = self.priv_mlp_units[-1]  # self.tactile_units[-1] // 2
                     tactile_input_shape = kwargs["mlp_tactile_input_shape"]
 
                     self.tactile_mlp = MLP(
@@ -149,6 +153,8 @@ class ActorCritic(nn.Module):
         self.value = layer_init(torch.nn.Linear(out_size, 1), std=1.0)
         self.mu = layer_init(torch.nn.Linear(out_size, actions_num), std=0.01)
         self.sigma = nn.Parameter(torch.zeros(actions_num, requires_grad=True, dtype=torch.float32), requires_grad=True)
+
+        self.fig = plt.figure(figsize=(8, 6))
 
         for m in self.modules():
             if isinstance(m, nn.Conv2d) or isinstance(m, nn.Conv1d):
@@ -184,7 +190,8 @@ class ActorCritic(nn.Module):
         mu, logstd, value, latent, _ = self._actor_critic(obs_dict)
         return mu, latent
 
-    def _actor_critic(self, obs_dict, display=False):
+    def _actor_critic(self, obs_dict, display=True):
+
         obs = obs_dict['obs']
         extrin, extrin_gt = None, None
 
@@ -213,6 +220,10 @@ class ActorCritic(nn.Module):
                     
                     if self.tactile_info:
                         extrin_tactile = self._tactile_encode(obs_dict['tactile_hist'])
+                        # if self.flag:
+                        #     self.test = extrin_tactile
+                        #     self.flag = False
+                        # print((extrin_tactile - self.test).max())
                     if self.obs_info:
                         extrin_obs = self.obs_mlp(obs_dict['student_obs'])
                     # If both, merge and create student extrin
@@ -225,7 +236,7 @@ class ActorCritic(nn.Module):
                         extrin = extrin_obs
 
                     # During supervised training, pass to priv_mlp -> extrin has gt label
-                    with torch.inference_mode():
+                    with torch.no_grad():
                         if 'priv_info' in obs_dict:
                             if self.contact_info:
                                 contact_features = self.contact_mlp(obs_dict['contacts'])
@@ -242,13 +253,13 @@ class ActorCritic(nn.Module):
                     # extrin = torch.tanh(extrin)
 
                     # Applying action with student model
-                    obs = torch.cat([obs, extrin], dim=-1)
+                    obs = torch.cat([obs, extrin_gt], dim=-1)
 
                     # plot for latent viz
                     if display:
                         plt.ylim(-1, 1)
                         plt.scatter(list(range(extrin.shape[-1])), extrin.clone().detach().cpu().numpy()[0, :], color='r')
-                        plt.scatter(list(range(extrin.shape[-1])), extrin_gt.clone().cpu().numpy()[0, :], color='b')
+                        plt.scatter(list(range(extrin_gt.shape[-1])), extrin_gt.clone().cpu().numpy()[0, :], color='b')
                         plt.pause(0.0001)
                         plt.cla()
 
@@ -303,22 +314,38 @@ class ActorCritic(nn.Module):
         return result
 
     # @torch.no_grad()
+    def _tactile_encode_multi(self, images):
+
+        #                E, T,(finger) W, H, C  ->   E, T, C, W, H
+        left_seq = images[:, :, 0, :, :, :].permute(0, 1, 4, 2, 3)
+        right_seq = images[:, :, 1, :, :, :].permute(0, 1, 4, 2, 3)
+        bot_seq = images[:, :, 2, :, :, :].permute(0, 1, 4, 2, 3)
+
+        seq = torch.cat((left_seq, right_seq, bot_seq), dim=2)
+
+        emb_multi = self.tactile_decoder_m(seq)
+
+        tactile_embeddings = emb_multi
+
+        tac_emb = self.tactile_mlp(tactile_embeddings)
+
+        return tac_emb
+
     def _tactile_encode(self, images):
 
         #                E, T,(finger) W, H, C  ->   E, T, C, W, H
         left_seq = images[:, :, 0, :, :, :].permute(0, 1, 4, 2, 3)
         right_seq = images[:, :, 1, :, :, :].permute(0, 1, 4, 2, 3)
-        mid_seq = images[:, :, 2, :, :, :].permute(0, 1, 4, 2, 3)
+        bot_seq = images[:, :, 2, :, :, :].permute(0, 1, 4, 2, 3)
 
         emb_left = self.tactile_decoder(left_seq)
         emb_right = self.tactile_decoder(right_seq)
-        emb_bottom = self.tactile_decoder(mid_seq)
+        emb_bottom = self.tactile_decoder(bot_seq)
 
         tactile_embeddings = torch.cat((emb_left, emb_right, emb_bottom), dim=-1)
         tac_emb = self.tactile_mlp(tactile_embeddings)
 
         return tac_emb
-
 
 def load_tactile_resnet(embed_dim, num_channels,
                         root_dir=None, path_checkpoint=None, pre_trained=False):

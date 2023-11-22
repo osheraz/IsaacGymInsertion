@@ -39,10 +39,15 @@ import random
 
 
 # display visual model inputs
+# inv_normalize = transforms.Normalize(
+#     mean=[-0.485 / 0.229, -0.456 / 0.224, -0.406 / 0.225],
+#     std=[1 / 0.229, 1 / 0.224, 1 / 0.225]
+# )
 inv_normalize = transforms.Normalize(
-    mean=[-0.485 / 0.229, -0.456 / 0.224, -0.406 / 0.225],
-    std=[1 / 0.229, 1 / 0.224, 1 / 0.225]
+    mean=[-0.5 / 0.5], #, -0.5 / 0.5, -0.5 / 0.5],
+    std=[1 / 0.5]#, 1 / 0.5, 1 / 0.5]
 )
+
 
 rgb_transform = transforms.Compose([
     # transforms.ToPILImage(),
@@ -50,8 +55,8 @@ rgb_transform = transforms.Compose([
     transforms.ToTensor(),
     # transforms.Normalize([0.485, 0.456, 0.406],
     #                      [0.229, 0.224, 0.225])
-    # transforms.Normalize([0.5, 0.5, 0.5],
-    #                      [0.5, 0.5, 0.5])
+    transforms.Normalize([0.5, 0.5, 0.5],
+                         [0.5, 0.5, 0.5])
     # transforms.Normalize((0.5, ), (0.5, ))
 ])
 
@@ -61,7 +66,7 @@ gray_transform = transforms.Compose([
     transforms.ToTensor(),
     # transforms.Normalize([0.485, 0.456, 0.406],
     #                      [0.229, 0.224, 0.225])
-    # transforms.Normalize((0.5, ), (0.5, ))
+    transforms.Normalize((0.5, ), (0.5, ))
 ])
 
 def to_torch(x, dtype=torch.float, device='cuda:0', requires_grad=False):

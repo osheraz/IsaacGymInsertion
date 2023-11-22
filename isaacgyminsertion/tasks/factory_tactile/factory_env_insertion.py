@@ -134,7 +134,7 @@ class ExtrinsicContact:
         )
         self.socket_pcl = trimesh.sample.sample_surface_even(self.socket_trimesh, self.n_points, seed=42)[0]
 
-    def get_extrinsic_contact(self, obj_pos, obj_quat, socket_pos, socket_quat, threshold=0.002, display=True):
+    def get_extrinsic_contact(self, obj_pos, obj_quat, socket_pos, socket_quat, threshold=0.002, display=False):
         
         object_poses = torch.cat((obj_pos, obj_quat), dim=1)
         object_poses = self._xyzquat_to_tf_numpy(object_poses.cpu().numpy())
@@ -150,7 +150,7 @@ class ExtrinsicContact:
 
         d = self.socket.compute_distance(o3d.core.Tensor.from_numpy(query_points.astype(np.float32))).numpy()
 
-        if display:
+        if False:
             display_id = 3
             self.ax.plot(self.socket_pcl[:, 0], self.socket_pcl[:, 1], self.socket_pcl[:, 2], 'yo')
             self.ax.plot(query_points[display_id, :, 0], query_points[display_id, :, 1], query_points[display_id, :, 2], 'ko')
