@@ -48,8 +48,7 @@ class TactileTransformer(nn.Module):
             cnn_embeddings.append(self.cnn_embedding(cnn_input[i]))
         cnn_x = torch.cat(cnn_embeddings, dim=-1)
         cnn_x = cnn_x.view(batch_size, self.max_sequence_length, 18)
-        # x = torch.cat([lin_x, cnn_x], dim=-1)
-        x = cnn_x
+        x = torch.cat([lin_x, cnn_x], dim=-1)
         # x = lin_x
         # if self.layer_norm:
         #     x = self.layer_norm_in(x)

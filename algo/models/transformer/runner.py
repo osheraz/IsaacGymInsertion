@@ -47,6 +47,9 @@ class Runner:
         self.loss_fn_mean = torch.nn.MSELoss(reduction='mean')
         self.loss_fn = torch.nn.MSELoss(reduction='none')
 
+        import matplotlib.pyplot as plt
+        self.fig = plt.figure(figsize=(20, 15))
+        self.train_loss, self.val_loss = [], []
     def train(self, dl, val_dl, ckpt_path, print_every=50, eval_every=250, test_every=500):
         from matplotlib import pyplot as plt
         self.model.train()
@@ -75,7 +78,7 @@ class Runner:
                              embed_size=self.cfg.model.transformer.embed_size // 2,
                              src_mask=self.src_mask)
 
-            loss_action = 0 # torch.nn.Parameter(torch.zeros(1), requires_grad=True).to(self.device)
+            loss_action = 0  # torch.nn.Parameter(torch.zeros(1), requires_grad=True).to(self.device)
             if self.full_sequence:
                 loss_latent = torch.sum(self.loss_fn(out, latent), dim=-1).unsqueeze(-1)
                 loss_latent = torch.sum(loss_latent * mask) / torch.sum(mask)
@@ -117,6 +120,11 @@ class Runner:
                 if self.ppo_step is not None:
                     self._wandb_log({'train/action_loss': np.mean(action_loss_list)})
 
+                # Lets log a bit
+                self.fig.clf()
+                self.train_loss.append(np.mean(train_loss))
+                plt.plot(self.train_loss, '-ro', linewidth=3, label='train loss')
+
                 train_loss = []
                 latent_loss_list = []
                 action_loss_list = []
@@ -124,6 +132,10 @@ class Runner:
             if (i + 1) % eval_every == 0:
                 val_loss = self.validate(val_dl)
                 print(f'validation loss: {val_loss}')
+                self.val_loss.append(val_loss)
+                plt.plot(self.val_loss, '-ko', linewidth=3, label='val loss')
+                plt.legend()
+                self.fig.savefig(f'{ckpt_path}/train_val_comp.png', dpi=200, bbox_inches='tight')
                 self.model.train()
                 # val_loss = 0.
 
@@ -303,7 +315,8 @@ class Runner:
             self.cfg.data_folder.replace("dm1487", "oa348")
             self.cfg.output_dir.replace("dm1487", "oa348")
         file_list = glob(os.path.join(self.cfg.data_folder, '*/*/*.npz'))
-        save_folder = f'{to_absolute_path(self.cfg.output_dir)}/{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}'
+        ff = input('Folder_name: ')
+        save_folder = f'{to_absolute_path(self.cfg.output_dir)}/{ff}_{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}'
         os.makedirs(save_folder, exist_ok=True)
 
         device = 'cuda:0'
@@ -336,16 +349,20 @@ class Runner:
             )
 
         # Removing failed trajectories
+        print('Removing failed trajectories')
         for file in tqdm(file_list):
             try:
                 d = np.load(file)
+                # tactile = d["tactile"]
                 done_idx = d['done'].nonzero()[0]
                 if done_idx == 0:
                     file_list.remove(file)
             except KeyboardInterrupt:
                 exit()
             except:
+                print(file)
                 file_list.remove(file)
+                os.remove(file)
 
         normalize_keys = self.cfg.train.normalize_keys
 

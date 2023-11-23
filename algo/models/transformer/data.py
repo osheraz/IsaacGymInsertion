@@ -43,6 +43,7 @@ class TactileDataset(Dataset):
         priv_obs = data["priv_obs"]
         latent = data["latent"]
         obs_hist = data["obs_hist"]
+        contacts = data["contacts"]
 
         if self.normalize_dict is not None:
             arm_joints = (arm_joints - self.normalize_dict["mean"]["arm_joints"]) / self.normalize_dict["std"]["arm_joints"]
@@ -73,7 +74,7 @@ class TactileDataset(Dataset):
             physics_params,  # 6
             self.finger_normalized_forces,  # 3
         '''
-        latent = priv_obs[:, : 3 + 4]  # change here for supervised
+        # latent = priv_obs[:, -3:]  # change here for supervised
 
         if self.full_sequence:
             mask = np.zeros_like(done)
