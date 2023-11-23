@@ -1,7 +1,7 @@
 #!/bin/bash
 GPUS=${1:-0}
 SEED=${2:-42}
-CACHE=${3:-ext_new}
+CACHE=${3:-test}
 NUM_ENVS=${4:-4}
 HEADLESS=${5:-True}
 
@@ -26,7 +26,7 @@ test=False \
 offline_training_w_env=True \
 offline_train.train.action_regularization=False \
 offline_train.model.transformer.full_sequence=False \
-offline_train.model.transformer.sequence_length=32 \
+offline_train.model.transformer.sequence_length=3 \
 offline_train.train.load_checkpoint=False \
 offline_train.train.ckpt_path="${DD}/16/model_9.pt" \
 task.env.tactile=True \

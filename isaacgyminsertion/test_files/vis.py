@@ -12,7 +12,8 @@ import yaml
 with open('best_params_task.yaml', 'r') as file:
     file = yaml.load(file, Loader=yaml.Loader)
 
-all_paths = glob('/home/osher/Desktop/isaacgym/python/IsaacGymInsertion/isaacgyminsertion/outputs/test/data/datastore_42_test/*/*.npz')
+# all_paths = glob('/home/osher/Desktop/isaacgym/python/IsaacGymInsertion/isaacgyminsertion/outputs/test/data/datastore_42_test/*/*.npz')
+all_paths = glob('/common/users/oa348/inhand_manipulation_data_store/*/*/*.npz')
 print(len(all_paths))
 path = random.sample(all_paths, 1)[0]
 
@@ -26,7 +27,7 @@ done_idx = data['done'].nonzero()[-1][0]
 print(done_idx)
 ax = plt.figure(figsize=(10, 20)).add_subplot(projection='3d')
 
-if False:
+if True:
     # ax.scatter(data['socket_pos'][:done_idx, 0],
     #            data['socket_pos'][:done_idx, 1],
     #            zs=data['socket_pos'][:done_idx, 2],  color='r')
@@ -35,8 +36,9 @@ if False:
     #         data['noisy_socket_pos'][:done_idx, 1],
     #         zs=data['noisy_socket_pos'][:done_idx, 2])
 
+    ax.plot(data['priv_obs'][:done_idx, 0], data['priv_obs'][:done_idx, 1], zs=data['priv_obs'][:done_idx, 2], marker='o')
     # ax.plot(data['plug_pos'][:done_idx, 0], data['plug_pos'][:done_idx, 1], zs=data['plug_pos'][:done_idx, 2])
-    ax.plot(data['eef_pos'][:done_idx, 0], data['eef_pos'][:done_idx, 1], zs=data['eef_pos'][:done_idx, 2])
+    # ax.plot(data['eef_pos'][:done_idx, 0], data['eef_pos'][:done_idx, 1], zs=data['eef_pos'][:done_idx, 2])
     ax.set_xlabel('$X$', fontsize=20, rotation=150)
     ax.set_ylabel('$Y$',fontsize=20, rotation=150)
     ax.set_zlabel('$Z$', fontsize=30, rotation=60)

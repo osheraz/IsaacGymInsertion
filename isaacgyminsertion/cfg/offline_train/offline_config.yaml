@@ -10,7 +10,7 @@ train:
   val_batch_size: 8
   learning_rate: 0.001
   train_test_split: 0.99
-  action_regularization: False # propogate gradients for action loss
+  action_regularization: False # propagate gradients for action loss
   action_regularization_weight: 0.0 # weight for action regularization
 
   # loss scaling
@@ -19,8 +19,8 @@ train:
 
   # Train params for on screen logging
   print_every: 20
-  eval_every: 30
-  test_every: 37
+  eval_every: 20
+  test_every: 40
   test_episodes: 2 # per epoch batch
 
   # Only val/test ( val- dataset, test - env)
@@ -57,7 +57,7 @@ model:
     hidden_size: 64
     num_layers: 2
     num_heads: 2
-    output_size: 7
+    output_size: 3
   
 # wandb logging
 wandb:
