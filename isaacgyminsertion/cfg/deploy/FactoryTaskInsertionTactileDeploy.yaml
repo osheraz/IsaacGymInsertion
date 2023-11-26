@@ -28,11 +28,11 @@ rl:
 env:
   tactile_seq_length: ${...task.env.tactile_history_len}
   ft_seq_length: ${...task.env.ft_history_len}
-  obs_seq_length: ${...task.env.numObsHist}
+  obs_seq_length: 2  #${...task.env.numObsHist} old implementation
   stud_obs_seq_length: ${...task.env.numObsStudentHist}
 
   priv_info_dim: ${...task.env.numStates}
-  numObservations: ${...task.env.numObservations}
+  numObservations: 48 # ${...task.env.numObservations}
   numObsStudent: ${...task.env.numObsStudent}
   numActions: ${...task.env.numActions}
   numTargets: ${...task.env.numTargets}

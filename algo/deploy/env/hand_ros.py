@@ -20,6 +20,7 @@ class HandROSSubscriberFinger():
         if dev_names is None:
             dev_names = [2, 0, 4]
         if fix is None:
+            # approx ~ set each finger center
             fix = [(), (), ()]
             fix[0] = (0, -12)
             fix[1] = (6, 2)

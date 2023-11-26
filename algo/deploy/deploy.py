@@ -107,11 +107,9 @@ class HardwarePlayer(object):
         # self.cfg_tactile = hydra.compose(config_name=tactile_info_path)['']['']['']['allsight']['experiments']['conf']
         self.cfg_tactile = full_config.task.tactile
 
-        asset_info_path = '../../assets/factory/yaml/factory_asset_info_insertion.yaml'  # relative to Gym's Hydra search path (cfg dir)
+        asset_info_path = '../../assets/factory/yaml/factory_asset_info_insertion.yaml'
         self.asset_info_insertion = hydra.compose(config_name=asset_info_path)
-        self.asset_info_insertion = self.asset_info_insertion['']['']['']['']['']['']['assets']['factory'][
-            'yaml']  # strip superfluous nesting
-
+        self.asset_info_insertion = self.asset_info_insertion['']['']['']['']['']['']['assets']['factory']['yaml']
 
     def restore(self, fn):
         checkpoint = torch.load(fn)
@@ -231,6 +229,7 @@ class HardwarePlayer(object):
 
         self.obs_buf = torch.zeros((1, self.obs_shape[0]), device=self.device, dtype=torch.float)
         self.obs_student_buf = torch.zeros((1, self.obs_stud_shape[0]), device=self.device, dtype=torch.float)
+
     def _set_socket_pose(self, pos):
 
         self.socket_pos = torch.tensor(pos, device=self.device).unsqueeze(0)
@@ -295,7 +294,6 @@ class HardwarePlayer(object):
             self.gripper_goal_quat,
             self.socket_tip_pos_local,
         )
-
 
     def compute_observations(self, display_image=True):
 
@@ -468,6 +466,7 @@ class HardwarePlayer(object):
         if regulize_force:
             ft = torch.tensor(self.env.get_ft(), device=self.device, dtype=torch.float).unsqueeze(0)
             actions = torch.where(torch.abs(ft) > 1.0, actions * 0, actions)
+
         if do_clamp:
             actions = torch.clamp(actions, -1.0, 1.0)
         # Interpret actions as target pos displacements and set pos target
@@ -611,7 +610,7 @@ class HardwarePlayer(object):
         steps = 0
         max_steps = 1500
 
-        while True:  # not done[0]
+        while not done[0]:
 
             obs = self.running_mean_std(obs.clone())
             obs_stud = self.running_mean_std_stud(obs_stud.clone())
@@ -621,8 +620,7 @@ class HardwarePlayer(object):
                 'student_obs': obs_stud,
                 'tactile_hist': tactile
             }
-            if steps == 5:
-                print(5)
+
             action, latent = self.model.act_inference(input_dict)
             action = torch.clamp(action, -1.0, 1.0)
 
@@ -634,7 +632,8 @@ class HardwarePlayer(object):
             if self.full_config.task.data_logger.collect_data:
                 data_logger.log_trajectory_data(action, latent, done)
 
-            if True:
+            display = False
+            if display:
                 plt.ylim(-1, 1)
                 plt.scatter(list(range(latent.shape[-1])), latent.clone().cpu().numpy()[0, :], color='b')
                 plt.pause(0.0001)

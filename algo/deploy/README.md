@@ -1,7 +1,8 @@
 ## Deploy!
 
-To recompile for python3 (melodic):
 
+## Requirements - Only once
+To recompile for python3 (melodic):
 ### 1. Install some prerequisites to use Python3 with ROS.
 
 ```bash
@@ -29,7 +30,7 @@ catkin_make --cmake-args \
             -DPYTHON_LIBRARY=/usr/lib/x86_64-linux-gnu/libpython3.6m.so
 ```
 
-### dont source every terminal, use alias to the ~/.bashrc
+### source the workspace
 ```bash
 echo $PYTHONPATH
 alias osher3='source ~/osher3_workspace/devel/setup.sh'
@@ -46,7 +47,7 @@ conda deactivate # or comment conda stuff in the ~/.bashrc
  pip install torch==1.8.1+cu111 torchvision==0.9.1+cu111 torchaudio==0.8.1 -f https://download.pytorch.org/whl/torch_stable.html
 ```
 
-# Issues
+### Issues
 ### 4. yaml issue
 ```bash
 sudo apt-get install python3-pip python3-yaml
@@ -58,4 +59,42 @@ sudo pip3 install rospkg catkin_pkg
 sudo apt-get install python-catkin-tools python3-dev python3-numpy
 ```
 
+# Usage 
+
+### 1. Turn on everything
+- Turn on the kuka by pressing the switch, wait until everything is up.
+- Connect the FT sensor (just plug it).
+- Turn on the hand (there is a little switch near the RED LED.
+- Connect the usb of the tactile finger, wait a few sec and check connection:
+  - ```bash
+    v4l2-ctl --list-devices
+    ```
+  - You should see 3 cameras by the following order (*IMPORTANT*)
+    ```
+    Piwebcam: UVC Camera (usb-0000:00:14.0-10.1):
+       /dev/video2
+       /dev/video3
+
+    Piwebcam: UVC Camera (usb-0000:00:14.0-10.2):
+        /dev/video4
+        /dev/video5
+    
+    Piwebcam: UVC Camera (usb-0000:00:14.0-10.3):
+        /dev/video0
+        /dev/video1
+    ```
+### 2. Launch the system
+```bash
+roslaunch tactile_insertion env_bringup.launch
+```
+
+### 3. Set velocity and acc (Do this with caution)
+```bash
+rosservice call /iiwa/configuration/pathParameters "{joint_relative_velocity: 0.05, joint_relative_acceleration: 0.05, override_joint_acceleration: 1}"
+```
+
+### 4. Run the arm controller(jsut a publisher right now)
+```bash
+ROS_NAMESPACE=iiwa rosrun tactile_insertion moveit_manipulator.py
+```
 

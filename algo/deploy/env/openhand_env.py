@@ -131,10 +131,8 @@ class OpenhandEnv():
 
     def set_gripper_motors(self, motors_positions_array):
         """
-        It moves all the joints to the given position and doesnt exit until it reaches that position
-        :param: joints_positions_array: Its an array that ahas the desired joint positions in radians. The order of the
-
-
+        Moves all the motors to the given position
+        :param: joints_positions_array: array that ahas the desired joint positions in radians.
         """
         to_move = motors_positions_array.tolist() if not isinstance(motors_positions_array, list) else motors_positions_array
         suc = self.gripper_control.move_gripper(to_move)
@@ -151,6 +149,9 @@ class OpenhandEnv():
         self.gripper_control.grasp()
 
     def _explore_hand(self):
+        """
+        shaky shaky
+        """
 
         n = 4
         amount = 0.08
