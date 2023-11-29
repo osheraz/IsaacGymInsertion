@@ -36,7 +36,7 @@ class HardwarePlayer(object):
         self.device = full_config["rl_device"]
 
         # ---- build environment ----
-        self.obs_shape = (self.deploy_config.env.numObservations,)
+        self.obs_shape = (self.deploy_config.env.numObservations,) # 86
         self.obs_stud_shape = (self.deploy_config.env.numObsStudent,)
 
         self.num_actions = self.deploy_config.env.numActions
@@ -558,30 +558,33 @@ class HardwarePlayer(object):
             data_logger = RealLogger(env=self)
             data_logger.data_logger = data_logger.data_logger_init(None)
 
-        self.env.move_to_init_state()
+        # from here
+        # self.env.move_to_init_state()
+        #
+        # # self._move_arm_to_desired_pose([0.5, 0, 0.2])
+        # # self.env.move_to_joint_values(self.env.joints_above_socket_pos)
 
-        # self._move_arm_to_desired_pose([0.5, 0, 0.2])
-        # self.env.move_to_joint_values(self.env.joints_above_socket_pos)
 
-        self.env.move_to_joint_values(self.env.joints_above_plug, wait=True)
-        # self.env.move_to_joint_values(self.env.joints_grasp_pos, wait=True)
-
-        grasp_joints_bit = [0.33339, 0.52470, 0.12685, -1.6501, -0.07662, 0.97147, -1.0839]
-        grasp_joints = [0.3347, 0.54166, 0.12498, -1.6596, -0.07943, 0.94501, -1.0817]
-
-        self.env.move_to_joint_values(grasp_joints_bit, wait=True)
-        self.env.move_to_joint_values(grasp_joints, wait=True)
-        self.env.grasp()
-        self.env.move_to_joint_values(grasp_joints_bit, wait=True)
-        self.env.move_to_joint_values(self.env.joints_above_plug, wait=True)
-        self.env.move_to_joint_values(self.env.joints_above_socket, wait=True)
-
-        # Sample init error
+        # self.env.move_to_joint_values(self.env.joints_above_plug, wait=True)
+        # # self.env.move_to_joint_values(self.env.joints_grasp_pos, wait=True)
+        #
+        # grasp_joints_bit = [0.33339, 0.52470, 0.12685, -1.6501, -0.07662, 0.97147, -1.0839]
+        # grasp_joints = [0.3347, 0.54166, 0.12498, -1.6596, -0.07943, 0.94501, -1.0817]
+        #
+        # self.env.move_to_joint_values(grasp_joints_bit, wait=True)
+        # self.env.move_to_joint_values(grasp_joints, wait=True)
+        # self.env.grasp()
+        # self.env.move_to_joint_values(grasp_joints_bit, wait=True)
+        # self.env.move_to_joint_values(self.env.joints_above_plug, wait=True)
+        # self.env.move_to_joint_values(self.env.joints_above_socket, wait=True)
+        #
+        # # Sample init error
         random_init_idx = torch.randint(0, self.total_init_poses, size=(1,))
         kuka_dof_pos = self.init_dof_pos[random_init_idx]
         kuka_dof_pos = kuka_dof_pos.cpu().detach().numpy().squeeze().tolist()
         self.env.move_to_joint_values(kuka_dof_pos, wait=True)
-        self.env.grasp()
+        # self.env.grasp()
+        # to here
 
         self.env.arm.calib_robotiq()
         rospy.sleep(2.0)
@@ -623,6 +626,9 @@ class HardwarePlayer(object):
 
             action, latent = self.model.act_inference(input_dict)
             action = torch.clamp(action, -1.0, 1.0)
+
+            action[:, :] = 0.
+            action[:, 0] = 1.
 
             start_time = time()
             self.update_and_apply_action(action, wait=False)
