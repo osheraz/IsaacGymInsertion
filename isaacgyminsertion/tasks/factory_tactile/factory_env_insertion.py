@@ -322,7 +322,7 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
             components = list(self.asset_info_insertion[subassembly])
             plug_file = self.asset_info_insertion[subassembly][components[0]]['urdf_path'] + '.urdf'
             socket_file = self.asset_info_insertion[subassembly][components[1]]['urdf_path'] + '.urdf'
-            plug_options.density = self.asset_info_insertion[subassembly][components[0]]['density']
+            plug_options.density = self.asset_info_insertion[subassembly][components[0]]['density'] / 3
             socket_options.density = self.asset_info_insertion[subassembly][components[1]]['density']
             plug_asset = self.gym.load_asset(self.sim, urdf_root, plug_file, plug_options)
             socket_asset = self.gym.load_asset(self.sim, urdf_root, socket_file, socket_options)
@@ -454,6 +454,7 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
             plug_pose.r = gymapi.Quat(0.0, 0.0, 0.0, 1.0)
 
             plug_handle = self.gym.create_actor(env_ptr, plug_assets[j], plug_pose, 'plug', i, 0, 0)
+            self.plug_actor_ids_sim.append(actor_count)
             self.plug_actor_ids_sim.append(actor_count)
             actor_count += 1
 
