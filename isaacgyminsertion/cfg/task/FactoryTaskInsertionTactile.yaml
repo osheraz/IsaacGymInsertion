@@ -166,8 +166,10 @@ ctrl:
         joint_deriv_gains: [0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1]
     joint_space_id:
         ik_method: dls
-        joint_prop_gains: [1, 1, 1, 1, 1, 1, 1]
-        joint_deriv_gains: [0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1]
+        joint_prop_gains: [ 290, 208, 145, 145, 232, 204, 176 ]
+        joint_deriv_gains: [ 81, 80, 40, 43, 75, 82, 47 ]
+#        joint_prop_gains: [1, 1, 1, 1, 1, 1, 1]
+#        joint_deriv_gains: [0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1]
     task_space_impedance:
         motion_ctrl_axes: [1, 1, 1, 1, 1, 1]
         task_prop_gains: [300, 300, 300, 50, 50, 50]
