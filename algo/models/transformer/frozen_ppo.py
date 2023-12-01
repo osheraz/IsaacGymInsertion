@@ -550,7 +550,7 @@ class PPO(object):
             self.storage.update_data('obses', n, self.obs['obs'])
             self.storage.update_data('priv_info', n, self.obs['priv_info'])
             self.storage.update_data('contacts', n, self.obs['contacts'])
-            self.storage.update_data('socket_pos', n, self.obs['socket_pos'])
+            # self.storage.update_data('socket_pos', n, self.obs['socket_pos'])
 
             for k in ['actions', 'neglogpacs', 'values', 'mus', 'sigmas']:
                 self.storage.update_data(k, n, res_dict[k])

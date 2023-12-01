@@ -699,22 +699,25 @@ class FactoryTaskOptimizeTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             
             '''
 
-            cfg_ctrl = {'joint_prop_gains': [params['joint_prop_gains_1'] if '1joint_prop_gains_1' in params else 290,
-                                             params['joint_prop_gains_2'] if '1joint_prop_gains_2' in params else 208,
-                                             params['joint_prop_gains_3'] if '1joint_prop_gains_3' in params else 145,
-                                             params['joint_prop_gains_4'] if '1joint_prop_gains_4' in params else 145,
-                                             params['joint_prop_gains_5'] if '1joint_prop_gains_5' in params else 232,
-                                             params['joint_prop_gains_6'] if '1joint_prop_gains_6' in params else 204,
-                                             params['joint_prop_gains_7'] if '1joint_prop_gains_7' in params else 176],
-                        'joint_deriv_gains': [params['joint_deriv_gains_1'] if '1joint_deriv_gains_1' in params else 81,
-                                              params['joint_deriv_gains_2'] if '1joint_deriv_gains_2' in params else 80,
-                                              params['joint_deriv_gains_3'] if '1joint_deriv_gains_3' in params else 40,
-                                              params['joint_deriv_gains_4'] if '1joint_deriv_gains_4' in params else 43,
-                                              params['joint_deriv_gains_5'] if '1joint_deriv_gains_5' in params else 75,
-                                              params['joint_deriv_gains_6'] if '1joint_deriv_gains_6' in params else 82,
-                                              params['joint_deriv_gains_7'] if '1joint_deriv_gains_7' in params else 47]
+            cfg_ctrl = {'joint_prop_gains': [params['joint_prop_gains_1'] if 'joint_prop_gains_1' in params else 290,
+                                             params['joint_prop_gains_2'] if 'joint_prop_gains_2' in params else 208,
+                                             params['joint_prop_gains_3'] if 'joint_prop_gains_3' in params else 145,
+                                             params['joint_prop_gains_4'] if 'joint_prop_gains_4' in params else 145,
+                                             params['joint_prop_gains_5'] if 'joint_prop_gains_5' in params else 232,
+                                             params['joint_prop_gains_6'] if 'joint_prop_gains_6' in params else 204,
+                                             params['joint_prop_gains_7'] if 'joint_prop_gains_7' in params else 176],
+                        'joint_deriv_gains': [params['joint_deriv_gains_1'] if 'joint_deriv_gains_1' in params else 81,
+                                              params['joint_deriv_gains_2'] if 'joint_deriv_gains_2' in params else 80,
+                                              params['joint_deriv_gains_3'] if 'joint_deriv_gains_3' in params else 40,
+                                              params['joint_deriv_gains_4'] if 'joint_deriv_gains_4' in params else 43,
+                                              params['joint_deriv_gains_5'] if 'joint_deriv_gains_5' in params else 75,
+                                              params['joint_deriv_gains_6'] if 'joint_deriv_gains_6' in params else 82,
+                                              params['joint_deriv_gains_7'] if 'joint_deriv_gains_7' in params else 47]
                         }
 
+
+            self.cfg_ctrl['joint_prop_gains'] = torch.tensor(cfg_ctrl['joint_prop_gains'], device=self.device).repeat((self.num_envs, 1))
+            self.cfg_ctrl['joint_deriv_gains'] = torch.tensor(cfg_ctrl['joint_deriv_gains'], device=self.device).repeat((self.num_envs, 1))
 
             prop_gains = torch.cat((torch.tensor(cfg_ctrl['joint_prop_gains']).repeat((self.num_envs, 1)).to(self.device),
                                     self.cfg_ctrl['gripper_prop_gains']), dim=-1).to('cpu')
