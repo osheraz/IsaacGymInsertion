@@ -186,11 +186,17 @@ class allsight_renderer:
 
         color, depth = self.renderer.render(obj_pos_dict, normal_force_dict)
 
+        
+
         # Remove the depth from curved gel
         for j in range(len(depth)):
             depth[j] = self.renderer.depth0[j] - depth[j]
 
         color, depth = color[0], depth[0]
+
+        # print('color shape', color.shape, depth.shape)
+        # cv2.imshow("color", color[0])
+        # cv2.waitKey(1)
 
         # if self.subtract_bg:
         #     color = self.remove_bg(color, self.bg_img) * self.mask

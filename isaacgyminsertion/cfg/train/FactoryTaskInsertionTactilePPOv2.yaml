@@ -6,7 +6,7 @@ network:
   mlp:
     units: [512, 256, 128]
   priv_mlp:
-    units: [256, 128, 4]
+    units: [256, 128, 8]
   ft_mlp:
     units: [128, 64, 16]
   obs_mlp:
@@ -16,7 +16,11 @@ network:
   merge_mlp:
     units: [128, 64, 8]
   contact_mlp:
-    units: [128, 64, 16]
+    units: [128, 64, 4]
+  pose_mlp:
+    units: [64, 64, 4]
+  physics_mlp:
+    units: [64, 64, 4]
 
   tactile_decoder:
     num_channels: ${....task.tactile.decoder.num_channels}
@@ -53,11 +57,12 @@ ppo:
   grad_norm: 1
   # snapshot setting
   save_best_after: 0
-  save_frequency: 100
+  save_frequency: 10
   max_agent_steps: 1500000000
 
   # rma setting
   priv_info: True
+  split_latent: True
   extrin_adapt: False
   tactile_info: False
   ft_info: False

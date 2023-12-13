@@ -6,21 +6,21 @@ output_dir: "/common/users/dm1487/isaacgym_new/python/IsaacGymInsertion/isaacgym
 train:
   # basic training hyperparameters
   epochs: 20
-  train_batch_size: 2
-  val_batch_size: 2
-  learning_rate: 0.001
+  train_batch_size: 4
+  val_batch_size: 4
+  learning_rate: 0.0001
   train_test_split: 0.99
   action_regularization: False # propogate gradients for action loss
-  action_regularization_weight: 0.0 # weight for action regularization\
+  action_regularization_weight: 0.0 # weight for action regularization
 
   # loss scaling
   latent_scale: 1.0
   action_scale: 1.0
 
   # Train params for on screen logging
-  print_every: 20
-  eval_every: 30
-  test_every: 37
+  print_every: 50
+  eval_every: 98
+  test_every: 50
   test_episodes: 2 # per epoch batch
 
   # Only val/test ( val- dataset, test - env)
@@ -39,7 +39,7 @@ train:
 model:
   # linear embedding
   linear:
-    input_size: 33
+    input_size: 24
     # TODO: add model layers here
 
   # tactile embedding
@@ -53,15 +53,13 @@ model:
   transformer:
     full_sequence: False # if True, it makes sequence length 500
     sequence_length: 100 # ${...task.rl.max_episode_length}
-    embed_size: 18
-    hidden_size: 64
+    embed_size: 32
+    hidden_size: 128
     num_layers: 2
     num_heads: 2
-    output_size: 7
+    output_size: 500
   
 # wandb logging
 wandb:
   wandb_enabled: False
   wandb_project_name: "tactile_insertion"
-
-

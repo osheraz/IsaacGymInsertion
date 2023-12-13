@@ -26,7 +26,9 @@ import numpy as np
 
 from algo.ppo.experience import ExperienceBuffer, DataLogger
 from algo.ppo.experience import VectorizedExperienceBuffer
-from algo.models.models import ActorCritic
+from algo.models.models_split import ActorCriticSplit as ActorCritic
+# from algo.models.models import ActorCritic
+# from algo.models.models_baseline import ActorCritic
 from algo.models.running_mean_std import RunningMeanStd
 
 from isaacgyminsertion.utils.misc import AverageScalarMeter
@@ -56,6 +58,7 @@ class PPO(object):
         self.task_config = full_config.task
         self.network_config = full_config.train.network
         self.ppo_config = full_config.train.ppo
+        # self.tactile_config = full_config.task.tactile
         # ---- build environment ----
         self.env = env
         self.num_actors = self.ppo_config['num_actors']
@@ -68,10 +71,14 @@ class PPO(object):
         # ---- Tactile Info ---
         self.tactile_info = self.ppo_config["tactile_info"]
         self.tactile_seq_length = self.network_config.tactile_decoder.tactile_seq_length
-        self.tactile_input_dim = (self.network_config.tactile_decoder.img_width,
+        self.tactile_input_dim = [self.network_config.tactile_decoder.img_width,
                                   self.network_config.tactile_decoder.img_height,
-                                  self.network_config.tactile_decoder.num_channels)
+                                  self.network_config.tactile_decoder.num_channels]
+        if self.task_config.tactile.half_image:
+            self.tactile_input_dim[0] = self.tactile_input_dim[0] // 2
+            
         self.mlp_tactile_info_dim = self.network_config.tactile_mlp.units[0]
+        self.tactile_hist_dim = (self.network_config.tactile_decoder.tactile_seq_length, 3, *self.tactile_input_dim)
         # ---- ft Info ---
         self.ft_info = self.ppo_config["ft_info"]
         self.ft_seq_length = self.ppo_config["ft_seq_length"]
@@ -109,10 +116,11 @@ class PPO(object):
             "mlp_tactile_units": self.network_config.tactile_mlp.units,
             'tactile_input_dim': self.tactile_input_dim,
             'tactile_seq_length': self.tactile_seq_length,
-            "tactile_decoder_embed_dim": self.network_config.tactile_mlp.units[0],
+            "tactile_encoder_embed_dim": self.network_config.tactile_mlp.units[0],
             "shared_parameters": self.ppo_config.shared_parameters,
-            "merge_units": self.network_config.merge_mlp.units
-
+            "merge_units": self.network_config.merge_mlp.units,
+            "pose_mlp_units": self.network_config.pose_mlp.units,
+            "physics_mlp_units": self.network_config.physics_mlp.units
         }
 
         self.model = ActorCritic(net_config)
@@ -138,6 +146,7 @@ class PPO(object):
         # ---- Optim ----
         self.last_lr = float(self.ppo_config['learning_rate'])
         self.weight_decay = self.ppo_config.get('weight_decay', 0.0)
+        self.decoder_criterion = torch.nn.BCEWithLogitsLoss()
         self.optimizer = torch.optim.Adam(self.model.parameters(), self.last_lr, weight_decay=self.weight_decay)
 
         # ---- PPO Train Param ----
@@ -192,6 +201,7 @@ class PPO(object):
                                         self.actions_num,
                                         self.priv_info_dim,
                                         self.num_contacts_points,
+                                        self.tactile_hist_dim,
                                         self.device, )
 
         # ---- Data Logger ----
@@ -285,6 +295,9 @@ class PPO(object):
         if 'contacts' in obs_dict and self.gt_contacts_info:
             input_dict['contacts'] = obs_dict['contacts']
 
+        # if 'tactile_hist' in obs_dict and self.tactile_info:
+        #     input_dict['tactile_hist'] = obs_dict['tactile_hist']
+
         res_dict = self.model.act(input_dict)
         res_dict['values'] = self.value_mean_std(res_dict['values'], True)
         return res_dict
@@ -293,6 +306,7 @@ class PPO(object):
         _t = time.time()
         _last_t = time.time()
         self.obs = self.env.reset()
+        
         self.agent_steps = self.batch_size
 
         while self.agent_steps < self.max_agent_steps:
@@ -345,12 +359,13 @@ class PPO(object):
         if not fn:
             return
         checkpoint = torch.load(fn)
-        self.model.load_state_dict(checkpoint['model'])
+        self.model.load_state_dict(checkpoint['model'], strict=False)
         self.running_mean_std.load_state_dict(checkpoint['running_mean_std'])
         self.priv_mean_std.load_state_dict(checkpoint['priv_mean_std'])
 
     def restore_test(self, fn):
         checkpoint = torch.load(fn)
+        print(self.model)
         self.model.load_state_dict(checkpoint['model'])
         if self.normalize_input:
             self.running_mean_std.load_state_dict(checkpoint['running_mean_std'])
@@ -364,7 +379,6 @@ class PPO(object):
         }
         action, latent = self.model.act_inference(input_dict)
         return action, latent
-
 
     def train_epoch(self):
         # collect minibatch data
@@ -385,7 +399,7 @@ class PPO(object):
             
             for i in range(len(self.storage)):
                 value_preds, old_action_log_probs, advantage, old_mu, old_sigma, \
-                returns, actions, obs, priv_info, contacts, socket_pos = self.storage[i]
+                returns, actions, obs, priv_info, contacts, socket_pos, tactile_hist = self.storage[i]
 
                 obs = self.running_mean_std(obs)
                 priv_info = self.priv_mean_std(priv_info)
@@ -394,7 +408,8 @@ class PPO(object):
                     'prev_actions': actions,
                     'obs': obs,
                     'priv_info': priv_info,
-                    'contacts': contacts
+                    'contacts': contacts,
+                    # 'tactile_hist': tactile_hist
                 }
                 res_dict = self.model(batch_dict)
                 action_log_probs = res_dict['prev_neglogp']
@@ -402,6 +417,7 @@ class PPO(object):
                 entropy = res_dict['entropy']
                 mu = res_dict['mus']
                 sigma = res_dict['sigmas']
+                dec = res_dict['dec']
 
                 # actor loss
                 ratio = torch.exp(old_action_log_probs - action_log_probs)
@@ -423,7 +439,10 @@ class PPO(object):
                     b_loss = 0
                 a_loss, c_loss, entropy, b_loss = [torch.mean(loss) for loss in [a_loss, c_loss, entropy, b_loss]]
 
-                loss = a_loss + 0.5 * c_loss * self.critic_coef - entropy * self.entropy_coef + b_loss * self.bounds_loss_coef
+                decoder_loss = self.decoder_criterion(dec, batch_dict['contacts'])
+                rl_loss = a_loss + 0.5 * c_loss * self.critic_coef - entropy * self.entropy_coef + b_loss * self.bounds_loss_coef 
+                # print(decoder_loss.item(), rl_loss.item())
+                loss  = decoder_loss + rl_loss
 
                 with torch.no_grad():
                     kl_dist = policy_kl(mu.detach(), sigma.detach(), old_mu, old_sigma)
@@ -437,10 +456,10 @@ class PPO(object):
 
                 # print(returns[0], kl_dist)
 
-                if approx_kl_div > (1.5 * self.kl_threshold):
-                    continue_training = False
-                    print(f"Early stopping at step due to reaching max kl: {approx_kl_div:.2f}")
-                    break
+                # if approx_kl_div > (2.0 * self.kl_threshold):
+                #     continue_training = False
+                #     print(f"Early stopping at step ue to reaching max kl: {approx_kl_div:.2f}")
+                #     break
 
                 self.optimizer.zero_grad()
                 loss.backward()
@@ -549,6 +568,7 @@ class PPO(object):
             res_dict = self.model_act(self.obs)
             self.storage.update_data('obses', n, self.obs['obs'])
             self.storage.update_data('priv_info', n, self.obs['priv_info'])
+            # self.storage.update_data('tactile_hist', n, self.obs['tactile_hist'])
             self.storage.update_data('contacts', n, self.obs['contacts'])
             self.storage.update_data('socket_pos', n, self.obs['socket_pos'])
 
@@ -557,7 +577,7 @@ class PPO(object):
 
             # do env step
             actions = torch.clamp(res_dict['actions'], -1.0, 1.0)
-            self.obs, rewards, self.dones, infos = self.env.step(actions)
+            self.obs, rewards, self.dones, infos = self.env.step(actions, res_dict['dec'])
 
             rewards = rewards.unsqueeze(1)
             # update dones and rewards after env step
@@ -612,13 +632,13 @@ class PPO(object):
         # (check if the student model can be tested within models)
         # TODO move all of the transformer related functions to other file
         self.set_eval()
-        milestone = 100
+        milestone = 10
 
         self.transform = transforms.Compose([
             transforms.Normalize([0.5], [0.5])
         ])
         
-        action, latent, done = None, None, None
+        action, latent, done, dec = None, None, None, None
 
         save_trajectory = self.env.cfg_task.data_logger.collect_data  # in data collection phase this will be true
         offline_test = self.full_config.offline_training_w_env  # in offline_test this will be true
@@ -644,14 +664,14 @@ class PPO(object):
                 self.data_logger.data_logger.reset()
             if not save_trajectory:
                 # record initial data for latent inference (not needed if recording trajectory data, TODO: check why?)
-                self.data_logger.log_trajectory_data(action, latent, done, save_trajectory=save_trajectory)
+                self.data_logger.log_trajectory_data(action, latent, done, dec, save_trajectory=save_trajectory)
 
         self.env_ids = torch.arange(self.env.num_envs).view(-1, 1)
         total_dones, num_success = 0, 0
         total_env_runs = self.full_config.offline_train.train.test_episodes
-
+        # from matplotlib import pyplot as plt
         while save_trajectory or (total_dones < total_env_runs):  # or True for testing without saving
-        # for _ in tqdm(range(1000)):
+        # for _ in tqdm(range(500)):
             # log video during test
             self.log_video()
             # getting data from data logger
@@ -662,7 +682,15 @@ class PPO(object):
                 if get_latent is not None:
                     # Making data for the latent prediction from student model
                     cnn_input, lin_input = self._make_data(data, new_normalize_dict)
+
+                    # temp_finger = cnn_input[0][0].clone().detach().cpu().numpy()
+                    # for ii in range(temp_finger.shape[0]):
+                    #     plt.imshow(temp_finger[ii, :, :], cmap='gray')
+                    #     plt.pause(0.0001)
+                    #     plt.cla()
+
                     # getting the latent data from the student model
+                    # print(self.env.progress_buf[0])
                     if self.full_config.offline_train.model.transformer.full_sequence:
                         latent = get_latent(cnn_input, lin_input)[self.env_ids, self.env.progress_buf.view(-1, 1), :].squeeze(1)
                     else:
@@ -675,9 +703,9 @@ class PPO(object):
                 'contacts': self.obs['contacts'],
                 'latent': latent,
             }
-            action, latent = self.model.act_inference(obs_dict)
+            action, latent, dec = self.model.act_inference(obs_dict)
             action = torch.clamp(action, -1.0, 1.0)
-            self.obs, r, done, info = self.env.step(action)
+            self.obs, r, done, info = self.env.step(action, dec)
 
             num_success += self.env.success_reset_buf[done.nonzero()].sum()
             # logging data
@@ -685,8 +713,8 @@ class PPO(object):
                 total_dones += len(done.nonzero())
                 if total_dones > milestone:
                     print('success rate:', num_success/total_dones)
-                    milestone += 100
-                self.data_logger.log_trajectory_data(action, latent, done, save_trajectory=save_trajectory)
+                    milestone += 10
+                self.data_logger.log_trajectory_data(action, latent, done, dec, save_trajectory=save_trajectory)
 
         print('success rate:', num_success/total_dones)
         return num_success, total_dones
@@ -718,13 +746,13 @@ class PPO(object):
         cnn_input_2 = tactile[:, :, 1, ...] 
         cnn_input_3 = tactile[:, :, 2, ...]
 
-        lin_input = torch.cat([arm_joints, eef_pos, noisy_socket_pos, action, target], dim=-1)
+        lin_input = torch.cat([eef_pos, action, target], dim=-1)
         
         # check here
         # doing these operations to enable transform. They have no meaning if written separately.
-        cnn_input_1 = self.transform(cnn_input_1.permute(0, 1, 4, 2, 3)).permute(0, 1, 3, 4, 2)
-        cnn_input_2 = self.transform(cnn_input_2.permute(0, 1, 4, 2, 3)).permute(0, 1, 3, 4, 2)
-        cnn_input_3 = self.transform(cnn_input_3.permute(0, 1, 4, 2, 3)).permute(0, 1, 3, 4, 2)
+        # cnn_input_1 = self.transform(cnn_input_1.permute(0, 1, 4, 2, 3)).permute(0, 1, 3, 4, 2)
+        # cnn_input_2 = self.transform(cnn_input_2.permute(0, 1, 4, 2, 3)).permute(0, 1, 3, 4, 2)
+        # cnn_input_3 = self.transform(cnn_input_3.permute(0, 1, 4, 2, 3)).permute(0, 1, 3, 4, 2)
 
         if self.full_config.offline_train.model.transformer.full_sequence:
             return (cnn_input_1, cnn_input_2, cnn_input_3), lin_input

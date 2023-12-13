@@ -29,43 +29,47 @@ class TactileDataset(Dataset):
         data = np.load(self.all_folders[idx])
         
         # cnn input
-        tactile = data["tactile"]
-        cnn_input_1 = tactile[:, 0, ...]
-        cnn_input_2 = tactile[:, 1, ...] 
-        cnn_input_3 = tactile[:, 2, ...]
+        tactile = data["tactile"][:100]
+        # tactile = np.concatenate([tactile[:1, ...], tactile[1:, ...] - tactile[:-1, ...]], axis=0)
+        cnn_input_1 = tactile[:, 0, ...][:100]
+        cnn_input_2 = tactile[:, 1, ...][:100]
+        cnn_input_3 = tactile[:, 2, ...][:100]
 
         # linear input
-        arm_joints = data["arm_joints"]
-        eef_pos = data['eef_pos']
-        noisy_socket_pos = data["noisy_socket_pos"][:, :2]
-        action = data["action"]
-        target = data["target"]
-        priv_obs = data["priv_obs"]
-        latent = data["latent"]
-        obs_hist = data["obs_hist"]
+        arm_joints = data["arm_joints"][:100]
+        eef_pos = data['eef_pos'][:100]
+        noisy_socket_pos = data["noisy_socket_pos"][:100][:, :2]
+        action = data["action"][:100]
+        target = data["target"][:100]
+        priv_obs = data["priv_obs"][:100]
+        latent = data["latent"][:100]
+        obs_hist = data["obs_hist"][:100]
 
         if self.normalize_dict is not None:
             arm_joints = (arm_joints - self.normalize_dict["mean"]["arm_joints"]) / self.normalize_dict["std"]["arm_joints"]
             eef_pos = (eef_pos - self.normalize_dict["mean"]["eef_pos"]) / self.normalize_dict["std"]["eef_pos"]
             noisy_socket_pos = (noisy_socket_pos - self.normalize_dict["mean"]["noisy_socket_pos"][:2]) / self.normalize_dict["std"]["noisy_socket_pos"][:2]
             target = (target - self.normalize_dict["mean"]["target"]) / self.normalize_dict["std"]["target"]
-            priv_obs = (priv_obs - self.normalize_dict["mean"]["priv_obs"]) / self.normalize_dict["std"]["priv_obs"]
+            # priv_obs = (priv_obs - self.normalize_dict["mean"]["priv_obs"]) / self.normalize_dict["std"]["priv_obs"]
 
         # output
         # providing a_{t-1} to input
         shift_action_right = np.concatenate([np.zeros((1, action.shape[-1])), action[:-1, :]], axis=0)
         shift_target_right = np.concatenate([np.zeros((1, action.shape[-1])), target[:-1, :]], axis=0)
 
-        lin_input = np.concatenate([arm_joints, eef_pos, noisy_socket_pos, shift_action_right, shift_target_right], axis=-1)
+        lin_input = np.concatenate([eef_pos, shift_action_right, shift_target_right], axis=-1) 
 
-        done = data["done"]
-        done_idx = done.nonzero()[0][-1]
+        done = data["done"][:100]
+        if done.sum() == 0:
+            done_idx = 100
+        else:
+            done_idx = done.nonzero()[0][-1]
 
 
         # doing these operations to enable transform. They have no meaning if written separately.
-        cnn_input_1 = self.transform(self.to_torch(cnn_input_1).permute(0, 3, 1, 2)).permute(0, 2, 3, 1).numpy()
-        cnn_input_2 = self.transform(self.to_torch(cnn_input_2).permute(0, 3, 1, 2)).permute(0, 2, 3, 1).numpy()
-        cnn_input_3 = self.transform(self.to_torch(cnn_input_3).permute(0, 3, 1, 2)).permute(0, 2, 3, 1).numpy()
+        # cnn_input_1 = (cnn_input_1 + 0.5)
+        # cnn_input_2 = self.to_torch(cnn_input_2).numpy()
+        # cnn_input_3 = self.to_torch(cnn_input_3).numpy()
 
         '''
             plug_hand_pos,   # 3
@@ -73,7 +77,7 @@ class TactileDataset(Dataset):
             physics_params,  # 6
             self.finger_normalized_forces,  # 3
         '''
-        latent = priv_obs[:, : 3 + 4]  # change here for supervised
+        latent = data['contacts'][:100]  # change here for supervised
 
         if self.full_sequence:
             mask = np.zeros_like(done)

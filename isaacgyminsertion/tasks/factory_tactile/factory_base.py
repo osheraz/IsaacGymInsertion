@@ -579,7 +579,7 @@ class FactoryBaseTactile(VecTask, FactoryABCBase):
         logger.warn(
             'Finished generating SDFS.')
 
-    def enable_gravity(self, gravity_mag):
+    def enable_gravity(self, gravity_mag=-9.81):
         """Enable gravity."""
 
         sim_params = self.gym.get_sim_params(self.sim)

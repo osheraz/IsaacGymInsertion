@@ -1,8 +1,8 @@
 #!/bin/bash
 GPUS=${1:-0}
 SEED=${2:-42}
-CACHE=${3:-"11-22-23/13-32-28"}
-NUM_ENVS=${4:-2}
+CACHE=${3:-"12-10-23/15-01-17"}
+NUM_ENVS=${4:-16}
 HEADLESS=${5:-True}
 
 array=( $@ )
@@ -18,30 +18,27 @@ python trainV2.py task=FactoryTaskInsertionTactile headless=${HEADLESS} seed=${S
 test=True \
 task.env.numEnvs=${NUM_ENVS} \
 task.env.tactile=True \
-task.env.numStates=16 \
+task.env.tactile_display_viz=False task.env.tactile_wrt_force=False \
+task.env.smooth_force=False \
+task.env.numObsHist=3 \
+task.env.numObservations=24 \
+task.env.compute_contact_gt=True \
+task.env.numStates=7 \
+train.algo=PPO \
+train.ppo.priv_info=True \
+train.ppo.extrin_adapt=False \
+train.ppo.tactile_info=True \
 task.tactile.tacto.width=224 \
 task.tactile.tacto.height=224 \
 task.tactile.decoder.width=224 \
 task.tactile.decoder.height=224 \
-task.env.tactile_wrt_force=True \
-task.env.tactile_history_len=1 \
 task.tactile.decoder.num_channels=1 \
-task.env.compute_contact_gt=True \
-<<<<<<< HEAD
-task.env.numObsHist=5 \
-=======
-task.env.numObsHist=2 \
->>>>>>> origin/dev-osher
-task.env.numObservations=24 \
-task.tactile.half_image=False \
-task.env.smooth_force=True \
+task.env.tactile_history_len=1 \
 task.data_logger.collect_data=True \
-task.data_logger.base_folder="/common/users/oa348/inhand_manipulation_data_store" \
+task.data_logger.total_trajectories=5000 \
+task.data_logger.base_folder="/common/users/dm1487/inhand_manipulation_data_store" \
 task.data_logger.sub_folder="datastore_${SEED}_${CACHE}" \
 train.algo=PPO \
-train.ppo.priv_info=True \
-train.ppo.extrin_adapt=False \
-train.ppo.tactile_info=False \
 train.ppo.output_name="${CACHE}" \
 checkpoint="${C}" \
 ${EXTRA_ARGS}

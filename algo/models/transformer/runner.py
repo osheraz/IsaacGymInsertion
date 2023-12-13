@@ -15,7 +15,7 @@ import wandb
 import time
 from algo.models.transformer.utils import set_seed
 from hydra.utils import to_absolute_path
-
+from matplotlib import pyplot as plt
 
 class Runner:
     def __init__(self, cfg=None, agent=None, action_regularization=False):
@@ -27,7 +27,7 @@ class Runner:
         self.optimizer = None
         self.scheduler = None
         self.full_sequence = self.cfg.model.transformer.full_sequence
-        self.sequence_length = 500 if self.full_sequence else self.cfg.model.transformer.sequence_length
+        self.sequence_length = 100 if self.full_sequence else self.cfg.model.transformer.sequence_length
         self.device = 'cuda:0'
 
         self.model = TactileTransformer(lin_input_size=self.cfg.model.linear.input_size,
@@ -46,6 +46,10 @@ class Runner:
 
         self.loss_fn_mean = torch.nn.MSELoss(reduction='mean')
         self.loss_fn = torch.nn.MSELoss(reduction='none')
+        self.bce_fn = torch.nn.BCEWithLogitsLoss(reduction='none')
+
+        self.fig = plt.figure()
+        self.ax = self.fig.add_subplot(111)
 
     def train(self, dl, val_dl, ckpt_path, print_every=50, eval_every=250, test_every=500):
         from matplotlib import pyplot as plt
@@ -56,14 +60,24 @@ class Runner:
             self.model.train()
             cnn_inputs = []
             for finger in cnn_input:
-                # for ii in range(self.sequence_length):
-                #     plt.imshow(finger[0, ii, :, :].clone().cpu().numpy())
+                # temp_finger = finger.clone().detach().cpu().numpy()
+                # for ii in range(100):
+                #     plt.imshow(temp_finger[0, ii, :, :], cmap='gray')
                 #     plt.pause(0.0001)
                 #     plt.cla()
+                # plt.close()
                 finger = finger.to(self.device)
                 finger = finger.view(finger.shape[0] * self.sequence_length, *finger.size()[-3:])
                 finger = finger.permute(0, 3, 1, 2)
                 cnn_inputs.append(finger)
+
+            # temp_latent = latent.clone().detach().cpu().numpy()/10.0
+            # for ii in range(100):
+            #     print(temp_latent.shape)
+            #     for mm in range(8):
+            #         plt.plot(temp_latent[0, :ii, mm])
+            #     plt.pause(0.0001)
+            #     plt.cla()
 
             lin_input = lin_input.to(self.device)
             latent = latent.to(self.device)
@@ -77,7 +91,7 @@ class Runner:
             
             loss_action = 0 # torch.nn.Parameter(torch.zeros(1), requires_grad=True).to(self.device)
             if self.full_sequence:
-                loss_latent = torch.sum(self.loss_fn(out, latent), dim=-1).unsqueeze(-1)
+                loss_latent = torch.mean(self.bce_fn(out, latent), dim=-1).unsqueeze(-1)
                 loss_latent = torch.sum(loss_latent * mask) / torch.sum(mask)
                 if self.ppo_step is not None:  # action regularization
                     obs_hist = obs_hist.to(self.device).view(obs_hist.shape[0] * self.sequence_length,
@@ -108,14 +122,13 @@ class Runner:
             if self.ppo_step is not None:
                 action_loss_list.append(loss_action.item())
 
-            out1 = out.clone().detach().cpu().numpy()
-            latent1 = latent.clone().detach().cpu().numpy()
-           
-            for ii in tqdm(range(100)):
-                plt.scatter(list(range(latent.shape[-1])), latent1[0, ii, :], c='b')
-                plt.scatter(list(range(latent.shape[-1])), out1[0, ii, :], c='r')
-                plt.pause(0.0001)
-                plt.cla()
+            # out1 = out.clone().detach().cpu().numpy()
+            # latent1 = latent.clone().detach().cpu().numpy()
+            # for ii in tqdm(range(100)):
+            #     plt.scatter(list(range(latent.shape[-1])), latent1[0, ii, :], c='b')
+            #     plt.scatter(list(range(latent.shape[-1])), out1[0, ii, :], c='r')
+            #     plt.pause(0.0001)
+            #     plt.cla()
 
             if (i + 1) % print_every == 0:
                 print(f'step {i + 1}:', np.mean(train_loss))
@@ -134,13 +147,15 @@ class Runner:
                 val_loss = self.validate(val_dl)
                 print(f'validation loss: {val_loss}')
                 self.model.train()
-                # val_loss = 0.
+                self.scheduler.step(val_loss)
+                val_loss = 0.
 
             if (i + 1) % test_every == 0:
-                try:
-                    self.test()
-                except:
-                    pass
+                self.test()
+                # try:
+                #     self.test()
+                # except:
+                #     pass
                 self.model.train()
 
         return val_loss
@@ -172,7 +187,7 @@ class Runner:
                 loss_action = 0
 
                 if self.full_sequence:
-                    loss_latent = torch.sum(self.loss_fn(out, latent), dim=-1).unsqueeze(-1)
+                    loss_latent = torch.sum(self.bce_fn(out, latent), dim=-1).unsqueeze(-1)
                     loss_latent = torch.sum(loss_latent * mask) / torch.sum(mask)
                     # loss = loss_latent
                     if self.ppo_step is not None:
@@ -237,6 +252,13 @@ class Runner:
             # [envs, seq_len, W, H, C] => [envs*seq_len, C, W, H]
             cnn_inputs = []
             for finger in cnn_input:
+                # temp_finger = finger.clone().detach().cpu().numpy()
+                # for ii in range(100):
+                #     self.ax.imshow(temp_finger[0, ii, :, :], cmap='gray')
+                #     plt.pause(0.0001)
+                #     self.ax.cla()
+                # plt.close()
+
                 finger = finger.to(self.device)
                 finger = finger.view(finger.shape[0] * self.sequence_length, *finger.size()[-3:])
                 finger = finger.permute(0, 3, 1, 2)
@@ -311,7 +333,7 @@ class Runner:
         if 'oa348' in os.getcwd():
             self.cfg.data_folder.replace("dm1487", "oa348")
             self.cfg.output_dir.replace("dm1487", "oa348")
-        file_list = glob(os.path.join(self.cfg.data_folder, '*/*/*.npz'))
+        file_list = glob(os.path.join(self.cfg.data_folder, '*/*.npz'))
         save_folder = f'{to_absolute_path(self.cfg.output_dir)}/{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}'
         os.makedirs(save_folder, exist_ok=True)
 
@@ -348,13 +370,15 @@ class Runner:
         for file in tqdm(file_list):
             try:
                 d = np.load(file)
+                # t = d['tactile']
                 done_idx = d['done'].nonzero()[0]
                 if done_idx == 0:
                     file_list.remove(file)
             except KeyboardInterrupt:
                 exit()
             except:
-                file_list.remove(file)
+                print(file)
+                os.remove(file)
 
         normalize_keys = self.cfg.train.normalize_keys
 
@@ -381,7 +405,7 @@ class Runner:
                         done_idx = d['done'].nonzero()[0][-1]
                         data.append(d[norm_keys][:done_idx, :])
                     except:
-                        print(file, 'shit file')
+                        print(file, 'bad file')
                 data = np.concatenate(data, axis=0)
                 normalize_dict['mean'][norm_keys] = np.mean(data, axis=0)
                 normalize_dict['std'][norm_keys] = np.std(data, axis=0)

@@ -170,8 +170,6 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         )
 
         
-        
-        
         self.ft_queue = torch.zeros((self.num_envs, self.ft_hist_len, 6), device=self.device, dtype=torch.float)
 
         self.gt_extrinsic_contact = torch.zeros((self.num_envs, self.cfg_task.env.num_points),
@@ -184,6 +182,9 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         self.refresh_base_tensors()
         self.refresh_env_tensors()
+
+        self.plug_pos[:, 0] += 0.000
+
         self.plug_grasp_quat, self.plug_grasp_pos = torch_jit_utils.tf_combine(self.plug_quat,
                                                                                self.plug_pos,
                                                                                self.plug_grasp_quat_local,
@@ -406,7 +407,7 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
             for n in range(3):
                 if self.cfg_task.env.tactile_wrt_force:
-                    force = 50 * finger_normalized_forces[e, n].cpu().detach().numpy()
+                    force = 60 * finger_normalized_forces[e, n].cpu().detach().numpy()
                 else:
                     force = 20
                 tactile_img, height_map = self.tactile_handles[e][n].render(object_pose[e], force)
@@ -711,6 +712,18 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             self._refresh_task_tensors(update_tactile=True)
             priv_depth = self.depth_maps.clone()
 
+            # if True:
+            #     display_key = 'yellow_round_peg_2in' # ['triangle', 'red_round_peg_1_5in', 'yellow_round_peg_2in']
+            #     print(self.subassembly_extrinsic_contact)
+            #     for k, v in self.subassembly_extrinsic_contact.items():
+            #         self.gt_extrinsic_contact[self.subassembly_to_env_ids[k], ...] = v.get_extrinsic_contact(
+            #             obj_pos=self.plug_pos[self.subassembly_to_env_ids[k], ...].clone(), 
+            #             obj_quat=self.plug_quat[self.subassembly_to_env_ids[k], ...].clone(), 
+            #             socket_pos=self.socket_pos[self.subassembly_to_env_ids[k], ...].clone(),
+            #             socket_quat=self.socket_quat[self.subassembly_to_env_ids[k], ...].clone(),
+            #             display = display_key == k, dec=None
+            #         ).to(self.device)
+
 
             # # Move arm to grasp pose
             plug_pos_noise = (2 * (torch.rand((len(env_ids), 3),
@@ -730,6 +743,17 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             
             self.enable_gravity(0)
             self._refresh_task_tensors(update_tactile=True)
+            # if True:
+            #     display_key = 'yellow_round_peg_2in' # ['triangle', 'red_round_peg_1_5in', 'yellow_round_peg_2in']
+            #     print(self.subassembly_extrinsic_contact)
+            #     for k, v in self.subassembly_extrinsic_contact.items():
+            #         self.gt_extrinsic_contact[self.subassembly_to_env_ids[k], ...] = v.get_extrinsic_contact(
+            #             obj_pos=self.plug_pos[self.subassembly_to_env_ids[k], ...].clone(), 
+            #             obj_quat=self.plug_quat[self.subassembly_to_env_ids[k], ...].clone(), 
+            #             socket_pos=self.socket_pos[self.subassembly_to_env_ids[k], ...].clone(),
+            #             socket_quat=self.socket_quat[self.subassembly_to_env_ids[k], ...].clone(),
+            #             display = display_key == k, dec=None
+            #         ).to(self.device)
 
             # # Lift
             # self._lift_gripper(env_ids, self.ctrl_target_gripper_dof_pos)
@@ -770,9 +794,7 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
             dist = torch.norm(self.socket_tip[:, :2] - self.plug_pos[:, :2], p=2, dim=-1)
 
-            # print('dist', dist)
-
-            cond = (abs(roll * 180 / np.pi) < 8) & (abs(pitch * 180 / np.pi) < 8) & (abs(yaw * 180 / np.pi) < 8)
+            cond = (abs(roll * 180 / np.pi) < 3) & (abs(pitch * 180 / np.pi) < 3) # & (abs(yaw * 180 / np.pi) < 3)
             # Check tactile imprint
             cond &= (torch.sum(torch.sum((self.depth_maps - priv_depth), dim=(2, 3)) >= 0.0, dim=1) >= 2)
 
@@ -1361,6 +1383,7 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
     def reset(self):
         super().reset()
+        self.reset_idx(torch.arange(self.num_envs))
         self.obs_dict['priv_info'] = self.obs_dict['states']
         self.obs_dict['tactile_hist'] = self.tactile_queue.to(self.rl_device)
         self.obs_dict['ft_hist'] = self.ft_queue.to(self.rl_device)

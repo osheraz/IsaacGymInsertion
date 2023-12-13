@@ -17,7 +17,6 @@
 # --------------------------------------------------------
 import os
 from datetime import datetime
-
 # noinspection PyUnresolvedReferences
 import isaacgym
 

@@ -102,8 +102,8 @@ def set_seed(seed, torch_deterministic=False, rank=0):
     torch.cuda.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
     # added these to test if it helps with reproducibility
-    os.environ['CUBLAS_WORKSPACE_CONFIG'] = ':4096:8'
-    torch.backends.cudnn.deterministic = True
+    # os.environ['CUBLAS_WORKSPACE_CONFIG'] = ':4096:8'
+    # torch.backends.cudnn.deterministic = True
 
     if torch_deterministic:
         # refer to https://docs.nvidia.com/cuda/cublas/index.html#cublasApi_reproducibility

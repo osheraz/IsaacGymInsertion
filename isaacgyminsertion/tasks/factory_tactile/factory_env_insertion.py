@@ -98,9 +98,12 @@ class ExtrinsicContact:
         self.n_points = num_points
         # self.gt_extrinsic_contact = torch.zeros((num_envs, self.n_points))
         self.constant_socket = False
-        self.ax = plt.axes(projection='3d')
+        self.fig = plt.figure(figsize=plt.figaspect(0.5))
+        self.ax1 = self.fig.add_subplot(1, 2, 1, projection='3d')
+        self.ax2 = self.fig.add_subplot(1, 2, 2, projection='3d')
         self.num_envs = num_envs
         self.device = device
+        self.dec = torch.zeros((num_envs, self.n_points)).to(device)
 
     def _xyzquat_to_tf_numpy(self, position_quat: np.ndarray) -> np.ndarray:
         """
@@ -134,7 +137,7 @@ class ExtrinsicContact:
         )
         self.socket_pcl = trimesh.sample.sample_surface_even(self.socket_trimesh, self.n_points, seed=42)[0]
 
-    def get_extrinsic_contact(self, obj_pos, obj_quat, socket_pos, socket_quat, threshold=0.002, display=False):
+    def get_extrinsic_contact(self, obj_pos, obj_quat, socket_pos, socket_quat, threshold=0.002, display=False, dec=None):
         
         object_poses = torch.cat((obj_pos, obj_quat), dim=1)
         object_poses = self._xyzquat_to_tf_numpy(object_poses.cpu().numpy())
@@ -150,22 +153,43 @@ class ExtrinsicContact:
 
         d = self.socket.compute_distance(o3d.core.Tensor.from_numpy(query_points.astype(np.float32))).numpy()
 
-        if display:
+        if display and False:
             display_id = 0
-            self.ax.plot(self.socket_pcl[:, 0], self.socket_pcl[:, 1], self.socket_pcl[:, 2], 'yo')
-            self.ax.plot(query_points[display_id, :, 0], query_points[display_id, :, 1], query_points[display_id, :, 2], 'ko')
-            self.ax.set_xlabel('X')
-            self.ax.set_ylabel('Y')
+            self.ax2.cla()
+            self.ax1.cla()
+
+            self.ax1.plot(self.socket_pcl[:, 0], self.socket_pcl[:, 1], self.socket_pcl[:, 2], 'yo')
+            self.ax1.plot(query_points[display_id, :, 0], query_points[display_id, :, 1], query_points[display_id, :, 2], 'ko')
+            self.ax1.set_xlabel('X')
+            self.ax1.set_ylabel('Y')
 
             intersecting_indices = d < threshold
             contacts = np.zeros_like(query_points)
             contacts[intersecting_indices] = query_points[intersecting_indices]
-            for c in contacts[display_id]:
+            for c in contacts[display_id]: 
                 if np.linalg.norm(c, axis=0):
-                    self.ax.plot(c[0], c[1], c[2], 'ro')
+                    self.ax1.plot(c[0], c[1], c[2], 'ro')
+
+            
+            if dec is not None:
+                self.dec[:, :] = dec
+                self.ax2.plot(self.socket_pcl[:, 0], self.socket_pcl[:, 1], self.socket_pcl[:, 2], 'yo')
+                self.ax2.plot(query_points[display_id, :, 0], query_points[display_id, :, 1], query_points[display_id, :, 2], 'ko')
+                self.ax2.set_xlabel('X')
+                self.ax2.set_ylabel('Y')
+
+                intersecting_indices = (torch.sigmoid(self.dec) > 0.5).cpu().numpy()
+                contacts = np.zeros_like(query_points)
+                contacts[intersecting_indices] = query_points[intersecting_indices]
+                for c in contacts[display_id]:
+                    if np.linalg.norm(c, axis=0):
+                        self.ax2.plot(c[0], c[1], c[2], 'ro')
 
             plt.pause(0.0001)
-            self.ax.cla()
+            # plt.show()
+            
+        else:
+            plt.close(self.fig)
 
         d = d.flatten()
         idx_2 = np.where(d > threshold)[0]
@@ -237,8 +261,8 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
 
         self.print_sdf_warning()
         kuka_asset, table_asset = self.import_kuka_assets()
-        plug_assets, socket_assets = self._import_env_assets()
-        self._create_actors(lower, upper, num_per_row, kuka_asset, plug_assets, socket_assets, table_asset)
+        plug_assets, socket_assets, box_assets = self._import_env_assets()
+        self._create_actors(lower, upper, num_per_row, kuka_asset, plug_assets, socket_assets, box_assets, table_asset)
         self.print_sdf_finish()
 
         for subassembly in self.cfg_env.env.desired_subassemblies:
@@ -316,8 +340,23 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
         if self.cfg_base.mode.export_scene:
             socket_options.mesh_normal_mode = gymapi.COMPUTE_PER_FACE
 
+        box_options = gymapi.AssetOptions()
+        box_options.flip_visual_attachments = False
+        box_options.fix_base_link = True
+        box_options.thickness = 0.0  # default = 0.02
+        box_options.armature = 0.0  # default = 0.0
+        box_options.use_physx_armature = True
+        box_options.linear_damping = 0.0  # default = 0.0
+        box_options.max_linear_velocity = 1.0  # default = 1000.0
+        box_options.angular_damping = 0.0  # default = 0.5
+        box_options.max_angular_velocity = 64.0  # default = 64.0
+        box_options.disable_gravity = False
+        box_options.enable_gyroscopic_forces = True
+        box_options.default_dof_drive_mode = gymapi.DOF_MODE_NONE
+
         plug_assets = []
         socket_assets = []
+        box_assets = []
         for subassembly in self.cfg_env.env.desired_subassemblies:
             components = list(self.asset_info_insertion[subassembly])
             plug_file = self.asset_info_insertion[subassembly][components[0]]['urdf_path'] + '.urdf'
@@ -326,16 +365,18 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
             socket_options.density = self.asset_info_insertion[subassembly][components[1]]['density']
             plug_asset = self.gym.load_asset(self.sim, urdf_root, plug_file, plug_options)
             socket_asset = self.gym.load_asset(self.sim, urdf_root, socket_file, socket_options)
+            box_asset = self.gym.create_box(self.sim, 0.1, 0.1, 0.05, box_options)
             plug_assets.append(plug_asset)
             socket_assets.append(socket_asset)
+            box_assets.append(box_asset)
 
             # Save URDF file paths (for loading appropriate meshes during SAPU and SDF-Based Reward calculations)
             self.plug_files.append(os.path.join(urdf_root, plug_file))
             self.socket_files.append(os.path.join(urdf_root, socket_file))
 
-        return plug_assets, socket_assets
+        return plug_assets, socket_assets, box_assets
 
-    def _create_actors(self, lower, upper, num_per_row, kuka_asset, plug_assets, socket_assets, table_asset):
+    def _create_actors(self, lower, upper, num_per_row, kuka_asset, plug_assets, socket_assets, box_assets, table_asset):
         """Set initial actor poses. Create actors. Set shape and DOF properties."""
 
         kuka_pose = gymapi.Transform()
@@ -358,6 +399,12 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
         table_pose.p.z = self.cfg_base.env.table_height * 0.5
         table_pose.r = gymapi.Quat(0.0, 0.0, 0.0, 1.0)
 
+        box_pose = gymapi.Transform()
+        box_pose.p.x = 0.5
+        box_pose.p.y = 0.1
+        box_pose.p.z = 0.025 + self.cfg_base.env.table_height
+        box_pose.r = gymapi.Quat(0.0, 0.0, 0.0, 1.0)
+
         self.envs_asset = {}
         self.envs = []
         self.kuka_handles = []
@@ -370,6 +417,7 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
         self.plug_actor_ids_sim = []  # within-sim indices
         self.socket_actor_ids_sim = []  # within-sim indices
         self.table_actor_ids_sim = []  # within-sim indices
+        self.box_actor_ids_sim = []  # within-sim indices
 
         self.fingertips = ['finger_1_3', 'finger_2_3', 'finger_3_3']  # left, right, bottom. same for all envs
         self.fingertip_handles = [self.gym.find_asset_rigid_body_index(kuka_asset, name) for name in self.fingertips]
@@ -423,9 +471,11 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
             num_socket_shapes = self.gym.get_asset_rigid_shape_count(socket_assets[j])
             num_table_bodies = self.gym.get_asset_rigid_body_count(table_asset)
             num_table_shapes = self.gym.get_asset_rigid_shape_count(table_asset)
+            num_box_bodies = 0 # self.gym.get_asset_rigid_body_count(box_assets[j])
+            num_box_shapes = 0 # self.gym.get_asset_rigid_shape_count(box_assets[j])
 
-            max_agg_bodies = num_kuka_bodies + num_plug_bodies + num_socket_bodies + num_table_bodies
-            max_agg_shapes = num_kuka_shapes + num_plug_shapes + num_socket_shapes + num_table_shapes
+            max_agg_bodies = num_kuka_bodies + num_plug_bodies + num_socket_bodies + num_table_bodies + num_box_bodies
+            max_agg_shapes = num_kuka_shapes + num_plug_shapes + num_socket_shapes + num_table_shapes + num_box_shapes
 
             # begin aggregation mode if enabled - this can improve simulation performance
             if self.cfg_env.env.aggregate_mode:
@@ -462,7 +512,7 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
             # socket_pose.p.y = 0.0
             # socket_pose.p.z = self.cfg_base.env.table_height
             # socket_pose.r = gymapi.Quat(0.0, 0.0, 0.0, 1.0)
-            socket_pose.p.x = self.cfg_base.env.kuka_depth
+            socket_pose.p.x = self.cfg_base.env.kuka_depth # + 1.5
             socket_pose.p.y = 0.0
             socket_pose.p.z = self.cfg_base.env.table_height
             socket_pose.r = gymapi.Quat(0.0, 0.0, 0.0, 1.0)
@@ -474,6 +524,10 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
             table_handle = self.gym.create_actor(env_ptr, table_asset, table_pose, 'table', i, 0, 0)
             self.table_actor_ids_sim.append(actor_count)
             actor_count += 1
+
+            # box_handle = self.gym.create_actor(env_ptr, box_assets[j], box_pose, 'box', i, 0, 0)
+            # self.box_actor_ids_sim.append(actor_count)
+            # actor_count += 1
 
             link7_id = self.gym.find_actor_rigid_body_index(env_ptr, kuka_handle, 'iiwa7_link_7', gymapi.DOMAIN_ACTOR)
             hand_id = self.gym.find_actor_rigid_body_index(env_ptr, kuka_handle, 'gripper_base_link',
@@ -589,14 +643,14 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
             if self.cfg['env']['compute_contact_gt']:
                 socket_pos = [0.5, 0, 0.003]
                 if subassembly not in self.subassembly_extrinsic_contact:
-                    print(subassembly, mesh_root, plug_file, socket_file)
+                    
                     self.subassembly_extrinsic_contact[subassembly] = ExtrinsicContact(mesh_obj=os.path.join(mesh_root, plug_file),
                                                                 mesh_socket=os.path.join(mesh_root, socket_file),
                                                                 obj_scale=1.0,
                                                                 socket_scale=1.0,
                                                                 socket_pos=socket_pos,
                                                                 num_envs=self.num_envs,
-                                                                num_points=self.cfg['env']['num_points'])
+                                                                num_points=self.cfg['env']['num_points'], device=self.device)
 
                 
                 # self.extrinsic_contact_gt = ExtrinsicContact(mesh_obj=os.path.join(mesh_root, plug_file),

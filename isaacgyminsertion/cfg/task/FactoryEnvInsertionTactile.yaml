@@ -88,7 +88,7 @@ randomize:
                 rigid_shape_properties:
                     friction:
                         num_buckets: 250
-                        range: [ 1.9, 2.1 ]
+                        range: [ 1.0, 1.0 ]
                         operation: "scaling"
                         distribution: "uniform"
             plug:
@@ -101,7 +101,7 @@ randomize:
 #                    # schedule_steps: 30000
                 rigid_body_properties:
                     mass:
-                        range: [ 0.7, 1.3 ]
+                        range: [ 1.0, 1.0 ]
                         operation: "scaling"
                         distribution: "uniform"
                         setup_only: True # Property will only be randomized once before simulation is started. See Domain Randomization Documentation for more info.
@@ -110,7 +110,7 @@ randomize:
                 rigid_shape_properties:
                     friction:
                         num_buckets: 250
-                        range: [ 0.0, 2.0 ]
+                        range: [ 1.0, 1.0 ]
                         operation: "scaling"
                         distribution: "uniform"
                         
@@ -120,7 +120,7 @@ randomize:
                 rigid_shape_properties:
                     friction:
                         num_buckets: 250
-                        range: [ 0.0, 2.0 ]
+                        range: [ 0.0, 0.0 ]
                         operation: "scaling"
                         distribution: "uniform"
 
@@ -128,6 +128,6 @@ randomize:
                 rigid_shape_properties:
                     friction:
                         num_buckets: 250
-                        range: [ 0.0, 2.0 ]
+                        range: [ 0.0, 0.0 ]
                         operation: "scaling"
                         distribution: "uniform"

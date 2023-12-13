@@ -36,6 +36,19 @@ class MLP(nn.Module):
         return self.mlp(x)
     
 
+class ContactAE(nn.Module):
+    def __init__(self, input_size):
+        nn.Module.__init__(self)
+        self.contact_enc_mlp = nn.Sequential(nn.Linear(input_size, 32), nn.ReLU(), nn.Linear(32, 8), nn.Tanh())
+        self.contact_dec_mlp = nn.Sequential(nn.Linear(8, 32), nn.ReLU(), nn.Linear(32, input_size))
+
+    def forward_enc(self, x):
+        return self.contact_enc_mlp(x)
+
+    def forward_dec(self, x):
+        return self.contact_dec_mlp(x)
+    
+
 class FTAdaptTConv(nn.Module):
     def __init__(self, ft_dim=6 * 5, ft_out_dim=32):
         super(FTAdaptTConv, self).__init__()
@@ -63,7 +76,7 @@ class FTAdaptTConv(nn.Module):
         return x
 
 
-class ActorCritic(nn.Module):
+class ActorCriticSplit(nn.Module):
     def __init__(self, kwargs):
         nn.Module.__init__(self)
 
@@ -76,24 +89,36 @@ class ActorCritic(nn.Module):
         self.tactile_info = kwargs["tactile_info"]
         self.obs_info = kwargs["obs_info"]
         self.contact_info = kwargs['gt_contacts_info']
-        self.contact_mlp_units = kwargs['contacts_mlp_units']
         self.priv_mlp_units = kwargs['priv_mlp_units']
         self.priv_info = kwargs['priv_info']
         self.priv_info_stage2 = kwargs['extrin_adapt']
         self.priv_info_dim = kwargs['priv_info_dim']
         self.shared_parameters = kwargs['shared_parameters']
 
+        self.contact_mlp_units = kwargs['contacts_mlp_units']
+        self.pose_mlp_units = kwargs['pose_mlp_units']
+        self.physics_mlp_units = kwargs['physics_mlp_units']
+
         self.temp_latent = []
         self.temp_extrin = []
+
+        self.fig = plt.figure(figsize=(8, 6))
+        self.ax = self.fig.add_subplot(111)
         self.flag = True
         if self.priv_info:
-            mlp_input_shape += self.priv_mlp_units[-1]
+            force_dim = 3
+            # self.physics_mlp = MLP(units=self.physics_mlp_units, input_size=6)
+            # mlp_input_shape += self.physics_mlp_units[-1]
+            mlp_input_shape += 8
+            # mlp_input_shape += self.pose_mlp_units[-1]
 
-            if self.contact_info:
-                self.priv_info_dim += self.contact_mlp_units[-1]
-                self.contact_mlp = MLP(units=self.contact_mlp_units, input_size=kwargs["num_contact_points"])
+            self.contact_ae = ContactAE(input_size=kwargs["num_contact_points"])
 
-            self.env_mlp = MLP(units=self.priv_mlp_units, input_size=self.priv_info_dim)
+            # if self.contact_info:
+            #     mlp_input_shape += self.contact_mlp_units[-1]
+            #     self.contact_mlp = MLP(units=self.contact_mlp_units, input_size=kwargs["num_contact_points"])
+
+            # self.pose_mlp = MLP(units=self.pose_mlp_units, input_size=7)
 
             if self.priv_info_stage2:
                 # ---- tactile Decoder ----
@@ -171,7 +196,7 @@ class ActorCritic(nn.Module):
     def act(self, obs_dict):
         # used specifically to collection samples during training
         # it contains exploration so needs to sample from distribution
-        mu, logstd, value, _, _ = self._actor_critic(obs_dict)
+        mu, logstd, value, _, _, dec = self._actor_critic(obs_dict)
         sigma = torch.exp(logstd)
         distr = torch.distributions.Normal(mu, sigma)
         selected_action = distr.sample()
@@ -181,37 +206,40 @@ class ActorCritic(nn.Module):
             'actions': selected_action,
             'mus': mu,
             'sigmas': sigma,
+            'dec': dec
         }
         return result
 
     @torch.no_grad()
     def act_inference(self, obs_dict):
         # used for testing
-        mu, logstd, value, latent, _ = self._actor_critic(obs_dict)
-        return mu, latent
+        mu, logstd, value, latent, _, dec = self._actor_critic(obs_dict)
+        return mu, latent, dec
 
     def _actor_critic(self, obs_dict, display=False):
 
-        
         obs = obs_dict['obs']
         extrin, extrin_gt = None, None
 
-        # Transformer student ( latent pass is in frozen_ppo)
+        # Transformer student (latent pass is in frozen_ppo)
         if 'latent' in obs_dict and obs_dict['latent'] is not None:
-            extrin = obs_dict['latent']
-            obs = torch.cat([obs, extrin], dim=-1)
+            extrin = self.contact_ae.forward_enc((obs_dict['latent'] > 0.8) * 1.0)
 
             if 'priv_info' in obs_dict:
                 # with torch.inference_mode():
-                extrin_gt = self.env_mlp(obs_dict['priv_info'])
+                extrin_gt = self.contact_ae.forward_enc(obs_dict['contacts'])
+                
                 # extrin_gt = torch.tanh(extrin_gt)
 
                 if display:
-                    plt.ylim(-1, 1)
-                    plt.scatter(list(range(extrin_gt.shape[-1])), extrin.clone().detach().cpu().numpy()[0, :], color='r')
-                    plt.scatter(list(range(extrin_gt.shape[-1])), extrin_gt.clone().cpu().numpy()[0, :], color='b')
+                    # self.ax.set_ylim(-1, 1)
+                    self.ax.scatter(list(range(extrin_gt.shape[-1])), extrin.clone().detach().cpu().numpy()[0, :], color='r')
+                    self.ax.scatter(list(range(extrin_gt.shape[-1])), extrin_gt.clone().cpu().numpy()[0, :], color='b')
                     plt.pause(0.0001)
-                    plt.cla()
+                    self.ax.cla()
+
+            obs = torch.cat([obs, extrin], dim=-1)
+            dec = self.contact_ae.forward_dec(extrin)
 
         # MLP models
         else:
@@ -266,15 +294,26 @@ class ActorCritic(nn.Module):
 
                 else:
                     # Stage1 -> Getting extrin from the priv_mlp
-                    if self.contact_info:
-                        contact_features = self.contact_mlp(obs_dict['contacts'])
-                        priv_obs = torch.cat([obs_dict['priv_info'], contact_features], dim=-1)
-                        extrin = self.env_mlp(priv_obs)
-                    else:
-                        extrin = self.env_mlp(obs_dict['priv_info'])
+                    # object_pose = obs_dict['priv_info'][:, :7] # n x 7
+                    # physics = obs_dict['priv_info'][:, 7:13] # n x 6
+                    # forces = obs_dict['priv_info'][:, 13:] # n x 3
 
-                    # extrin = torch.tanh(extrin)
+                    # pose_latent = self.pose_mlp(object_pose)
+                    enc = self.contact_ae.forward_enc(obs_dict['contacts'])
+                    dec = self.contact_ae.forward_dec(enc)
 
+                    # print(enc.shape, dec.shape)
+
+                    # physics_latent = self.physics_mlp(physics)
+                    # forces_latent = forces
+                    # print(pose_latent.shape, physics_latent.shape, forces_latent.shape)
+
+                    # if self.contact_info:
+                    #     contact_latent = self.contact_mlp(obs_dict['contacts'])
+                    #     extrin = torch.cat([pose_latent, physics_latent, forces_latent, contact_latent], dim=-1)
+                    # else:
+                    #     extrin = torch.cat([pose_latent, physics_latent, forces_latent], dim=-1)
+                    extrin = enc # torch.cat([enc], dim=-1)
                     # plot for latent viz
                     if display:
                         plt.ylim(-1, 1)
@@ -282,7 +321,6 @@ class ActorCritic(nn.Module):
                         plt.scatter(list(range(extrin.shape[-1])), obs_dict['latent'].clone().cpu().numpy()[0, :], color='r')
                         plt.pause(0.0001)
                         plt.cla()
-
                     obs = torch.cat([obs, extrin], dim=-1)
 
         x = self.actor_mlp(obs)
@@ -293,12 +331,12 @@ class ActorCritic(nn.Module):
             value = self.value(v)
         else:
             value = self.value(x)
-
-        return mu, mu * 0 + sigma, value, extrin, extrin_gt
+        
+        return mu, mu * 0 + sigma, value, extrin, extrin_gt, dec
 
     def forward(self, input_dict):
         prev_actions = input_dict.get('prev_actions', None)
-        mu, logstd, value, extrin, extrin_gt = self._actor_critic(input_dict)
+        mu, logstd, value, extrin, extrin_gt, dec = self._actor_critic(input_dict)
         sigma = torch.exp(logstd)
         distr = torch.distributions.Normal(mu, sigma)
         entropy = distr.entropy().sum(dim=-1)
@@ -311,6 +349,7 @@ class ActorCritic(nn.Module):
             'sigmas': sigma,
             'extrin': extrin,
             'extrin_gt': extrin_gt,
+            'dec': dec
         }
         return result
 
