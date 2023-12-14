@@ -29,21 +29,21 @@ class TactileDataset(Dataset):
         data = np.load(self.all_folders[idx])
         
         # cnn input
-        tactile = data["tactile"][:100]
+        tactile = data["tactile"][:30]
         # tactile = np.concatenate([tactile[:1, ...], tactile[1:, ...] - tactile[:-1, ...]], axis=0)
-        cnn_input_1 = tactile[:, 0, ...][:100]
-        cnn_input_2 = tactile[:, 1, ...][:100]
-        cnn_input_3 = tactile[:, 2, ...][:100]
+        cnn_input_1 = tactile[:, 0, ...][:30]
+        cnn_input_2 = tactile[:, 1, ...][:30]
+        cnn_input_3 = tactile[:, 2, ...][:30]
 
         # linear input
-        arm_joints = data["arm_joints"][:100]
-        eef_pos = data['eef_pos'][:100]
-        noisy_socket_pos = data["noisy_socket_pos"][:100][:, :2]
-        action = data["action"][:100]
-        target = data["target"][:100]
-        priv_obs = data["priv_obs"][:100]
-        latent = data["latent"][:100]
-        obs_hist = data["obs_hist"][:100]
+        arm_joints = data["arm_joints"][:30]
+        eef_pos = data['eef_pos'][:30]
+        noisy_socket_pos = data["noisy_socket_pos"][:30][:, :2]
+        action = data["action"][:30]
+        target = data["target"][:30]
+        priv_obs = data["priv_obs"][:30]
+        latent = data["latent"][:30]
+        obs_hist = data["obs_hist"][:30]
 
         if self.normalize_dict is not None:
             arm_joints = (arm_joints - self.normalize_dict["mean"]["arm_joints"]) / self.normalize_dict["std"]["arm_joints"]
@@ -59,9 +59,9 @@ class TactileDataset(Dataset):
 
         lin_input = np.concatenate([eef_pos, shift_action_right, shift_target_right], axis=-1) 
 
-        done = data["done"][:100]
+        done = data["done"][:30]
         if done.sum() == 0:
-            done_idx = 100
+            done_idx = 30
         else:
             done_idx = done.nonzero()[0][-1]
 
@@ -77,7 +77,7 @@ class TactileDataset(Dataset):
             physics_params,  # 6
             self.finger_normalized_forces,  # 3
         '''
-        latent = data['contacts'][:100]  # change here for supervised
+        latent = data['contacts'][:30]  # change here for supervised
 
         if self.full_sequence:
             mask = np.zeros_like(done)

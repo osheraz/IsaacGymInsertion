@@ -27,7 +27,7 @@ class Runner:
         self.optimizer = None
         self.scheduler = None
         self.full_sequence = self.cfg.model.transformer.full_sequence
-        self.sequence_length = 100 if self.full_sequence else self.cfg.model.transformer.sequence_length
+        self.sequence_length = 30 if self.full_sequence else self.cfg.model.transformer.sequence_length
         self.device = 'cuda:0'
 
         self.model = TactileTransformer(lin_input_size=self.cfg.model.linear.input_size,

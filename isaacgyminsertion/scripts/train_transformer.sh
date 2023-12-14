@@ -14,7 +14,7 @@ echo extra "${EXTRA_ARGS}"
 
 C=outputs/${CACHE}/stage1_nn/last.pth
 data=/common/users/dm1487/inhand_manipulation_data_store
-data_folder=/common/users/dm1487/inhand_manipulation_data_store/datastore1/${SEED}_${CACHE}_4
+data_folder=/common/users/dm1487/inhand_manipulation_data_store/datastore_${SEED}_${CACHE}
 output_dir=outputs/${CACHE}
 path_norm=/common/home/dm1487/Downloads/isaacgym/python/IsaacGymInsertion/algo/models/transformer/normalization.pkl
 
@@ -46,7 +46,7 @@ task.env.numObsHist=3 \
 task.env.numObservations=24 \
 task.env.numStates=7 \
 task.data_logger.base_folder="${data}" \
-task.data_logger.sub_folder="datastore1/${SEED}_${CACHE}_4" \
+task.data_logger.sub_folder="datastore_${SEED}_${CACHE}_4" \
 offline_train.train.normalize_file="${path_norm}" \
 offline_train.data_folder="${data_folder}" \
 offline_train.output_dir="${output_dir}" \

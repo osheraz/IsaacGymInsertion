@@ -19,8 +19,8 @@ train:
 
   # Train params for on screen logging
   print_every: 50
-  eval_every: 98
-  test_every: 50
+  eval_every: 450
+  test_every: 200
   test_episodes: 2 # per epoch batch
 
   # Only val/test ( val- dataset, test - env)

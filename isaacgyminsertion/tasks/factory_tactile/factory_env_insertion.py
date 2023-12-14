@@ -153,7 +153,7 @@ class ExtrinsicContact:
 
         d = self.socket.compute_distance(o3d.core.Tensor.from_numpy(query_points.astype(np.float32))).numpy()
 
-        if display and False:
+        if display:
             display_id = 0
             self.ax2.cla()
             self.ax1.cla()
@@ -170,7 +170,6 @@ class ExtrinsicContact:
                 if np.linalg.norm(c, axis=0):
                     self.ax1.plot(c[0], c[1], c[2], 'ro')
 
-            
             if dec is not None:
                 self.dec[:, :] = dec
                 self.ax2.plot(self.socket_pcl[:, 0], self.socket_pcl[:, 1], self.socket_pcl[:, 2], 'yo')

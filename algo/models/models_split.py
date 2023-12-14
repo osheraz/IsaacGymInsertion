@@ -216,7 +216,7 @@ class ActorCriticSplit(nn.Module):
         mu, logstd, value, latent, _, dec = self._actor_critic(obs_dict)
         return mu, latent, dec
 
-    def _actor_critic(self, obs_dict, display=False):
+    def _actor_critic(self, obs_dict, display=True):
 
         obs = obs_dict['obs']
         extrin, extrin_gt = None, None
