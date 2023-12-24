@@ -14,21 +14,21 @@ class Hand():
         :param name: Human friendly identifier name for the device
         """
 
-        if dev_names is None:
-            dev_names = [2, 0, 4]
-        if fix is None:
-            fix = [(), (), ()]
-            fix[0] = (0, -12)
-            fix[1] = (6, 2)
-            fix[2] = (-3, 5)
-
         # if dev_names is None:
-        #     dev_names = [8, 4, 6]
+        #     dev_names = [2, 0, 4]
         # if fix is None:
         #     fix = [(), (), ()]
-        #     fix[0] = (5, 5)
-        #     fix[1] = (15, 15)
-        #     fix[2] = (8, 10)
+        #     fix[0] = (0, -12)
+        #     fix[1] = (6, 2)
+        #     fix[2] = (-3, 5)
+
+        if dev_names is None:
+            dev_names = [8, 4, 6]
+        if fix is None:
+            fix = [(), (), ()]
+            fix[0] = (5, 5)
+            fix[1] = (15, 15)
+            fix[2] = (8, 10)
 
         self.finger_left = Finger(dev_name=dev_names[0], serial='/dev/video', fix=fix[0])
         self.finger_right = Finger(dev_name=dev_names[1], serial='/dev/video', fix=fix[1])
