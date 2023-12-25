@@ -50,11 +50,14 @@ class Runner:
         import matplotlib.pyplot as plt
         self.fig = plt.figure(figsize=(20, 15))
         self.train_loss, self.val_loss = [], []
+
     def train(self, dl, val_dl, ckpt_path, print_every=50, eval_every=250, test_every=500):
+
         from matplotlib import pyplot as plt
         self.model.train()
         train_loss, val_loss = [], 0
         latent_loss_list, action_loss_list = [], []
+
         for i, (cnn_input, lin_input, obs_hist, latent, action, mask) in tqdm(enumerate(dl)):
             self.model.train()
             cnn_inputs = []
@@ -278,6 +281,7 @@ class Runner:
         training_files = [file_list[i] for i in train_idxs]
         val_files = [file_list[i] for i in val_idxs]
 
+        # Passing trajectories
         train_ds = TactileDataset(files=training_files, full_sequence=self.full_sequence,
                                   sequence_length=self.sequence_length, normalize_dict=self.normalize_dict)
         train_dl = DataLoader(train_ds, batch_size=train_batch_size, shuffle=True)

@@ -365,7 +365,6 @@ class PPO(object):
         action, latent = self.model.act_inference(input_dict)
         return action, latent
 
-
     def train_epoch(self):
         # collect minibatch data
         _t = time.time()
@@ -620,8 +619,8 @@ class PPO(object):
         
         action, latent, done = None, None, None
 
-        save_trajectory = self.env.cfg_task.data_logger.collect_data  # in data collection phase this will be true
-        offline_test = self.full_config.offline_training_w_env  # in offline_test this will be true
+        save_trajectory = self.env.cfg_task.data_logger.collect_data
+        offline_test = self.full_config.offline_training_w_env
 
         # convert normalizing measures to torch and add to device
         if normalize_dict is not None:
@@ -657,7 +656,6 @@ class PPO(object):
             # getting data from data logger
             latent = None
             if offline_test:
-                # TODO Pull the data from the logger -> whole? whats goin on
                 data = self.data_logger.data_logger.get_data()
                 if get_latent is not None:
                     # Making data for the latent prediction from student model
@@ -690,8 +688,6 @@ class PPO(object):
 
         print('success rate:', num_success/total_dones)
         return num_success, total_dones
-    
-
 
     def _make_data(self, data, normalize_dict):
         # This function is used to make the data for the student model
@@ -746,6 +742,7 @@ class PPO(object):
         lin_input = padding_lin[:, -self.full_config.offline_train.model.transformer.sequence_length:, :].clone()
 
         return (cnn_input_1, cnn_input_2, cnn_input_3), lin_input
+
 
 def policy_kl(p0_mu, p0_sigma, p1_mu, p1_sigma):
     c1 = torch.log(p1_sigma / p0_sigma + 1e-5)

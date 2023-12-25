@@ -703,7 +703,6 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
             self._refresh_task_tensors(update_tactile=True)
 
-
             self._reset_kuka(env_ids)
             self._reset_object(env_ids)
 

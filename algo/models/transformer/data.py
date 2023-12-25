@@ -30,7 +30,7 @@ class TactileDataset(Dataset):
         
         # cnn input
         tactile = data["tactile"]
-        cnn_input_1 = tactile[:, 0, ...]
+        cnn_input_1 = tactile[:, 0, ...]  # no one likes this ... dhruv!
         cnn_input_2 = tactile[:, 1, ...] 
         cnn_input_3 = tactile[:, 2, ...]
 
@@ -45,6 +45,7 @@ class TactileDataset(Dataset):
         obs_hist = data["obs_hist"]
         contacts = data["contacts"]
 
+        # Normalizing inputs
         if self.normalize_dict is not None:
             arm_joints = (arm_joints - self.normalize_dict["mean"]["arm_joints"]) / self.normalize_dict["std"]["arm_joints"]
             eef_pos = (eef_pos - self.normalize_dict["mean"]["eef_pos"]) / self.normalize_dict["std"]["eef_pos"]
@@ -61,7 +62,6 @@ class TactileDataset(Dataset):
 
         done = data["done"]
         done_idx = done.nonzero()[0][-1]
-
 
         # doing these operations to enable transform. They have no meaning if written separately.
         cnn_input_1 = self.transform(self.to_torch(cnn_input_1).permute(0, 3, 1, 2)).permute(0, 2, 3, 1).numpy()
