@@ -65,8 +65,8 @@ def compute_dof_pos_target(cfg_ctrl,
                                            jacobian=jacobian,
                                            device=device)
 
-    ctrl_target_dof_pos[:, 0:7] = arm_dof_pos + delta_arm_dof_pos
-    ctrl_target_dof_pos[:, 7:15] = ctrl_target_gripper_dof_pos
+    ctrl_target_dof_pos[:, 0:6] = arm_dof_pos + delta_arm_dof_pos
+    ctrl_target_dof_pos[:, 6:14] = ctrl_target_gripper_dof_pos
 
     return ctrl_target_dof_pos
 
@@ -113,13 +113,13 @@ def compute_dof_torque(cfg_ctrl,
                                                jacobian=jacobian,
                                                device=device)
 
-        dof_torque[:, 0:7] = cfg_ctrl['joint_prop_gains'] * delta_arm_dof_pos + \
-                             cfg_ctrl['joint_deriv_gains'] * (0.0 - dof_vel[:, 0:7])
+        dof_torque[:, 0:6] = cfg_ctrl['joint_prop_gains'] * delta_arm_dof_pos + \
+                             cfg_ctrl['joint_deriv_gains'] * (0.0 - dof_vel[:, 0:6])
 
         if cfg_ctrl['do_inertial_comp']:
             # Set tau = M * tau, where M is the joint-space mass matrix
             arm_mass_matrix_joint = arm_mass_matrix
-            dof_torque[:, 0:7] = (arm_mass_matrix_joint @ dof_torque[:, 0:7].unsqueeze(-1)).squeeze(-1)
+            dof_torque[:, 0:6] = (arm_mass_matrix_joint @ dof_torque[:, 0:6].unsqueeze(-1)).squeeze(-1)
 
     elif cfg_ctrl['gain_space'] == 'task':
         task_wrench = torch.zeros((cfg_ctrl['num_envs'], 6), device=device)
@@ -171,10 +171,10 @@ def compute_dof_torque(cfg_ctrl,
 
         # Set tau = J^T * tau, i.e., map tau into joint space as desired
         jacobian_T = torch.transpose(jacobian, dim0=1, dim1=2)
-        dof_torque[:, 0:7] = (jacobian_T @ task_wrench.unsqueeze(-1)).squeeze(-1)
+        dof_torque[:, 0:6] = (jacobian_T @ task_wrench.unsqueeze(-1)).squeeze(-1)
 
-    dof_torque[:, 7:] = cfg_ctrl['gripper_prop_gains'] * (ctrl_target_gripper_dof_pos - dof_pos[:, 7:]) + \
-                         cfg_ctrl['gripper_deriv_gains'] * (0.0 - dof_vel[:, 7:])  # gripper finger joints
+    dof_torque[:, 6:] = cfg_ctrl['gripper_prop_gains'] * (ctrl_target_gripper_dof_pos - dof_pos[:, 6:]) + \
+                         cfg_ctrl['gripper_deriv_gains'] * (0.0 - dof_vel[:, 6:])  # gripper finger joints
 
     dof_torque = torch.clamp(dof_torque, min=-100.0, max=100.0)
 
@@ -227,7 +227,7 @@ def compute_dof_pos_target_deploy(cfg_ctrl,
                            device):
     """Compute Kuka DOF position target to move fingertips towards target pose."""
 
-    ctrl_target_dof_pos = torch.zeros((cfg_ctrl['num_envs'], 7), device=device)
+    ctrl_target_dof_pos = torch.zeros((cfg_ctrl['num_envs'], 6), device=device)
 
     pos_error, axis_angle_error = get_pose_error_deploy(
         fingertip_midpoint_pos=fingertip_midpoint_pos,
@@ -243,7 +243,7 @@ def compute_dof_pos_target_deploy(cfg_ctrl,
                                            jacobian=jacobian,
                                            device=device)
 
-    ctrl_target_dof_pos[:, 0:7] = arm_dof_pos + delta_arm_dof_pos
+    ctrl_target_dof_pos[:, 0:6] = arm_dof_pos + delta_arm_dof_pos
 
     return ctrl_target_dof_pos
 

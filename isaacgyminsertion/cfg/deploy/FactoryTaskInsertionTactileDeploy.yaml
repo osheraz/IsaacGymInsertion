@@ -32,8 +32,8 @@ env:
   stud_obs_seq_length: 2 # ${...task.env.numObsStudentHist}
 
   priv_info_dim: ${...task.env.numStates}
-  numObservations: 86 # ${...task.env.numObservations}
-  numObsStudent: 86 # ${...task.env.numObsStudent}
+  numObservations: 72 # ${...task.env.numObservations}
+  numObsStudent: 72 # ${...task.env.numObsStudent}
   numActions: ${...task.env.numActions}
   numTargets: ${...task.env.numTargets}
   socket_pos_obs_noise: [ 0.001, 0.001, 0.0 ]
@@ -56,7 +56,7 @@ ppo:
   obs_seq_length: ${...task.env.numObsHist}
   stud_obs_seq_length: ${...task.env.numObsStudentHist}
   priv_info_dim: ${...task.env.numStates}
-  student_obs_input_shape: 86 # ${...task.env.numObsStudent}
+  student_obs_input_shape: 72 # ${...task.env.numObsStudent}
 
   ft_info: False
   ft_input_dim: 6

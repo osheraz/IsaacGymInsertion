@@ -29,6 +29,7 @@ class RobotWithFtEnv():
                          self._robotiq_wrench_states_callback)
 
         self.move_manipulator = MoveManipulatorServiceWrap()
+        self.move_manipulator.scale_vel(scale_vel=0.05, scale_acc=0.05)
 
     def wait_env_ready(self):
 
@@ -43,7 +44,7 @@ class RobotWithFtEnv():
 
     def move_to_init(self):
 
-        init_pose = [0.0064, 0.2375, -0.0075, -1.2022, 0.0015, 1.6900, -1.5699]
+        init_pose = [0.0, 0.0, 0.0, 0.0, 1.570, 0.]
         self.move_manipulator.joint_traj(init_pose, wait=True)
 
     def _check_all_systems_ready(self):
@@ -67,13 +68,13 @@ class RobotWithFtEnv():
         while self.arm_joint_state is None and not rospy.is_shutdown():
             try:
                 self.arm_joint_state = rospy.wait_for_message(
-                    "/iiwa/PositionJointInterface_trajectory_controller/state", JointTrajectoryControllerState, timeout=5.0)
+                    "arm_controller/state", JointTrajectoryControllerState, timeout=5.0)
                 rospy.logdebug(
                     "Current arm_controller/state READY=>")
 
             except:
                 rospy.logerr(
-                    "Current /iiwa/PositionJointInterface_trajectory_controller/state not ready yet, retrying for getting State")
+                    "Current arm_controller/state not ready yet, retrying for getting State")
         return self.arm_joint_state
 
     def _joint_state_callback(self, data):

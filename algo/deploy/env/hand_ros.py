@@ -18,13 +18,12 @@ class HandROSSubscriberFinger():
         """
 
         if dev_names is None:
-            dev_names = [2, 0, 4]
+            dev_names = [8, 10, 6]
         if fix is None:
-            # approx ~ set each finger center
             fix = [(), (), ()]
-            fix[0] = (0, -12)
-            fix[1] = (6, 2)
-            fix[2] = (-3, 5)
+            fix[0] = (5, 5)
+            fix[1] = (15, 15)
+            fix[2] = (8, 10)
 
         self.finger_left = TactileSubscriberFinger(dev_name=dev_names[0], fix=fix[0])
         self.finger_right = TactileSubscriberFinger(dev_name=dev_names[1], fix=fix[1])

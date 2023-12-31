@@ -36,7 +36,7 @@ class HardwarePlayer(object):
         self.device = full_config["rl_device"]
 
         # ---- build environment ----
-        self.obs_shape = (self.deploy_config.env.numObservations,) # 86
+        self.obs_shape = (self.deploy_config.env.numObservations,)  # 86
         self.obs_stud_shape = (self.deploy_config.env.numObsStudent,)
 
         self.num_actions = self.deploy_config.env.numActions
@@ -154,6 +154,21 @@ class HardwarePlayer(object):
             self.plug_width = self.asset_info_insertion[subassembly][components[0]]['diameter']
             self.socket_width = self.asset_info_insertion[subassembly][components[1]]['diameter']
 
+    def _pose_world_to_hand_base(self, pos, quat, as_matrix=True):
+        """Convert pose from world frame to robot base frame."""
+
+        robot_base_transform_inv = torch_jit_utils.tf_inverse(
+            self.fingertip_centered_quat.clone(), self.fingertip_centered_pos.clone()
+        )
+        quat_in_robot_base, pos_in_robot_base = torch_jit_utils.tf_combine(
+            robot_base_transform_inv[0], robot_base_transform_inv[1], quat, pos
+        )
+
+        if as_matrix:
+            return pos_in_robot_base, quat2R(quat_in_robot_base).reshape(1, -1)
+        else:
+            return pos_in_robot_base, quat_in_robot_base
+
     def _acquire_task_tensors(self):
         """Acquire tensors."""
 
@@ -179,9 +194,9 @@ class HardwarePlayer(object):
         self.prev_targets = torch.zeros((1, self.deploy_config.env.numTargets), dtype=torch.float, device=self.device)
 
         # Keep track of history
-        self.arm_joint_queue = torch.zeros((1, self.deploy_config.env.obs_seq_length, 7), dtype=torch.float,
+        self.arm_joint_queue = torch.zeros((1, self.deploy_config.env.obs_seq_length, 6), dtype=torch.float,
                                            device=self.device)
-        self.arm_vel_queue = torch.zeros((1, self.deploy_config.env.obs_seq_length, 7), dtype=torch.float,
+        self.arm_vel_queue = torch.zeros((1, self.deploy_config.env.obs_seq_length, 6), dtype=torch.float,
                                          device=self.device)
         self.actions_queue = torch.zeros((1, self.deploy_config.env.obs_seq_length, self.num_actions),
                                          dtype=torch.float, device=self.device)
@@ -193,9 +208,9 @@ class HardwarePlayer(object):
                                             dtype=torch.float, device=self.device)
 
         # Bad, should queue the obs!
-        self.arm_joint_queue_student = torch.zeros((1, self.deploy_config.env.stud_obs_seq_length, 7),
+        self.arm_joint_queue_student = torch.zeros((1, self.deploy_config.env.stud_obs_seq_length, 6),
                                                    dtype=torch.float, device=self.device)
-        self.arm_vel_queue_student = torch.zeros((1, self.deploy_config.env.stud_obs_seq_length, 7),
+        self.arm_vel_queue_student = torch.zeros((1, self.deploy_config.env.stud_obs_seq_length, 6),
                                                  dtype=torch.float, device=self.device)
         self.actions_queue_student = torch.zeros((1, self.deploy_config.env.stud_obs_seq_length, self.num_actions),
                                                  dtype=torch.float, device=self.device)
@@ -295,6 +310,31 @@ class HardwarePlayer(object):
             self.socket_tip_pos_local,
         )
 
+    def _update_plug_pose(self):
+        info = self.env.get_info_for_control()
+        ee_pose = info['ee_pose']
+        self.fingertip_centered_pos = torch.tensor(ee_pose[:3], device=self.device, dtype=torch.float).unsqueeze(0)
+        self.fingertip_centered_quat = torch.tensor(ee_pose[3:], device=self.device, dtype=torch.float).unsqueeze(0)
+
+        plug_pos = self.env.tracker.get_obj_pos()
+        plug_rpy = self.env.tracker.get_obj_rpy()
+
+        self.plug_pos = torch.tensor(plug_pos, device=self.device, dtype=torch.float).unsqueeze(0)
+        plug_rpy = torch.tensor(plug_rpy, device=self.device, dtype=torch.float).unsqueeze(0)
+        self.plug_quat = torch_jit_utils.quat_from_euler_xyz_deploy(plug_rpy[:, 0], plug_rpy[:, 1], plug_rpy[:, 2])
+
+        self.plug_pos_error, self.plug_quat_error = fc.get_pose_error_deploy(
+            fingertip_midpoint_pos=self.plug_pos,
+            fingertip_midpoint_quat=self.plug_quat,
+            ctrl_target_fingertip_midpoint_pos=self.socket_pos,
+            ctrl_target_fingertip_midpoint_quat=self.identity_quat,
+            jacobian_type='geometric',
+            rot_error_type='quat')
+
+        self.plug_hand_pos, self.plug_hand_quat = self._pose_world_to_hand_base(self.plug_pos,
+                                                                                self.plug_quat,
+                                                                                as_matrix=False)
+
     def compute_observations(self, display_image=True):
 
         obses = self.env.get_obs()
@@ -370,7 +410,7 @@ class HardwarePlayer(object):
                                                            dim=-1)
 
         obs_tensors = [
-            self.arm_joint_queue.reshape(1, -1),  # 7 * hist
+            # self.arm_joint_queue.reshape(1, -1),  # 6 * hist
             self.eef_queue.reshape(1, -1),  # (envs, 12 * hist)
             self.goal_noisy_queue.reshape(1, -1),  # (envs, 12 * hist)
             self.actions_queue.reshape(1, -1),  # (envs, 6 * hist)
@@ -378,7 +418,7 @@ class HardwarePlayer(object):
         ]
 
         obs_tensors_student = [
-            self.arm_joint_queue_student.reshape(1, -1),  # 7 * stud_hist
+            # self.arm_joint_queue_student.reshape(1, -1),  # 6 * stud_hist
             self.eef_queue_student.reshape(1, -1),  # (envs, 12 * stud_hist)
             self.goal_noisy_queue_student.reshape(1, -1),  # (envs, 12 * stud_hist)
             self.actions_queue_student.reshape(1, -1),  # (envs, 6 * stud_hist)
@@ -519,7 +559,7 @@ class HardwarePlayer(object):
             ctrl_target_gripper_dof_pos=0,
             device=self.device)
 
-        self.ctrl_target_dof_pos = self.ctrl_target_dof_pos[:, :7]
+        self.ctrl_target_dof_pos = self.ctrl_target_dof_pos[:, :6]
         target_joints = self.ctrl_target_dof_pos.cpu().detach().numpy().squeeze().tolist()
 
         try:
@@ -564,7 +604,6 @@ class HardwarePlayer(object):
         # # self._move_arm_to_desired_pose([0.5, 0, 0.2])
         # # self.env.move_to_joint_values(self.env.joints_above_socket_pos)
 
-
         # self.env.move_to_joint_values(self.env.joints_above_plug, wait=True)
         # # self.env.move_to_joint_values(self.env.joints_grasp_pos, wait=True)
         #
@@ -578,11 +617,12 @@ class HardwarePlayer(object):
         # self.env.move_to_joint_values(self.env.joints_above_plug, wait=True)
         # self.env.move_to_joint_values(self.env.joints_above_socket, wait=True)
         #
-        # # Sample init error
-        random_init_idx = torch.randint(0, self.total_init_poses, size=(1,))
-        kuka_dof_pos = self.init_dof_pos[random_init_idx]
-        kuka_dof_pos = kuka_dof_pos.cpu().detach().numpy().squeeze().tolist()
-        self.env.move_to_joint_values(kuka_dof_pos, wait=True)
+
+        ######### # Sample init error
+        # random_init_idx = torch.randint(0, self.total_init_poses, size=(1,))
+        # kuka_dof_pos = self.init_dof_pos[random_init_idx]
+        # kuka_dof_pos = kuka_dof_pos.cpu().detach().numpy().squeeze().tolist()
+        # self.env.move_to_joint_values(kuka_dof_pos, wait=True)
         # self.env.grasp()
         # to here
 
@@ -590,9 +630,14 @@ class HardwarePlayer(object):
         rospy.sleep(2.0)
         self.env.arm.calib_robotiq()
 
+        while True:
+            self._update_plug_pose()
+            print(self.plug_pos)
+            ros_rate.sleep()
+
         # above_plug_pose = [x + y for x, y in zip(true_plug_pose, [0, 0, 0.1])]
         # plug_grasp_pose = [x + y for x, y in zip(true_plug_pose, [0, 0, 0.05])]
-        # # Move & grasp the object
+        # # Move & grasp the plug
         # self._move_arm_to_desired_pose(above_plug_pose)
         # self._move_arm_to_desired_pose(plug_grasp_pose)
         # self.env.grasp()
