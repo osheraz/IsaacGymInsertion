@@ -23,7 +23,7 @@ class Hand():
         #     fix[2] = (-3, 5)
 
         if dev_names is None:
-            dev_names = [8, 10, 6]
+            dev_names = [2, 4, 6]
         if fix is None:
             fix = [(), (), ()]
             fix[0] = (5, 5)

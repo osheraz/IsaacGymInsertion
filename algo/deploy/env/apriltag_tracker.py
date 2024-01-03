@@ -1,4 +1,3 @@
-# external camera
 from std_msgs.msg import String, Float32MultiArray, Bool, Int16
 import numpy
 import rospy

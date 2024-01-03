@@ -29,7 +29,7 @@ class RobotWithFtEnv():
                          self._robotiq_wrench_states_callback)
 
         self.move_manipulator = MoveManipulatorServiceWrap()
-        self.move_manipulator.scale_vel(scale_vel=0.05, scale_acc=0.05)
+        self.move_manipulator.scale_vel(scale_vel=0.01, scale_acc=0.01)
 
     def wait_env_ready(self):
 

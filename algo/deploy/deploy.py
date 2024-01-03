@@ -311,6 +311,7 @@ class HardwarePlayer(object):
         )
 
     def _update_plug_pose(self):
+
         info = self.env.get_info_for_control()
         ee_pose = info['ee_pose']
         self.fingertip_centered_pos = torch.tensor(ee_pose[:3], device=self.device, dtype=torch.float).unsqueeze(0)
@@ -561,9 +562,12 @@ class HardwarePlayer(object):
 
         self.ctrl_target_dof_pos = self.ctrl_target_dof_pos[:, :6]
         target_joints = self.ctrl_target_dof_pos.cpu().detach().numpy().squeeze().tolist()
-
+        delta = torch.norm(self.ctrl_target_dof_pos - arm_dof_pos, p=2, dim=-1)
         try:
-            self.env.move_to_joint_values(target_joints, wait=wait)
+            if delta < 0.1:
+                self.env.move_to_joint_values(target_joints, wait=wait)
+            else:
+                print(delta)
         except:
             print(f'failed to reach {target_joints}')
 
@@ -578,7 +582,7 @@ class HardwarePlayer(object):
         # Wait for connections.
         rospy.sleep(0.5)
 
-        hz = 100
+        hz = 10
         ros_rate = rospy.Rate(hz)
 
         self._create_asset_info()
@@ -673,7 +677,7 @@ class HardwarePlayer(object):
             action = torch.clamp(action, -1.0, 1.0)
 
             action[:, :] = 0.
-            action[:, 0] = 1.
+            action[:, 0] = -1.
 
             start_time = time()
             self.update_and_apply_action(action, wait=False)
