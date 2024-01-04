@@ -82,3 +82,9 @@ network:
     tactile_seq_length: ${....task.env.tactile_history_len}
     img_width: ${....task.tactile.decoder.width}
     img_height: ${....task.tactile.decoder.height}
+
+common_poses:
+  socket_pos: [0.3224527447924478, 0.014855747025297968, -0.06271564699362295]
+  sim_start: [0., 0., 0., 0., 1.570, 0.]
+  above_socket: [0.0, 0.08799514919519424, 0.07810234278440475, 0., 1.4046239852905273, 0.]
+  above_grasp_pos: [0.4483899474143982, 0.24551554024219513, -0.08230005204677582, 0.000920988735742867, 1.4096553325653076, 0.44813045859336853]

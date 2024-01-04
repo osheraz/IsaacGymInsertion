@@ -4,7 +4,7 @@ from algo.deploy.env.openhand_env import OpenhandEnv
 from algo.deploy.env.robots import RobotWithFtEnv
 from algo.deploy.env.apriltag_tracker import Tracker
 from std_msgs.msg import Bool
-
+import numpy as np
 
 class ExperimentEnv:
     """ Superclass for all Robots environments.
@@ -72,6 +72,33 @@ class ExperimentEnv:
 
         self.hand.grasp()
 
+    def adapt_and_grasp(self,):
+
+        for i in range(5):
+
+            ee_pos, ee_quat = self.arm.get_ee_pose()
+            obj_pos = self.tracker.get_obj_relative_pos()
+
+            if not np.isnan(np.sum(obj_pos)):
+                # added delta_x/delta_y to approximately center the object
+                ee_pos[0] -= obj_pos[0] + 0.025
+                ee_pos[1] -= obj_pos[1]
+                ee_pos[2] -= obj_pos[2] - 0.07
+
+                self.arm_movement_result = self.set_ee_pose(tp)
+
+                self.grasp()
+
+                tp.pose.position.z += 0.03
+                self.arm_movement_result = self.set_ee_pose(tp)
+
+                self.init_load = self.get_gripper_load_state()
+                self.start_obj_rpy = self.get_obj_rpy()
+                return True
+            else:
+                rospy.logerr('Object is undetectable, attempt: ' + str(i))
+
+        return False
     def release(self):
 
         self.hand.set_gripper_joints_to_init()

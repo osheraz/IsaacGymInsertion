@@ -172,6 +172,7 @@ class HardwarePlayer(object):
     def _acquire_task_tensors(self):
         """Acquire tensors."""
 
+
         # Gripper pointing down w.r.t the world frame
         gripper_goal_euler = torch.tensor(self.deploy_config.env.fingertip_midpoint_rot_initial,
                                           device=self.device).unsqueeze(0)
@@ -573,7 +574,6 @@ class HardwarePlayer(object):
 
     def deploy(self):
 
-        self._initialize_grasp_poses()
         from algo.deploy.env.env import ExperimentEnv
         rospy.init_node('DeployEnv')
         self.env = ExperimentEnv()
@@ -590,11 +590,9 @@ class HardwarePlayer(object):
 
         true_socket_pose = [self.deploy_config.env.kuka_depth, 0.0, self.deploy_config.env.table_height]
         self._set_socket_pose(pos=true_socket_pose)
-        # above_socket_pose = [x + y for x, y in zip(true_socket_pose, [0, 0, 0.1])]
 
         true_plug_pose = [self.deploy_config.env.kuka_depth, 0.0, self.deploy_config.env.table_height]
         self._set_plug_pose(pos=true_plug_pose)
-        # above_plug_pose = [x + y for x, y in zip(true_plug_pose, [0, 0, 0.2])]
 
         # ---- Data Logger ----
         if self.full_config.task.data_logger.collect_data:
@@ -620,7 +618,7 @@ class HardwarePlayer(object):
         # self.env.move_to_joint_values(grasp_joints_bit, wait=True)
         # self.env.move_to_joint_values(self.env.joints_above_plug, wait=True)
         # self.env.move_to_joint_values(self.env.joints_above_socket, wait=True)
-        #
+
 
         ######### # Sample init error
         # random_init_idx = torch.randint(0, self.total_init_poses, size=(1,))
@@ -638,6 +636,118 @@ class HardwarePlayer(object):
             self._update_plug_pose()
             print(self.plug_pos)
             ros_rate.sleep()
+
+        # above_plug_pose = [x + y for x, y in zip(true_plug_pose, [0, 0, 0.1])]
+        # plug_grasp_pose = [x + y for x, y in zip(true_plug_pose, [0, 0, 0.05])]
+        # # Move & grasp the plug
+        # self._move_arm_to_desired_pose(above_plug_pose)
+        # self._move_arm_to_desired_pose(plug_grasp_pose)
+        # self.env.grasp()
+        # self._move_arm_to_desired_pose(above_socket_pose)
+        # # self._move_arm_to_desired_pose(true_socket_pose)
+
+        # REGULARIZE FORCES
+        # self.env.regularize_force(True)
+
+        obs, obs_stud, tactile = self.compute_observations()
+
+        # TODO: Should we fill the history buffs?
+        for i in range(self.deploy_config.env.obs_seq_length):
+            pass
+
+        done = torch.tensor([[0]]).to(self.device)
+
+        steps = 0
+        max_steps = 1500
+
+        while not done[0]:
+
+            obs = self.running_mean_std(obs.clone())
+            obs_stud = self.running_mean_std_stud(obs_stud.clone())
+
+            input_dict = {
+                'obs': obs,
+                'student_obs': obs_stud,
+                'tactile_hist': tactile
+            }
+
+            action, latent = self.model.act_inference(input_dict)
+            action = torch.clamp(action, -1.0, 1.0)
+
+            action[:, :] = 0.
+            action[:, 0] = -1.
+
+            start_time = time()
+            self.update_and_apply_action(action, wait=False)
+            ros_rate.sleep()
+            print("Actions:", np.round(action[0].cpu().numpy(), 3), "\tFPS: ", 1.0 / (time() - start_time))
+
+            if self.full_config.task.data_logger.collect_data:
+                data_logger.log_trajectory_data(action, latent, done)
+
+            display = False
+            if display:
+                plt.ylim(-1, 1)
+                plt.scatter(list(range(latent.shape[-1])), latent.clone().cpu().numpy()[0, :], color='b')
+                plt.pause(0.0001)
+                plt.cla()
+
+            obs, obs_stud, tactile = self.compute_observations()
+
+            steps += 1
+            if steps >= max_steps:
+                done = torch.tensor([[1]]).to(self.device)
+
+    def collect_experience(self):
+
+        self._initialize_grasp_poses()
+        from algo.deploy.env.env import ExperimentEnv
+        rospy.init_node('DeployEnv')
+        self.env = ExperimentEnv()
+        rospy.logwarn('Finished setting the env, lets play.')
+
+        # Wait for connections.
+        rospy.sleep(0.5)
+
+        hz = 10
+        ros_rate = rospy.Rate(hz)
+
+        self._create_asset_info()
+        self._acquire_task_tensors()
+
+        # ---- Data Logger ----
+        if self.full_config.task.data_logger.collect_data:
+            from algo.ppo.experience import RealLogger
+            data_logger = RealLogger(env=self)
+            data_logger.data_logger = data_logger.data_logger_init(None)
+
+        true_socket_pose = self.deploy_config.common_poses.socket_pos
+        joints_above_socket = self.deploy_config.common_poses.joints_above_socket
+
+        joints_above_plug = self.deploy_config.common_poses.joints_above_plug
+        joints_grasp_pos = self.deploy_config.common_poses.joints_grasp_pos
+
+        self._set_socket_pose(pos=true_socket_pose)
+
+        self.env.move_to_init_state()
+        self.env.move_to_joint_values(joints_above_plug, wait=True)
+        self.env.move_to_joint_values(joints_grasp_pos, wait=True)
+        self.env.grasp()
+        self.env.move_to_joint_values(joints_above_plug, wait=True)
+
+        self.env.move_to_joint_values(joints_above_socket, wait=True)
+
+        ######### # Sample init error
+        # random_init_idx = torch.randint(0, self.total_init_poses, size=(1,))
+        # kuka_dof_pos = self.init_dof_pos[random_init_idx]
+        # kuka_dof_pos = kuka_dof_pos.cpu().detach().numpy().squeeze().tolist()
+        # self.env.move_to_joint_values(kuka_dof_pos, wait=True)
+        # self.env.grasp()
+
+        self.env.arm.calib_robotiq()
+        rospy.sleep(2.0)
+        self.env.arm.calib_robotiq()
+
 
         # above_plug_pose = [x + y for x, y in zip(true_plug_pose, [0, 0, 0.1])]
         # plug_grasp_pose = [x + y for x, y in zip(true_plug_pose, [0, 0, 0.05])]
