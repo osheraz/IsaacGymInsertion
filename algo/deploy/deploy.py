@@ -98,6 +98,8 @@ class HardwarePlayer(object):
         self.running_mean_std_stud = RunningMeanStd((self.student_obs_input_shape,)).to(self.device)
         self.running_mean_std_stud.eval()
 
+        self.priv_mean_std = RunningMeanStd((self.priv_info_dim,)).to(self.device)
+
         # ---- Output Dir ----
         self.output_dir = output_dir
         self.dp_dir = os.path.join(self.output_dir, 'deploy')
@@ -115,6 +117,7 @@ class HardwarePlayer(object):
         checkpoint = torch.load(fn)
         self.running_mean_std.load_state_dict(checkpoint['running_mean_std'])
         self.running_mean_std_stud.load_state_dict(checkpoint['running_mean_std_stud'])
+        self.priv_mean_std.load_state_dict(checkpoint['priv_mean_std'])
         self.model.load_state_dict(checkpoint['model'])
         self.set_eval()
 
@@ -122,6 +125,7 @@ class HardwarePlayer(object):
         self.model.eval()
         self.running_mean_std.eval()
         self.running_mean_std_stud.eval()
+        self.priv_mean_std.eval()
 
     def _initialize_grasp_poses(self, gp='yellow_round_peg_2in'):
 
@@ -245,6 +249,7 @@ class HardwarePlayer(object):
 
         self.obs_buf = torch.zeros((1, self.obs_shape[0]), device=self.device, dtype=torch.float)
         self.obs_student_buf = torch.zeros((1, self.obs_stud_shape[0]), device=self.device, dtype=torch.float)
+        self.states_buf = torch.zeros((1, self.priv_info_dim), device=self.device, dtype=torch.float)
 
     def _set_socket_pose(self, pos):
 
@@ -337,7 +342,7 @@ class HardwarePlayer(object):
                                                                                 self.plug_quat,
                                                                                 as_matrix=False)
 
-    def compute_observations(self, display_image=True):
+    def compute_observations(self, display_image=True, with_priv=False):
 
         obses = self.env.get_obs()
 
@@ -430,7 +435,31 @@ class HardwarePlayer(object):
         self.obs_buf = torch.cat(obs_tensors, dim=-1)
         self.obs_student_buf = torch.cat(obs_tensors_student, dim=-1)
 
-        return self.obs_buf, self.obs_student_buf, self.tactile_queue
+        if not with_priv:
+            return self.obs_buf, self.obs_student_buf, self.tactile_queue
+        else:
+            # Compute privileged info
+            self._update_plug_pose()
+
+            state_tensors = [
+                #  add delta error
+                # self.socket_pos.clone(), # 3
+                # self.socket_quat.clone(), # 4
+                self.plug_hand_pos,    # 3
+                self.plug_hand_quat,   # 4
+                self.plug_pos_error,   # 3
+                self.plug_quat_error,  # 4
+
+                # self.plug_pcd.view(self.num_envs, -1),  # 3 * num_points =  3 * 10 = 30
+                # self.assembly_one_hot, # 4
+                # self.socket_contact_force.clone()  # 3
+                # self.plug_heights,  # 1?
+            ]
+
+            self.states_buf = torch.cat(state_tensors, dim=-1)  # shape = (num_envs, num_states)
+
+            return self.obs_buf, self.obs_student_buf, self.tactile_queue, self.states_buf
+
 
     def _move_arm_to_desired_pose(self, desired_pos, desired_rot=None):
         """Move gripper to desired pose."""
@@ -572,7 +601,7 @@ class HardwarePlayer(object):
         except:
             print(f'failed to reach {target_joints}')
 
-    def deploy(self):
+    def deploy_s2(self):
 
         from algo.deploy.env.env import ExperimentEnv
         rospy.init_node('DeployEnv')
@@ -595,7 +624,7 @@ class HardwarePlayer(object):
         self._set_plug_pose(pos=true_plug_pose)
 
         # ---- Data Logger ----
-        if self.full_config.task.data_logger.collect_data:
+        if self.deploy_config.data_logger.collect_data:
             from algo.ppo.experience import RealLogger
             data_logger = RealLogger(env=self)
             data_logger.data_logger = data_logger.data_logger_init(None)
@@ -682,7 +711,7 @@ class HardwarePlayer(object):
             ros_rate.sleep()
             print("Actions:", np.round(action[0].cpu().numpy(), 3), "\tFPS: ", 1.0 / (time() - start_time))
 
-            if self.full_config.task.data_logger.collect_data:
+            if self.deploy_config.data_logger.collect_data:
                 data_logger.log_trajectory_data(action, latent, done)
 
             display = False
@@ -698,7 +727,7 @@ class HardwarePlayer(object):
             if steps >= max_steps:
                 done = torch.tensor([[1]]).to(self.device)
 
-    def collect_experience(self):
+    def deploy(self):
 
         self._initialize_grasp_poses()
         from algo.deploy.env.env import ExperimentEnv
@@ -709,14 +738,14 @@ class HardwarePlayer(object):
         # Wait for connections.
         rospy.sleep(0.5)
 
-        hz = 10
+        hz = 100
         ros_rate = rospy.Rate(hz)
 
         self._create_asset_info()
         self._acquire_task_tensors()
 
         # ---- Data Logger ----
-        if self.full_config.task.data_logger.collect_data:
+        if self.deploy_config.data_logger.collect_data:
             from algo.ppo.experience import RealLogger
             data_logger = RealLogger(env=self)
             data_logger.data_logger = data_logger.data_logger_init(None)
@@ -737,31 +766,14 @@ class HardwarePlayer(object):
 
         self.env.move_to_joint_values(joints_above_socket, wait=True)
 
-        ######### # Sample init error
-        # random_init_idx = torch.randint(0, self.total_init_poses, size=(1,))
-        # kuka_dof_pos = self.init_dof_pos[random_init_idx]
-        # kuka_dof_pos = kuka_dof_pos.cpu().detach().numpy().squeeze().tolist()
-        # self.env.move_to_joint_values(kuka_dof_pos, wait=True)
-        # self.env.grasp()
+        # TODO add a module that set init interaction with the socket
 
+        # Bias the ft sensor
         self.env.arm.calib_robotiq()
         rospy.sleep(2.0)
         self.env.arm.calib_robotiq()
 
-
-        # above_plug_pose = [x + y for x, y in zip(true_plug_pose, [0, 0, 0.1])]
-        # plug_grasp_pose = [x + y for x, y in zip(true_plug_pose, [0, 0, 0.05])]
-        # # Move & grasp the plug
-        # self._move_arm_to_desired_pose(above_plug_pose)
-        # self._move_arm_to_desired_pose(plug_grasp_pose)
-        # self.env.grasp()
-        # self._move_arm_to_desired_pose(above_socket_pose)
-        # # self._move_arm_to_desired_pose(true_socket_pose)
-
-        # REGULARIZE FORCES
-        # self.env.regularize_force(True)
-
-        obs, obs_stud, tactile = self.compute_observations()
+        obs, obs_stud, tactile, priv = self.compute_observations(with_priv=True)
 
         # TODO: Should we fill the history buffs?
         for i in range(self.deploy_config.env.obs_seq_length):
@@ -770,42 +782,37 @@ class HardwarePlayer(object):
         done = torch.tensor([[0]]).to(self.device)
 
         steps = 0
-        max_steps = 1500
+        max_steps = 50
 
         while not done[0]:
 
             obs = self.running_mean_std(obs.clone())
             obs_stud = self.running_mean_std_stud(obs_stud.clone())
+            priv = self.priv_mean_std(priv.clone())
 
             input_dict = {
                 'obs': obs,
                 'student_obs': obs_stud,
-                'tactile_hist': tactile
+                'tactile_hist': tactile,
+                'priv_info': priv
             }
 
             action, latent = self.model.act_inference(input_dict)
             action = torch.clamp(action, -1.0, 1.0)
 
-            action[:, :] = 0.
-            action[:, 0] = -1.
-
             start_time = time()
-            self.update_and_apply_action(action, wait=False)
-            ros_rate.sleep()
+            self.update_and_apply_action(action, wait=True)
             print("Actions:", np.round(action[0].cpu().numpy(), 3), "\tFPS: ", 1.0 / (time() - start_time))
 
-            if self.full_config.task.data_logger.collect_data:
+            ros_rate.sleep()
+
+            if self.deploy_config.data_logger.collect_data:
                 data_logger.log_trajectory_data(action, latent, done)
-
-            display = False
-            if display:
-                plt.ylim(-1, 1)
-                plt.scatter(list(range(latent.shape[-1])), latent.clone().cpu().numpy()[0, :], color='b')
-                plt.pause(0.0001)
-                plt.cla()
-
-            obs, obs_stud, tactile = self.compute_observations()
 
             steps += 1
             if steps >= max_steps:
                 done = torch.tensor([[1]]).to(self.device)
+
+            # Compute next observation
+            obs, obs_stud, tactile, priv = self.compute_observations(with_priv=True)
+

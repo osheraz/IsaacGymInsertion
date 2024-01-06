@@ -16,6 +16,13 @@ record_video: True
 record_ft: True
 tactile_display_viz: True
 
+data_logger:
+    # for data collection
+    collect_data: False
+    total_trajectories: 5000
+    base_folder: "/common/users/dm1487/inhand_manipulation_data_store"
+    sub_folder: "datastore_0"
+
 # taking from training default, allows to over write
 # actually, we should write different config for each observation we test
 rl:
@@ -31,7 +38,7 @@ env:
   obs_seq_length: 2  #${...task.env.numObsHist} old implementation
   stud_obs_seq_length: 2 # ${...task.env.numObsStudentHist}
 
-  priv_info_dim: ${...task.env.numStates}
+  priv_info_dim: 14 # ${...task.env.numStates}
   numObservations: 72 # ${...task.env.numObservations}
   numObsStudent: 72 # ${...task.env.numObsStudent}
   numActions: ${...task.env.numActions}
@@ -45,9 +52,10 @@ env:
 
 
 ppo:
-  priv_info: True
-  extrin_adapt: True
-  tactile_info: True
+  priv_info:
+
+  extrin_adapt: False
+  tactile_info: False
 
   obs_info: False
 

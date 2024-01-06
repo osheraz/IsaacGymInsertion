@@ -55,7 +55,7 @@ class ExperienceBuffer(Dataset):
             'contacts': torch.zeros((self.transitions_per_env, self.num_envs, self.pts_dim), dtype=torch.float32,
                                     device=self.device),
             'socket_pos': torch.zeros((self.transitions_per_env, self.num_envs, 3), dtype=torch.float32,
-                                    device=self.device),
+                                      device=self.device),
             'rewards': torch.zeros((self.transitions_per_env, self.num_envs, 1), dtype=torch.float32,
                                    device=self.device),
             'values': torch.zeros((self.transitions_per_env, self.num_envs, 1), dtype=torch.float32,
@@ -299,7 +299,7 @@ class DataLogger():
                 continue
             if value is None:
                 value = torch.zeros((self.num_envs, self.data_shapes[key]), dtype=torch.float32, device=self.device)
-            
+
             self.log_data[key][self.env_ids, self.env_step_counter, ...] = value.clone().unsqueeze(1)
 
         done = kwargs.get('done', None)
@@ -456,7 +456,7 @@ class RealLogger():
         POS_SIZE = 3
         ACT_SIZE = 6
         log_items = {
-            'arm_joints_shape': 7,
+            'arm_joints_shape': 6,
             'eef_pos_shape': POS_SIZE + ROT_MAT_SIZE,
             'socket_pos_shape': POS_SIZE + ROT_MAT_SIZE,
             'noisy_socket_pos_shape': POS_SIZE + ROT_MAT_SIZE,
@@ -469,8 +469,6 @@ class RealLogger():
         }
 
         log_folder = env.cfg_task.data_logger.base_folder
-        if 'oa348' in os.getcwd():
-            log_folder.replace("dm1487", "oa348")
 
         self.data_logger_init = lambda x: DataLogger(env.num_envs,
                                                      env.max_episode_length,
@@ -484,6 +482,8 @@ class RealLogger():
         self.data_logger = None
 
     def log_trajectory_data(self, action, latent, done, save_trajectory=True):
+        # Pull everything from the env
+
         eef_pos = torch.cat((self.env.fingertip_centered_pos.clone(),
                              self.env.fingertip_centered_quat.clone()), dim=-1)
         socket_pos = torch.cat((self.env.socket_pos.clone(),
@@ -491,10 +491,18 @@ class RealLogger():
         noisy_socket_pos = torch.cat((self.env.noisy_gripper_goal_pos.clone(),
                                       self.env.noisy_gripper_goal_quat.clone()), dim=-1)
 
+        plug_hand_pos = torch.cat((self.env.plug_hand_pos.clone(),
+                                   self.env.plug_hand_quat.clone()), dim=-1)
+        plug_hand_error = torch.cat((self.env.plug_pos_error.clone(),
+                                     self.env.plug_quat_error.clone()), dim=-1)
+
         obs_hist = self.env.obs_buf.clone()
         obs_hist_stud = self.env.obs_student_buf.clone()
+        priv_hist = self.env.states_buf.clone()
 
         log_data = {
+            'plug_hand_pos': plug_hand_pos,
+            'plug_hand_error': plug_hand_error,
             'arm_joints': self.env.arm_dof_pos,
             'eef_pos': eef_pos,
             'socket_pos': socket_pos,
@@ -505,6 +513,7 @@ class RealLogger():
             'latent': latent,
             'obs_hist': obs_hist,
             'obs_hist_stud': obs_hist_stud,
+            'priv_hist': priv_hist,
             'done': done
         }
 

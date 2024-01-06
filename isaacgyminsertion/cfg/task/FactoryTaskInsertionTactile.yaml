@@ -46,13 +46,13 @@ env:
     numEnvs: ${resolve_default:128,${...num_envs}}
     numObservations: 24 # 43 * 5
     numObsStudent: 24 #
-    numStates: 16 # 31 #
+    numStates: 14 # 31 #
     numActions: 6 # [position, ori]
     numTargets: 6 # [position, ori]
 
     # Should be the same as in EnvPPO
-    numObsHist: 1
-    numObsStudentHist: 1
+    numObsHist: 2
+    numObsStudentHist: 2
     ft_history_len: 30
     tactile_history_len: 1
     smooth_force: True
@@ -75,8 +75,8 @@ env:
     socket_base_height: 0.003
     plug_grasp_threshold: 0.01
 
-    tactile: True
-    tactile_display_viz: True
+    tactile: False
+    tactile_display_viz: False
     tactile_wrt_force: True
 
     compute_contact_gt: False

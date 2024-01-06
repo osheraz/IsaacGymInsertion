@@ -157,7 +157,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                                         device=self.device)
 
         # Keep track of history
-        self.obs_queue =  torch.zeros((self.num_envs, self.cfg_task.env.numObsHist * self.num_observations),
+        self.obs_queue = torch.zeros((self.num_envs, self.cfg_task.env.numObsHist * self.num_observations),
                                         dtype=torch.float, device=self.device)
         self.arm_joint_queue = torch.zeros((self.num_envs, self.cfg_task.env.numObsHist, 7),
                                            dtype=torch.float, device=self.device)
@@ -217,9 +217,11 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.success_reset_buf = torch.zeros_like(self.reset_buf)
 
         # state tensors
-        self.plug_hand_pos, self.plug_hand_quat = torch.zeros((self.num_envs, 3),
-                                                              device=self.device), torch.zeros(
-            (self.num_envs, 4), device=self.device)
+        self.plug_hand_pos, self.plug_hand_quat = torch.zeros((self.num_envs, 3), device=self.device),\
+                                                  torch.zeros((self.num_envs, 4), device=self.device)
+        self.plug_pos_error, self.plug_quat_error = torch.zeros((self.num_envs, 3),device=self.device),\
+                                                    torch.zeros((self.num_envs, 4), device=self.device)
+
         self.rigid_physics_params = torch.zeros((self.num_envs, 6), device=self.device,
                                                 dtype=torch.float)  # TODO: Take num_params to config
         self.finger_normalized_forces = torch.zeros((self.num_envs, 3), device=self.device, dtype=torch.float)
@@ -672,6 +674,15 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.plug_hand_pos[...] = plug_hand_pos
         self.plug_hand_quat[...] = plug_hand_quat
 
+        plug_pos_error, plug_quat_error = fc.get_pose_error(
+            fingertip_midpoint_pos=self.plug_pos,
+            fingertip_midpoint_quat=self.plug_quat,
+            ctrl_target_fingertip_midpoint_pos=self.socket_pos,
+            ctrl_target_fingertip_midpoint_quat=self.identity_quat,
+            jacobian_type='geometric',
+            rot_error_type='quat')
+        self.plug_pos_error[...] = plug_pos_error
+        self.plug_quat_error[...] = plug_quat_error
         # plug mass
         plug_mass = [self.gym.get_actor_rigid_body_properties(e, p)[0].mass for e, p in
                      zip(self.envs, self.plug_handles)]
@@ -727,6 +738,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         # self.finger_normalized_forces[:, 2] = (1 - e) * normalize_forces(
         #     self.middle_finger_force.clone()) + e * self.finger_normalized_forces[:, 2]
         # print(self.plug_pcd.device, plug_hand_pos.device)
+
         state_tensors = [
             #  add delta error
             # socket_pos_wrt_robot[0],  # 3
@@ -738,8 +750,10 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
             plug_hand_pos,   # 3
             plug_hand_quat,  # 4
-            physics_params,  # 6
-            self.finger_normalized_forces,  # 3
+            plug_pos_error,  # 3
+            plug_quat_error, # 4
+            # physics_params,  # 6
+            # self.finger_normalized_forces,  # 3
             # self.plug_pcd.view(self.num_envs, -1),  # 3 * num_points =  3 * 10 = 30
 
             # self.assembly_one_hot, # 4
