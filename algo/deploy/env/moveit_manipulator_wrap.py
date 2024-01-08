@@ -33,6 +33,7 @@ class MoveManipulatorServiceWrap():
         self.moveit_stop_motion_srv = rospy.ServiceProxy('/Stop', Empty)
 
         self.pose = None  # We update by tf
+        self.camera_pose = None  # We update by tf
         self.joints = None  # We update by kuka api
         self.jacob = None  # We update by moveit callback
 
@@ -40,6 +41,7 @@ class MoveManipulatorServiceWrap():
         rospy.Subscriber('/iiwa/Jacobian', Float32MultiArray, self.callback_jacob)
         rospy.Subscriber('/iiwa/Joints', JointPosition, self.callback_joints)
         rospy.Subscriber('/iiwa/Pose', PoseStamped, self.callback_pose)
+        rospy.Subscriber('/iiwa/CameraPose', PoseStamped, self.callback_camera_pose)
 
         self.pub_joints_api = rospy.Publisher('/iiwa/command/JointPosition', JointPosition, queue_size=10)
 
@@ -82,6 +84,9 @@ class MoveManipulatorServiceWrap():
 
     def callback_pose(self, msg):
         self.pose = msg.pose
+
+    def callback_camera_pose(self, msg):
+        self.camera_pose = msg.pose
 
     def get_cartesian_pose(self):
         # rospy.wait_for_message('/iiwa/Pose', PoseStamped)
@@ -164,6 +169,9 @@ class MoveManipulatorServiceWrap():
     def ee_pose(self):
         gripper_pose = self.get_cartesian_pose()
         return gripper_pose
+
+    def get_camera_pose(self):
+        return self.camera_pose
 
     def ee_rpy(self):
         gripper_pose = self.get_cartesian_pose()

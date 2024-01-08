@@ -213,6 +213,9 @@ class RobotWithFtEnv():
     def get_jacobian_matrix(self):
 
         return self.move_manipulator.get_jacobian_matrix()
+    
+    def get_camera_pose(self):
+        return self.move_manipulator.get_camera_pose()
 
     ####################################################
     ############### FT related #########################
