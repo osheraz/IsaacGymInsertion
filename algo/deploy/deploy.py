@@ -752,9 +752,8 @@ class HardwarePlayer(object):
 
         true_socket_pose = self.deploy_config.common_poses.socket_pos
         joints_above_socket = self.deploy_config.common_poses.joints_above_socket
-
-        joints_above_plug = self.deploy_config.common_poses.joints_above_plug
         joints_grasp_pos = self.deploy_config.common_poses.joints_grasp_pos
+        joints_above_plug = self.deploy_config.common_poses.joints_above_plug
 
         self._set_socket_pose(pos=true_socket_pose)
 
@@ -766,6 +765,9 @@ class HardwarePlayer(object):
 
         self.env.move_to_joint_values(joints_above_socket, wait=True)
 
+        # Sample init error
+        self.env.set_random_init_error()
+        self.env.grasp()  # little squeeze
         # TODO add a module that set init interaction with the socket
 
         # Bias the ft sensor
