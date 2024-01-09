@@ -455,7 +455,6 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
 
             plug_handle = self.gym.create_actor(env_ptr, plug_assets[j], plug_pose, 'plug', i, 0, 0)
             self.plug_actor_ids_sim.append(actor_count)
-            self.plug_actor_ids_sim.append(actor_count)
             actor_count += 1
 
             socket_pose = gymapi.Transform()
