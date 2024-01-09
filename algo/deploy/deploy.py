@@ -723,9 +723,8 @@ class HardwarePlayer(object):
 
         true_socket_pose = self.deploy_config.common_poses.socket_pos
         joints_above_socket = self.deploy_config.common_poses.joints_above_socket
-
-        joints_above_plug = self.deploy_config.common_poses.joints_above_plug
         joints_grasp_pos = self.deploy_config.common_poses.joints_grasp_pos
+        joints_above_plug = self.deploy_config.common_poses.joints_above_plug
 
         self._set_socket_pose(pos=true_socket_pose)
 
@@ -737,13 +736,11 @@ class HardwarePlayer(object):
 
         self.env.move_to_joint_values(joints_above_socket, wait=True)
 
-        ######### # Sample init error
-        # random_init_idx = torch.randint(0, self.total_init_poses, size=(1,))
-        # kuka_dof_pos = self.init_dof_pos[random_init_idx]
-        # kuka_dof_pos = kuka_dof_pos.cpu().detach().numpy().squeeze().tolist()
-        # self.env.move_to_joint_values(kuka_dof_pos, wait=True)
-        # self.env.grasp()
+        # Sample init error
+        self.env.set_random_init_error()
+        self.env.grasp()  # little squeeze
 
+        # Bias the ft sensor
         self.env.arm.calib_robotiq()
         rospy.sleep(2.0)
         self.env.arm.calib_robotiq()
