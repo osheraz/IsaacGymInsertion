@@ -271,7 +271,7 @@ class ActorCritic(nn.Module):
                     # extrin = torch.tanh(extrin)
 
                     # plot for latent viz
-                    if display:
+                    if display and 'latent' in obs_dict:
                         plt.ylim(-1, 1)
                         plt.scatter(list(range(extrin.shape[-1])), extrin.clone().detach().cpu().numpy()[0, :], color='b')
                         plt.scatter(list(range(extrin.shape[-1])), obs_dict['latent'].clone().cpu().numpy()[0, :], color='r')

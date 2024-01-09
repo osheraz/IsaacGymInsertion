@@ -660,6 +660,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         #                                                    self.fingertip_centered_quat.clone(), as_matrix=False)
         # socket_pos_wrt_robot = self.pose_world_to_robot_base(self.socket_pos.clone(), self.socket_quat.clone(),
         #                                                      as_matrix=False)
+
         # plug_bottom_wrt_robot = self.pose_world_to_robot_base(self.plug_pos.clone(), self.plug_quat.clone(), as_matrix=False)
         # plug_hand_pos, plug_hand_quat = fc.get_pose_error(
         #     fingertip_midpoint_pos=plug_bottom_wrt_robot[0],
@@ -712,7 +713,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.rigid_physics_params[...] = physics_params
 
         if self.cfg_task.env.compute_contact_gt:
-            display_key = 'triangle' # ['triangle', 'red_round_peg_1_5in', 'yellow_round_peg_2in']
+            display_key = 'yellow_round_peg_2in' # ['triangle', 'red_round_peg_1_5in', 'yellow_round_peg_2in']
             for k, v in self.subassembly_extrinsic_contact.items():
                 self.gt_extrinsic_contact[self.subassembly_to_env_ids[k], ...] = v.get_extrinsic_contact(
                     obj_pos=self.plug_pos[self.subassembly_to_env_ids[k], ...].clone(), 

@@ -150,8 +150,8 @@ class ExtrinsicContact:
 
         d = self.socket.compute_distance(o3d.core.Tensor.from_numpy(query_points.astype(np.float32))).numpy()
 
-        if False:
-            display_id = 3
+        if display:
+            display_id = 0
             self.ax.plot(self.socket_pcl[:, 0], self.socket_pcl[:, 1], self.socket_pcl[:, 2], 'yo')
             self.ax.plot(query_points[display_id, :, 0], query_points[display_id, :, 1], query_points[display_id, :, 2], 'ko')
             self.ax.set_xlabel('X')
@@ -244,7 +244,7 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
         for subassembly in self.cfg_env.env.desired_subassemblies:
             self._initialize_grasp_poses(subassembly)
 
-    def _initialize_grasp_poses(self, subassembly, with_noise=True):
+    def _initialize_grasp_poses(self, subassembly, with_noise=False):
 
         try:
             sf = subassembly + '_noise' if with_noise else subassembly
