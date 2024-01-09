@@ -675,12 +675,13 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.plug_hand_quat[...] = plug_hand_quat
 
         plug_pos_error, plug_quat_error = fc.get_pose_error(
-            fingertip_midpoint_pos=self.plug_pos,
-            fingertip_midpoint_quat=self.plug_quat,
-            ctrl_target_fingertip_midpoint_pos=self.socket_pos,
-            ctrl_target_fingertip_midpoint_quat=self.identity_quat,
+            fingertip_midpoint_pos=self.plug_pos.clone(),
+            fingertip_midpoint_quat=self.plug_quat.clone(),
+            ctrl_target_fingertip_midpoint_pos=self.socket_pos.clone(),
+            ctrl_target_fingertip_midpoint_quat=self.identity_quat.clone(),
             jacobian_type='geometric',
             rot_error_type='quat')
+
         self.plug_pos_error[...] = plug_pos_error
         self.plug_quat_error[...] = plug_quat_error
         # plug mass
@@ -750,8 +751,8 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
             plug_hand_pos,   # 3
             plug_hand_quat,  # 4
-            plug_pos_error,  # 3
-            plug_quat_error, # 4
+            # plug_pos_error,  # 3
+            # plug_quat_error, # 4
             # physics_params,  # 6
             # self.finger_normalized_forces,  # 3
             # self.plug_pcd.view(self.num_envs, -1),  # 3 * num_points =  3 * 10 = 30
