@@ -9,7 +9,7 @@ name: FactoryTaskInsertionTactile
 physics_engine: ${..physics_engine}
 
 grasp_logger:
-    total_grasp: 1000
+    total_grasp: 50
 
 data_logger:
     # for data collection
@@ -44,9 +44,9 @@ tactile: # Pulling from task
 
 env:
     numEnvs: ${resolve_default:128,${...num_envs}}
-    numObservations: 24 # 43 * 5
+    numObservations: 24 #
     numObsStudent: 24 #
-    numStates: 16 # 31 #
+    numStates: 14 #
     numActions: 6 # [position, ori]
     numTargets: 6 # [position, ori]
 
@@ -75,11 +75,11 @@ env:
     socket_base_height: 0.003
     plug_grasp_threshold: 0.01
 
-    tactile: True
-    tactile_display_viz: True
+    tactile: False
+    tactile_display_viz: False
     tactile_wrt_force: True
 
-    compute_contact_gt: False
+    compute_contact_gt: True
     num_points: 300
 
     record_video: True
@@ -104,7 +104,7 @@ randomize:
     socket_pos_z_noise_bounds: [0.0, 0.0]  # noise on socket offset from table
     grasp_plug_noise: 0.001 # xyz noise on plug position during grasp
     above_socket_noise: [0.03, 0.03, 0.001]
-    plug_rot_noise: [0.1, 0.1, 0.1]
+    plug_rot_noise: [0.0, 0.0, 0.0]
 
 rl:
 

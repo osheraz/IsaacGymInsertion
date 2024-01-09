@@ -85,7 +85,7 @@ class ActorCritic(nn.Module):
 
         self.temp_latent = []
         self.temp_extrin = []
-        self.flag = True
+
         if self.priv_info:
             mlp_input_shape += self.priv_mlp_units[-1]
 
@@ -220,10 +220,6 @@ class ActorCritic(nn.Module):
                     
                     if self.tactile_info:
                         extrin_tactile = self._tactile_encode_multi(obs_dict['tactile_hist'])
-                        # if self.flag:
-                        #     self.test = extrin_tactile
-                        #     self.flag = False
-                        # print((extrin_tactile - self.test).max())
                     if self.obs_info:
                         extrin_obs = self.obs_mlp(obs_dict['student_obs'])
                     # If both, merge and create student extrin
@@ -275,7 +271,7 @@ class ActorCritic(nn.Module):
                     # extrin = torch.tanh(extrin)
 
                     # plot for latent viz
-                    if display:
+                    if display and 'latent' in obs_dict:
                         plt.ylim(-1, 1)
                         plt.scatter(list(range(extrin.shape[-1])), extrin.clone().detach().cpu().numpy()[0, :], color='b')
                         plt.scatter(list(range(extrin.shape[-1])), obs_dict['latent'].clone().cpu().numpy()[0, :], color='r')

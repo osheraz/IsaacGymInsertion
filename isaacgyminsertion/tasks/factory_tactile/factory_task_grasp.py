@@ -699,6 +699,7 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
             # if self.randomize:
             #     self.apply_randomizations(self.randomization_params)
+
             self.disable_gravity()
 
             self._refresh_task_tensors(update_tactile=True)
@@ -994,12 +995,9 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         """Move gripper to desired pose."""
 
         # Set target pos above object
-        # print('here 5 1 1')
         self.ctrl_target_fingertip_centered_pos[env_ids] = desired_pos[env_ids].clone()
 
         # Set target rot
-        # print('here 5 1 2')
-
         if desired_rot is None:
             ctrl_target_fingertip_centered_euler = torch.tensor(self.cfg_task.randomize.fingertip_midpoint_rot_initial,
                                                                 device=self.device).unsqueeze(0).repeat(len(env_ids),
@@ -1028,24 +1026,20 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                 jacobian_type=self.cfg_ctrl['jacobian_type'],
                 rot_error_type='axis_angle')
 
-            # print('here 5 1 3 2')
 
             delta_hand_pose = torch.cat((pos_error, axis_angle_error), dim=-1)
             actions = torch.zeros((self.num_envs, self.cfg_task.env.numActions), device=self.device)
             actions[:, :6] = delta_hand_pose
-            # actions[:, :6] = 
 
             # Apply the action, keep fingers in the same status
             self.ctrl_target_dof_pos[:, 7:] = self.ctrl_target_gripper_dof_pos
             self._apply_actions_as_ctrl_targets(actions=actions,
                                                 ctrl_target_gripper_dof_pos=self.ctrl_target_gripper_dof_pos,
                                                 do_scale=False)
-            # print('here 5 1 3 3')
 
         # Stabilize
         # self.dof_vel[env_ids, :] = 0. # torch.zeros_like(self.dof_vel[env_ids, :])
         # self.dof_torque[env_ids, :] = 0. # torch.zeros_like(self.dof_torque[env_ids, :])
-        # print('here 5 1 4')
         # Set DOF state
         multi_env_ids_int32 = self.kuka_actor_ids_sim[env_ids].flatten()
         self.gym.set_dof_state_tensor_indexed(self.sim,
