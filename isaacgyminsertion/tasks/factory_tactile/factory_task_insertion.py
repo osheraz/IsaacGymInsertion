@@ -586,56 +586,57 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
             rotate_vec = lambda q, x: quat_apply(q, to_torch(x, device=self.device) * 0.2).cpu().numpy()
             num_envs = 1
-            for i in range(num_envs):
-                
-                actions = self.actions[i, :].clone().cpu().numpy()
-                keypoints = self.keypoints_plug[i].clone().cpu().numpy()
-                quat = self.plug_quat[i, :]
+            ref_lines = False
+            if ref_lines:
+                for i in range(num_envs):
+                    actions = self.actions[i, :].clone().cpu().numpy()
+                    keypoints = self.keypoints_plug[i].clone().cpu().numpy()
+                    quat = self.plug_quat[i, :]
 
-                for j in range(self.cfg_task.rl.num_keypoints):
-                    ob = keypoints[j]
-                    targetx = ob + rotate_vec(quat, [actions[0], 0, 0])
-                    targety = ob + rotate_vec(quat, [0, actions[1], 0])
-                    targetz = ob + rotate_vec(quat, [0, 0, actions[2]])
+                    # for j in range(self.cfg_task.rl.num_keypoints):
+                    #     ob = keypoints[j]
+                    #     targetx = ob + rotate_vec(quat, [actions[0], 0, 0])
+                    #     targety = ob + rotate_vec(quat, [0, actions[1], 0])
+                    #     targetz = ob + rotate_vec(quat, [0, 0, actions[2]])
 
-                    self.gym.add_lines(self.viewer, self.envs[i], 1,
-                                       [ob[0], ob[1], ob[2], targetx[0], targetx[1], targetx[2]], [0.85, 0.1, 0.1])
-                    self.gym.add_lines(self.viewer, self.envs[i], 1,
-                                       [ob[0], ob[1], ob[2], targety[0], targety[1], targety[2]], [0.1, 0.85, 0.1])
-                    self.gym.add_lines(self.viewer, self.envs[i], 1,
-                                       [ob[0], ob[1], ob[2], targetz[0], targetz[1], targetz[2]], [0.1, 0.1, 0.85])
-                # print(keypoints)
+                    #     self.gym.add_lines(self.viewer, self.envs[i], 1,
+                    #                        [ob[0], ob[1], ob[2], targetx[0], targetx[1], targetx[2]], [0.85, 0.1, 0.1])
+                    #     self.gym.add_lines(self.viewer, self.envs[i], 1,
+                    #                        [ob[0], ob[1], ob[2], targety[0], targety[1], targety[2]], [0.1, 0.85, 0.1])
+                    #     self.gym.add_lines(self.viewer, self.envs[i], 1,
+                    #                        [ob[0], ob[1], ob[2], targetz[0], targetz[1], targetz[2]], [0.1, 0.1, 0.85])
+                    # print(keypoints)
 
-            #     for j in range(self.cfg_task.rl.num_keypoints):
-            #         ob = keypoints[j]
-            #         targetx = ob + rotate_vec(quat, [1, 0, 0])
-            #         targety = ob + rotate_vec(quat, [0, 1, 0])
-            #         targetz = ob + rotate_vec(quat, [0, 0, 1])
+                    for j in range(self.cfg_task.rl.num_keypoints):
+                        ob = keypoints[j]
+                        targetx = ob + rotate_vec(quat, [1, 0, 0])
+                        targety = ob + rotate_vec(quat, [0, 1, 0])
+                        targetz = ob + rotate_vec(quat, [0, 0, 1])
 
-            #         self.gym.add_lines(self.viewer, self.envs[i], 1,
-            #                            [ob[0], ob[1], ob[2], targetx[0], targetx[1], targetx[2]], [0.85, 0.1, 0.1])
-            #         self.gym.add_lines(self.viewer, self.envs[i], 1,
-            #                            [ob[0], ob[1], ob[2], targety[0], targety[1], targety[2]], [0.85, 0.1, 0.1])
-            #         self.gym.add_lines(self.viewer, self.envs[i], 1,
-            #                            [ob[0], ob[1], ob[2], targetz[0], targetz[1], targetz[2]], [0.85, 0.1, 0.1])
+                        self.gym.add_lines(self.viewer, self.envs[i], 1,
+                                        [ob[0], ob[1], ob[2], targetx[0], targetx[1], targetx[2]], [0.85, 0.1, 0.1])
+                        self.gym.add_lines(self.viewer, self.envs[i], 1,
+                                        [ob[0], ob[1], ob[2], targety[0], targety[1], targety[2]], [0.85, 0.1, 0.1])
+                        self.gym.add_lines(self.viewer, self.envs[i], 1,
+                                        [ob[0], ob[1], ob[2], targetz[0], targetz[1], targetz[2]], [0.85, 0.1, 0.1])
 
-            # for i in range(num_envs):
-            #     keypoints = self.keypoints_socket[i].clone().cpu().numpy()
-            #     quat = self.socket_quat[i, :]
-            #     # print(keypoints)
+                for i in range(num_envs):
+                    keypoints = self.keypoints_socket[i].clone().cpu().numpy()
+                    quat = self.socket_quat[i, :]
+                    # print(keypoints)
 
-            #     for j in range(self.cfg_task.rl.num_keypoints):
-            #         ob = keypoints[j]
-            #         targetx = ob + rotate_vec(quat, [1, 0, 0])
-            #         targety = ob + rotate_vec(quat, [0, 1, 0])
-            #         targetz = ob + rotate_vec(quat, [0, 0, 1])
+                    for j in range(self.cfg_task.rl.num_keypoints):
+                        ob = keypoints[j]
+                        targetx = ob + rotate_vec(quat, [1, 0, 0])
+                        targety = ob + rotate_vec(quat, [0, 1, 0])
+                        targetz = ob + rotate_vec(quat, [0, 0, 1])
 
-            #         self.gym.add_lines(self.viewer, self.envs[i], 1,
-            #                            [ob[0], ob[1], ob[2], targetx[0], targetx[1], targetx[2]], [0.1, 0.85, 0.1])
-            #         self.gym.add_lines(self.viewer, self.envs[i], 1,
-            #                            [ob[0], ob[1], ob[2], targety[0], targety[1], targety[2]], [0.1, 0.85, 0.1])
-            #         self.gym.add_lines(self.viewer, self.envs[i], 1,
-            #                            [ob[0], ob[1], ob[2], targetz[0], targetz[1], targetz[2]], [0.1, 0.85, 0.1])
+                        self.gym.add_lines(self.viewer, self.envs[i], 1,
+                                        [ob[0], ob[1], ob[2], targetx[0], targetx[1], targetx[2]], [0.1, 0.85, 0.1])
+                        self.gym.add_lines(self.viewer, self.envs[i], 1,
+                                        [ob[0], ob[1], ob[2], targety[0], targety[1], targety[2]], [0.1, 0.85, 0.1])
+                        self.gym.add_lines(self.viewer, self.envs[i], 1,
+                                        [ob[0], ob[1], ob[2], targetz[0], targetz[1], targetz[2]], [0.1, 0.85, 0.1])
 
         self._render_headless()
 
@@ -644,6 +645,8 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         # update the queue
         # self.arm_vel_queue[:, 1:] = self.arm_vel_queue[:, :-1].clone().detach()
         # self.arm_vel_queue[:, 0, :] = self.arm_dof_vel.clone()
+
+        # print(self.arm_dof_vel.shape, self.arm_dof_vel[0])
 
         # self.delta_noisy_queue[:, 1:] = self.delta_noisy_queue[:, :-1].clone().detach()
         # self.delta_noisy_queue[:, 0, :] = self.noisy_gripper_goal_pos - self.fingertip_centered_pos
@@ -844,8 +847,10 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         is_plug_engaged_w_socket = self._check_plug_engaged_w_socket()
         engagement = self._get_engagement_reward_scale(is_plug_engaged_w_socket, self.cfg_task.rl.success_height_thresh)
         engagement_reward = engagement * self.cfg_task.rl.engagement_reward_scale
-
-        # print(keypoint_reward[0], engagement_reward[0], ori_reward[0])
+        
+        verbose = False
+        if verbose:
+            print("reward", keypoint_reward[0], engagement_reward[0])
         
         # self.rew_buf[:] = ori_reward
 
@@ -945,6 +950,9 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         for _, v  in self.all_rendering_camera.items():
             self.init_plug_pos_cam[v[0], :] = plug_pos[v[0], :]
 
+        # socket_pos_noise = np.random.uniform(-0.02, 0.02, 2)
+        # socket_pos[:, :2] += socket_pos_noise
+
         object_pose = {
             'socket_pose': socket_pos,
             'socket_quat': socket_quat,
@@ -953,6 +961,10 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         }
 
         self._reset_object(env_ids, new_pose=object_pose)
+
+        # for k, v in self.subassembly_extrinsic_contact.items():
+        #     v.reset_socket_pos(socket_pos=socket_pos[0])
+
         self._close_gripper(torch.arange(self.num_envs))
 
         # self._simulate_and_refresh()
@@ -1102,6 +1114,9 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                                                                     socket_actor_ids_sim_int32[env_ids]])))
 
         # Simulate one step to apply changes
+
+
+
         self._simulate_and_refresh()
 
     def _move_arm_to_desired_pose(self, env_ids, desired_pos, desired_rot=None, sim_steps=30):

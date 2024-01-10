@@ -708,22 +708,8 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             self._reset_kuka(env_ids)
             self._reset_object(env_ids)
 
-            # self._zero_velocities(env_ids)
             self._refresh_task_tensors(update_tactile=True)
             priv_depth = self.depth_maps.clone()
-
-            # if True:
-            #     display_key = 'yellow_round_peg_2in' # ['triangle', 'red_round_peg_1_5in', 'yellow_round_peg_2in']
-            #     print(self.subassembly_extrinsic_contact)
-            #     for k, v in self.subassembly_extrinsic_contact.items():
-            #         self.gt_extrinsic_contact[self.subassembly_to_env_ids[k], ...] = v.get_extrinsic_contact(
-            #             obj_pos=self.plug_pos[self.subassembly_to_env_ids[k], ...].clone(), 
-            #             obj_quat=self.plug_quat[self.subassembly_to_env_ids[k], ...].clone(), 
-            #             socket_pos=self.socket_pos[self.subassembly_to_env_ids[k], ...].clone(),
-            #             socket_quat=self.socket_quat[self.subassembly_to_env_ids[k], ...].clone(),
-            #             display = display_key == k, dec=None
-            #         ).to(self.device)
-
 
             # # Move arm to grasp pose
             plug_pos_noise = (2 * (torch.rand((len(env_ids), 3),
@@ -743,46 +729,6 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             
             self.enable_gravity(0)
             self._refresh_task_tensors(update_tactile=True)
-            # if True:
-            #     display_key = 'yellow_round_peg_2in' # ['triangle', 'red_round_peg_1_5in', 'yellow_round_peg_2in']
-            #     print(self.subassembly_extrinsic_contact)
-            #     for k, v in self.subassembly_extrinsic_contact.items():
-            #         self.gt_extrinsic_contact[self.subassembly_to_env_ids[k], ...] = v.get_extrinsic_contact(
-            #             obj_pos=self.plug_pos[self.subassembly_to_env_ids[k], ...].clone(), 
-            #             obj_quat=self.plug_quat[self.subassembly_to_env_ids[k], ...].clone(), 
-            #             socket_pos=self.socket_pos[self.subassembly_to_env_ids[k], ...].clone(),
-            #             socket_quat=self.socket_quat[self.subassembly_to_env_ids[k], ...].clone(),
-            #             display = display_key == k, dec=None
-            #         ).to(self.device)
-
-            # # Lift
-            # self._lift_gripper(env_ids, self.ctrl_target_gripper_dof_pos)
-            # self._refresh_task_tensors(update_tactile=False)
-            # self._zero_velocities(env_ids)
-
-            # # Move arm above the socket
-            # above_socket_pos_noise = torch.zeros((len(env_ids), 3), device=self.device)
-            # above_socket_pos_noise[:, 0] = (2 * (torch.rand((len(env_ids)), device=self.device) - 0.2)) * self.cfg_task.randomize.above_socket_noise[0]
-            # above_socket_pos_noise[:, 1] = (2 * (torch.rand((len(env_ids)), device=self.device) - 0.5)) * self.cfg_task.randomize.above_socket_noise[1]
-            # above_socket_pos_noise[:, 2] = (1 * (torch.rand((len(env_ids)), device=self.device) - 0.0)) * self.cfg_task.randomize.above_socket_noise[2]
-            # # above_socket_pos_noise[:, 2] = (2 * (torch.rand((len(env_ids), 1), device=self.device) - 0.0)) * self.cfg_task.randomize.above_socket_noise
-
-            # above_socket_pos_noise[:, 2] = torch.abs(above_socket_pos_noise[:, 2]) / 30  # Only +z
-            # self._move_arm_to_desired_pose(env_ids, self.above_socket_pos.clone() + above_socket_pos_noise,
-            #                                sim_steps=self.cfg_task.env.num_gripper_move_sim_steps * 2)
-            # self._refresh_task_tensors(update_tactile=True)
-            # self._zero_velocities(env_ids)
-
-            # print(self.above_socket_pos.clone(), above_socket_pos_noise)
-
-
-            # Insert
-            # socket_pos_noise = (2 * (torch.randn((len(env_ids), 3), device=self.device) - 0.5)) * 0.0
-            # socket_pos_noise[:, :] = 0
-            # self._move_arm_to_desired_pose(env_ids, self.socket_pos.clone() + socket_pos_noise, # socket_pos
-            #                                sim_steps=self.cfg_task.env.num_gripper_move_sim_steps // 2)
-            # self._refresh_task_tensors(update_tactile=True)
-            # self._zero_velocities(env_ids)
 
             # Check valid grasps
             roll, pitch, yaw = get_euler_xyz(self.plug_quat)

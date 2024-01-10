@@ -456,10 +456,10 @@ class PPO(object):
 
                 # print(returns[0], kl_dist)
 
-                # if approx_kl_div > (2.0 * self.kl_threshold):
-                #     continue_training = False
-                #     print(f"Early stopping at step ue to reaching max kl: {approx_kl_div:.2f}")
-                #     break
+                if approx_kl_div > (2.0 * self.kl_threshold):
+                    continue_training = False
+                    print(f"Early stopping at step ue to reaching max kl: {approx_kl_div:.2f}")
+                    break
 
                 self.optimizer.zero_grad()
                 loss.backward()
@@ -670,14 +670,14 @@ class PPO(object):
         total_dones, num_success = 0, 0
         total_env_runs = self.full_config.offline_train.train.test_episodes
         # from matplotlib import pyplot as plt
-        # while save_trajectory or (total_dones < total_env_runs):  # or True for testing without saving
-        for _ in tqdm(range(500)):
+        # for _ in tqdm(range(500)):
+        while save_trajectory or (total_dones < total_env_runs):  # or True for testing without saving
             # log video during test
             self.log_video()
             # getting data from data logger
             latent = None
             if offline_test:
-                # TODO Pull the data from the logger -> whole? whats goin on
+                # TODO Pull the data frotm the logger -> whole? whats goin on
                 data = self.data_logger.data_logger.get_data()
                 if get_latent is not None:
                     # Making data for the latent prediction from student model

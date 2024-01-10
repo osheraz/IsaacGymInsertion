@@ -400,7 +400,7 @@ class SimLogger():
             })
         else:
             log_items.update({
-                'latent_shape': env.cfg_ppo.network.priv_mlp.units[-1],
+                'latent_shape': 16, # env.cfg_ppo.network.priv_mlp.units[-1],
             })
         
         if self.gt_contact and False:

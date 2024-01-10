@@ -76,6 +76,7 @@ class ExtrinsicContact:
         # self.object_trimesh = self.object_trimesh.apply_transform(T)
 
         self.socket_trimesh = trimesh.load(mesh_socket)
+        self.reset_socket_trimesh = self.socket_trimesh.copy()
         self.socket_trimesh = self.socket_trimesh.apply_scale(socket_scale)
         T = np.eye(4)
         T[0:3, -1] = socket_pos
@@ -130,7 +131,13 @@ class ExtrinsicContact:
         return transformed
 
     def reset_socket_pos(self, socket_pos):
+        self.socket_trimesh = self.reset_socket_trimesh.copy()
+        self.socket_trimesh = self.socket_trimesh.apply_scale(1.0)
         self.socket_pos = socket_pos
+        T = np.eye(4)
+        T[0:3, -1] = self.socket_pos
+        self.socket_trimesh.apply_transform(T)
+
         self.socket = o3d.t.geometry.RaycastingScene()
         self.socket.add_triangles(
             o3d.t.geometry.TriangleMesh.from_legacy(self.socket_trimesh.as_open3d)
@@ -153,7 +160,7 @@ class ExtrinsicContact:
 
         d = self.socket.compute_distance(o3d.core.Tensor.from_numpy(query_points.astype(np.float32))).numpy()
 
-        if display:
+        if display and False:
             display_id = 0
             self.ax2.cla()
             self.ax1.cla()
@@ -187,8 +194,8 @@ class ExtrinsicContact:
             plt.pause(0.0001)
             # plt.show()
             
-        else:
-            plt.close(self.fig)
+        # else:
+        #     plt.close(self.fig)
 
         d = d.flatten()
         idx_2 = np.where(d > threshold)[0]
@@ -631,7 +638,7 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
             plug_file += '_subdiv_3x.obj' if 'rectangular' in plug_file else '.obj'
             socket_file = self.asset_info_insertion[subassembly][components[1]]['urdf_path']
             socket_file += '_subdiv_3x.obj' if 'rectangular' in plug_file else '.obj'
-
+            socket_file = 'socket.obj'
             mesh_root = os.path.join(os.path.dirname(__file__), '..', '..', '..', 'assets', 'factory', 'mesh',
                                      'factory_insertion')
 
@@ -640,7 +647,7 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
                                                                os.path.join(mesh_root, plug_file), randomize=True,
                                                                finger_idx=i) for i in range(len(self.fingertips))])
             if self.cfg['env']['compute_contact_gt']:
-                socket_pos = [0.5, 0, 0.003]
+                socket_pos = [0.5, 0, 0.001] # check this
                 if subassembly not in self.subassembly_extrinsic_contact:
                     
                     self.subassembly_extrinsic_contact[subassembly] = ExtrinsicContact(mesh_obj=os.path.join(mesh_root, plug_file),

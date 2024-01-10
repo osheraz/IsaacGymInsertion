@@ -1,9 +1,9 @@
 #!/bin/bash
 GPUS=${1:-0}
-SEED=${2:-42}
-CACHE=${3:-"12-10-23/15-01-17"}
-NUM_ENVS=${4:-16}
-HEADLESS=${5:-True}
+SEED=${2:-41}
+CACHE=${3:-"01-08-24/18-28-43"}
+NUM_ENVS=${4:-2}
+HEADLESS=${5:-False}
 
 array=( $@ )
 len=${#array[@]}
@@ -20,7 +20,7 @@ task.env.numEnvs=${NUM_ENVS} \
 task.env.tactile=True \
 task.env.tactile_display_viz=False task.env.tactile_wrt_force=False \
 task.env.smooth_force=False \
-task.env.numObsHist=3 \
+task.env.numObsHist=1 \
 task.env.numObservations=24 \
 task.env.compute_contact_gt=True \
 task.env.numStates=7 \

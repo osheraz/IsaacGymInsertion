@@ -2,7 +2,7 @@
 GPUS=${1:-0}
 SEED=${2:-42}
 CACHE=${3:-ext}
-NUM_ENVS=${4:-4096}
+NUM_ENVS=${4:-5}
 HEADLESS=${5:-True}
 
 array=( $@ )
@@ -17,19 +17,19 @@ CUDA_VISIBLE_DEVICES=${GPUS} \
 python trainV2.py task=FactoryTaskInsertionTactile headless=${HEADLESS} seed=${SEED} \
 test=True \
 task.env.numEnvs=${NUM_ENVS} \
-task.env.numStates=16 \
 task.env.tactile_history_len=1 \
-task.env.compute_contact_gt=True \
-task.env.numObsHist=2 \
+task.env.numObsHist=1 \
 task.env.numObservations=24 \
+task.env.numStates=7 \
 train.algo=PPO \
 task.env.tactile=False \
-task.env.smooth_force=True \
+task.env.compute_contact_gt=True \
+train.ppo.priv_info=True \
+task.env.smooth_force=False \
 task.tactile.tacto.width=64 \
 task.tactile.tacto.height=64 \
 task.tactile.decoder.width=64 \
 task.tactile.decoder.height=64 \
-train.ppo.priv_info=True \
 train.ppo.extrin_adapt=False \
 train.ppo.tactile_info=False \
 train.ppo.output_name="${CACHE}" \

@@ -37,10 +37,11 @@ class MLP(nn.Module):
     
 
 class ContactAE(nn.Module):
-    def __init__(self, input_size):
+    def __init__(self, input_size, embedding_size=16):
         nn.Module.__init__(self)
-        self.contact_enc_mlp = nn.Sequential(nn.Linear(input_size, 32), nn.ReLU(), nn.Linear(32, 8), nn.Tanh())
-        self.contact_dec_mlp = nn.Sequential(nn.Linear(8, 32), nn.ReLU(), nn.Linear(32, input_size))
+        self.embedding_size = embedding_size
+        self.contact_enc_mlp = nn.Sequential(nn.Linear(input_size, 32), nn.ReLU(), nn.Linear(32, embedding_size), nn.Tanh())
+        self.contact_dec_mlp = nn.Sequential(nn.Linear(embedding_size, 32), nn.ReLU(), nn.Linear(32, input_size))
 
     def forward_enc(self, x):
         return self.contact_enc_mlp(x)
@@ -109,10 +110,11 @@ class ActorCriticSplit(nn.Module):
             force_dim = 3
             # self.physics_mlp = MLP(units=self.physics_mlp_units, input_size=6)
             # mlp_input_shape += self.physics_mlp_units[-1]
-            mlp_input_shape += 8
+            embedding_size = 16
+            mlp_input_shape += embedding_size
             # mlp_input_shape += self.pose_mlp_units[-1]
 
-            self.contact_ae = ContactAE(input_size=kwargs["num_contact_points"])
+            self.contact_ae = ContactAE(input_size=kwargs["num_contact_points"], embedding_size=embedding_size)
 
             # if self.contact_info:
             #     mlp_input_shape += self.contact_mlp_units[-1]
@@ -171,6 +173,7 @@ class ActorCriticSplit(nn.Module):
                     self.ft_adapt_tconv = FTAdaptTConv(ft_dim=ft_input_shape,
                                                        ft_out_dim=self.ft_units[-1])
 
+        print("#####", mlp_input_shape)
         self.actor_mlp = MLP(units=self.units, input_size=mlp_input_shape)
         if not self.shared_parameters:
             self.critic_mlp = MLP(units=self.units, input_size=mlp_input_shape)
@@ -216,7 +219,7 @@ class ActorCriticSplit(nn.Module):
         mu, logstd, value, latent, _, dec = self._actor_critic(obs_dict)
         return mu, latent, dec
 
-    def _actor_critic(self, obs_dict, display=True):
+    def _actor_critic(self, obs_dict, display=False):
 
         obs = obs_dict['obs']
         extrin, extrin_gt = None, None
