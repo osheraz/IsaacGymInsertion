@@ -29,18 +29,17 @@ class RobotWithFtEnv():
                          self._robotiq_wrench_states_callback)
 
         self.move_manipulator = MoveManipulatorServiceWrap()
-        self.move_manipulator.scale_vel(scale_vel=0.01, scale_acc=0.01)
 
     def wait_env_ready(self):
 
         import time
 
         for i in range(1):
-            print("WAITING..." + str(i))
+            print("Robot: WAITING..." + str(i))
             sys.stdout.flush()
             time.sleep(1.0)
 
-        print("WAITING...DONE")
+        print("Robot: WAITING...DONE")
 
     def move_to_init(self):
 
@@ -52,10 +51,10 @@ class RobotWithFtEnv():
         Checks that all the sensors, publishers and other robot systems are
         operational.
         """
-        rospy.logdebug("Manipulator check_all_systems_ready...")
+        rospy.loginfo("Manipulator check_all_systems_ready...")
         self._check_arm_joint_state_ready()
         self._check_robotiq_connection()
-        rospy.logdebug("END Manipulator _check_all_systems_ready...")
+        rospy.loginfo("END Manipulator _check_all_systems_ready...")
         return True
 
     ############### Arm related #########################
@@ -142,6 +141,7 @@ class RobotWithFtEnv():
 
         # Set up a trajectory message to publish.
         ee_target = geometry_msgs.msg.Pose()
+
         if isinstance(pose, dict):
             ee_target.orientation.x = pose["qx"]
             ee_target.orientation.y = pose["qy"]
@@ -151,6 +151,16 @@ class RobotWithFtEnv():
             ee_target.position.x = pose["x"]
             ee_target.position.y = pose["y"]
             ee_target.position.z = pose["z"]
+
+        if isinstance(pose, list):
+            ee_target.orientation.x = pose[3]
+            ee_target.orientation.y = pose[4]
+            ee_target.orientation.z = pose[5]
+            ee_target.orientation.w = pose[6]
+
+            ee_target.position.x = pose[0]
+            ee_target.position.y = pose[1]
+            ee_target.position.z = pose[2]
         else:
             ee_target = pose
 

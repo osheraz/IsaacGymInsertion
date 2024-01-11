@@ -18,7 +18,7 @@ class HandROSSubscriberFinger():
         """
 
         if dev_names is None:
-            dev_names = [2, 4, 6]
+            dev_names = [2, 4, 0]
         if fix is None:
             fix = [(), (), ()]
             fix[0] = (5, 5)

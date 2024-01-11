@@ -12,8 +12,7 @@ import yaml
 with open('best_params_task.yaml', 'r') as file:
     file = yaml.load(file, Loader=yaml.Loader)
 
-# all_paths = glob('/home/osher/Desktop/isaacgym/python/IsaacGymInsertion/isaacgyminsertion/outputs/test/data/datastore_42_test/*/*.npz')
-all_paths = glob('/common/users/oa348/inhand_manipulation_data_store/*/*/*.npz')
+all_paths = glob('/home/roblab20/tactile_insertion/*/*/*.npz')
 print(len(all_paths))
 path = random.sample(all_paths, 1)[0]
 
@@ -27,7 +26,7 @@ done_idx = data['done'].nonzero()[-1][0]
 print(done_idx)
 ax = plt.figure(figsize=(10, 20)).add_subplot(projection='3d')
 
-if True:
+if False:
     # ax.scatter(data['socket_pos'][:done_idx, 0],
     #            data['socket_pos'][:done_idx, 1],
     #            zs=data['socket_pos'][:done_idx, 2],  color='r')
@@ -73,14 +72,21 @@ if False:
 
 
 
-if False:
+if True:
     import cv2
     import numpy as np
     from tqdm import tqdm
 
     # choose codec according to format needed
-    fourcc = cv2.VideoWriter_fourcc(*'XVID')
-    video = cv2.VideoWriter('video.avi', fourcc, 20, (112, 672), isColor=False)
+    # fourcc = cv2.VideoWriter_fourcc(*'XVID')
+    # video = cv2.VideoWriter('video.avi', fourcc, 20, (112, 672), isColor=False)
+
+    def reverse_normalize(image):
+        mean = np.array([0.5, 0.5, 0.5])
+        std = np.array([0.5, 0.5, 0.5])
+        reversed_image = (image * std) + mean
+        return reversed_image
+
 
     for j in tqdm(range(0, done_idx)):
 
@@ -89,11 +95,15 @@ if False:
         img2 = tactile_img[j][1]
         img3 = tactile_img[j][2]
 
-        img = np.concatenate([img1, img2, img3], axis=1)
+        img1 = reverse_normalize(img1)
+        img2 = reverse_normalize(img2)
+        img3 = reverse_normalize(img3)
+
+        img = np.concatenate((img1, img2, img3), axis=1)
         # video.write((img * 255).astype(np.uint8))
         cv2.imshow('img', img)
         cv2.waitKey(1)
 
     cv2.destroyAllWindows()
-    video.release()
+    # video.release()
 

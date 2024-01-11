@@ -9,16 +9,16 @@ class Tracker():
 
     def __init__(self):
 
+        self.obj_relative_pos, self.obj_relative_rpy, self.obj_pos, self.obj_rpy = [], [], [], []
+        self.drop = False
+        self.drop_counter = 0
+
         rospy.Subscriber('/hand_control/obj_relative_pos', Float32MultiArray, self._object_relative_pose_callback)
         rospy.Subscriber('/hand_control/obj_relative_rpy', Float32MultiArray, self._object_relative_rpy_callback)
         rospy.Subscriber('/hand_control/obj_pos', Float32MultiArray, self._object_pose_callback)
         rospy.Subscriber('/hand_control/obj_rpy', Float32MultiArray, self._object_rpy_callback)
         rospy.Subscriber('/hand_control/drop', Bool, self._object_drop_callback)
         self.pub_obj_id = rospy.Publisher('/object_id', Int16, queue_size=10)
-
-        self.drop = False
-        self.drop_counter = 0
-        self.obj_relative_pos, self.obj_relative_rpy, self.obj_pos, self.obj_rpy = [], [], [], []
 
     def _object_pose_callback(self, msg):
         self.obj_pos = numpy.array(msg.data) if not numpy.isnan(numpy.sum(numpy.array(msg.data))) else self.obj_pos

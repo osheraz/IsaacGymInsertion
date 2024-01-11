@@ -8,6 +8,7 @@ import geometry_msgs.msg
 
 import numpy as np
 
+
 class ExperimentEnv:
     """ Superclass for all Robots environments.
     """
@@ -30,6 +31,7 @@ class ExperimentEnv:
             self.ready = self.arm.init_success and self.tactile.init_success
 
         self.pub_regularize = rospy.Publisher('/manipulator/regularize', Bool, queue_size=10)
+        rospy.logwarn('Env is ready')
 
     def regularize_force(self, status):
         self.pub_regularize.publish(status)
@@ -74,12 +76,69 @@ class ExperimentEnv:
 
         self.hand.grasp()
 
-    def set_random_init_error(self,):
+    def align_and_grasp(self, ):
 
         for i in range(5):
 
             ee_pos, ee_quat = self.arm.get_ee_pose()
-            obj_pos = self.tracker.get_obj_relative_pos()
+            obj_pos = self.tracker.get_obj_pos()
+
+            if not np.isnan(np.sum(obj_pos)):
+
+                # added delta_x/delta_y to approximately center the object
+                ee_pos[0] = obj_pos[0] - 0.01
+                ee_pos[1] = obj_pos[1] - 0.02
+                ee_pos[2] = obj_pos[2] - 0.01
+
+                ee_target = geometry_msgs.msg.Pose()
+                ee_target.orientation.x = ee_quat[0]
+                ee_target.orientation.y = ee_quat[1]
+                ee_target.orientation.z = ee_quat[2]
+                ee_target.orientation.w = ee_quat[3]
+
+                ee_target.position.x = ee_pos[0]
+                ee_target.position.y = ee_pos[1]
+                ee_target.position.z = ee_pos[2]
+                self.arm_movement_result = self.arm.set_ee_pose(ee_target)
+
+                self.grasp()
+
+                return True
+            else:
+                rospy.logerr('Object is undetectable, attempt: ' + str(i))
+
+        return False
+
+    def align_and_release(self, ):
+
+        ee_pos, ee_quat = self.arm.get_ee_pose()
+
+        # added delta_x/delta_y to approximately center the object
+        ee_pos[2] -= 0.02
+
+        ee_target = geometry_msgs.msg.Pose()
+        ee_target.orientation.x = ee_quat[0]
+        ee_target.orientation.y = ee_quat[1]
+        ee_target.orientation.z = ee_quat[2]
+        ee_target.orientation.w = ee_quat[3]
+
+        ee_target.position.x = ee_pos[0]
+        ee_target.position.y = ee_pos[1]
+        ee_target.position.z = ee_pos[2]
+        self.arm_movement_result = self.arm.set_ee_pose(ee_target)
+
+        self.release()
+
+        return True
+
+
+
+    def set_random_init_error(self, true_socket_pose):
+
+        for i in range(5):
+
+            ee_pos, ee_quat = self.arm.get_ee_pose()
+            obj_pos = self.tracker.get_obj_pos()
 
             if not np.isnan(np.sum(obj_pos)):
 
@@ -106,6 +165,7 @@ class ExperimentEnv:
                 rospy.logerr('Object is undetectable, attempt: ' + str(i))
 
         return False
+
     def release(self):
 
         self.hand.set_gripper_joints_to_init()
@@ -114,3 +174,6 @@ class ExperimentEnv:
 
         result = self.arm.set_trajectory_joints(values, wait=wait)
 
+    def move_to_pose(self, values, wait=True):
+
+        result = self.arm.set_ee_pose(values, wait=wait)

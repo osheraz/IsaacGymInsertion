@@ -219,7 +219,7 @@ if __name__ == "__main__":
 
     pc_name = os.getlogin()
 
-    device_id = 10
+    device_id = 4
     # 4 (-3, 5) bottom
     # 0 (6, 2) right
     # 2 (0, -12)left

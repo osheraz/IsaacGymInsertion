@@ -53,11 +53,11 @@ class OpenhandEnv():
         import time
         import sys
         for i in range(3):
-            print("WAITING..."+str(i))
+            print("OpenhandEnv: WAITING..."+str(i))
             sys.stdout.flush()
             time.sleep(1.0)
 
-        print("WAITING...DONE")
+        print("OpenhandEnv: WAITING...DONE")
 
     def _check_all_systems_ready(self):
         """

@@ -18,17 +18,17 @@ tactile_display_viz: True
 
 data_logger:
     # for data collection
-    collect_data: False
-    total_trajectories: 5000
-    base_folder: "/common/users/dm1487/inhand_manipulation_data_store"
+    collect_data: True
+    total_trajectories: 10
+    base_folder: "/home/roblab20/tactile_insertion"
     sub_folder: "datastore_0"
 
 # taking from training default, allows to over write
 # actually, we should write different config for each observation we test
 rl:
-
-    pos_action_scale: [0.0002, 0.0002, 0.0002]
-    rot_action_scale: [0.0002, 0.0002, 0.001]
+    max_episode_length: 50
+    pos_action_scale: [0.005, 0.005, 0.004]
+    rot_action_scale: [0.02, 0.02, 0.02]
     clamp_rot: ${...task.rl.clamp_rot}
     clamp_rot_thresh: ${...task.rl.clamp_rot_thresh}
 
@@ -38,9 +38,9 @@ env:
   obs_seq_length: 2  #${...task.env.numObsHist} old implementation
   stud_obs_seq_length: 2 # ${...task.env.numObsStudentHist}
 
-  priv_info_dim: 14 # ${...task.env.numStates}
-  numObservations: 72 # ${...task.env.numObservations}
-  numObsStudent: 72 # ${...task.env.numObsStudent}
+  priv_info_dim: 7 # ${...task.env.numStates}
+  numObservations: 48 # ${...task.env.numObservations}
+  numObsStudent: 48 # ${...task.env.numObsStudent}
   numActions: ${...task.env.numActions}
   numTargets: ${...task.env.numTargets}
   socket_pos_obs_noise: [ 0.001, 0.001, 0.0 ]
@@ -52,7 +52,7 @@ env:
 
 
 ppo:
-  priv_info:
+  priv_info: True
 
   extrin_adapt: False
   tactile_info: False
@@ -63,8 +63,8 @@ ppo:
   ft_seq_length: ${...task.env.ft_history_len}
   obs_seq_length: ${...task.env.numObsHist}
   stud_obs_seq_length: ${...task.env.numObsStudentHist}
-  priv_info_dim: ${...task.env.numStates}
-  student_obs_input_shape: 72 # ${...task.env.numObsStudent}
+  priv_info_dim: 7 # ${...task.env.numStates}
+  student_obs_input_shape: 48 # ${...task.env.numObsStudent}
 
   ft_info: False
   ft_input_dim: 6
@@ -94,5 +94,7 @@ network:
 common_poses:
   socket_pos: [0.3224527447924478, 0.014855747025297968, -0.06271564699362295]
   sim_start: [0., 0., 0., 0., 1.570, 0.]
-  above_socket: [0.0, 0.08799514919519424, 0.07810234278440475, 0., 1.4046239852905273, 0.]
+  joints_above_socket: [0.0, 0.08799514919519424, 0.07810234278440475, 0., 1.4046239852905273, 0.]
+  joints_above_plug: [0.4483899474143982, 0.24551554024219513, -0.08230005204677582, 0.000920988735742867, 1.4096553325653076, 0.44813045859336853]
+  joints_grasp_pos: [0.4483899474143982, 0.24551554024219513, -0.08230005204677582, 0.000920988735742867, 1.4096553325653076, 0.44813045859336853]
   above_grasp_pos: [0.4483899474143982, 0.24551554024219513, -0.08230005204677582, 0.000920988735742867, 1.4096553325653076, 0.44813045859336853]

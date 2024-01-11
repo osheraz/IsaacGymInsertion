@@ -23,7 +23,7 @@ class Hand():
         #     fix[2] = (-3, 5)
 
         if dev_names is None:
-            dev_names = [2, 4, 6]
+            dev_names = [2, 4, 0]
         if fix is None:
             fix = [(), (), ()]
             fix[0] = (5, 5)
@@ -77,7 +77,7 @@ class Hand():
 
         return left, right, bottom
 
-    def show_fingers_view(self, display_diff=True):
+    def show_fingers_view(self, display_diff=False):
         """
         Creates OpenCV named window with live view of Finger device, ESC to close window
         :param ref_frame: Specify reference frame to show image difference

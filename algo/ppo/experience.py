@@ -250,7 +250,7 @@ class DataLogger():
         if save_trajectory:
             self.pbar = tqdm(total=self.total_trajectories)
             self.total_trajectories = total_trajectories
-            self.num_workers = 24
+            self.num_workers = 1
             try:
                 self.q_s = [mp.JoinableQueue(maxsize=500) for _ in range(self.num_workers)]
                 self.workers = [mp.Process(target=self.worker, args=(q, idx)) for idx, q in enumerate(self.q_s)]
@@ -451,32 +451,40 @@ class SimLogger():
 class RealLogger():
 
     def __init__(self, env):
+
         self.env = env
+
         ROT_MAT_SIZE = 9
         POS_SIZE = 3
+        QUAT_SIZE = 4
         ACT_SIZE = 6
+
         log_items = {
             'arm_joints_shape': 6,
-            'eef_pos_shape': POS_SIZE + ROT_MAT_SIZE,
-            'socket_pos_shape': POS_SIZE + ROT_MAT_SIZE,
-            'noisy_socket_pos_shape': POS_SIZE + ROT_MAT_SIZE,
+            'eef_pos_shape': POS_SIZE + QUAT_SIZE,
+            'socket_pos_shape': POS_SIZE + QUAT_SIZE,
+            'noisy_socket_pos_shape': POS_SIZE + QUAT_SIZE,
             'action_shape': ACT_SIZE,
             'target_shape': ACT_SIZE,
             'obs_hist_shape': env.obs_buf.shape[-1],
-            'obs_hist_stud_shape': env.obs_buf_stud.shape[-1],
+            'obs_hist_stud_shape': env.obs_student_buf.shape[-1],
             'tactile_shape': env.tactile_imgs.shape[1:],
             'latent_shape': env.deploy_config.network.merge_mlp.units[-1],
+            'plug_hand_pos_shape': POS_SIZE + QUAT_SIZE,
+            'plug_pos_error_shape': POS_SIZE + QUAT_SIZE,
+            'plug_pos_shape': POS_SIZE + QUAT_SIZE,
+            'priv_obs_shape': env.priv_info_dim,
         }
 
-        log_folder = env.cfg_task.data_logger.base_folder
+        log_folder = env.deploy_config.data_logger.base_folder
 
         self.data_logger_init = lambda x: DataLogger(env.num_envs,
                                                      env.max_episode_length,
                                                      env.device,
                                                      os.path.join(log_folder,
-                                                                  env.cfg_task.data_logger.sub_folder),
-                                                     env.cfg_task.data_logger.total_trajectories,
-                                                     save_trajectory=env.cfg_task.data_logger.collect_data,
+                                                                  env.deploy_config.data_logger.sub_folder),
+                                                     env.deploy_config.data_logger.total_trajectories,
+                                                     save_trajectory=env.deploy_config.data_logger.collect_data,
                                                      **log_items)
 
         self.data_logger = None
@@ -487,22 +495,25 @@ class RealLogger():
         eef_pos = torch.cat((self.env.fingertip_centered_pos.clone(),
                              self.env.fingertip_centered_quat.clone()), dim=-1)
         socket_pos = torch.cat((self.env.socket_pos.clone(),
-                                self.env.socket_quat.clone()), dim=-1)
+                                self.env.identity_quat.clone()), dim=-1)
         noisy_socket_pos = torch.cat((self.env.noisy_gripper_goal_pos.clone(),
                                       self.env.noisy_gripper_goal_quat.clone()), dim=-1)
+        plug_pos = torch.cat((self.env.plug_pos.clone(),
+                                    self.env.plug_quat.clone()), dim=-1)
 
         plug_hand_pos = torch.cat((self.env.plug_hand_pos.clone(),
                                    self.env.plug_hand_quat.clone()), dim=-1)
-        plug_hand_error = torch.cat((self.env.plug_pos_error.clone(),
-                                     self.env.plug_quat_error.clone()), dim=-1)
+        plug_pos_error = torch.cat((self.env.plug_pos_error.clone(),
+                                    self.env.plug_quat_error.clone()), dim=-1)
 
         obs_hist = self.env.obs_buf.clone()
         obs_hist_stud = self.env.obs_student_buf.clone()
-        priv_hist = self.env.states_buf.clone()
+        priv_obs = self.env.states_buf.clone()
 
         log_data = {
+            'plug_pos': plug_pos,
             'plug_hand_pos': plug_hand_pos,
-            'plug_hand_error': plug_hand_error,
+            'plug_pos_error': plug_pos_error,
             'arm_joints': self.env.arm_dof_pos,
             'eef_pos': eef_pos,
             'socket_pos': socket_pos,
@@ -513,7 +524,7 @@ class RealLogger():
             'latent': latent,
             'obs_hist': obs_hist,
             'obs_hist_stud': obs_hist_stud,
-            'priv_hist': priv_hist,
+            'priv_obs': priv_obs,
             'done': done
         }
 
