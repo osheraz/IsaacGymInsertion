@@ -704,6 +704,11 @@ class HardwarePlayer(object):
 
         ctrl_info = self.env.get_info_for_control()
 
+        self.fingertip_centered_pos = torch.tensor(ctrl_info['ee_pose'][:3],
+                                                   device=self.device, dtype=torch.float).unsqueeze(0)
+        self.fingertip_centered_quat = torch.tensor(ctrl_info['ee_pose'][3:],
+                                                    device=self.device, dtype=torch.float).unsqueeze(0)
+
         fingertip_centered_jacobian_tf = torch.tensor(ctrl_info['jacob'],
                                                       device=self.device).unsqueeze(0)
 
@@ -725,8 +730,17 @@ class HardwarePlayer(object):
             ctrl_target_gripper_dof_pos=0,
             device=self.device)
 
-        self.ctrl_target_dof_pos[:, :6] = torch.clamp(self.ctrl_target_dof_pos[:, :6],
-                                                      -1.57079632679, 1.57079632679)
+        clamp_values = [
+            (-3.14159265359, 3.14159265359),  # Joint 1
+            (-1.57079632679, 1.57079632679),  # Joint 2
+            (-1.57079632679, 2.35619449019),  # Joint 3
+            (-3.14159265359, 3.14159265359),  # Joint 4
+            (-1.57079632679, 1.57079632679),  # Joint 5
+            (-3.14159265359, 3.14159265359)   # Joint 6
+        ]
+
+        for i in range(6):
+            self.ctrl_target_dof_pos[:, i] = torch.clamp(self.ctrl_target_dof_pos[:, i], *clamp_values[i])
         # self.ctrl_target_dof_pos = self.ctrl_target_dof_pos[:, :6]
         target_joints = self.ctrl_target_dof_pos.cpu().detach().numpy().squeeze().tolist()
 
@@ -897,12 +911,12 @@ class HardwarePlayer(object):
         self.env.arm.move_manipulator.scale_vel(scale_vel=0.01, scale_acc=0.01)
 
         self.env.move_to_init_state()
-        self.env.move_to_joint_values(joints_above_plug, wait=True)
-        self.env.arm.move_manipulator.scale_vel(scale_vel=0.004, scale_acc=0.004)
-        self.env.align_and_grasp()
-        self.env.arm.move_manipulator.scale_vel(scale_vel=0.01, scale_acc=0.01)
-        self.env.move_to_joint_values(joints_above_plug, wait=True)
-        self.env.move_to_joint_values(joints_above_socket, wait=True)
+        # self.env.move_to_joint_values(joints_above_plug, wait=True)
+        # self.env.arm.move_manipulator.scale_vel(scale_vel=0.004, scale_acc=0.004)
+        # self.env.align_and_grasp()
+        # self.env.arm.move_manipulator.scale_vel(scale_vel=0.01, scale_acc=0.01)
+        # self.env.move_to_joint_values(joints_above_plug, wait=True)
+        # self.env.move_to_joint_values(joints_above_socket, wait=True)
         self.env.arm.move_manipulator.scale_vel(scale_vel=0.004, scale_acc=0.004)
 
         # Sample init error
@@ -941,9 +955,12 @@ class HardwarePlayer(object):
 
             action, latent = self.model.act_inference(input_dict)
             action = torch.clamp(action, -1.0, 1.0)
+            action[:, :] = 0.
+            action[:, 0] = -0.5
 
             start_time = time()
             self.update_and_apply_action(action, wait=True)
+
             print("Actions:", np.round(action[0].cpu().numpy(), 3), "\tFPS: ", 1.0 / (time() - start_time))
 
             ros_rate.sleep()
@@ -959,7 +976,7 @@ class HardwarePlayer(object):
             obs, obs_stud, tactile, priv = self.compute_observations(with_priv=True)
 
         # Return obj
-        self.env.move_to_joint_values(joints_above_plug, wait=True)
-        self.env.align_and_release()
-        self.env.move_to_joint_values(joints_above_plug, wait=True)
-        self.env.move_to_init_state()
+        # self.env.move_to_joint_values(joints_above_plug, wait=True)
+        # self.env.align_and_release()
+        # self.env.move_to_joint_values(joints_above_plug, wait=True)
+        # self.env.move_to_init_state()
