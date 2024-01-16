@@ -11,7 +11,7 @@ import robotiq_force_torque_sensor.srv as ft_srv
 from robotiq_force_torque_sensor.msg import *
 from sensor_msgs.msg import Image, JointState
 
-from algo.deploy.env.moveit_manipulator_wrap import MoveManipulatorServiceWrap
+from algo.deploy.env.moveit_manipulator_wrap import MoveKinovaServiceWrap
 import sys
 
 class RobotWithFtEnv():
@@ -30,7 +30,7 @@ class RobotWithFtEnv():
         rospy.Subscriber('/robotiq_force_torque_wrench_filtered_exp', WrenchStamped,
                          self._robotiq_wrench_states_callback)
 
-        self.move_manipulator = MoveManipulatorServiceWrap()
+        self.move_manipulator = MoveKinovaServiceWrap()
 
     def wait_env_ready(self):
 

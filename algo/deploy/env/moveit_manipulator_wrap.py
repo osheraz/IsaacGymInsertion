@@ -8,9 +8,8 @@ import sys
 import numpy as np
 from std_srvs.srv import Empty, EmptyResponse
 from iiwa_msgs.msg import JointQuantity, JointPosition
-from kortex_driver.msg import Base_JointSpeeds, JointSpeeds
+from kortex_driver.msg import Base_JointSpeeds, JointSpeed
 from geometry_msgs.msg import PoseStamped
-from std_msgs.msg import Float32MultiArray, Time
 
 from kortex_driver.srv import *
 from kortex_driver.msg import Empty as Empty_K
@@ -29,7 +28,10 @@ class MoveKinovaServiceWrap():
     def __init__(self):
 
         rospy.logdebug("===== In MoveKinovaServiceWrap")
+
         self.robot_name = ''
+
+        # MoveIt related
         self.jacobian_srv = rospy.ServiceProxy('/MoveItJacobian', MoveitJacobian)
         self.scale_vel_acc_srv = rospy.ServiceProxy('/MoveItScaleVelAndAcc', VelAndAcc)
         self.moveit_move_joints_srv = rospy.ServiceProxy("/MoveItMoveJointPosition", MoveitMoveJointPosition)
@@ -47,10 +49,13 @@ class MoveKinovaServiceWrap():
         rospy.Subscriber('/kinova/Joints', JointPosition, self.callback_joints)
         rospy.Subscriber('/kinova/Pose', PoseStamped, self.callback_pose)
 
-        # Kinova related
+        # Kinova-API related
         rospy.Subscriber('/ft_stop', Bool, self._stop_callback)
         self.stop_pub = rospy.Publisher('/in/stop', Empty_K, queue_size=10)
         self.pub_joints_vel_api = rospy.Publisher('/in/joint_velocity', Base_JointSpeeds, queue_size=10)
+
+        self.pub_joint_request = rospy.Publisher('/kinova/desired_joints', Float32MultiArray, queue_size=10)
+
         # Init the action topic subscriber
         self.action_topic_sub = rospy.Subscriber("/" + self.robot_name + "/action_topic", ActionNotification,
                                                  self.cb_action_topic)
@@ -60,7 +65,7 @@ class MoveKinovaServiceWrap():
         rospy.wait_for_service(clear_faults_full_name)
         self.clear_faults = rospy.ServiceProxy(clear_faults_full_name, Base_ClearFaults)
 
-
+        # TODO: Kinova old API
         play_cartesian_trajectory_full_name = '/' + self.robot_name + '/base/play_cartesian_trajectory'
         rospy.wait_for_service(play_cartesian_trajectory_full_name)
         self.play_cartesian_trajectory = rospy.ServiceProxy(play_cartesian_trajectory_full_name,
@@ -86,9 +91,9 @@ class MoveKinovaServiceWrap():
         self.vx = 0.05
         self.vw = 1
 
-        rospy.wait_for_message('/kinova/Joints', JointPosition)
-        rospy.wait_for_message('/kinova/Pose', PoseStamped)
-        rospy.wait_for_message('/kinova/Jacobian', Float32MultiArray)
+        # rospy.wait_for_message('/kinova/Joints', JointPosition)
+        # rospy.wait_for_message('/kinova/Pose', PoseStamped)
+        # rospy.wait_for_message('/kinova/Jacobian', Float32MultiArray)
 
         rospy.logdebug("===== Out MoveKinovaServiceWrap")
 
@@ -186,7 +191,7 @@ class MoveKinovaServiceWrap():
 
     def callback_jacob(self, msg):
 
-        self.jacob = np.array(msg.data).reshape(6, 6)
+        self.jacob = np.array(msg.data).reshape(6, 7)
 
     def get_jacobian_matrix(self):
         # rospy.wait_for_message('/iiwa/Jacobian', JointPosition)
@@ -195,7 +200,7 @@ class MoveKinovaServiceWrap():
 
     def get_jacobian_matrix_moveit(self):
 
-        jacob = np.array(self.jacobian_srv().data).reshape(6, 6)
+        jacob = np.array(self.jacobian_srv().data).reshape(6, 7)
 
         return jacob
 
@@ -252,7 +257,7 @@ class MoveKinovaServiceWrap():
             else:
                 return self.wait_for_action_end_or_abort() if wait else True
 
-    def joint_traj(self, positions_array, wait=False, by_moveit=True):
+    def joint_traj(self, positions_array, wait=False, by_moveit=True, by_vel=True):
 
         if by_moveit:
             js = JointQuantity()
@@ -262,6 +267,7 @@ class MoveKinovaServiceWrap():
             js.a4 = positions_array[3]
             js.a5 = positions_array[4]
             js.a6 = positions_array[5]
+            js.a7 = positions_array[5]
 
             req = MoveitMoveJointPositionRequest()
             req.pos = js
@@ -269,29 +275,44 @@ class MoveKinovaServiceWrap():
 
             self.moveit_move_joints_srv(req)
         else:
+            if by_vel:
+                msg = Float32MultiArray()
+                msg.data = positions_array
+                self.pub_joint_request.publish(msg)
 
-            self.last_action_notif_type = None
-            # Create the list of angles
-            req = PlayJointTrajectoryRequest()
-            # Here the arm is vertical (all zeros)
-            for i in range(7):
-                temp_angle = JointAngle()
-                temp_angle.joint_identifier = i
-                temp_angle.value = np.rad2deg(positions_array[i])
-                req.input.joint_angles.joint_angles.append(temp_angle)
-
-            # Send the angles
-            try:
-                self.play_joint_trajectory(req)
-            except rospy.ServiceException:
-                rospy.logerr("Failed to call PlayJointTrajectory")
-                return False
             else:
-                return self.wait_for_action_end_or_abort()
+                self.last_action_notif_type = None
+                # Create the list of angles
+                req = PlayJointTrajectoryRequest()
+                # Here the arm is vertical (all zeros)
+                for i in range(7):
+                    temp_angle = JointAngle()
+                    temp_angle.joint_identifier = i
+                    temp_angle.value = np.rad2deg(positions_array[i])
+                    req.input.joint_angles.joint_angles.append(temp_angle)
+
+                # Send the angles
+                try:
+                    self.play_joint_trajectory(req)
+                except rospy.ServiceException:
+                    rospy.logerr("Failed to call PlayJointTrajectory")
+                    return False
+                else:
+                    return self.wait_for_action_end_or_abort()
 
         return True
 
-    def joint_vel(self, vel_array, stop_after=0.1):
+    def joint_vel(self, vel_array):
+
+        req = Base_JointSpeeds()
+
+        for i in range(7):
+            temp_speed = JointSpeed()
+            temp_speed.joint_identifier = i
+            temp_speed.value = vel_array[i]
+            req.joint_speeds.append(temp_speed)
+
+        self.pub_joints_vel_api.publish(req)
 
     def ee_pose(self):
         gripper_pose = self.get_cartesian_pose()
@@ -311,9 +332,8 @@ if __name__ == '__main__':
 
     rospy.init_node('moveit_test')
 
-    rate = rospy.Rate(200)
+    rate = rospy.Rate(40)
     moveit_test = MoveKinovaServiceWrap()
-    print('Scaling vel and acc')
     # Init tests
 
     print(moveit_test.get_jacobian_matrix())
@@ -337,19 +357,20 @@ if __name__ == '__main__':
 
     ############################################################
     # # Move stuff
-    pos1 = [0,0,0,0,1.57,0]
-    pos2 = [0,0,0,0,1.57,0.2]
-    pos3 = [0,0,0,0,1.57,-0.2]
+    pos1 = [0.28, -0.18855233780982772, -3.120710008534155, -2.5599484178204546, 0.0026864879365296754, 0.9624248060626042, 1.5682030736834318]
+    pos2 = np.array(pos1) + np.random.uniform(-0.05, 0.05, size=(7,))
+    pos3 = np.array(pos1) + np.random.uniform(-0.05, 0.05, size=(7,))
 
-    #
     import random
 
+    moveit_test.joint_traj(pos1, by_moveit=False, wait=True)
+    #
     all_lists = [pos1, pos2, pos3]
-    # Randomly select one list
+    # # # # Randomly select one list
     while True:
         start_time = time()
         random_list = random.choice(all_lists)
-        moveit_test.joint_traj(random_list, wait=False, by_moveit=True)
+        moveit_test.joint_traj(random_list, by_moveit=False, wait=True)
         rate.sleep()
         print("FPS: ", 1.0 / (time() - start_time))  # FPS = 1 / time to process loop
 
