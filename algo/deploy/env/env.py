@@ -77,7 +77,7 @@ class ExperimentEnv:
         self.hand.grasp()
 
     def align_and_grasp(self, ):
-
+        # TODO change align and grasp to dof_relative funcs without moveit
         for i in range(5):
 
             ee_pos, ee_quat = self.arm.get_ee_pose()
@@ -130,7 +130,6 @@ class ExperimentEnv:
         self.release()
 
         return True
-
 
 
     def set_random_init_error(self, true_socket_pose):

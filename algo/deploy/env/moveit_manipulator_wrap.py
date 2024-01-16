@@ -8,11 +8,18 @@ import sys
 import numpy as np
 from std_srvs.srv import Empty, EmptyResponse
 from iiwa_msgs.msg import JointQuantity, JointPosition
+from kortex_driver.msg import Base_JointSpeeds, JointSpeeds
 from geometry_msgs.msg import PoseStamped
 from std_msgs.msg import Float32MultiArray, Time
 
+from kortex_driver.srv import *
+from kortex_driver.msg import Empty as Empty_K
+from kortex_driver.msg import ActionNotification, CartesianReferenceFrame, CartesianSpeed, ActionEvent, JointAngle, BaseCyclic_Feedback, WaypointList
+from control_msgs.msg import FollowJointTrajectoryAction, FollowJointTrajectoryGoal
+from std_msgs.msg import String, Float32MultiArray, Bool
+import tf
 
-class MoveManipulatorServiceWrap():
+class MoveKinovaServiceWrap():
     """
     Python 2.7 - 3 issues with melodic.
     This class uses all the manipulator modules by ROS services
@@ -21,8 +28,8 @@ class MoveManipulatorServiceWrap():
     # TODO add response to all of the moving requests.
     def __init__(self):
 
-        rospy.logdebug("===== In MoveManipulatorServiceWrap")
-
+        rospy.logdebug("===== In MoveKinovaServiceWrap")
+        self.robot_name = ''
         self.jacobian_srv = rospy.ServiceProxy('/MoveItJacobian', MoveitJacobian)
         self.scale_vel_acc_srv = rospy.ServiceProxy('/MoveItScaleVelAndAcc', VelAndAcc)
         self.moveit_move_joints_srv = rospy.ServiceProxy("/MoveItMoveJointPosition", MoveitMoveJointPosition)
@@ -36,18 +43,102 @@ class MoveManipulatorServiceWrap():
         self.jacob = None  # We update by moveit callback
 
         # Published by moveit_manipulator in tactile_insertion
-        rospy.Subscriber('/manipulator/Jacobian', Float32MultiArray, self.callback_jacob)
-        rospy.Subscriber('/manipulator/Joints', JointPosition, self.callback_joints)
-        rospy.Subscriber('/manipulator/Pose', PoseStamped, self.callback_pose)
+        rospy.Subscriber('/kinova/Jacobian', Float32MultiArray, self.callback_jacob)
+        rospy.Subscriber('/kinova/Joints', JointPosition, self.callback_joints)
+        rospy.Subscriber('/kinova/Pose', PoseStamped, self.callback_pose)
 
-        # TODO: need to find replacement for this
-        self.pub_joints_api = rospy.Publisher('/iiwa/command/JointPosition', JointPosition, queue_size=10)
+        # Kinova related
+        rospy.Subscriber('/ft_stop', Bool, self._stop_callback)
+        self.stop_pub = rospy.Publisher('/in/stop', Empty_K, queue_size=10)
+        self.pub_joints_vel_api = rospy.Publisher('/in/joint_velocity', Base_JointSpeeds, queue_size=10)
+        # Init the action topic subscriber
+        self.action_topic_sub = rospy.Subscriber("/" + self.robot_name + "/action_topic", ActionNotification,
+                                                 self.cb_action_topic)
+        self.last_action_notif_type = None
 
-        rospy.wait_for_message('/manipulator/Joints', JointPosition)
-        rospy.wait_for_message('/manipulator/Pose', PoseStamped)
-        rospy.wait_for_message('/manipulator/Jacobian', Float32MultiArray)
+        clear_faults_full_name = '/' + self.robot_name + '/base/clear_faults'
+        rospy.wait_for_service(clear_faults_full_name)
+        self.clear_faults = rospy.ServiceProxy(clear_faults_full_name, Base_ClearFaults)
 
-        rospy.logdebug("===== Out MoveManipulatorServiceWrap")
+
+        play_cartesian_trajectory_full_name = '/' + self.robot_name + '/base/play_cartesian_trajectory'
+        rospy.wait_for_service(play_cartesian_trajectory_full_name)
+        self.play_cartesian_trajectory = rospy.ServiceProxy(play_cartesian_trajectory_full_name,
+                                                            PlayCartesianTrajectory)
+
+        play_joint_trajectory_full_name = '/' + self.robot_name + '/base/play_joint_trajectory'
+        rospy.wait_for_service(play_joint_trajectory_full_name)
+        self.play_joint_trajectory = rospy.ServiceProxy(play_joint_trajectory_full_name, PlayJointTrajectory)
+
+        activate_publishing_of_action_notification_full_name = '/' + self.robot_name + '/base/activate_publishing_of_action_topic'
+        rospy.wait_for_service(activate_publishing_of_action_notification_full_name)
+        self.activate_publishing_of_action_notification = rospy.ServiceProxy(
+            activate_publishing_of_action_notification_full_name, OnNotificationActionTopic)
+
+        get_product_configuration_full_name = '/' + self.robot_name + '/base/get_product_configuration'
+        rospy.wait_for_service(get_product_configuration_full_name)
+        self.get_product_configuration = rospy.ServiceProxy(get_product_configuration_full_name,
+                                                            GetProductConfiguration)
+
+        self.clear_faults()
+        self.subscribe_to_a_robot_notification()
+        self.stop_force_request = False
+        self.vx = 0.05
+        self.vw = 1
+
+        rospy.wait_for_message('/kinova/Joints', JointPosition)
+        rospy.wait_for_message('/kinova/Pose', PoseStamped)
+        rospy.wait_for_message('/kinova/Jacobian', Float32MultiArray)
+
+        rospy.logdebug("===== Out MoveKinovaServiceWrap")
+
+    def clear_faults(self):
+        try:
+            self.clear_faults()
+        except rospy.ServiceException:
+            rospy.logerr("Failed to call ClearFaults")
+            return False
+        else:
+            rospy.loginfo("Cleared the faults successfully")
+            return True
+
+    def subscribe_to_a_robot_notification(self):
+        # Activate the publishing of the ActionNotification
+        req = OnNotificationActionTopicRequest()
+        rospy.loginfo("Activating the action notifications...")
+        try:
+            self.activate_publishing_of_action_notification(req)
+        except rospy.ServiceException:
+            rospy.logerr("Failed to call OnNotificationActionTopic")
+            return False
+        else:
+            rospy.loginfo("Successfully activated the Action Notifications!")
+
+        rospy.sleep(1.0)
+        return True
+
+    def _stop_callback(self, msg):
+        if msg.data:
+            self.stop_force_request = True
+        else:
+            self.stop_force_request = False
+
+    def cb_action_topic(self, notif):
+        self.last_action_notif_type = notif.action_event
+
+    def wait_for_action_end_or_abort(self):
+        while not rospy.is_shutdown():
+            if self.stop_force_request:
+                self.stop_motion()
+                return True
+            if (self.last_action_notif_type == ActionEvent.ACTION_END):
+                rospy.loginfo("Received ACTION_END notification")
+                return True
+            elif (self.last_action_notif_type == ActionEvent.ACTION_ABORT):
+                rospy.loginfo("Received ACTION_ABORT notification")
+                return False
+            else:
+                rospy.sleep(0.01)
 
     def callback_joints(self, msg):
 
@@ -114,11 +205,52 @@ class MoveManipulatorServiceWrap():
         req.acc = scale_acc
         self.scale_vel_acc_srv(req)
 
-    def ee_traj_by_pose_target(self, pose, wait=True):
-        req = MoveitMoveEefPoseRequest()
-        req.pose = pose
-        req.wait = wait
-        self.moveit_move_eef_pose_srv(req)
+        self.vx = scale_vel
+        self.vw = scale_acc
+
+    def ee_traj_by_pose_target(self, pose, wait=True, by_moveit=True):
+
+        if by_moveit:
+            req = MoveitMoveEefPoseRequest()
+            req.pose = pose
+            req.wait = wait
+            self.moveit_move_eef_pose_srv(req)
+        else:
+            self.last_action_notif_type = None
+
+            req = PlayCartesianTrajectoryRequest()
+
+            if isinstance(pose, PoseStamped):
+                pose = pose.pose
+
+            req.input.target_pose.x = pose.position.x
+            req.input.target_pose.y = pose.position.y
+            req.input.target_pose.z = pose.position.z
+
+            roll, pitch, yaw = tf.transformations.euler_from_quaternion((pose.orientation.x,
+                                                                         pose.orientation.y,
+                                                                         pose.orientation.z,
+                                                                         pose.orientation.w))
+            req.input.target_pose.theta_x = np.rad2deg(roll)
+            req.input.target_pose.theta_y = np.rad2deg(pitch)
+            req.input.target_pose.theta_z = np.rad2deg(yaw)
+
+            pose_speed = CartesianSpeed()
+            pose_speed.translation = self.vx
+            pose_speed.orientation = self.vw
+
+            # The constraint is a one_of in Protobuf. The one_of concept does not exist in ROS
+            # To specify a one_of, create it and put it in the appropriate list of the oneof_type member of the ROS object :
+            req.input.constraint.oneof_type.speed.append(pose_speed)
+
+            # Call the service
+            try:
+                self.play_cartesian_trajectory(req)
+            except rospy.ServiceException:
+                rospy.logerr("Failed to call PlayCartesianTrajectory")
+                return False
+            else:
+                return self.wait_for_action_end_or_abort() if wait else True
 
     def joint_traj(self, positions_array, wait=False, by_moveit=True):
 
@@ -138,26 +270,28 @@ class MoveManipulatorServiceWrap():
             self.moveit_move_joints_srv(req)
         else:
 
-            # msg = rospy.wait_for_message('/iiwa/state/JointPosition', JointPosition)
+            self.last_action_notif_type = None
+            # Create the list of angles
+            req = PlayJointTrajectoryRequest()
+            # Here the arm is vertical (all zeros)
+            for i in range(7):
+                temp_angle = JointAngle()
+                temp_angle.joint_identifier = i
+                temp_angle.value = np.rad2deg(positions_array[i])
+                req.input.joint_angles.joint_angles.append(temp_angle)
 
-            js = JointPosition()
-            js.header.seq = 0
-            js.header.stamp = rospy.Time(0)
-            js.header.frame_id = "world"
-
-            js.position.a1 = positions_array[0]
-            js.position.a2 = positions_array[1]
-            js.position.a3 = positions_array[2]
-            js.position.a4 = positions_array[3]
-            js.position.a5 = positions_array[4]
-            js.position.a6 = positions_array[5]
-
-            self.pub_joints_api.publish(js)
-
-            if wait:
-                rospy.wait_for_message('/iiwa/state/DestinationReached', Time)
+            # Send the angles
+            try:
+                self.play_joint_trajectory(req)
+            except rospy.ServiceException:
+                rospy.logerr("Failed to call PlayJointTrajectory")
+                return False
+            else:
+                return self.wait_for_action_end_or_abort()
 
         return True
+
+    def joint_vel(self, vel_array, stop_after=0.1):
 
     def ee_pose(self):
         gripper_pose = self.get_cartesian_pose()
@@ -169,15 +303,16 @@ class MoveManipulatorServiceWrap():
 
     def stop_motion(self):
 
-        self.moveit_stop_motion_srv()
-
+        # self.moveit_stop_motion_srv()
+        self.stop_pub.publish()
+        self.clear_faults()
 
 if __name__ == '__main__':
 
     rospy.init_node('moveit_test')
 
     rate = rospy.Rate(200)
-    moveit_test = MoveManipulatorServiceWrap()
+    moveit_test = MoveKinovaServiceWrap()
     print('Scaling vel and acc')
     # Init tests
 

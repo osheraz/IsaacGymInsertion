@@ -328,9 +328,9 @@ class HardwarePlayer(object):
         self.prev_targets = torch.zeros((1, self.deploy_config.env.numTargets), dtype=torch.float, device=self.device)
 
         # Keep track of history
-        self.arm_joint_queue = torch.zeros((1, self.deploy_config.env.obs_seq_length, 6), dtype=torch.float,
+        self.arm_joint_queue = torch.zeros((1, self.deploy_config.env.obs_seq_length, 7), dtype=torch.float,
                                            device=self.device)
-        self.arm_vel_queue = torch.zeros((1, self.deploy_config.env.obs_seq_length, 6), dtype=torch.float,
+        self.arm_vel_queue = torch.zeros((1, self.deploy_config.env.obs_seq_length, 7), dtype=torch.float,
                                          device=self.device)
         self.actions_queue = torch.zeros((1, self.deploy_config.env.obs_seq_length, self.num_actions),
                                          dtype=torch.float, device=self.device)
@@ -342,9 +342,9 @@ class HardwarePlayer(object):
                                             dtype=torch.float, device=self.device)
 
         # Bad, should queue the obs!
-        self.arm_joint_queue_student = torch.zeros((1, self.deploy_config.env.stud_obs_seq_length, 6),
+        self.arm_joint_queue_student = torch.zeros((1, self.deploy_config.env.stud_obs_seq_length, 7),
                                                    dtype=torch.float, device=self.device)
-        self.arm_vel_queue_student = torch.zeros((1, self.deploy_config.env.stud_obs_seq_length, 6),
+        self.arm_vel_queue_student = torch.zeros((1, self.deploy_config.env.stud_obs_seq_length, 7),
                                                  dtype=torch.float, device=self.device)
         self.actions_queue_student = torch.zeros((1, self.deploy_config.env.stud_obs_seq_length, self.num_actions),
                                                  dtype=torch.float, device=self.device)
@@ -485,16 +485,12 @@ class HardwarePlayer(object):
         self.fingertip_centered_pos = torch.tensor(ee_pose[:3], device=self.device, dtype=torch.float).unsqueeze(0)
         self.fingertip_centered_quat = torch.tensor(ee_pose[3:], device=self.device, dtype=torch.float).unsqueeze(0)
 
-        ARM_MOUNT_HEIGHT = 80 * 1e-3
-        self.fingertip_centered_pos_fix = self.fingertip_centered_pos.clone()
-        self.fingertip_centered_pos_fix[:, -1] += ARM_MOUNT_HEIGHT
-
         self.eef_queue[:, 1:] = self.eef_queue[:, :-1].clone().detach()
-        self.eef_queue[:, 0, :] = torch.cat((self.fingertip_centered_pos_fix.clone(),
+        self.eef_queue[:, 0, :] = torch.cat((self.fingertip_centered_pos.clone(),
                                              quat2R(self.fingertip_centered_quat.clone()).reshape(1, -1)), dim=-1)
 
         self.eef_queue_student[:, 1:] = self.eef_queue_student[:, :-1].clone().detach()
-        self.eef_queue_student[:, 0, :] = torch.cat((self.fingertip_centered_pos_fix.clone(),
+        self.eef_queue_student[:, 0, :] = torch.cat((self.fingertip_centered_pos.clone(),
                                                      quat2R(self.fingertip_centered_quat.clone()).reshape(1, -1)),
                                                     dim=-1)
 
@@ -546,7 +542,7 @@ class HardwarePlayer(object):
                                                            dim=-1)
 
         obs_tensors = [
-            # self.arm_joint_queue.reshape(1, -1),  # 6 * hist
+            # self.arm_joint_queue.reshape(1, -1),  # 7 * hist
             self.eef_queue.reshape(1, -1),  # (envs, 12 * hist)
             # self.goal_noisy_queue.reshape(1, -1),  # (envs, 12 * hist)
             self.actions_queue.reshape(1, -1),  # (envs, 6 * hist)
@@ -554,7 +550,7 @@ class HardwarePlayer(object):
         ]
 
         obs_tensors_student = [
-            # self.arm_joint_queue_student.reshape(1, -1),  # 6 * stud_hist
+            # self.arm_joint_queue_student.reshape(1, -1),  # 7 * stud_hist
             self.eef_queue_student.reshape(1, -1),  # (envs, 12 * stud_hist)
             # self.goal_noisy_queue_student.reshape(1, -1),  # (envs, 12 * stud_hist)
             self.actions_queue_student.reshape(1, -1),  # (envs, 6 * stud_hist)
@@ -730,17 +726,17 @@ class HardwarePlayer(object):
             ctrl_target_gripper_dof_pos=0,
             device=self.device)
 
-        clamp_values = [
-            (-3.14159265359, 3.14159265359),  # Joint 1
-            (-1.57079632679, 1.57079632679),  # Joint 2
-            (-1.57079632679, 2.35619449019),  # Joint 3
-            (-3.14159265359, 3.14159265359),  # Joint 4
-            (-1.57079632679, 1.57079632679),  # Joint 5
-            (-3.14159265359, 3.14159265359)   # Joint 6
-        ]
-
-        for i in range(6):
-            self.ctrl_target_dof_pos[:, i] = torch.clamp(self.ctrl_target_dof_pos[:, i], *clamp_values[i])
+        # clamp_values = [
+        #     (-3.14159265359, 3.14159265359),  # Joint 1
+        #     (-1.57079632679, 1.57079632679),  # Joint 2
+        #     (-1.57079632679, 2.35619449019),  # Joint 3
+        #     (-3.14159265359, 3.14159265359),  # Joint 4
+        #     (-1.57079632679, 1.57079632679),  # Joint 5
+        #     (-3.14159265359, 3.14159265359)   # Joint 6
+        # ]
+        #
+        # for i in range(6):
+        #     self.ctrl_target_dof_pos[:, i] = torch.clamp(self.ctrl_target_dof_pos[:, i], *clamp_values[i])
         # self.ctrl_target_dof_pos = self.ctrl_target_dof_pos[:, :6]
         target_joints = self.ctrl_target_dof_pos.cpu().detach().numpy().squeeze().tolist()
 

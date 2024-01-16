@@ -9,8 +9,10 @@ import copy
 from robotiq_force_torque_sensor.srv import sensor_accessor
 import robotiq_force_torque_sensor.srv as ft_srv
 from robotiq_force_torque_sensor.msg import *
-from algo.deploy.env.moveit_manipulator_wrap import MoveManipulatorServiceWrap
+from sensor_msgs.msg import Image, JointState
 
+from algo.deploy.env.moveit_manipulator_wrap import MoveManipulatorServiceWrap
+import sys
 
 class RobotWithFtEnv():
     """ Robot with Ft sensor
@@ -60,20 +62,19 @@ class RobotWithFtEnv():
     ############### Arm related #########################
 
     def _check_arm_joint_state_ready(self):
-
         self.arm_joint_state = None
         rospy.logdebug(
-            "Waiting for arm_controller/state to be READY...")
+            "Waiting for /joint_state to be READY...")
         while self.arm_joint_state is None and not rospy.is_shutdown():
             try:
                 self.arm_joint_state = rospy.wait_for_message(
-                    "arm_controller/state", JointTrajectoryControllerState, timeout=5.0)
+                    "/joint_states", JointState, timeout=5.0)
                 rospy.logdebug(
-                    "Current arm_controller/state READY=>")
+                    "Current /joint_state READY=>")
 
             except:
                 rospy.logerr(
-                    "Current arm_controller/state not ready yet, retrying for getting State")
+                    "Current /joint_state not ready yet, retrying for getting laser_scan")
         return self.arm_joint_state
 
     def _joint_state_callback(self, data):
