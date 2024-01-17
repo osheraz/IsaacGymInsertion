@@ -80,7 +80,7 @@ env:
     tactile_wrt_force: True
 
     compute_contact_gt: False
-    num_points: 300
+    num_points: 500
 
     record_video: True
     record_ft: True
@@ -108,8 +108,8 @@ randomize:
 
 rl:
 
-    pos_action_scale: [0.005, 0.005, 0.004]
-    rot_action_scale: [0.02, 0.02, 0.02]
+    pos_action_scale: [0.005, 0.0005, 0.0001]
+    rot_action_scale: [0.005, 0.005, 0.005]
 
     force_action_scale: [1.0, 1.0, 1.0]
     torque_action_scale: [1.0, 1.0, 1.0]

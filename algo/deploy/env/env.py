@@ -2,9 +2,11 @@ import rospy
 from algo.deploy.env.hand_ros import HandROSSubscriberFinger
 from algo.deploy.env.openhand_env import OpenhandEnv
 from algo.deploy.env.robots import RobotWithFtEnv
-from std_msgs.msg import Bool
+from std_msgs.msg import Bool, Float64MultiArray
 from geometry_msgs.msg import PoseStamped
-
+from tf.transformations import quaternion_matrix, quaternion_from_matrix, euler_from_quaternion, quaternion_from_euler
+from isaacgyminsertion.tasks.factory_tactile.factory_utils import quat2R
+import numpy as np
 
 class ExperimentEnv:
     """ Superclass for all Robots environments.
@@ -37,11 +39,19 @@ class ExperimentEnv:
         # rospy.Subscriber('/hand_control/plug_camera_pose', PoseStamped, self.plug_camera_pose_callback)
         rospy.Subscriber('/external_tracker/plug_pose_world', PoseStamped, self.external_plug_pose_world_callback)
         rospy.Subscriber('/external_tracker/plug_pose_camera', PoseStamped, self.external_plug_pose_camera_callback)
+        rospy.Subscriber('/external_tracker/socket_pose_camera', PoseStamped, self.external_socket_pose_camera_callback)
+        rospy.Subscriber('/external_tracker/robot_base_pose_camera', PoseStamped, self.external_robot_base_pose_camera_callback)
+        rospy.Subscriber('/extrinsic_contact', Float64MultiArray, self.extrinsic_contact_callback)
         self.plug_pose_camera = None
         self.plug_pose_world = None
 
     def regularize_force(self, status):
         self.pub_regularize.publish(status)
+
+    def convert_msg_to_matrix(self, msg):
+        mat = quaternion_matrix([msg.orientation.x, msg.orientation.y, msg.orientation.z, msg.orientation.w])
+        mat[:3, 3] = np.array([msg.position.x, msg.position.y, msg.position.z])
+        return mat
 
     def get_obs(self):
         ft = self.arm.robotiq_wrench_filtered_state.tolist()
@@ -50,6 +60,7 @@ class ExperimentEnv:
         joints = self.arm.get_joint_values()
         plug_pose_world = self.get_plug_pose_world()
         plug_pose_camera = self.get_plug_pose_camera()
+        extrinsic_contact = self.get_extrinsic_contact()
 
         return {'joints': joints,
                 'ee_pose': pos + quat,
@@ -57,6 +68,7 @@ class ExperimentEnv:
                 'frames': (left, right, bottom),
                 'plug_pose_world': plug_pose_world,
                 'plug_pose_camera': plug_pose_camera,
+                'extrinsic_contact': extrinsic_contact,
                 }
 
     def get_info_for_control(self):
@@ -66,6 +78,7 @@ class ExperimentEnv:
         camera_pose = self.arm.get_camera_pose()
         plug_pose_world = self.get_plug_pose_world()
         plug_pose_camera = self.get_plug_pose_camera()
+        extrinsic_contact = self.get_extrinsic_contact()
 
         return {'joints': joints,
                 'ee_pose': pos + quat,
@@ -73,6 +86,7 @@ class ExperimentEnv:
                 'camera_pose': camera_pose,
                 'plug_pose_world': plug_pose_world,
                 'plug_pose_camera': plug_pose_camera,
+                'extrinsic_contact': extrinsic_contact,
                 }
 
     def get_frames(self):
@@ -102,13 +116,32 @@ class ExperimentEnv:
         result = self.arm.set_trajectory_joints(values, wait=wait)
 
     def external_plug_pose_camera_callback(self, msg):
-        self.plug_pose_camera = msg.pose
+        self.plug_pose_camera = self.convert_msg_to_matrix(msg.pose)
 
     def get_plug_pose_camera(self):
         return self.plug_pose_camera
     
     def external_plug_pose_world_callback(self, msg):
-        self.plug_pose_world = msg.pose
+        self.plug_pose_world = self.convert_msg_to_matrix(msg.pose)
     
     def get_plug_pose_world(self):
         return self.plug_pose_world
+    
+    def external_socket_pose_camera_callback(self, msg):
+        self.socket_pose_camera = self.convert_msg_to_matrix(msg.pose)
+    
+    def get_socket_pose_camera(self):
+        return self.socket_pose_camera
+    
+    def external_robot_base_pose_camera_callback(self, msg):
+        self.robot_base_pose_camera = self.convert_msg_to_matrix(msg.pose)
+    
+    def get_robot_base_pose_camera(self):
+        return self.robot_base_pose_camera
+    
+    def extrinsic_contact_callback(self, msg):
+        self.extrinsic_contact = np.array(msg.data)
+    
+    def get_extrinsic_contact(self):
+        return self.extrinsic_contact
+

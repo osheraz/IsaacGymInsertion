@@ -31,7 +31,7 @@ warnings.filterwarnings("ignore", category=DeprecationWarning)
 @hydra.main(config_name="config", config_path="./cfg")
 def main(config: DictConfig):
 
-    config.checkpoint = 'outputs/215_stage2_nn/stage2_nn/last.pth'
+    # config.checkpoint = 'outputs/215_stage2_nn/stage2_nn/last.pth'
     if config.checkpoint:
         config.checkpoint = to_absolute_path(config.checkpoint)
 
@@ -41,7 +41,7 @@ def main(config: DictConfig):
     output_dif = os.path.join(output_dif, str(datetime.now().strftime("%H-%M-%S")))
     os.makedirs(output_dif, exist_ok=True)
     agent = HardwarePlayer(output_dif, config)
-    # agent.restore(config.checkpoint)
+    agent.restore(config.checkpoint)
     agent.deploy()
 
 if __name__ == '__main__':

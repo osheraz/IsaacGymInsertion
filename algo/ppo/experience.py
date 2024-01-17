@@ -250,7 +250,7 @@ class DataLogger():
         if save_trajectory:
             self.pbar = tqdm(total=self.total_trajectories)
             self.total_trajectories = total_trajectories
-            self.num_workers = 24
+            self.num_workers = 1
             try:
                 self.q_s = [mp.JoinableQueue(maxsize=500) for _ in range(self.num_workers)]
                 self.workers = [mp.Process(target=self.worker, args=(q, idx)) for idx, q in enumerate(self.q_s)]
@@ -303,11 +303,12 @@ class DataLogger():
             self.log_data[key][self.env_ids, self.env_step_counter, ...] = value.clone().unsqueeze(1)
 
         done = kwargs.get('done', None)
+        
         if done is None:
             done = torch.zeros_like(self.done[:, 0, ...]).to(torch.bool)
         if done.dtype != torch.bool:
             done = done.clone().to(torch.bool)
-
+        
         self.done[self.env_ids, self.env_step_counter, ...] = done.clone().unsqueeze(1)
         self.env_step_counter += 1
         dones = done.to(torch.long).nonzero()
@@ -455,56 +456,58 @@ class RealLogger():
         ROT_MAT_SIZE = 9
         POS_SIZE = 3
         ACT_SIZE = 6
+        LATENT_SIZE = 16
         log_items = {
-            'arm_joints_shape': 7,
+            # 'arm_joints_shape': 7,
             'eef_pos_shape': POS_SIZE + ROT_MAT_SIZE,
-            'socket_pos_shape': POS_SIZE + ROT_MAT_SIZE,
-            'noisy_socket_pos_shape': POS_SIZE + ROT_MAT_SIZE,
+            # 'socket_pos_shape': POS_SIZE + ROT_MAT_SIZE,
+            # 'noisy_socket_pos_shape': POS_SIZE + ROT_MAT_SIZE,
             'action_shape': ACT_SIZE,
-            'target_shape': ACT_SIZE,
+            # 'target_shape': ACT_SIZE,
             'obs_hist_shape': env.obs_buf.shape[-1],
-            'obs_hist_stud_shape': env.obs_buf_stud.shape[-1],
+            # 'obs_hist_stud_shape': env.obs_buf_stud.shape[-1],
             'tactile_shape': env.tactile_imgs.shape[1:],
-            'latent_shape': env.deploy_config.network.merge_mlp.units[-1],
+            'contact_shape': env.num_contact_points,
+            # 'latent_shape': LATENT_SIZE,
         }
 
-        log_folder = env.cfg_task.data_logger.base_folder
+        log_folder = env.deploy_config.task.data_folder
+        print(log_folder)
         if 'oa348' in os.getcwd():
             log_folder.replace("dm1487", "oa348")
 
-        self.data_logger_init = lambda x: DataLogger(env.num_envs,
-                                                     env.max_episode_length,
+        self.data_logger_init = lambda x: DataLogger(1,
+                                                     env.max_episode_length+1,
                                                      env.device,
-                                                     os.path.join(log_folder,
-                                                                  env.cfg_task.data_logger.sub_folder),
-                                                     env.cfg_task.data_logger.total_trajectories,
-                                                     save_trajectory=env.cfg_task.data_logger.collect_data,
+                                                     log_folder,
+                                                     total_trajectories=20,
+                                                     save_trajectory=True,
                                                      **log_items)
 
         self.data_logger = None
 
     def log_trajectory_data(self, action, latent, done, save_trajectory=True):
-        eef_pos = torch.cat((self.env.fingertip_centered_pos.clone(),
-                             self.env.fingertip_centered_quat.clone()), dim=-1)
-        socket_pos = torch.cat((self.env.socket_pos.clone(),
-                                self.env.socket_quat.clone()), dim=-1)
-        noisy_socket_pos = torch.cat((self.env.noisy_gripper_goal_pos.clone(),
-                                      self.env.noisy_gripper_goal_quat.clone()), dim=-1)
+        # eef_pos = torch.cat((self.env.fingertip_centered_pos.clone(),
+        #                      self.env.fingertip_centered_quat.clone()), dim=-1)
+        # socket_pos = torch.cat((self.env.socket_pos.clone(),
+        #                         self.env.socket_quat.clone()), dim=-1)
+        # noisy_socket_pos = torch.cat((self.env.noisy_gripper_goal_pos.clone(),
+        #                               self.env.noisy_gripper_goal_quat.clone()), dim=-1)
 
         obs_hist = self.env.obs_buf.clone()
-        obs_hist_stud = self.env.obs_student_buf.clone()
+        contacts = self.env.contacts.clone()
 
         log_data = {
-            'arm_joints': self.env.arm_dof_pos,
-            'eef_pos': eef_pos,
-            'socket_pos': socket_pos,
-            'noisy_socket_pos': noisy_socket_pos,
+            # 'arm_joints': self.env.arm_dof_pos,
+            'eef_pos': obs_hist[:, :12].clone().contiguous(),
+            # 'socket_pos': socket_pos,
+            # 'noisy_socket_pos': noisy_socket_pos,
             'action': action,
-            'target': self.env.targets,
-            'tactile': self.env.tactile_imgs,
-            'latent': latent,
+            # 'target': self.env.targets,
+            'tactile': self.env.tactile_imgs.clone(),
+            # 'latent': latent,
             'obs_hist': obs_hist,
-            'obs_hist_stud': obs_hist_stud,
+            'contact': contacts,
             'done': done
         }
 
