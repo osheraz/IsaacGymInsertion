@@ -152,8 +152,8 @@ class MoveKinovaServiceWrap():
                   msg.position.a3,
                   msg.position.a4,
                   msg.position.a5,
-                  msg.position.a6]#,
-#                  msg.position.a7]
+                  msg.position.a6,
+                  msg.position.a7]
 
         self.joints = joints
 
@@ -257,7 +257,7 @@ class MoveKinovaServiceWrap():
             else:
                 return self.wait_for_action_end_or_abort() if wait else True
 
-    def joint_traj(self, positions_array, wait=False, by_moveit=True, by_vel=True):
+    def joint_traj(self, positions_array, wait=True, by_moveit=True, by_vel=False):
 
         if by_moveit:
             js = JointQuantity()
@@ -267,13 +267,26 @@ class MoveKinovaServiceWrap():
             js.a4 = positions_array[3]
             js.a5 = positions_array[4]
             js.a6 = positions_array[5]
-            js.a7 = positions_array[5]
+            js.a7 = positions_array[6]
 
             req = MoveitMoveJointPositionRequest()
             req.pos = js
             req.wait = wait
 
             self.moveit_move_joints_srv(req)
+            if wait:
+                msg = rospy.wait_for_message('/kinova/Joints', JointPosition)
+                joints = [msg.position.a1,
+                          msg.position.a2,
+                          msg.position.a3,
+                          msg.position.a4,
+                          msg.position.a5,
+                          msg.position.a6,
+                          msg.position.a7]
+
+                self.joints = joints
+                rospy.logwarn('Reached {}'.format([['%.3f' % n for n in joints]]))
+
         else:
             if by_vel:
                 msg = Float32MultiArray()

@@ -44,9 +44,9 @@ class RobotWithFtEnv():
         print("Robot: WAITING...DONE")
 
     def move_to_init(self):
-
-        init_pose = [0.0, 0.0, 0.0, 0.0, 1.570, 0.]
-        self.move_manipulator.joint_traj(init_pose, wait=True)
+        init_pose = [0.13003151170658728, 0.24125314992345853, -3.057768859331222, -1.6329081676343788,
+                     -0.050453054219333104, -1.2351714504176607, 1.7464843981171514]
+        self.move_manipulator.joint_traj(init_pose, wait=True, by_moveit=True)
 
     def _check_all_systems_ready(self):
         """
@@ -184,9 +184,9 @@ class RobotWithFtEnv():
         result = self.set_ee_pose(req_pose, wait=wait)
         return result
 
-    def set_trajectory_joints(self, positions_array, wait=True):
+    def set_trajectory_joints(self, positions_array, wait=True, by_moveit=True, by_vel=False):
 
-        result = self.move_manipulator.joint_traj(positions_array, wait=wait)
+        result = self.move_manipulator.joint_traj(positions_array, wait=wait, by_moveit=by_moveit, by_vel=by_vel)
 
         return result
 

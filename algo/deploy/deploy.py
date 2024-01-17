@@ -26,7 +26,7 @@ import json
 import trimesh
 import open3d as o3d
 from matplotlib import pyplot as plt
-from tf.transformations import quaternion_matrix, identity_matrix, quaternion_from_matrix
+# from tf.transformations import quaternion_matrix, identity_matrix, quaternion_from_matrix
 from tqdm import tqdm
 
 
@@ -285,6 +285,7 @@ class HardwarePlayer(object):
 
     def _pose_world_to_hand_base(self, pos, quat, as_matrix=True):
         """Convert pose from world frame to robot base frame."""
+
         info = self.env.get_info_for_control()
         ee_pose = info['ee_pose']
 
@@ -577,7 +578,7 @@ class HardwarePlayer(object):
 
             return self.obs_buf, self.obs_student_buf, self.tactile_queue, self.states_buf
 
-    def _move_arm_to_desired_pose(self, desired_pos=None, desired_rot=None, by_moveit=False):
+    def _move_arm_to_desired_pose(self, desired_pos=None, desired_rot=None, by_moveit=True):
         """Move gripper to desired pose."""
 
         info = self.env.get_info_for_control()
@@ -633,9 +634,9 @@ class HardwarePlayer(object):
                 actions = torch.zeros((1, self.num_actions), device=self.device)
                 actions[:, :6] = delta_hand_pose
                 # Apply the action, keep fingers in the same status
-                self.apply_action(actions=actions, do_scale=False, do_clamp=False, wait=True, regulize_force=False)
+                self.apply_action(actions=actions, do_scale=False, do_clamp=False, wait=True, regulize_force=False, by_moveit=True, by_vel=False)
 
-    def update_and_apply_action(self, actions, wait=True):
+    def update_and_apply_action(self, actions, wait=True, by_moveit=True, by_vel=False):
 
         self.actions = actions.clone().to(self.device)
 
@@ -660,9 +661,9 @@ class HardwarePlayer(object):
         self.targets_queue_student[:, 0, :] = self.targets
         self.prev_targets[:] = self.targets.clone()
 
-        self.apply_action(self.actions, wait=wait)
+        self.apply_action(self.actions, wait=wait, by_moveit=by_moveit, by_vel=by_vel)
 
-    def apply_action(self, actions, do_scale=True, do_clamp=False, regulize_force=True, wait=True):
+    def apply_action(self, actions, do_scale=True, do_clamp=False, regulize_force=True, wait=True, by_moveit=True, by_vel=False):
 
         # Apply the action
         if regulize_force:
@@ -694,9 +695,9 @@ class HardwarePlayer(object):
         self.ctrl_target_fingertip_centered_quat = torch_jit_utils.quat_mul_deploy(rot_actions_quat,
                                                                                    self.fingertip_centered_quat)
 
-        self.generate_ctrl_signals(wait=wait)
+        self.generate_ctrl_signals(wait=wait, by_moveit=by_moveit, by_vel=by_vel)
 
-    def generate_ctrl_signals(self, wait=True):
+    def generate_ctrl_signals(self, wait=True, by_moveit=True, by_vel=False):
 
         ctrl_info = self.env.get_info_for_control()
 
@@ -733,17 +734,19 @@ class HardwarePlayer(object):
         #     (-3.14159265359, 3.14159265359),  # Joint 4
         #     (-1.57079632679, 1.57079632679),  # Joint 5
         #     (-3.14159265359, 3.14159265359)   # Joint 6
+        #     (-3.14159265359, 3.14159265359)   # Joint 7
         # ]
         #
-        # for i in range(6):
+        # for i in range(7):
         #     self.ctrl_target_dof_pos[:, i] = torch.clamp(self.ctrl_target_dof_pos[:, i], *clamp_values[i])
         # self.ctrl_target_dof_pos = self.ctrl_target_dof_pos[:, :6]
+
         target_joints = self.ctrl_target_dof_pos.cpu().detach().numpy().squeeze().tolist()
 
         delta = torch.norm(self.ctrl_target_dof_pos - arm_dof_pos, p=2, dim=-1)
         try:
             if delta < 1.0:
-                self.env.move_to_joint_values(target_joints, wait=wait)
+                self.env.move_to_joint_values(target_joints, wait=wait, by_moveit=by_moveit, by_vel=by_vel)
             else:
                 print('Issues in target joint values:\t', delta)
         except:
@@ -854,7 +857,7 @@ class HardwarePlayer(object):
             action[:, 0] = -1.
 
             start_time = time()
-            self.update_and_apply_action(action, wait=False)
+            self.update_and_apply_action(action, wait=False, by_moveit=False, by_vel=True)
             ros_rate.sleep()
             print("Actions:", np.round(action[0].cpu().numpy(), 3), "\tFPS: ", 1.0 / (time() - start_time))
 
@@ -887,7 +890,7 @@ class HardwarePlayer(object):
         # Wait for connections.
         rospy.sleep(0.5)
 
-        hz = 100
+        hz = 40
         ros_rate = rospy.Rate(hz)
 
         self._create_asset_info()
@@ -904,7 +907,7 @@ class HardwarePlayer(object):
         joints_above_plug = self.deploy_config.common_poses.joints_above_plug
 
         self._set_socket_pose(pos=true_socket_pose)
-        self.env.arm.move_manipulator.scale_vel(scale_vel=0.01, scale_acc=0.01)
+        self.env.arm.move_manipulator.scale_vel(scale_vel=0.2, scale_acc=0.2)
 
         self.env.move_to_init_state()
         # self.env.move_to_joint_values(joints_above_plug, wait=True)
@@ -913,7 +916,7 @@ class HardwarePlayer(object):
         # self.env.arm.move_manipulator.scale_vel(scale_vel=0.01, scale_acc=0.01)
         # self.env.move_to_joint_values(joints_above_plug, wait=True)
         # self.env.move_to_joint_values(joints_above_socket, wait=True)
-        self.env.arm.move_manipulator.scale_vel(scale_vel=0.004, scale_acc=0.004)
+        self.env.arm.move_manipulator.scale_vel(scale_vel=0.1, scale_acc=0.1)
 
         # Sample init error
         # self.env.set_random_init_error(true_socket_pose=true_socket_pose)
@@ -952,10 +955,10 @@ class HardwarePlayer(object):
             action, latent = self.model.act_inference(input_dict)
             action = torch.clamp(action, -1.0, 1.0)
             action[:, :] = 0.
-            action[:, 0] = -0.5
+            action[:, 0] = 0.5
 
             start_time = time()
-            self.update_and_apply_action(action, wait=True)
+            self.update_and_apply_action(action, wait=False, by_moveit=False, by_vel=True)
 
             print("Actions:", np.round(action[0].cpu().numpy(), 3), "\tFPS: ", 1.0 / (time() - start_time))
 
@@ -971,6 +974,7 @@ class HardwarePlayer(object):
             # Compute next observation
             obs, obs_stud, tactile, priv = self.compute_observations(with_priv=True)
 
+        self.env.arm.move_manipulator.stop_motion()
         # Return obj
         # self.env.move_to_joint_values(joints_above_plug, wait=True)
         # self.env.align_and_release()

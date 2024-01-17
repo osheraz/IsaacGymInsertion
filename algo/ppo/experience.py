@@ -460,7 +460,7 @@ class RealLogger():
         ACT_SIZE = 6
 
         log_items = {
-            'arm_joints_shape': 6,
+            'arm_joints_shape': 7,
             'eef_pos_shape': POS_SIZE + QUAT_SIZE,
             'socket_pos_shape': POS_SIZE + QUAT_SIZE,
             'noisy_socket_pos_shape': POS_SIZE + QUAT_SIZE,

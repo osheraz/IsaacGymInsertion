@@ -169,9 +169,9 @@ class ExperimentEnv:
 
         self.hand.set_gripper_joints_to_init()
 
-    def move_to_joint_values(self, values, wait=False):
+    def move_to_joint_values(self, values, wait=True, by_moveit=True, by_vel=False):
 
-        result = self.arm.set_trajectory_joints(values, wait=wait)
+        result = self.arm.set_trajectory_joints(values, wait=wait, by_moveit=by_moveit, by_vel=by_vel)
 
     def move_to_pose(self, values, wait=True):
 
