@@ -669,6 +669,7 @@ class HardwarePlayer(object):
         if regulize_force:
             ft = torch.tensor(self.env.get_ft(), device=self.device, dtype=torch.float).unsqueeze(0)
             actions = torch.where(torch.abs(ft) > 1.0, actions * 0, actions)
+            print("Regularized Actions:", np.round(actions[0].cpu().numpy(), 3))
 
         if do_clamp:
             actions = torch.clamp(actions, -1.0, 1.0)
@@ -907,16 +908,16 @@ class HardwarePlayer(object):
         joints_above_plug = self.deploy_config.common_poses.joints_above_plug
 
         self._set_socket_pose(pos=true_socket_pose)
-        self.env.arm.move_manipulator.scale_vel(scale_vel=0.2, scale_acc=0.2)
+        self.env.arm.move_manipulator.scale_vel(scale_vel=0.5, scale_acc=0.5)
 
         self.env.move_to_init_state()
-        # self.env.move_to_joint_values(joints_above_plug, wait=True)
-        # self.env.arm.move_manipulator.scale_vel(scale_vel=0.004, scale_acc=0.004)
-        # self.env.align_and_grasp()
-        # self.env.arm.move_manipulator.scale_vel(scale_vel=0.01, scale_acc=0.01)
-        # self.env.move_to_joint_values(joints_above_plug, wait=True)
-        # self.env.move_to_joint_values(joints_above_socket, wait=True)
+        self.env.move_to_joint_values(joints_above_plug, wait=True)
         self.env.arm.move_manipulator.scale_vel(scale_vel=0.1, scale_acc=0.1)
+        self.env.align_and_grasp()
+        self.env.arm.move_manipulator.scale_vel(scale_vel=0.5, scale_acc=0.5)
+        self.env.move_to_joint_values(joints_above_plug, wait=True)
+        self.env.move_to_joint_values(joints_above_socket, wait=True)
+        self.env.arm.move_manipulator.scale_vel(scale_vel=0.02, scale_acc=0.02)
 
         # Sample init error
         # self.env.set_random_init_error(true_socket_pose=true_socket_pose)
@@ -954,13 +955,11 @@ class HardwarePlayer(object):
 
             action, latent = self.model.act_inference(input_dict)
             action = torch.clamp(action, -1.0, 1.0)
-            action[:, :] = 0.
-            action[:, 0] = 0.5
 
             start_time = time()
             self.update_and_apply_action(action, wait=False, by_moveit=False, by_vel=True)
 
-            print("Actions:", np.round(action[0].cpu().numpy(), 3), "\tFPS: ", 1.0 / (time() - start_time))
+            # print("Actions:", np.round(action[0].cpu().numpy(), 3), "\tFPS: ", 1.0 / (time() - start_time))
 
             ros_rate.sleep()
 

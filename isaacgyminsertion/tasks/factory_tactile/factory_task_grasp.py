@@ -701,7 +701,6 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             #     self.apply_randomizations(self.randomization_params)
 
             self.disable_gravity()
-
             self._refresh_task_tensors(update_tactile=True)
 
             self._reset_kuka(env_ids)
@@ -711,6 +710,8 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             self._refresh_task_tensors(update_tactile=True)
             priv_depth = self.depth_maps.clone()
 
+            while True:
+                self._simulate_and_refresh()
 
             # # Move arm to grasp pose
             plug_pos_noise = (2 * (torch.rand((len(env_ids), 3),

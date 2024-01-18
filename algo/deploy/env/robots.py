@@ -44,8 +44,10 @@ class RobotWithFtEnv():
         print("Robot: WAITING...DONE")
 
     def move_to_init(self):
-        init_pose = [0.13003151170658728, 0.24125314992345853, -3.057768859331222, -1.6329081676343788,
-                     -0.050453054219333104, -1.2351714504176607, 1.7464843981171514]
+
+        init_pose= [-0.015112906553981453, 0.2646021983988897, -3.1163056727233815, -1.6114153923730026,
+                   -0.007868575756747376, -1.2660950117312249, 1.582843668618088]
+
         self.move_manipulator.joint_traj(init_pose, wait=True, by_moveit=True)
 
     def _check_all_systems_ready(self):

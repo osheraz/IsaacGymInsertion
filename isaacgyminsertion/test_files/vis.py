@@ -87,10 +87,11 @@ if True:
         reversed_image = (image * std) + mean
         return reversed_image
 
+    tactile_img = data['tactile']
+
 
     for j in tqdm(range(0, done_idx)):
 
-        tactile_img = data['tactile']
         img1 = tactile_img[j][0]
         img2 = tactile_img[j][1]
         img3 = tactile_img[j][2]

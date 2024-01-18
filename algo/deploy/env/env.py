@@ -77,10 +77,15 @@ class ExperimentEnv:
         self.hand.grasp()
 
     def align_and_grasp(self, ):
+
         # TODO change align and grasp to dof_relative funcs without moveit
+
         for i in range(5):
 
-            ee_pos, ee_quat = self.arm.get_ee_pose()
+            # ee_pos, ee_quat = self.arm.get_ee_pose()
+            ee_pose = self.arm.move_manipulator.get_cartesian_pose_moveit()
+            ee_pos = [ee_pose.position.x, ee_pose.position.y, ee_pose.position.z]
+            ee_quat = [ee_pose.orientation.x, ee_pose.orientation.y, ee_pose.orientation.z, ee_pose.orientation.w]
             obj_pos = self.tracker.get_obj_pos()
 
             if not np.isnan(np.sum(obj_pos)):
@@ -90,6 +95,7 @@ class ExperimentEnv:
                 ee_pos[1] = obj_pos[1] - 0.02
                 ee_pos[2] = obj_pos[2] - 0.01
 
+                # Orientation is different due to moveit orientation, kinova/orientation ( -0.707,0.707,0,0 ~ 0.707,-0.707,0,0)
                 ee_target = geometry_msgs.msg.Pose()
                 ee_target.orientation.x = ee_quat[0]
                 ee_target.orientation.y = ee_quat[1]
@@ -131,21 +137,27 @@ class ExperimentEnv:
 
         return True
 
-
     def set_random_init_error(self, true_socket_pose):
+
+        # TODO change motion to be without moveit
 
         for i in range(5):
 
-            ee_pos, ee_quat = self.arm.get_ee_pose()
+            ee_pose = self.arm.move_manipulator.get_cartesian_pose_moveit()
+            ee_pos = [ee_pose.position.x, ee_pose.position.y, ee_pose.position.z]
+            ee_quat = [ee_pose.orientation.x, ee_pose.orientation.y, ee_pose.orientation.z, ee_pose.orientation.w]
             obj_pos = self.tracker.get_obj_pos()
+            obj_height = 0.07
+            init_delta_height = 0.02
 
             if not np.isnan(np.sum(obj_pos)):
 
                 # added delta_x/delta_y to approximately center the object
-                ee_pos[0] -= obj_pos[0] + 0.025
-                ee_pos[1] -= obj_pos[1]
-                ee_pos[2] -= obj_pos[2] - 0.04
+                ee_pos[0] = true_socket_pose[0] + (ee_pos[0] - obj_pos[0])
+                ee_pos[1] = true_socket_pose[1] + (ee_pos[1] - obj_pos[1])
+                ee_pos[2] = true_socket_pose[2] + obj_pos[2] - obj_height + init_delta_height
 
+                # Orientation is different due to moveit orientation, kinova/orientation ( -0.707,0.707,0,0 ~ 0.707,-0.707,0,0)
                 ee_target = geometry_msgs.msg.Pose()
                 ee_target.orientation.x = ee_quat[0]
                 ee_target.orientation.y = ee_quat[1]
@@ -153,11 +165,9 @@ class ExperimentEnv:
                 ee_target.orientation.w = ee_quat[3]
 
                 ee_target.position.x = ee_pos[0]
-                ee_target.position.y = ee_pos
-                ee_target.position.z = ee_pos
+                ee_target.position.y = ee_pos[1]
+                ee_target.position.z = ee_pos[2]
                 self.arm_movement_result = self.arm.set_ee_pose(ee_target)
-
-                self.start_obj_rpy = self.tracker.get_obj_rpy()
 
                 return True
             else:

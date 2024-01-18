@@ -18,7 +18,7 @@ tactile_display_viz: True
 
 data_logger:
     # for data collection
-    collect_data: True
+    collect_data: False
     total_trajectories: 10
     base_folder: "/home/roblab20/tactile_insertion"
     sub_folder: "datastore_0"
@@ -56,8 +56,8 @@ ppo:
 
   extrin_adapt: False
   tactile_info: False
-
   obs_info: False
+  ft_info: False
 
   tactile_seq_length: ${...task.env.tactile_history_len}
   ft_seq_length: ${...task.env.ft_history_len}
@@ -65,8 +65,6 @@ ppo:
   stud_obs_seq_length: ${...task.env.numObsStudentHist}
   priv_info_dim: 7 # ${...task.env.numStates}
   student_obs_input_shape: 48 # ${...task.env.numObsStudent}
-
-  ft_info: False
   ft_input_dim: 6
 
 
@@ -92,9 +90,7 @@ network:
     img_height: ${....task.tactile.decoder.height}
 
 common_poses:
-  socket_pos: [0.3224527447924478, 0.014855747025297968, -0.06271564699362295]
-  sim_start: [0., 0., 0., 0., 1.570, 0.]
-  joints_above_socket: [0.0, 0.08799514919519424, 0.07810234278440475, 0., 1.4046239852905273, 0.]
-  joints_above_plug: [0.4483899474143982, 0.24551554024219513, -0.08230005204677582, 0.000920988735742867, 1.4096553325653076, 0.44813045859336853]
-  joints_grasp_pos: [0.4483899474143982, 0.24551554024219513, -0.08230005204677582, 0.000920988735742867, 1.4096553325653076, 0.44813045859336853]
-  above_grasp_pos: [0.4483899474143982, 0.24551554024219513, -0.08230005204677582, 0.000920988735742867, 1.4096553325653076, 0.44813045859336853]
+  socket_pos: [0.5006071086121126, 0.0006204513881582756, 0.001] # 009008710908020141
+  joints_above_socket: [-0.01306919673345508, 0.46035625642851, -3.115810324760627, -1.5234410615555438, -0.012022574425053278, -1.1572361716453639, 1.5847205313963213, 0.0]
+  joints_above_plug: [-0.4343525190442179, 0.3393440474185589, -3.118461501625801, -1.762369221913092, -0.010365555594806786, -1.0404064904168955, 1.172501677329807]
+
