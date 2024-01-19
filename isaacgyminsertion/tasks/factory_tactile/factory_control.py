@@ -64,6 +64,8 @@ def compute_dof_pos_target(cfg_ctrl,
                                            ik_method=cfg_ctrl['ik_method'],
                                            jacobian=jacobian,
                                            device=device)
+    
+    # print('deltas', delta_arm_dof_pos)
 
     ctrl_target_dof_pos[:, 0:7] = arm_dof_pos + delta_arm_dof_pos
     ctrl_target_dof_pos[:, 7:15] = ctrl_target_gripper_dof_pos

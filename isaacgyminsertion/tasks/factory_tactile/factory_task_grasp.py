@@ -1166,10 +1166,13 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                         list(self.dof_dict.values()).index(
                             'finger_3_2_to_finger_3_3') - 7] = self.cfg_task.env.openhand.distal_close + \
                                                                gripper_distal_close_noise[2]
-
-        self.ctrl_target_gripper_dof_pos = gripper_dof_pos
-
-        self._move_gripper_to_dof_pos(env_ids=env_ids, gripper_dof_pos=gripper_dof_pos, sim_steps=sim_steps)
+        
+        for i in range(300):
+            diff = gripper_dof_pos[env_ids, :] - self.gripper_dof_pos[env_ids, :]
+            print(diff)
+            
+            self.ctrl_target_gripper_dof_pos = self.gripper_dof_pos[env_ids, :] + diff * 0.01
+            self._move_gripper_to_dof_pos(env_ids=env_ids, gripper_dof_pos=self.ctrl_target_gripper_dof_pos, sim_steps=1)
 
     def _move_gripper_to_dof_pos(self, env_ids, gripper_dof_pos, sim_steps=20):
         """Move gripper fingers to specified DOF position using controller."""

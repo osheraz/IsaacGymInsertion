@@ -29,6 +29,7 @@ from hydra.utils import to_absolute_path
 from isaacgyminsertion.tasks import isaacgym_task_map
 from omegaconf import DictConfig, OmegaConf
 import gym
+import subprocess
 
 import argparse
 from typing import Optional
@@ -46,6 +47,8 @@ from isaacgyminsertion.utils.utils import set_np_formatting, set_seed
 import warnings
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
+
+
 
 
 @hydra.main(config_name="config", config_path="./cfg")

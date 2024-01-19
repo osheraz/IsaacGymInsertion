@@ -3,7 +3,7 @@ GPUS=${1:-0}
 SEED=${2:-41}
 CACHE=${3:-"01-08-24/18-28-43"}
 NUM_ENVS=${4:-2}
-HEADLESS=${5:-False}
+HEADLESS=${5:-True}
 
 array=( $@ )
 len=${#array[@]}

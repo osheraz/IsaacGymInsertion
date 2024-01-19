@@ -324,7 +324,7 @@ class PPO(object):
                           f'Priv info: {self.full_config.train.ppo.priv_info} | ' \
                           f'Extrinsic Contact: {self.full_config.task.env.compute_contact_gt}'
                         #   f'Mean Reward: {self.best_rewards:.2f} | ' \
-            print(info_string)
+            # print(info_string)
             self.write_stats(a_losses, c_losses, b_losses, entropies, kls, grad_norms, returns_list)
             mean_rewards = self.episode_rewards.get_mean()
             mean_lengths = self.episode_lengths.get_mean()
@@ -456,10 +456,10 @@ class PPO(object):
 
                 # print(returns[0], kl_dist)
 
-                if approx_kl_div > (2.0 * self.kl_threshold):
-                    continue_training = False
-                    print(f"Early stopping at step ue to reaching max kl: {approx_kl_div:.2f}")
-                    break
+                # if approx_kl_div > (2.0 * self.kl_threshold):
+                #     continue_training = False
+                #     # print(f"Early stopping at step ue to reaching max kl: {approx_kl_div:.2f}")
+                #     break
 
                 self.optimizer.zero_grad()
                 loss.backward()

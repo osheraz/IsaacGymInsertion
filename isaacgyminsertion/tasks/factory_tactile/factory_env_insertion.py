@@ -53,6 +53,59 @@ from scipy.spatial.transform import Rotation as R
 import omegaconf
 import matplotlib.pyplot as plt
 from tqdm import tqdm
+import subprocess
+
+def get_rank():
+    return int(os.getenv("LOCAL_RANK", "0"))
+
+def vulkan_device_id_from_cuda_device_id(orig: int) -> int:
+    """Map a CUDA device index to a Vulkan one.
+
+    Used to populate the value of `graphic_device_id`, which in IsaacGym is a vulkan
+    device ID.
+
+    This prevents a common segfault we get when the Vulkan ID, which is by default 0,
+    points to a device that isn't present in CUDA_VISIBLE_DEVICES.
+    """
+    # Get UUID of the torch device.
+    # All of the private methods can be dropped once this PR lands:
+    #     https://github.com/pytorch/pytorch/pull/99967
+    try:
+        cuda_uuid = torch.cuda._raw_device_uuid_nvml()[
+            torch.cuda._parse_visible_devices()[orig]
+        ]  # type: ignore
+        assert cuda_uuid.startswith("GPU-")
+        cuda_uuid = cuda_uuid[4:]
+    except AttributeError:
+        print("detect cuda / vulkan relation can only be done for pytorch 2.0")
+        return get_rank()
+
+    try:
+        vulkaninfo_lines = subprocess.run(
+            ["vulkaninfo"],
+            # We unset DISPLAY to avoid this error:
+            # https://github.com/KhronosGroup/Vulkan-Tools/issues/370
+            env={k: v for k, v in os.environ.items() if k != "DISPLAY"},
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            universal_newlines=True,
+        ).stdout.split("\n")
+    except FileNotFoundError:
+        print(
+            "vulkaninfo was not found; try `apt install vulkan-tools` or `apt install vulkan-utils`."
+        )
+        return get_rank()
+
+    vulkan_uuids = [
+        s.partition("=")[2].strip()
+        for s in vulkaninfo_lines
+        if s.strip().startswith("deviceUUID")
+    ]
+    vulkan_uuids = list(dict(zip(vulkan_uuids, vulkan_uuids)).keys())
+    vulkan_uuids = [uuid for uuid in vulkan_uuids if not uuid.startswith("0000")]
+    out = vulkan_uuids.index(cuda_uuid)
+    print(f"Using graphics_device_id={out}", cuda_uuid)
+    return out
 
 
 class ExtrinsicContact:
@@ -91,7 +144,7 @@ class ExtrinsicContact:
         self.socket.add_triangles(
             o3d.t.geometry.TriangleMesh.from_legacy(self.socket_trimesh.as_open3d)
         )
-        self.socket_pcl = trimesh.sample.sample_surface_even(self.socket_trimesh, num_points, seed=42)[0]
+        self.socket_pcl = trimesh.sample.sample_surface_even(self.socket_trimesh, num_points, seed=42)[0]   
 
         self.pointcloud_obj = trimesh.sample.sample_surface(self.object_trimesh, num_points, seed=42)[0]
         self.object_pc = trimesh.points.PointCloud(self.pointcloud_obj.copy())
@@ -99,9 +152,9 @@ class ExtrinsicContact:
         self.n_points = num_points
         # self.gt_extrinsic_contact = torch.zeros((num_envs, self.n_points))
         self.constant_socket = False
-        self.fig = plt.figure(figsize=plt.figaspect(0.5))
-        self.ax1 = self.fig.add_subplot(1, 2, 1, projection='3d')
-        self.ax2 = self.fig.add_subplot(1, 2, 2, projection='3d')
+        # self.fig = plt.figure(figsize=plt.figaspect(0.5))
+        # self.ax1 = self.fig.add_subplot(1, 2, 1, projection='3d')
+        # self.ax2 = self.fig.add_subplot(1, 2, 2, projection='3d')
         self.num_envs = num_envs
         self.device = device
         self.dec = torch.zeros((num_envs, self.n_points)).to(device)
@@ -225,6 +278,10 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
 
         self._get_env_yaml_params()
 
+        # graphics_device_id = vulkan_device_id_from_cuda_device_id(sim_device)
+        # print(f"Using graphics_device_id={graphics_device_id}")
+        # exit()
+
         super().__init__(cfg, rl_device, sim_device, graphics_device_id, headless, virtual_screen_capture, force_render)
 
         self.acquire_base_tensors()  # defined in superclass
@@ -321,7 +378,7 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
         plug_options.max_linear_velocity = 1000.0  # default = 1000.0
         plug_options.angular_damping = 0.5  # default = 0.5
         plug_options.max_angular_velocity = 64.0  # default = 64.0
-        plug_options.disable_gravity = False
+        plug_options.disable_gravity = True
         plug_options.enable_gyroscopic_forces = True
         plug_options.default_dof_drive_mode = gymapi.DOF_MODE_NONE
         # plug_options.vhacd_enabled = True  # convex decomposition
@@ -565,6 +622,7 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
             self.gym.set_actor_rigid_shape_properties(env_ptr, kuka_handle, kuka_shape_props)
 
             plug_shape_props = self.gym.get_actor_rigid_shape_properties(env_ptr, plug_handle)
+            plug_body_props = self.gym.get_actor_rigid_body_properties(env_ptr, plug_handle)
             plug_shape_props[0].friction = self.cfg_env.env.plug_friction  # todo osher changed, WAS 1
             plug_shape_props[0].rolling_friction = 0.0  # default = 0.0
             plug_shape_props[0].torsion_friction = 0.0  # default = 0.0
