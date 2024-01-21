@@ -490,7 +490,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             self.reset_idx(env_ids)
 
         self.actions = actions.clone().to(self.device)  # shape = (num_envs, num_actions); values = [-1, 1]
-
+        # self.actions[:, -1] = 0.0 # don't apply z-axis rotation
         # test actions for whenever we want to see some axis motion
         # self.actions[:, :] = 0.
         # self.actions[:, 2] = 0.0 # if (self.progress_buf[0].item() % 100) < 50 else -1.0
@@ -527,7 +527,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         # self.goal_noisy_queue_student[:, 0, :] = torch.cat(
         #     self.pose_world_to_robot_base(self.noisy_gripper_goal_pos.clone(),
         #                                   self.noisy_gripper_goal_quat.clone()), dim=-1)
-
+        # print(self.ctrl_target_gripper_dof_pos)
         self._apply_actions_as_ctrl_targets(actions=self.actions,
                                             ctrl_target_gripper_dof_pos=self.ctrl_target_gripper_dof_pos,
                                             do_scale=True)
@@ -957,9 +957,9 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         for _, v  in self.all_rendering_camera.items():
             self.init_plug_pos_cam[v[0], :] = plug_pos[v[0], :]
 
-        socket_pos_noise = np.random.uniform(-0.01, 0.01, 2)
+        socket_pos_noise = np.random.uniform(-0.005, 0.005, 2)
         socket_pos[:, :2] += socket_pos_noise
-        socket_pos[:, 2] += np.random.uniform(0., 0.005, 1)
+        socket_pos[:, 2] += np.random.uniform(-0.002, 0.003, 1)
 
         object_pose = {
             'socket_pose': socket_pos,
@@ -1396,10 +1396,16 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                             'finger_3_2_to_finger_3_3') - 7] = self.cfg_task.env.openhand.distal_close + \
                                                                gripper_distal_close_noise[2]
         
+        # slowly grasp the plug
         for i in range(300):
             diff = gripper_dof_pos[env_ids, :] - self.gripper_dof_pos[env_ids, :]
             self.ctrl_target_gripper_dof_pos = self.gripper_dof_pos[env_ids, :] + diff * 0.1
+            # print(self.ctrl_target_gripper_dof_pos)
             self._move_gripper_to_dof_pos(env_ids=env_ids, gripper_dof_pos=self.ctrl_target_gripper_dof_pos, sim_steps=1)
+
+        # allows for inward squeeze to maintain stable grasp
+        # self.ctrl_target_gripper_dof_pos = gripper_dof_pos
+        # print(self.ctrl_target_gripper_dof_pos)
             
     def _move_gripper_to_dof_pos(self, env_ids, gripper_dof_pos, sim_steps=20):
         """Move gripper fingers to specified DOF position using controller."""
