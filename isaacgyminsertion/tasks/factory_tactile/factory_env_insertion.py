@@ -291,7 +291,7 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
         plug_options.max_linear_velocity = 1000.0  # default = 1000.0
         plug_options.angular_damping = 0.5  # default = 0.5
         plug_options.max_angular_velocity = 64.0  # default = 64.0
-        plug_options.disable_gravity = False
+        plug_options.disable_gravity = True
         plug_options.enable_gyroscopic_forces = True
         plug_options.default_dof_drive_mode = gymapi.DOF_MODE_NONE
         # plug_options.vhacd_enabled = True  # convex decomposition

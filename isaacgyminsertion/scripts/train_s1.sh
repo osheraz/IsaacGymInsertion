@@ -2,7 +2,7 @@
 GPUS=${1:-0}
 SEED=${2:-42}
 CACHE=${3:-test}
-NUM_ENVS=${4:-1000}
+NUM_ENVS=${4:-500}
 HEADLESS=${5:-True}
 
 array=( $@ )
@@ -19,7 +19,7 @@ task.env.numEnvs=${NUM_ENVS} \
 task.env.tactile=False \
 task.env.tactile_display_viz=False \
 task.env.smooth_force=True \
-task.env.numObsHist=2 \
+task.env.numObsHist=1 \
 task.env.numObservations=24 \
 task.env.compute_contact_gt=False \
 task.env.numStates=7 \

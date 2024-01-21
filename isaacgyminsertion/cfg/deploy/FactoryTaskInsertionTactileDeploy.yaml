@@ -26,7 +26,7 @@ data_logger:
 # taking from training default, allows to over write
 # actually, we should write different config for each observation we test
 rl:
-    max_episode_length: 1000
+    max_episode_length: 700
     pos_action_scale: [0.01, 0.01, 0.01]
     rot_action_scale: [0.02, 0.02, 0.02]
     clamp_rot: ${...task.rl.clamp_rot}
@@ -35,12 +35,12 @@ rl:
 env:
   tactile_seq_length: ${...task.env.tactile_history_len}
   ft_seq_length: ${...task.env.ft_history_len}
-  obs_seq_length: 2  #${...task.env.numObsHist} old implementation
-  stud_obs_seq_length: 2 # ${...task.env.numObsStudentHist}
+  obs_seq_length: 1  #${...task.env.numObsHist} old implementation
+  stud_obs_seq_length: 1 # ${...task.env.numObsStudentHist}
 
   priv_info_dim: 7 # ${...task.env.numStates}
-  numObservations: 48 # ${...task.env.numObservations}
-  numObsStudent: 48 # ${...task.env.numObsStudent}
+  numObservations: 24 # ${...task.env.numObservations}
+  numObsStudent: 24 # ${...task.env.numObsStudent}
   numActions: ${...task.env.numActions}
   numTargets: ${...task.env.numTargets}
   socket_pos_obs_noise: [ 0.001, 0.001, 0.0 ]
@@ -50,6 +50,8 @@ env:
   kuka_depth: ${...task.env.kuka_depth}
   table_height: ${...task.env.table_height}
 
+  compute_contact_gt: False
+  num_points: 300
 
 ppo:
   priv_info: True
@@ -64,7 +66,7 @@ ppo:
   obs_seq_length: ${...task.env.numObsHist}
   stud_obs_seq_length: ${...task.env.numObsStudentHist}
   priv_info_dim: 7 # ${...task.env.numStates}
-  student_obs_input_shape: 48 # ${...task.env.numObsStudent}
+  student_obs_input_shape: 24 # ${...task.env.numObsStudent}
   ft_input_dim: 6
 
 
