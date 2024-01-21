@@ -2,7 +2,7 @@ import rospy
 from algo.deploy.env.hand_ros import HandROSSubscriberFinger
 from algo.deploy.env.openhand_env import OpenhandEnv
 from algo.deploy.env.robots import RobotWithFtEnv
-from std_msgs.msg import Bool, Float64MultiArray
+from std_msgs.msg import Bool, Float64MultiArray, Float32MultiArray
 from geometry_msgs.msg import PoseStamped
 from tf.transformations import quaternion_matrix, quaternion_from_matrix, euler_from_quaternion, quaternion_from_euler
 from isaacgyminsertion.tasks.factory_tactile.factory_utils import quat2R
@@ -42,8 +42,16 @@ class ExperimentEnv:
         rospy.Subscriber('/external_tracker/socket_pose_camera', PoseStamped, self.external_socket_pose_camera_callback)
         rospy.Subscriber('/external_tracker/robot_base_pose_camera', PoseStamped, self.external_robot_base_pose_camera_callback)
         rospy.Subscriber('/extrinsic_contact', Float64MultiArray, self.extrinsic_contact_callback)
+        rospy.Subscriber('/gripper/load', Float32MultiArray, self.gripper_load_callback)
+        rospy.Subscriber('/gripper/pos', Float32MultiArray, self.gripper_pos_callback)
+
         self.plug_pose_camera = None
         self.plug_pose_world = None
+        self.socket_pose_camera = None
+        self.robot_base_pose_camera = None
+        self.extrinsic_contact = None
+        self.gripper_load = None
+        self.gripper_pos = None
 
     def regularize_force(self, status):
         self.pub_regularize.publish(status)
@@ -144,4 +152,16 @@ class ExperimentEnv:
     
     def get_extrinsic_contact(self):
         return self.extrinsic_contact
+    
+    def gripper_load_callback(self, msg):
+        self.gripper_load = np.array(msg.data)
+    
+    def get_gripper_load(self):
+        return self.gripper_load
+    
+    def gripper_pos_callback(self, msg):
+        self.gripper_pos = np.array(msg.data)
+    
+    def get_gripper_pos(self):
+        return self.gripper_pos
 

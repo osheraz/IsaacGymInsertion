@@ -22,8 +22,8 @@ rl:
 
     # pos_action_scale: [0.0002, 0.0002, 0.0002]
     # rot_action_scale: [0.0002, 0.0002, 0.001]
-    pos_action_scale: [0.0025, 0.0025, 0.002]
-    rot_action_scale: [0.0021, 0.001, 0.001]
+    pos_action_scale: [0.005, 0.005, 0.004]
+    rot_action_scale: [0.002, 0.002, 0.002]
 
     clamp_rot: ${...task.rl.clamp_rot}
     clamp_rot_thresh: ${...task.rl.clamp_rot_thresh}
@@ -35,8 +35,8 @@ env:
   stud_obs_seq_length: 1 # ${...task.env.numObsStudentHist}
 
   priv_info_dim: ${...task.env.numStates}
-  numObservations: 24 # ${...task.env.numObservations}
-  numObsStudent: 24 # ${...task.env.numObsStudent}
+  numObservations: 18 # ${...task.env.numObservations}
+  numObsStudent: 18 # ${...task.env.numObsStudent}
   numActions: ${...task.env.numActions}
   numTargets: ${...task.env.numTargets}
   socket_pos_obs_noise: [ 0.001, 0.001, 0.0 ]
@@ -49,7 +49,7 @@ env:
   table_height: ${...task.env.table_height}
 
 task:
-  collect_data: True
+  collect_data: False
   data_folder: '/home/robotics/dhruv/tactile/datastore_tactile'
 
 ppo:
