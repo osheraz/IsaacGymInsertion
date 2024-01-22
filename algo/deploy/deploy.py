@@ -63,7 +63,8 @@ class ExtrinsicContact:
         self.n_points = num_points
         self.constant_socket = False
         self.fig = plt.figure(figsize=(10, 10))
-        self.ax = self.fig.add_subplot(1, 1, 1, projection='3d')
+        self.ax1 = self.fig.add_subplot(1, 2, 1, projection='3d')
+        self.ax2 = self.fig.add_subplot(1, 2, 2, projection='3d')
         self.num_envs = num_envs
         self.device = device
         self.dec = torch.zeros((num_envs, self.n_points)).to(device)
@@ -100,32 +101,43 @@ class ExtrinsicContact:
         )
         self.socket_pcl = trimesh.sample.sample_surface_even(self.socket_trimesh, self.n_points, seed=42)[0]
 
-    def get_extrinsic_contact(self, object_pos, threshold=0.002, display=False, dec=None):
+    def get_extrinsic_contact(self, object_pos, threshold=0.005, display=False, dec=None):
 
         self.object_trimesh = self.reset_object_trimesh.copy()
         self.object_trimesh.apply_transform(object_pos)
         query_points = trimesh.points.PointCloud(
-            trimesh.sample.sample_surface(self.object_trimesh, 300, seed=42)[0]).vertices
+            trimesh.sample.sample_surface(self.object_trimesh, self.n_points, seed=42)[0]).vertices
         d = self.socket.compute_distance(o3d.core.Tensor.from_numpy(query_points.astype(np.float32))).numpy()
         intersecting_indices = d < threshold
         contacts = query_points[intersecting_indices]
 
         if display:
-            self.ax.clear()
-            self.ax.plot(self.socket_pcl[:, 0], self.socket_pcl[:, 1], self.socket_pcl[:, 2], 'yo')
-            self.ax.plot(query_points[:, 0], query_points[:, 1], query_points[:, 2], 'ko')
-            self.ax.set_xlabel('X')
-            self.ax.set_ylabel('Y')
-
+            self.ax1.clear()
+            self.ax1.plot(self.socket_pcl[:, 0], self.socket_pcl[:, 1], self.socket_pcl[:, 2], 'yo')
+            self.ax1.plot(query_points[:, 0], query_points[:, 1], query_points[:, 2], 'ko')
+            self.ax1.set_xlabel('X')
+            self.ax1.set_ylabel('Y')
             intersecting_indices = d < threshold
             contacts = query_points[intersecting_indices]
-            self.ax.plot(contacts[:, 0], contacts[:, 1], contacts[:, 2], 'ro')
+            self.ax1.plot(contacts[:, 0], contacts[:, 1], contacts[:, 2], 'ro')
             # for c in contacts:
             #     if np.linalg.norm(c, axis=0):
             #         self.ax.plot(c[0], c[1], c[2], 'ro')
-            plt.pause(0.0001)
-            self.fig.savefig('/home/robotics/dhruv/object_tracking/contact.png')
 
+            if dec is not None:
+                self.ax2.clear()
+                self.ax2.plot(self.socket_pcl[:, 0], self.socket_pcl[:, 1], self.socket_pcl[:, 2], 'yo')
+                self.ax2.plot(query_points[:, 0], query_points[:, 1], query_points[:, 2], 'ko')
+                intersecting_indices = (torch.sigmoid(dec) > 0.5).reshape(-1).numpy()
+                contacts = query_points[intersecting_indices]
+                for c in contacts:
+                    if np.linalg.norm(c, axis=0):
+                        self.ax2.plot(c[0], c[1], c[2], 'ro')
+                # self.ax2.plot(contacts[:, 0], contacts[:, 1], contacts[:, 2], 'ro')
+                self.ax2.set_xlabel('X')
+                self.ax2.set_ylabel('Y')
+            plt.pause(0.00001)
+            self.fig.savefig('/home/robotics/dhruv/object_tracking/contact.png')
         else:
             plt.close(self.fig)
 
@@ -138,11 +150,12 @@ class ExtrinsicContact:
         d = np.clip(d, 0.0, 1.0)
         d[d > 0.1] = 1.0
 
-        return torch.from_numpy(np.array(d)).view(-1, self.n_points), query_points, contacts, self.socket_pcl
+        return np.array(d).copy(), query_points, contacts, self.socket_pcl
 
 
 class HardwarePlayer(object):
     def __init__(self, output_dir, full_config):
+
         self.num_envs = 1
         self.deploy_config = full_config.deploy
         self.max_episode_length = self.deploy_config.rl.max_episode_length
@@ -154,13 +167,15 @@ class HardwarePlayer(object):
         self.rot_scale = full_config.task.rl.rot_action_scale
 
         self.device = full_config["rl_device"]
+        self.episode_length = torch.zeros((1, 1), device=self.device, dtype=torch.float)
 
         # ---- build environment ----
-        self.obs_shape = (self.deploy_config.env.numObservations,)  # 86
+        self.obs_shape = (self.deploy_config.env.numObservations,)
         self.obs_stud_shape = (self.deploy_config.env.numObsStudent,)
 
         self.num_actions = self.deploy_config.env.numActions
         self.num_targets = self.deploy_config.env.numTargets
+        self.num_contact_points = self.deploy_config.env.num_points
 
         # ---- Tactile Info ---
         self.tactile_info = self.deploy_config.ppo.tactile_info
@@ -170,11 +185,13 @@ class HardwarePlayer(object):
         self.tactile_input_dim = (self.deploy_config.network.tactile_decoder.img_width,
                                   self.deploy_config.network.tactile_decoder.img_height,
                                   self.deploy_config.network.tactile_decoder.num_channels)
+
         # ---- ft Info --- currently ft isn't supported
         self.ft_info = self.deploy_config.ppo.ft_info
         self.ft_seq_length = self.deploy_config.ppo.ft_seq_length
         self.ft_input_dim = self.deploy_config.ppo.ft_input_dim
         self.ft_info_dim = self.ft_input_dim * self.ft_seq_length
+
         # ---- Priv Info ----
         self.priv_info = self.deploy_config.ppo.priv_info
         self.priv_info_dim = self.deploy_config.ppo.priv_info_dim
@@ -204,6 +221,7 @@ class HardwarePlayer(object):
             'tactile_seq_length': self.tactile_seq_length,
             "merge_units": self.deploy_config.network.merge_mlp.units,
             "obs_units": self.deploy_config.network.obs_mlp.units,
+            "num_contact_points": self.num_contact_points,
             "gt_contacts_info": False,
             "contacts_mlp_units": 0,
             'shared_parameters': False
@@ -231,6 +249,8 @@ class HardwarePlayer(object):
         asset_info_path = '../../assets/factory/yaml/factory_asset_info_insertion.yaml'
         self.asset_info_insertion = hydra.compose(config_name=asset_info_path)
         self.asset_info_insertion = self.asset_info_insertion['']['']['']['']['']['']['assets']['factory']['yaml']
+
+        self.extrinsic_contact = None
 
     def restore(self, fn):
         checkpoint = torch.load(fn)
@@ -307,6 +327,7 @@ class HardwarePlayer(object):
     def _acquire_task_tensors(self):
         """Acquire tensors."""
 
+        self.done = torch.zeros((1, 1), device=self.device, dtype=torch.bool)
         # Gripper pointing down w.r.t the world frame
         gripper_goal_euler = torch.tensor(self.deploy_config.env.fingertip_midpoint_rot_initial,
                                           device=self.device).unsqueeze(0)
@@ -326,6 +347,7 @@ class HardwarePlayer(object):
 
         self.actions = torch.zeros((1, self.num_actions), device=self.device)
         self.targets = torch.zeros((1, self.deploy_config.env.numTargets), device=self.device)
+        self.contacts = torch.zeros((1, self.num_contact_points), device=self.device)
         self.prev_targets = torch.zeros((1, self.deploy_config.env.numTargets), dtype=torch.float, device=self.device)
 
         # Keep track of history
@@ -467,6 +489,8 @@ class HardwarePlayer(object):
                                                                                 self.plug_quat,
                                                                                 as_matrix=False)
 
+        # self.contacts[0, :] = self.env.tracker.extrinsic_contact
+
     def compute_observations(self, display_image=True, with_priv=False):
 
         obses = self.env.get_obs()
@@ -578,6 +602,55 @@ class HardwarePlayer(object):
 
             return self.obs_buf, self.obs_student_buf, self.tactile_queue, self.states_buf
 
+    def _update_reset_buf(self):
+
+        info = self.env.get_info_for_control()
+        ee_pose = info['ee_pose']
+
+        self.fingertip_centered_pos = torch.tensor(ee_pose[:3], device=self.device, dtype=torch.float).unsqueeze(0)
+        self.fingertip_centered_quat = torch.tensor(ee_pose[3:], device=self.device, dtype=torch.float).unsqueeze(0)
+
+        plug_socket_xy_distance = torch.norm(self.fingertip_centered_pos[:, :2] - self.socket_pos[:, :2])
+
+        is_very_close = plug_socket_xy_distance < 0.005
+        below_socket_top = (self.fingertip_centered_pos[:, 2] < 0.085)
+
+        inserted = is_very_close & below_socket_top
+        is_too_far = (plug_socket_xy_distance > 0.05) | (self.fingertip_centered_pos[:, 2] > 0.125)
+
+        timeout = (self.episode_length >= self.max_episode_length)
+
+        self.done = is_too_far | timeout | inserted
+
+    def reset(self):
+
+        joints_above_socket = self.deploy_config.common_poses.joints_above_socket
+        joints_above_plug = self.deploy_config.common_poses.joints_above_plug
+        self.env.arm.move_manipulator.scale_vel(scale_vel=0.1, scale_acc=0.1)
+        self.env.move_to_joint_values(joints_above_socket, wait=True)
+        self.env.arm.move_manipulator.scale_vel(scale_vel=0.5, scale_acc=0.5)
+        self.env.move_to_joint_values(joints_above_plug, wait=True)
+        self.env.arm.move_manipulator.scale_vel(scale_vel=0.1, scale_acc=0.1)
+        self.env.align_and_release(init_plug_pose=[0.4103839067235552, 0.17531695171951858, 0.001])
+        self.env.arm.move_manipulator.scale_vel(scale_vel=0.02, scale_acc=0.02)
+
+        self.done[...] = False
+        self.episode_length[...] = 0.
+
+    def grasp_and_init(self):
+
+        joints_above_socket = self.deploy_config.common_poses.joints_above_socket
+        joints_above_plug = self.deploy_config.common_poses.joints_above_plug
+        self.env.move_to_joint_values(joints_above_plug, wait=True)
+        self.env.arm.move_manipulator.scale_vel(scale_vel=0.1, scale_acc=0.1)
+        self.env.align_and_grasp()
+        self.env.arm.move_manipulator.scale_vel(scale_vel=0.5, scale_acc=0.5)
+        self.env.move_to_joint_values(joints_above_plug, wait=True)
+        self.env.move_to_joint_values(joints_above_socket, wait=True)
+        self.env.arm.move_manipulator.scale_vel(scale_vel=0.02, scale_acc=0.02)
+        self.done[...] = False
+        self.episode_length[...] = 0.
+
     def _move_arm_to_desired_pose(self, desired_pos=None, desired_rot=None, by_moveit=True):
         """Move gripper to desired pose."""
 
@@ -611,12 +684,13 @@ class HardwarePlayer(object):
                         'jacobian_type': 'geometric'}
 
             for _ in range(3):
-
                 info = self.env.get_info_for_control()
                 ee_pose = info['ee_pose']
 
-                self.fingertip_centered_pos = torch.tensor(ee_pose[:3], device=self.device, dtype=torch.float).unsqueeze(0)
-                self.fingertip_centered_quat = torch.tensor(ee_pose[3:], device=self.device, dtype=torch.float).unsqueeze(0)
+                self.fingertip_centered_pos = torch.tensor(ee_pose[:3], device=self.device,
+                                                           dtype=torch.float).unsqueeze(0)
+                self.fingertip_centered_quat = torch.tensor(ee_pose[3:], device=self.device,
+                                                            dtype=torch.float).unsqueeze(0)
 
                 # Dealing with -180 + 180
                 # self.ctrl_target_fingertip_centered_quat = torch.mul(torch.abs(self.ctrl_target_fingertip_centered_quat),
@@ -634,7 +708,8 @@ class HardwarePlayer(object):
                 actions = torch.zeros((1, self.num_actions), device=self.device)
                 actions[:, :6] = delta_hand_pose
                 # Apply the action, keep fingers in the same status
-                self.apply_action(actions=actions, do_scale=False, do_clamp=False, wait=True, regulize_force=False, by_moveit=True, by_vel=False)
+                self.apply_action(actions=actions, do_scale=False, do_clamp=False, wait=True, regulize_force=False,
+                                  by_moveit=True, by_vel=False)
 
     def update_and_apply_action(self, actions, wait=True, by_moveit=True, by_vel=False):
 
@@ -663,13 +738,14 @@ class HardwarePlayer(object):
 
         self.apply_action(self.actions, wait=wait, by_moveit=by_moveit, by_vel=by_vel)
 
-    def apply_action(self, actions, do_scale=True, do_clamp=False, regulize_force=True, wait=True, by_moveit=True, by_vel=False):
+    def apply_action(self, actions, do_scale=True, do_clamp=False, regulize_force=True, wait=True, by_moveit=True,
+                     by_vel=False):
 
         # Apply the action
         if regulize_force:
             ft = torch.tensor(self.env.get_ft(), device=self.device, dtype=torch.float).unsqueeze(0)
-            actions = torch.where(torch.abs(ft) > 1.0, actions * 0, actions)
-            print("Regularized Actions:", np.round(actions[0].cpu().numpy(), 3))
+            actions = torch.where(torch.abs(ft) > 1.0, torch.clamp(actions, min=0.0), actions)
+            print("Regularized Actions:", np.round(actions[0].cpu().numpy(), 4))
 
         if do_clamp:
             actions = torch.clamp(actions, -1.0, 1.0)
@@ -753,131 +829,6 @@ class HardwarePlayer(object):
         except:
             print(f'failed to reach {target_joints}')
 
-    def deploy_s2(self):
-
-        from algo.deploy.env.env import ExperimentEnv
-        rospy.init_node('DeployEnv')
-        self.env = ExperimentEnv()
-        rospy.logwarn('Finished setting the env, lets play.')
-
-        # Wait for connections.
-        rospy.sleep(0.5)
-
-        hz = 10
-        ros_rate = rospy.Rate(hz)
-
-        self._create_asset_info()
-        self._acquire_task_tensors()
-
-        true_socket_pose = [self.deploy_config.env.kuka_depth, 0.0, self.deploy_config.env.table_height]
-        self._set_socket_pose(pos=true_socket_pose)
-
-        true_plug_pose = [self.deploy_config.env.kuka_depth, 0.0, self.deploy_config.env.table_height]
-        self._set_plug_pose(pos=true_plug_pose)
-
-        # ---- Data Logger ----
-        if self.deploy_config.data_logger.collect_data:
-            from algo.ppo.experience import RealLogger
-            data_logger = RealLogger(env=self)
-            data_logger.data_logger = data_logger.data_logger_init(None)
-
-        # from here
-        # self.env.move_to_init_state()
-        #
-        # # self._move_arm_to_desired_pose([0.5, 0, 0.2])
-        # # self.env.move_to_joint_values(self.env.joints_above_socket_pos)
-
-        # self.env.move_to_joint_values(self.env.joints_above_plug, wait=True)
-        # # self.env.move_to_joint_values(self.env.joints_grasp_pos, wait=True)
-        #
-        # grasp_joints_bit = [0.33339, 0.52470, 0.12685, -1.6501, -0.07662, 0.97147, -1.0839]
-        # grasp_joints = [0.3347, 0.54166, 0.12498, -1.6596, -0.07943, 0.94501, -1.0817]
-        #
-        # self.env.move_to_joint_values(grasp_joints_bit, wait=True)
-        # self.env.move_to_joint_values(grasp_joints, wait=True)
-        # self.env.grasp()
-        # self.env.move_to_joint_values(grasp_joints_bit, wait=True)
-        # self.env.move_to_joint_values(self.env.joints_above_plug, wait=True)
-        # self.env.move_to_joint_values(self.env.joints_above_socket, wait=True)
-
-        ######### # Sample init error
-        # random_init_idx = torch.randint(0, self.total_init_poses, size=(1,))
-        # kuka_dof_pos = self.init_dof_pos[random_init_idx]
-        # kuka_dof_pos = kuka_dof_pos.cpu().detach().numpy().squeeze().tolist()
-        # self.env.move_to_joint_values(kuka_dof_pos, wait=True)
-        # self.env.grasp()
-        # to here
-
-        self.env.arm.calib_robotiq()
-        rospy.sleep(2.0)
-        self.env.arm.calib_robotiq()
-
-        while True:
-            self._update_plug_pose()
-            print(self.plug_pos)
-            ros_rate.sleep()
-
-        # above_plug_pose = [x + y for x, y in zip(true_plug_pose, [0, 0, 0.1])]
-        # plug_grasp_pose = [x + y for x, y in zip(true_plug_pose, [0, 0, 0.05])]
-        # # Move & grasp the plug
-        # self._move_arm_to_desired_pose(above_plug_pose)
-        # self._move_arm_to_desired_pose(plug_grasp_pose)
-        # self.env.grasp()
-        # self._move_arm_to_desired_pose(above_socket_pose)
-        # # self._move_arm_to_desired_pose(true_socket_pose)
-
-        # REGULARIZE FORCES
-        # self.env.regularize_force(True)
-
-        obs, obs_stud, tactile = self.compute_observations()
-
-        # TODO: Should we fill the history buffs?
-        for i in range(self.deploy_config.env.obs_seq_length):
-            pass
-
-        done = torch.tensor([[0]]).to(self.device)
-
-        steps = 0
-        max_steps = 1500
-
-        while not done[0]:
-
-            obs = self.running_mean_std(obs.clone())
-            obs_stud = self.running_mean_std_stud(obs_stud.clone())
-
-            input_dict = {
-                'obs': obs,
-                'student_obs': obs_stud,
-                'tactile_hist': tactile
-            }
-
-            action, latent = self.model.act_inference(input_dict)
-            action = torch.clamp(action, -1.0, 1.0)
-
-            action[:, :] = 0.
-            action[:, 0] = -1.
-
-            start_time = time()
-            self.update_and_apply_action(action, wait=False, by_moveit=False, by_vel=True)
-            ros_rate.sleep()
-            print("Actions:", np.round(action[0].cpu().numpy(), 3), "\tFPS: ", 1.0 / (time() - start_time))
-
-            if self.deploy_config.data_logger.collect_data:
-                data_logger.log_trajectory_data(action, latent, done)
-
-            display = False
-            if display:
-                plt.ylim(-1, 1)
-                plt.scatter(list(range(latent.shape[-1])), latent.clone().cpu().numpy()[0, :], color='b')
-                plt.pause(0.0001)
-                plt.cla()
-
-            obs, obs_stud, tactile = self.compute_observations()
-
-            steps += 1
-            if steps >= max_steps:
-                done = torch.tensor([[1]]).to(self.device)
-
     def deploy(self):
 
         self._initialize_grasp_poses()
@@ -904,78 +855,71 @@ class HardwarePlayer(object):
             data_logger.data_logger = data_logger.data_logger_init(None)
 
         true_socket_pose = self.deploy_config.common_poses.socket_pos
-        joints_above_socket = self.deploy_config.common_poses.joints_above_socket
-        joints_above_plug = self.deploy_config.common_poses.joints_above_plug
-
         self._set_socket_pose(pos=true_socket_pose)
-        self.env.arm.move_manipulator.scale_vel(scale_vel=0.5, scale_acc=0.5)
 
+        self.env.arm.move_manipulator.scale_vel(scale_vel=0.5, scale_acc=0.5)
         self.env.move_to_init_state()
-        self.env.move_to_joint_values(joints_above_plug, wait=True)
-        self.env.arm.move_manipulator.scale_vel(scale_vel=0.1, scale_acc=0.1)
-        self.env.align_and_grasp()
-        self.env.arm.move_manipulator.scale_vel(scale_vel=0.5, scale_acc=0.5)
-        self.env.move_to_joint_values(joints_above_plug, wait=True)
-        self.env.move_to_joint_values(joints_above_socket, wait=True)
-        self.env.arm.move_manipulator.scale_vel(scale_vel=0.02, scale_acc=0.02)
 
-        # Sample init error
-        # self.env.set_random_init_error(true_socket_pose=true_socket_pose)
-        # self.env.grasp()  # little squeeze
-        # TODO add a module that set init interaction with the socket
+        while True:
 
-        # Bias the ft sensor
-        self.env.arm.calib_robotiq()
-        rospy.sleep(2.0)
-        self.env.arm.calib_robotiq()
+            # grasp and move on top of the socket
+            self.grasp_and_init()
 
-        obs, obs_stud, tactile, priv = self.compute_observations(with_priv=True)
+            # Sample init error
+            # self.env.set_random_init_error(true_socket_pose=true_socket_pose)
+            # self.env.grasp()  # little squeeze
+            # TODO add a module that set init interaction with the socket
 
-        # TODO: Should we fill the history buffs?
-        for i in range(self.deploy_config.env.obs_seq_length):
-            pass
+            # Bias the ft sensor
+            self.env.arm.calib_robotiq()
+            rospy.sleep(2.0)
+            self.env.arm.calib_robotiq()
 
-        done = torch.tensor([0]).to(self.device)
-
-        steps = 0
-        max_steps = self.max_episode_length
-
-        while not done:
-
-            obs = self.running_mean_std(obs.clone())
-            obs_stud = self.running_mean_std_stud(obs_stud.clone())
-            priv = self.priv_mean_std(priv.clone())
-
-            input_dict = {
-                'obs': obs,
-                'student_obs': obs_stud,
-                'tactile_hist': tactile,
-                'priv_info': priv
-            }
-
-            action, latent = self.model.act_inference(input_dict)
-            action = torch.clamp(action, -1.0, 1.0)
-
-            start_time = time()
-            self.update_and_apply_action(action, wait=False, by_moveit=False, by_vel=True)
-
-            # print("Actions:", np.round(action[0].cpu().numpy(), 3), "\tFPS: ", 1.0 / (time() - start_time))
-
-            ros_rate.sleep()
-
-            steps += 1
-            if steps >= max_steps:
-                done = torch.tensor([1]).to(self.device)
-
-            if self.deploy_config.data_logger.collect_data:
-                data_logger.log_trajectory_data(action, latent, done)
-
-            # Compute next observation
             obs, obs_stud, tactile, priv = self.compute_observations(with_priv=True)
+            self._update_reset_buf()
 
-        self.env.arm.move_manipulator.stop_motion()
-        # Return obj
-        # self.env.move_to_joint_values(joints_above_plug, wait=True)
-        # self.env.align_and_release()
-        # self.env.move_to_joint_values(joints_above_plug, wait=True)
-        # self.env.move_to_init_state()
+            for i in range(self.deploy_config.env.obs_seq_length):
+                pass
+
+            # done = torch.tensor([0]).to(self.device)
+
+            # max_steps = self.max_episode_length
+
+            while not self.done[0, 0]:
+
+                obs = self.running_mean_std(obs.clone())
+                obs_stud = self.running_mean_std_stud(obs_stud.clone())
+                priv = self.priv_mean_std(priv.clone())
+
+                input_dict = {
+                    'obs': obs,
+                    'student_obs': obs_stud,
+                    'tactile_hist': tactile,
+                    'priv_info': priv
+                }
+
+                action, latent = self.model.act_inference(input_dict)
+                action = torch.clamp(action, -1.0, 1.0)
+
+                start_time = time()
+                self.update_and_apply_action(action, wait=False, by_moveit=False, by_vel=True)
+
+                # print("Actions:", np.round(action[0].cpu().numpy(), 3), "\tFPS: ", 1.0 / (time() - start_time))
+
+                ros_rate.sleep()
+                self._update_reset_buf()
+                self.episode_length += 1
+
+                # if self.episode_length >= max_steps:
+                #     done = torch.tensor([1]).to(self.device)
+
+                if self.done[0, 0]:
+                    if self.deploy_config.data_logger.collect_data:
+                        data_logger.log_trajectory_data(action, latent, self.done.clone())
+                    break
+
+                # Compute next observation
+                obs, obs_stud, tactile, priv = self.compute_observations(with_priv=True)
+
+            self.env.arm.move_manipulator.stop_motion()
+            self.reset()

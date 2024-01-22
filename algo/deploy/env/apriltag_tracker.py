@@ -1,4 +1,4 @@
-from std_msgs.msg import String, Float32MultiArray, Bool, Int16
+from std_msgs.msg import String, Float32MultiArray, Bool, Int16, Float64MultiArray
 import numpy
 import rospy
 
@@ -9,7 +9,8 @@ class Tracker():
 
     def __init__(self):
 
-        self.obj_relative_pos, self.obj_relative_rpy, self.obj_pos, self.obj_rpy = [], [], [], []
+        self.obj_relative_pos, self.obj_relative_rpy, self.obj_pos, self.obj_rpy, self.extrinsic_contact = [], [], [], [], []
+
         self.drop = False
         self.drop_counter = 0
 
@@ -18,7 +19,12 @@ class Tracker():
         rospy.Subscriber('/hand_control/obj_pos', Float32MultiArray, self._object_pose_callback)
         rospy.Subscriber('/hand_control/obj_rpy', Float32MultiArray, self._object_rpy_callback)
         rospy.Subscriber('/hand_control/drop', Bool, self._object_drop_callback)
+        rospy.Subscriber('/extrinsic_contact', Float64MultiArray, self.extrinsic_contact_callback)
+
         self.pub_obj_id = rospy.Publisher('/object_id', Int16, queue_size=10)
+
+    def extrinsic_contact_callback(self, msg):
+        self.extrinsic_contact = numpy.array(msg.data)
 
     def _object_pose_callback(self, msg):
         self.obj_pos = numpy.array(msg.data) if not numpy.isnan(numpy.sum(numpy.array(msg.data))) else self.obj_pos
