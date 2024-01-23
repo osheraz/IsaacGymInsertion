@@ -77,6 +77,7 @@ class ActorCritic(nn.Module):
         self.obs_info = kwargs["obs_info"]
         self.contact_info = kwargs['gt_contacts_info']
         self.contact_mlp_units = kwargs['contacts_mlp_units']
+        self.only_contact = kwargs['only_contact']
         self.priv_mlp_units = kwargs['priv_mlp_units']
         self.priv_info = kwargs['priv_info']
         self.priv_info_stage2 = kwargs['extrin_adapt']
@@ -236,8 +237,11 @@ class ActorCritic(nn.Module):
                         if 'priv_info' in obs_dict:
                             if self.contact_info:
                                 contact_features = self.contact_mlp(obs_dict['contacts'])
-                                priv_obs = torch.cat([obs_dict['priv_info'], contact_features], dim=-1)
-                                extrin_gt = self.env_mlp(priv_obs)  # extrin
+                                if self.only_contact:
+                                    extrin_gt = contact_features
+                                else:
+                                    priv_obs = torch.cat([obs_dict['priv_info'], contact_features], dim=-1)
+                                    extrin_gt = self.env_mlp(priv_obs)  # extrin
                             else:
                                 extrin_gt = self.env_mlp(obs_dict['priv_info'])
                         else:
@@ -263,8 +267,11 @@ class ActorCritic(nn.Module):
                     # Stage1 -> Getting extrin from the priv_mlp
                     if self.contact_info:
                         contact_features = self.contact_mlp(obs_dict['contacts'])
-                        priv_obs = torch.cat([obs_dict['priv_info'], contact_features], dim=-1)
-                        extrin = self.env_mlp(priv_obs)
+                        if self.only_contact:
+                            extrin = contact_features
+                        else:
+                            priv_obs = torch.cat([obs_dict['priv_info'], contact_features], dim=-1)
+                            extrin = self.env_mlp(priv_obs)
                     else:
                         extrin = self.env_mlp(obs_dict['priv_info'])
 

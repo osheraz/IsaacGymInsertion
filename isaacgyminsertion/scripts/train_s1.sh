@@ -2,8 +2,8 @@
 GPUS=${1:-0}
 SEED=${2:-42}
 CACHE=${3:-test}
-NUM_ENVS=${4:-100}
-HEADLESS=${5:-True}
+NUM_ENVS=${4:-1}
+HEADLESS=${5:-False}
 
 array=( $@ )
 len=${#array[@]}
@@ -21,7 +21,8 @@ task.env.tactile_display_viz=False \
 task.env.smooth_force=True \
 task.env.numObsHist=1 \
 task.env.numObservations=24 \
-task.env.compute_contact_gt=False \
+task.env.compute_contact_gt=True \
+train.ppo.only_contact=True \
 task.env.numStates=7 \
 train.algo=PPO \
 train.ppo.priv_info=True \

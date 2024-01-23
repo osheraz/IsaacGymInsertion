@@ -82,6 +82,7 @@ class PPO(object):
         self.priv_info_dim = self.ppo_config['priv_info_dim']
         self.extrin_adapt = self.ppo_config['extrin_adapt']
         self.gt_contacts_info = self.ppo_config['compute_contact_gt']
+        self.only_contact = self.ppo_config['only_contact']
         self.num_contacts_points = self.ppo_config['num_points']
         self.priv_info_embed_dim = self.network_config.priv_mlp.units[-1]
         # ---- Obs Info (student)----
@@ -102,6 +103,7 @@ class PPO(object):
             "obs_units": self.network_config.obs_mlp.units,
             "obs_info": self.obs_info,
             "gt_contacts_info": self.gt_contacts_info,
+            "only_contact": self.only_contact,
             "contacts_mlp_units": self.network_config.contact_mlp.units,
             "num_contact_points": self.num_contacts_points,
             "tactile_info": self.tactile_info,
