@@ -51,6 +51,7 @@ env:
   table_height: ${...task.env.table_height}
 
   compute_contact_gt: False
+  only_contact: True
   num_points: 300
 
 ppo:

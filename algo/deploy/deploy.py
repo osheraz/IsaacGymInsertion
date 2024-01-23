@@ -200,6 +200,8 @@ class HardwarePlayer(object):
         self.obs_info = self.deploy_config.ppo.obs_info
         self.student_obs_input_shape = self.deploy_config.ppo.student_obs_input_shape
 
+        self.gt_contacts_info = self.deploy_config.env.gt_contacts_info
+
         net_config = {
             'actor_units': self.deploy_config.network.mlp.units,
             'actions_num': self.num_actions,
@@ -222,8 +224,10 @@ class HardwarePlayer(object):
             "merge_units": self.deploy_config.network.merge_mlp.units,
             "obs_units": self.deploy_config.network.obs_mlp.units,
             "num_contact_points": self.num_contact_points,
-            "gt_contacts_info": False,
-            "contacts_mlp_units": 0,
+            # Added contact options
+            "gt_contacts_info": self.gt_contacts_info,
+            "only_contact": self.deploy_config.env.only_contact,
+            "contacts_mlp_units": self.deploy_config.network.contacts_mlp.units,
             'shared_parameters': False
         }
 
@@ -488,8 +492,8 @@ class HardwarePlayer(object):
         self.plug_hand_pos, self.plug_hand_quat = self._pose_world_to_hand_base(self.plug_pos,
                                                                                 self.plug_quat,
                                                                                 as_matrix=False)
-
-        self.contacts[0, :] = self.env.tracker.extrinsic_contact
+        if self.gt_contacts_info:
+            self.contacts[0, :] = self.env.tracker.extrinsic_contact
 
     def compute_observations(self, display_image=True, with_priv=False):
 
@@ -895,7 +899,8 @@ class HardwarePlayer(object):
                     'obs': obs,
                     'student_obs': obs_stud,
                     'tactile_hist': tactile,
-                    'priv_info': priv
+                    'priv_info': priv,
+                    'contacts': self.contacts.clone()
                 }
 
                 action, latent = self.model.act_inference(input_dict)
