@@ -587,9 +587,9 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
                                                                os.path.join(mesh_root, plug_file), randomize=True,
                                                                finger_idx=i) for i in range(len(self.fingertips))])
             if self.cfg['env']['compute_contact_gt']:
-                socket_pos = [0.5, 0, 0.003]
+                socket_pos = [0.5, 0, 0.001]
                 if subassembly not in self.subassembly_extrinsic_contact:
-                    print(os.path.join(mesh_root, socket_file))
+
                     self.subassembly_extrinsic_contact[subassembly] = ExtrinsicContact(mesh_obj=os.path.join(mesh_root, plug_file),
                                                                 mesh_socket=os.path.join(mesh_root, socket_file),
                                                                 obj_scale=1.0,
