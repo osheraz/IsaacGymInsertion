@@ -489,7 +489,7 @@ class HardwarePlayer(object):
                                                                                 self.plug_quat,
                                                                                 as_matrix=False)
 
-        # self.contacts[0, :] = self.env.tracker.extrinsic_contact
+        self.contacts[0, :] = self.env.tracker.extrinsic_contact
 
     def compute_observations(self, display_image=True, with_priv=False):
 
