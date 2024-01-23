@@ -74,7 +74,7 @@ class ExtrinsicContact:
         # T = np.eye(4)
         # T[0:3, 0:3] = R.from_euler("xyz", [0, 0, 90], degrees=True).as_matrix()
         # self.object_trimesh = self.object_trimesh.apply_transform(T)
-
+        print(mesh_socket)
         self.socket_trimesh = trimesh.load(mesh_socket)
         self.socket_trimesh = self.socket_trimesh.apply_scale(socket_scale)
         T = np.eye(4)
@@ -150,7 +150,7 @@ class ExtrinsicContact:
 
         d = self.socket.compute_distance(o3d.core.Tensor.from_numpy(query_points.astype(np.float32))).numpy()
 
-        if display:
+        if False:
             display_id = 0
             self.ax.plot(self.socket_pcl[:, 0], self.socket_pcl[:, 1], self.socket_pcl[:, 2], 'yo')
             self.ax.plot(query_points[display_id, :, 0], query_points[display_id, :, 1], query_points[display_id, :, 2], 'ko')
@@ -577,7 +577,7 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
             plug_file = self.asset_info_insertion[subassembly][components[0]]['urdf_path']
             plug_file += '_subdiv_3x.obj' if 'rectangular' in plug_file else '.obj'
             socket_file = self.asset_info_insertion[subassembly][components[1]]['urdf_path']
-            socket_file += '_subdiv_3x.obj' if 'rectangular' in plug_file else '.obj'
+            socket_file += '_subdiv_3x.obj' if 'factory' in plug_file else '.obj'
 
             mesh_root = os.path.join(os.path.dirname(__file__), '..', '..', '..', 'assets', 'factory', 'mesh',
                                      'factory_insertion')
@@ -589,7 +589,7 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
             if self.cfg['env']['compute_contact_gt']:
                 socket_pos = [0.5, 0, 0.003]
                 if subassembly not in self.subassembly_extrinsic_contact:
-                    print(subassembly, mesh_root, plug_file, socket_file)
+                    print(os.path.join(mesh_root, socket_file))
                     self.subassembly_extrinsic_contact[subassembly] = ExtrinsicContact(mesh_obj=os.path.join(mesh_root, plug_file),
                                                                 mesh_socket=os.path.join(mesh_root, socket_file),
                                                                 obj_scale=1.0,
