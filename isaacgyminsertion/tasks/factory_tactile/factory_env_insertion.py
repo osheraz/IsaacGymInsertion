@@ -74,8 +74,9 @@ class ExtrinsicContact:
         # T = np.eye(4)
         # T[0:3, 0:3] = R.from_euler("xyz", [0, 0, 90], degrees=True).as_matrix()
         # self.object_trimesh = self.object_trimesh.apply_transform(T)
-        print(mesh_socket)
+
         self.socket_trimesh = trimesh.load(mesh_socket)
+        self.reset_socket_trimesh = self.socket_trimesh.copy()
         self.socket_trimesh = self.socket_trimesh.apply_scale(socket_scale)
         T = np.eye(4)
         T[0:3, -1] = socket_pos
@@ -101,6 +102,7 @@ class ExtrinsicContact:
         self.ax = plt.axes(projection='3d')
         self.num_envs = num_envs
         self.device = device
+        self.plug_pose_no_rot = np.repeat(np.eye(4)[np.newaxis, :, :], num_envs, axis=0)
 
     def _xyzquat_to_tf_numpy(self, position_quat: np.ndarray) -> np.ndarray:
         """
@@ -127,17 +129,123 @@ class ExtrinsicContact:
         return transformed
 
     def reset_socket_pos(self, socket_pos):
+        self.socket_trimesh = self.reset_socket_trimesh.copy()
+        self.socket_trimesh = self.socket_trimesh.apply_scale(1.0)
         self.socket_pos = socket_pos
+        T = np.eye(4)
+        T[0:3, -1] = self.socket_pos
+        self.socket_trimesh.apply_transform(T)
+
         self.socket = o3d.t.geometry.RaycastingScene()
         self.socket.add_triangles(
             o3d.t.geometry.TriangleMesh.from_legacy(self.socket_trimesh.as_open3d)
         )
         self.socket_pcl = trimesh.sample.sample_surface_even(self.socket_trimesh, self.n_points, seed=42)[0]
+        self.plug_pose_no_rot = np.repeat(np.eye(4)[np.newaxis, :, :], self.num_envs, axis=0)
+
+    def estimate_pose(self, curr_pose, prev_pose=None):
+        '''
+        Make the pose invariant to z-axis rotation
+        Source: https://github.com/shiyoung77/tensegrity_perception/blob/main/tracking.py#L570
+        Credit: Shiyang Lu
+        '''
+
+        curr_pos = curr_pose[:3, 3]
+        curr_rot = curr_pose[:3, :3]
+
+        curr_z_dir = curr_rot[:, 2]
+        curr_z_dir /= np.linalg.norm(curr_z_dir)
+
+        if prev_pose is None:
+            prev_pose = np.eye(4)
+
+        prev_rot = prev_pose[:3, :3]
+        prev_z_dir = prev_rot[:, 2]
+
+        delta_rot = np.eye(3)
+        cos_dist = prev_z_dir @ curr_z_dir
+        if not np.allclose(cos_dist, 1):
+            axis = np.cross(prev_z_dir, curr_z_dir)
+            axis = axis / np.linalg.norm(axis)
+            angle = np.arccos(cos_dist)
+            delta_rot = R.from_rotvec(angle * axis).as_matrix()
+
+        tf_curr_pose = np.eye(4)
+        tf_curr_pose[:3, :3] = delta_rot @ prev_rot
+        tf_curr_pose[:3, 3] = curr_pos
+        return tf_curr_pose
+
+    def estimate_pose_batch(self, curr_poses, prev_poses):
+        '''
+        Make the pose invariant to z-axis rotation - batched version
+        Source: https://github.com/shiyoung77/tensegrity_perception/blob/main/tracking.py#L570
+        Credit: Shiyang Lu
+        '''
+        # Determine the batch size based on the first dimension of curr_poses
+        batch_size = curr_poses.shape[0]
+
+        # Extract the position and rotation components from the current poses
+        curr_pos = curr_poses[:, :3, 3]
+        curr_rots = curr_poses[:, :3, :3]
+
+        # Normalize the z-direction vectors of the current rotations
+        curr_z_dirs = curr_rots[:, :, 2]
+        curr_z_dirs /= np.linalg.norm(curr_z_dirs, axis=1, keepdims=True)
+
+        # Initialize previous poses to identity matrices if None are provided
+        # if prev_poses is None:
+        #     prev_poses = np.repeat(np.eye(4)[np.newaxis, :, :], batch_size, axis=0)
+
+        # Extract the rotation components from the previous poses
+        prev_rots = prev_poses[:, :3, :3]
+        prev_z_dirs = prev_rots[:, :, 2]
+
+        # Compute the cosine distances between current and previous z-direction vectors
+        cos_dists = np.einsum('ij,ij->i', prev_z_dirs, curr_z_dirs)
+
+        # Determine where the rotation is negligible (cosine of angle close to 1)
+        no_rotation_needed = np.isclose(cos_dists, 1.0)
+
+        # Compute the axes of rotation as the cross product of z-direction vectors
+        axes = np.cross(prev_z_dirs, curr_z_dirs)
+
+        # Normalize the axes and handle divide-by-zero issues
+        norms = np.linalg.norm(axes, axis=1, keepdims=True)
+        axes = np.where(norms > 0.0, axes / norms, np.zeros_like(axes))
+
+        # Compute the angles for rotation
+        angles = np.arccos(np.clip(cos_dists, -1.0, 1.0))
+        angles = angles[:, np.newaxis]
+
+        # Calculate rotation vectors and create rotation matrices
+        rotation_vectors = angles * axes
+        delta_rots = R.from_rotvec(rotation_vectors.reshape(-1, 3)).as_matrix()
+        delta_rots = delta_rots.reshape(batch_size, 3, 3)
+
+        # For cases where no rotation is needed, replace with identity matrices
+        delta_rots[no_rotation_needed] = np.eye(3)
+
+        # Replace rotation matrices corresponding to zero angles with identity matrices
+        # zero_angle_indices = np.isclose(angles.flatten(), 0)
+        # delta_rots[zero_angle_indices] = np.eye(3)
+
+        # Initialize the transformed current poses array
+        tf_curr_poses = np.empty((batch_size, 4, 4))
+
+        # Combine the delta rotations with the previous rotations and positions
+        tf_curr_poses[:, :3, :3] = np.matmul(delta_rots, prev_rots)
+        tf_curr_poses[:, :3, 3] = curr_pos
+
+        # Set the last row to [0, 0, 0, 1] for each pose
+        tf_curr_poses[:, 3, :] = np.array([0, 0, 0, 1])
+
+        return tf_curr_poses
 
     def get_extrinsic_contact(self, obj_pos, obj_quat, socket_pos, socket_quat, threshold=0.002, display=False):
         
         object_poses = torch.cat((obj_pos, obj_quat), dim=1)
         object_poses = self._xyzquat_to_tf_numpy(object_poses.cpu().numpy())
+        self.plug_pose_no_rot = self.estimate_pose_batch(object_poses, self.plug_pose_no_rot)
         socket_poses = torch.cat((socket_pos, socket_quat), dim=1)
         socket_poses = self._xyzquat_to_tf_numpy(socket_poses.cpu().numpy())
 
@@ -146,6 +254,7 @@ class ExtrinsicContact:
         if len(socket_poses.shape) == 2:
             socket_poses = socket_poses[None, ...]
 
+        # query_points = self.apply_transform(self.plug_pose_no_rot, self.object_pc.copy().vertices)
         query_points = self.apply_transform(object_poses, self.object_pc.copy().vertices)
 
         d = self.socket.compute_distance(o3d.core.Tensor.from_numpy(query_points.astype(np.float32))).numpy()

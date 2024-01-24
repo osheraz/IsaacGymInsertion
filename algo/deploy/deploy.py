@@ -200,7 +200,7 @@ class HardwarePlayer(object):
         self.obs_info = self.deploy_config.ppo.obs_info
         self.student_obs_input_shape = self.deploy_config.ppo.student_obs_input_shape
 
-        self.gt_contacts_info = self.deploy_config.env.gt_contacts_info
+        self.gt_contacts_info = self.deploy_config.env.compute_contact_gt
 
         net_config = {
             'actor_units': self.deploy_config.network.mlp.units,
@@ -227,7 +227,7 @@ class HardwarePlayer(object):
             # Added contact options
             "gt_contacts_info": self.gt_contacts_info,
             "only_contact": self.deploy_config.env.only_contact,
-            "contacts_mlp_units": self.deploy_config.network.contacts_mlp.units,
+            "contacts_mlp_units": self.deploy_config.network.contact_mlp.units,
             'shared_parameters': False
         }
 
@@ -493,7 +493,7 @@ class HardwarePlayer(object):
                                                                                 self.plug_quat,
                                                                                 as_matrix=False)
         if self.gt_contacts_info:
-            self.contacts[0, :] = self.env.tracker.extrinsic_contact
+            self.contacts[0, :] = torch.tensor(self.env.tracker.extrinsic_contact).to(self.device)
 
     def compute_observations(self, display_image=True, with_priv=False):
 
@@ -592,7 +592,7 @@ class HardwarePlayer(object):
         if not with_priv:
             return self.obs_buf, self.obs_student_buf, self.tactile_queue
         else:
-            # Compute privileged info
+            # Compute privileged info (gt_error + contacts)
             self._update_plug_pose()
 
             state_tensors = [
@@ -748,7 +748,7 @@ class HardwarePlayer(object):
         # Apply the action
         if regulize_force:
             ft = torch.tensor(self.env.get_ft(), device=self.device, dtype=torch.float).unsqueeze(0)
-            actions = torch.where(torch.abs(ft) > 1.0, torch.clamp(actions, min=0.0), actions)
+            actions = torch.where(torch.abs(ft) > 5.0, torch.clamp(actions, min=0.0), actions)
             print("Regularized Actions:", np.round(actions[0].cpu().numpy(), 4))
 
         if do_clamp:
@@ -912,7 +912,7 @@ class HardwarePlayer(object):
                 # print("Actions:", np.round(action[0].cpu().numpy(), 3), "\tFPS: ", 1.0 / (time() - start_time))
 
                 ros_rate.sleep()
-                self._update_reset_buf()
+                # self._update_reset_buf()
                 self.episode_length += 1
 
                 # if self.episode_length >= max_steps:

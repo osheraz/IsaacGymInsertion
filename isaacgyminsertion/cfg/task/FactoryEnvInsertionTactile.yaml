@@ -14,13 +14,13 @@ env:
     env_name: 'FactoryEnvInsertionTactile'
     aggregate_mode: True
 
-    desired_subassemblies: ['round_peg_hole_16mm_loose', 'yellow_round_peg_2in', 'red_round_peg_1_5in'] # ,
+#    desired_subassemblies: ['round_peg_hole_16mm_loose', 'yellow_round_peg_2in', 'red_round_peg_1_5in'] # ,
 #                             'round_peg_hole_16mm_loose',
 #                             'yellow_round_peg_2in',
 #                             'red_round_peg_1_5in',
 #                             'rectangular_peg_hole_16mm_loose']
 
-#    desired_subassemblies: [ 'yellow_round_peg_2in' ]
+    desired_subassemblies: [ 'yellow_round_peg_2in' ]
                         #    'red_round_peg_1_5in',red_round_peg_1_5in
                         #     yellow_round_peg_2in, 'rectangular_peg_hole_16mm_loose', 'triangle'
                         #   ]

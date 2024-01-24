@@ -26,9 +26,9 @@ data_logger:
 # taking from training default, allows to over write
 # actually, we should write different config for each observation we test
 rl:
-    max_episode_length: 700
+    max_episode_length: 2000
     pos_action_scale: [0.01, 0.01, 0.01]
-    rot_action_scale: [0.02, 0.02, 0.02]
+    rot_action_scale: [0.002, 0.002, 0.002]
     clamp_rot: ${...task.rl.clamp_rot}
     clamp_rot_thresh: ${...task.rl.clamp_rot_thresh}
 
@@ -51,7 +51,7 @@ env:
   table_height: ${...task.env.table_height}
 
   compute_contact_gt: False
-  only_contact: True
+  only_contact: False
   num_points: 300
 
 ppo:
@@ -85,7 +85,7 @@ network:
   merge_mlp:
     units: [128, 64, 8]
   contact_mlp:
-    units: [ 128, 64, 16]
+    units: [ 128, 64, 8]
   tactile_decoder:
     num_channels: ${....task.tactile.decoder.num_channels}
     tactile_seq_length: ${....task.env.tactile_history_len}
