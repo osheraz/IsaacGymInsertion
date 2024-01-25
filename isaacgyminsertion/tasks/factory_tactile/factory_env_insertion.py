@@ -260,7 +260,7 @@ class ExtrinsicContact:
 
         d = self.socket.compute_distance(o3d.core.Tensor.from_numpy(query_points.astype(np.float32))).numpy()
 
-        if True:
+        if False:
             display_id = 0
             self.ax.plot(self.socket_pcl[:, 0], self.socket_pcl[:, 1], self.socket_pcl[:, 2], 'yo')
             self.ax.plot(query_points[display_id, :, 0], query_points[display_id, :, 1], query_points[display_id, :, 2], 'ko')
