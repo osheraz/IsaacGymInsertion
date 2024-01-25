@@ -35,12 +35,12 @@ rl:
 env:
   tactile_seq_length: ${...task.env.tactile_history_len}
   ft_seq_length: ${...task.env.ft_history_len}
-  obs_seq_length: 1  #${...task.env.numObsHist} old implementation
-  stud_obs_seq_length: 1 # ${...task.env.numObsStudentHist}
+  obs_seq_length: ${...task.env.numObsHist}
+  stud_obs_seq_length: ${...task.env.numObsStudentHist}
 
-  priv_info_dim: 7 # ${...task.env.numStates}
-  numObservations: 24 # ${...task.env.numObservations}
-  numObsStudent: 24 # ${...task.env.numObsStudent}
+  priv_info_dim: ${...task.env.numStates}
+  numObservations: ${...task.env.numObservations}
+  numObsStudent: ${...task.env.numObsStudent}
   numActions: ${...task.env.numActions}
   numTargets: ${...task.env.numTargets}
   socket_pos_obs_noise: [ 0.001, 0.001, 0.0 ]
@@ -50,9 +50,9 @@ env:
   kuka_depth: ${...task.env.kuka_depth}
   table_height: ${...task.env.table_height}
 
-  compute_contact_gt: False
-  only_contact: False
-  num_points: 300
+  compute_contact_gt: ${...task.env.compute_contact_gt}
+  only_contact: ${...task.env.only_contact}
+  num_points: ${...task.env.num_points}
 
 ppo:
   priv_info: True
@@ -66,8 +66,8 @@ ppo:
   ft_seq_length: ${...task.env.ft_history_len}
   obs_seq_length: ${...task.env.numObsHist}
   stud_obs_seq_length: ${...task.env.numObsStudentHist}
-  priv_info_dim: 7 # ${...task.env.numStates}
-  student_obs_input_shape: 24 # ${...task.env.numObsStudent}
+  priv_info_dim: ${...task.env.numStates}
+  student_obs_input_shape: ${...task.env.numObsStudent}
   ft_input_dim: 6
 
 
@@ -93,7 +93,7 @@ network:
     img_height: ${....task.tactile.decoder.height}
 
 common_poses:
-  socket_pos: [0.5006071086121126, 0.0006204513881582756, 0.001] # 009008710908020141
+  socket_pos: [0.5006071086121126, 0.0006204513881582756, 0.001]
   joints_above_socket: [-0.01306919673345508, 0.46035625642851, -3.115810324760627, -1.5234410615555438, -0.012022574425053278, -1.1572361716453639, 1.5847205313963213, 0.0]
   joints_above_plug: [-0.4343525190442179, 0.3393440474185589, -3.118461501625801, -1.762369221913092, -0.010365555594806786, -1.0404064904168955, 1.172501677329807]
 

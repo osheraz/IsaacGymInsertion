@@ -245,7 +245,8 @@ class ExtrinsicContact:
         
         object_poses = torch.cat((obj_pos, obj_quat), dim=1)
         object_poses = self._xyzquat_to_tf_numpy(object_poses.cpu().numpy())
-        self.plug_pose_no_rot = self.estimate_pose_batch(object_poses, self.plug_pose_no_rot)
+        # self.plug_pose_no_rot = self.estimate_pose_batch(object_poses, self.plug_pose_no_rot)
+
         socket_poses = torch.cat((socket_pos, socket_quat), dim=1)
         socket_poses = self._xyzquat_to_tf_numpy(socket_poses.cpu().numpy())
 
@@ -259,7 +260,7 @@ class ExtrinsicContact:
 
         d = self.socket.compute_distance(o3d.core.Tensor.from_numpy(query_points.astype(np.float32))).numpy()
 
-        if False:
+        if True:
             display_id = 0
             self.ax.plot(self.socket_pcl[:, 0], self.socket_pcl[:, 1], self.socket_pcl[:, 2], 'yo')
             self.ax.plot(query_points[display_id, :, 0], query_points[display_id, :, 1], query_points[display_id, :, 2], 'ko')

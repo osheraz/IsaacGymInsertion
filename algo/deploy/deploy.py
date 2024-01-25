@@ -158,54 +158,56 @@ class HardwarePlayer(object):
 
         self.num_envs = 1
         self.deploy_config = full_config.deploy
-        self.max_episode_length = self.deploy_config.rl.max_episode_length
         self.full_config = full_config
+
+        # Overwriting action scales for the controller
+        self.max_episode_length = self.deploy_config.rl.max_episode_length
         self.pos_scale_deploy = self.deploy_config.rl.pos_action_scale
         self.rot_scale_deploy = self.deploy_config.rl.rot_action_scale
 
-        self.pos_scale = full_config.task.rl.pos_action_scale
-        self.rot_scale = full_config.task.rl.rot_action_scale
+        self.pos_scale = self.full_config.task.rl.pos_action_scale
+        self.rot_scale = self.full_config.task.rl.rot_action_scale
 
-        self.device = full_config["rl_device"]
+        self.device = self.full_config["rl_device"]
         self.episode_length = torch.zeros((1, 1), device=self.device, dtype=torch.float)
 
         # ---- build environment ----
-        self.obs_shape = (self.deploy_config.env.numObservations,)
-        self.obs_stud_shape = (self.deploy_config.env.numObsStudent,)
+        self.obs_shape = (self.full_config.task.env.numObservations,)
+        self.obs_stud_shape = (self.full_config.task.env.numObsStudent,)
 
-        self.num_actions = self.deploy_config.env.numActions
-        self.num_targets = self.deploy_config.env.numTargets
-        self.num_contact_points = self.deploy_config.env.num_points
+        self.num_actions = self.full_config.task.env.numActions
+        self.num_targets = self.full_config.task.env.numTargets
+        self.num_contact_points = self.full_config.task.env.num_points
 
         # ---- Tactile Info ---
-        self.tactile_info = self.deploy_config.ppo.tactile_info
-        self.tactile_seq_length = self.deploy_config.ppo.tactile_seq_length
-        self.tactile_info_dim = self.deploy_config.network.tactile_mlp.units[0]
-        self.mlp_tactile_info_dim = self.deploy_config.network.tactile_mlp.units[0]
-        self.tactile_input_dim = (self.deploy_config.network.tactile_decoder.img_width,
-                                  self.deploy_config.network.tactile_decoder.img_height,
-                                  self.deploy_config.network.tactile_decoder.num_channels)
+        self.tactile_info = self.full_config.train.ppo.tactile_info
+        self.tactile_seq_length = self.full_config.train.network.tactile_decoder.tactile_seq_length
+        self.tactile_info_dim = self.full_config.train.network.tactile_mlp.units[0]
+        self.mlp_tactile_info_dim = self.full_config.train.network.tactile_mlp.units[0]
+        self.tactile_input_dim = (self.full_config.train.network.tactile_decoder.img_width,
+                                  self.full_config.train.network.tactile_decoder.img_height,
+                                  self.full_config.train.network.tactile_decoder.num_channels)
 
         # ---- ft Info --- currently ft isn't supported
-        self.ft_info = self.deploy_config.ppo.ft_info
-        self.ft_seq_length = self.deploy_config.ppo.ft_seq_length
-        self.ft_input_dim = self.deploy_config.ppo.ft_input_dim
+        self.ft_info = self.full_config.train.ppo.ft_info
+        self.ft_seq_length = self.full_config.train.ppo.ft_seq_length
+        self.ft_input_dim = self.full_config.train.ppo.ft_input_dim
         self.ft_info_dim = self.ft_input_dim * self.ft_seq_length
 
         # ---- Priv Info ----
-        self.priv_info = self.deploy_config.ppo.priv_info
-        self.priv_info_dim = self.deploy_config.ppo.priv_info_dim
-        self.extrin_adapt = self.deploy_config.ppo.extrin_adapt
+        self.priv_info = self.full_config.train.ppo.priv_info
+        self.priv_info_dim = self.full_config.train.ppo.priv_info_dim
+        self.extrin_adapt = self.full_config.train.ppo.extrin_adapt
         # ---- Obs Info (student)----
-        self.obs_info = self.deploy_config.ppo.obs_info
-        self.student_obs_input_shape = self.deploy_config.ppo.student_obs_input_shape
+        self.obs_info = self.full_config.train.ppo.obs_info
+        self.student_obs_input_shape = self.full_config.train.ppo.student_obs_input_shape
 
-        self.gt_contacts_info = self.deploy_config.env.compute_contact_gt
+        self.gt_contacts_info = self.full_config.train.ppo.compute_contact_gt
 
         net_config = {
-            'actor_units': self.deploy_config.network.mlp.units,
+            'actor_units': self.full_config.train.network.mlp.units,
             'actions_num': self.num_actions,
-            'priv_mlp_units': self.deploy_config.network.priv_mlp.units,
+            'priv_mlp_units': self.full_config.train.network.priv_mlp.units,
             'input_shape': self.obs_shape,
             'extrin_adapt': self.extrin_adapt,
             'priv_info_dim': self.priv_info_dim,
@@ -216,18 +218,18 @@ class HardwarePlayer(object):
             "mlp_tactile_input_shape": self.mlp_tactile_info_dim,
             "ft_input_shape": self.ft_info_dim,
             "ft_info": self.ft_info,
-            "mlp_tactile_units": self.deploy_config.network.tactile_mlp.units,
-            "tactile_decoder_embed_dim": self.deploy_config.network.tactile_mlp.units[0],
-            "ft_units": self.deploy_config.network.ft_mlp.units,
+            "mlp_tactile_units": self.full_config.train.network.tactile_mlp.units,
+            "tactile_decoder_embed_dim": self.full_config.train.network.tactile_mlp.units[0],
+            "ft_units": self.full_config.train.network.ft_mlp.units,
             'tactile_input_dim': self.tactile_input_dim,
             'tactile_seq_length': self.tactile_seq_length,
-            "merge_units": self.deploy_config.network.merge_mlp.units,
-            "obs_units": self.deploy_config.network.obs_mlp.units,
+            "merge_units": self.full_config.train.network.merge_mlp.units,
+            "obs_units": self.full_config.train.network.obs_mlp.units,
             "num_contact_points": self.num_contact_points,
             # Added contact options
             "gt_contacts_info": self.gt_contacts_info,
-            "only_contact": self.deploy_config.env.only_contact,
-            "contacts_mlp_units": self.deploy_config.network.contact_mlp.units,
+            "only_contact": self.full_config.train.ppo.only_contact,
+            "contacts_mlp_units": self.full_config.train.network.contact_mlp.units,
             'shared_parameters': False
         }
 
@@ -250,9 +252,9 @@ class HardwarePlayer(object):
 
         self.cfg_tactile = full_config.task.tactile
 
-        asset_info_path = '../../assets/factory/yaml/factory_asset_info_insertion.yaml'
+        asset_info_path = '../../../../assets/factory/yaml/factory_asset_info_insertion.yaml'
         self.asset_info_insertion = hydra.compose(config_name=asset_info_path)
-        self.asset_info_insertion = self.asset_info_insertion['']['']['']['']['']['']['assets']['factory']['yaml']
+        self.asset_info_insertion = self.asset_info_insertion['']['']['']['']['']['']['']['']['']['']['']['']['assets']['factory']['yaml']
 
         self.extrinsic_contact = None
 
@@ -333,7 +335,7 @@ class HardwarePlayer(object):
 
         self.done = torch.zeros((1, 1), device=self.device, dtype=torch.bool)
         # Gripper pointing down w.r.t the world frame
-        gripper_goal_euler = torch.tensor(self.deploy_config.env.fingertip_midpoint_rot_initial,
+        gripper_goal_euler = torch.tensor(self.full_config.task.randomize.fingertip_midpoint_rot_initial,
                                           device=self.device).unsqueeze(0)
 
         self.gripper_goal_quat = torch_jit_utils.quat_from_euler_xyz(gripper_goal_euler[:, 0],
@@ -350,36 +352,36 @@ class HardwarePlayer(object):
         self.socket_tip_pos_local = self.socket_height * torch.tensor([0.0, 0.0, 1.0], device=self.device).unsqueeze(0)
 
         self.actions = torch.zeros((1, self.num_actions), device=self.device)
-        self.targets = torch.zeros((1, self.deploy_config.env.numTargets), device=self.device)
+        self.targets = torch.zeros((1, self.full_config.task.env.numTargets), device=self.device)
         self.contacts = torch.zeros((1, self.num_contact_points), device=self.device)
-        self.prev_targets = torch.zeros((1, self.deploy_config.env.numTargets), dtype=torch.float, device=self.device)
+        self.prev_targets = torch.zeros((1, self.full_config.task.env.numTargets), dtype=torch.float, device=self.device)
 
         # Keep track of history
-        self.arm_joint_queue = torch.zeros((1, self.deploy_config.env.obs_seq_length, 7), dtype=torch.float,
+        self.arm_joint_queue = torch.zeros((1, self.full_config.task.env.numObsHist, 7), dtype=torch.float,
                                            device=self.device)
-        self.arm_vel_queue = torch.zeros((1, self.deploy_config.env.obs_seq_length, 7), dtype=torch.float,
+        self.arm_vel_queue = torch.zeros((1, self.full_config.task.env.numObsHist, 7), dtype=torch.float,
                                          device=self.device)
-        self.actions_queue = torch.zeros((1, self.deploy_config.env.obs_seq_length, self.num_actions),
+        self.actions_queue = torch.zeros((1, self.full_config.task.env.numObsHist, self.num_actions),
                                          dtype=torch.float, device=self.device)
-        self.targets_queue = torch.zeros((1, self.deploy_config.env.obs_seq_length, self.num_targets),
+        self.targets_queue = torch.zeros((1, self.full_config.task.env.numObsHist, self.num_targets),
                                          dtype=torch.float, device=self.device)
-        self.eef_queue = torch.zeros((1, self.deploy_config.env.obs_seq_length, 12),
+        self.eef_queue = torch.zeros((1, self.full_config.task.env.numObsHist, 12),
                                      dtype=torch.float, device=self.device)
-        self.goal_noisy_queue = torch.zeros((1, self.deploy_config.env.obs_seq_length, 12),
+        self.goal_noisy_queue = torch.zeros((1, self.full_config.task.env.numObsHist, 12),
                                             dtype=torch.float, device=self.device)
 
         # Bad, should queue the obs!
-        self.arm_joint_queue_student = torch.zeros((1, self.deploy_config.env.stud_obs_seq_length, 7),
+        self.arm_joint_queue_student = torch.zeros((1, self.full_config.task.env.numObsStudentHist, 7),
                                                    dtype=torch.float, device=self.device)
-        self.arm_vel_queue_student = torch.zeros((1, self.deploy_config.env.stud_obs_seq_length, 7),
+        self.arm_vel_queue_student = torch.zeros((1, self.full_config.task.env.numObsStudentHist, 7),
                                                  dtype=torch.float, device=self.device)
-        self.actions_queue_student = torch.zeros((1, self.deploy_config.env.stud_obs_seq_length, self.num_actions),
+        self.actions_queue_student = torch.zeros((1, self.full_config.task.env.numObsStudentHist, self.num_actions),
                                                  dtype=torch.float, device=self.device)
-        self.targets_queue_student = torch.zeros((1, self.deploy_config.env.stud_obs_seq_length, self.num_actions),
+        self.targets_queue_student = torch.zeros((1, self.full_config.task.env.numObsStudentHist, self.num_actions),
                                                  dtype=torch.float, device=self.device)
-        self.eef_queue_student = torch.zeros((1, self.deploy_config.env.stud_obs_seq_length, 12),
+        self.eef_queue_student = torch.zeros((1, self.full_config.task.env.numObsStudentHist, 12),
                                              dtype=torch.float, device=self.device)
-        self.goal_noisy_queue_student = torch.zeros((1, self.deploy_config.env.stud_obs_seq_length, 12),
+        self.goal_noisy_queue_student = torch.zeros((1, self.full_config.task.env.numObsStudentHist, 12),
                                                     dtype=torch.float, device=self.device)
 
         self.num_channels = self.cfg_tactile.decoder.num_channels
@@ -424,7 +426,7 @@ class HardwarePlayer(object):
         )
         socket_obs_pos_noise = socket_obs_pos_noise @ torch.diag(
             torch.tensor(
-                self.deploy_config.env.socket_pos_obs_noise,
+                self.full_config.task.env.socket_pos_obs_noise,
                 dtype=torch.float32,
                 device=self.device,
             )
@@ -448,7 +450,7 @@ class HardwarePlayer(object):
         )
         socket_obs_rot_noise = socket_obs_rot_noise @ torch.diag(
             torch.tensor(
-                self.deploy_config.env.socket_rot_obs_noise,
+                self.full_config.task.env.socket_rot_obs_noise,
                 dtype=torch.float32,
                 device=self.device,
             )
@@ -668,7 +670,7 @@ class HardwarePlayer(object):
 
         if desired_rot is None:
             self.ctrl_target_fingertip_centered_quat = torch.tensor(ee_pose[3:], device=self.device).unsqueeze(0)
-            # ctrl_target_fingertip_centered_euler = torch.tensor(self.deploy_config.env.fingertip_midpoint_rot_initial,
+            # ctrl_target_fingertip_centered_euler = torch.tensor(self.full_config.task.env.fingertip_midpoint_rot_initial,
             #                                                     device=self.device).unsqueeze(0)
 
             # self.ctrl_target_fingertip_centered_quat = torch_jit_utils.quat_from_euler_xyz_deploy(
@@ -835,7 +837,7 @@ class HardwarePlayer(object):
 
     def deploy(self):
 
-        self._initialize_grasp_poses()
+        # self._initialize_grasp_poses()
         from algo.deploy.env.env import ExperimentEnv
         rospy.init_node('DeployEnv')
         self.env = ExperimentEnv()
@@ -882,7 +884,7 @@ class HardwarePlayer(object):
             obs, obs_stud, tactile, priv = self.compute_observations(with_priv=True)
             self._update_reset_buf()
 
-            for i in range(self.deploy_config.env.obs_seq_length):
+            for i in range(self.full_config.task.env.numObsHist):
                 pass
 
             # done = torch.tensor([0]).to(self.device)

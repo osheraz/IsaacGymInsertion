@@ -126,7 +126,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
     def _acquire_task_tensors(self):
         """Acquire tensors."""
 
-        self.plug_grasp_pos_local = self.plug_heights * 0.95 * torch.tensor([0.0, 0.0, 1.0], device=self.device).repeat(
+        self.plug_grasp_pos_local = self.plug_heights * 0.5 * torch.tensor([0.0, 0.0, 1.0], device=self.device).repeat(
             (self.num_envs, 1))
         self.plug_grasp_quat_local = torch.tensor([0.0, 0.0, 0.0, 1.0], device=self.device).unsqueeze(0).repeat(
             self.num_envs, 1)
@@ -314,7 +314,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             
         # fingertip forces
         e = 0.9 if self.cfg_task.env.smooth_force else 0
-        normalize_forces = lambda x: (torch.clamp(torch.norm(x, dim=-1), 0, 50) / 20).view(-1)
+        normalize_forces = lambda x: (torch.clamp(torch.norm(x, dim=-1), 0, 50) / 50).view(-1)
         self.finger_normalized_forces[:, 0] = (1 - e) * normalize_forces(
             self.left_finger_force.clone()) + e * self.finger_normalized_forces[:, 0]
         self.finger_normalized_forces[:, 1] = (1 - e) * normalize_forces(
@@ -409,7 +409,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
             for n in range(3):
                 if self.cfg_task.env.tactile_wrt_force:
-                    force = 100 * finger_normalized_forces[e, n].cpu().detach().numpy()
+                    force = 50 * finger_normalized_forces[e, n].cpu().detach().numpy()
                 else:
                     force = 20
 
@@ -883,17 +883,10 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             plug_pos[i] = self.init_plug_pos[subassembly][random_init_idx[subassembly][i]]
             plug_quat[i] = self.init_plug_quat[subassembly][random_init_idx[subassembly][i]]
 
-        # Opens the gripper
-        kuka_dof_pos[:, 7:] = 0.
         self._reset_kuka(env_ids, new_pose=kuka_dof_pos)
 
         for _, v  in self.all_rendering_camera.items():
             self.init_plug_pos_cam[v[0], :] = plug_pos[v[0], :]
-
-        # Adding noise to the socket pos manually
-        socket_pos_noise = np.random.uniform(-0.005, 0.005, 2)
-        socket_pos[:, :2] += socket_pos_noise
-        socket_pos[:, 2] += np.random.uniform(-0.002, 0.003, 1)
 
         object_pose = {
             'socket_pose': socket_pos,
@@ -903,12 +896,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         }
 
         self._reset_object(env_ids, new_pose=object_pose)
-
-        for k, v in self.subassembly_extrinsic_contact.items():
-            v.reset_socket_pos(socket_pos=socket_pos[0])
-
-        #
-        # self._close_gripper(torch.arange(self.num_envs))
+        self._close_gripper(torch.arange(self.num_envs))
 
         # self._simulate_and_refresh()
 
@@ -922,30 +910,10 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         # self._reset_kuka(env_ids)
         # self._reset_object(env_ids)
         # TODO: change this to reset dof and reset root states
-        self.disable_gravity()
         self._reset_environment(env_ids)
         # self.gym.simulate(self.sim)
         # self.render()
         # self._zero_velocities(env_ids)
-
-        ##### added
-        # # Move arm to grasp pose
-        plug_pos_noise = (2 * (torch.rand((len(env_ids), 3),
-                                          device=self.device) - 0.5)) * self.cfg_task.randomize.grasp_plug_noise
-
-        first_plug_pose = self.plug_grasp_pos.clone()
-        self._move_arm_to_desired_pose(env_ids, first_plug_pose + plug_pos_noise,
-                                       sim_steps=self.cfg_task.env.num_gripper_move_sim_steps * 2)
-        # self._zero_velocities(env_ids)
-        self._refresh_task_tensors(update_tactile=False)
-        self._close_gripper(torch.arange(self.num_envs))
-
-        eef_pos = torch.cat(self.pose_world_to_robot_base(self.fingertip_centered_pos.clone(),
-                                                          self.fingertip_centered_quat.clone()), dim=-1)
-        self.eef_pos = eef_pos
-        self.enable_gravity(-9.81)
-        ##### added
-
         self._zero_velocities(env_ids)
         self.refresh_base_tensors()
         self.refresh_env_tensors()
@@ -974,30 +942,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         # shape of dof_pos = (num_envs, num_dofs)
         # shape of dof_vel = (num_envs, num_dofs)
 
-        # self.dof_pos[env_ids, :] = new_pose.to(device=self.device)  # .repeat((len(env_ids), 1))
-
-        # self.dof_pos[env_ids, :] = new_pose.to(device=self.device)  # .repeat((len(env_ids), 1))
         self.dof_pos[env_ids, :] = new_pose.to(device=self.device)  # .repeat((len(env_ids), 1))
-        self.dof_pos[env_ids, :7] = torch.tensor(self.cfg_task.randomize.kuka_arm_initial_dof_pos,
-                                                 device=self.device).repeat((len(env_ids), 1))
-        # dont play with these joints (no actuation here)#
-        self.dof_pos[
-            env_ids, list(self.dof_dict.values()).index('base_to_finger_1_1')] = self.cfg_task.env.openhand.base_angle
-        self.dof_pos[
-            env_ids, list(self.dof_dict.values()).index('base_to_finger_2_1')] = -self.cfg_task.env.openhand.base_angle
-        # dont play with these joints (no actuation here)#
-        self.dof_pos[env_ids, list(self.dof_dict.values()).index(
-            'finger_1_1_to_finger_1_2')] = self.cfg_task.env.openhand.proximal_open
-        self.dof_pos[env_ids, list(self.dof_dict.values()).index(
-            'finger_2_1_to_finger_2_2')] = self.cfg_task.env.openhand.proximal_open
-        self.dof_pos[env_ids, list(self.dof_dict.values()).index(
-            'base_to_finger_3_2')] = self.cfg_task.env.openhand.proximal_open + 0.15
-        self.dof_pos[env_ids, list(self.dof_dict.values()).index(
-            'finger_1_2_to_finger_1_3')] = self.cfg_task.env.openhand.distal_open
-        self.dof_pos[env_ids, list(self.dof_dict.values()).index(
-            'finger_2_2_to_finger_2_3')] = self.cfg_task.env.openhand.distal_open
-        self.dof_pos[env_ids, list(self.dof_dict.values()).index(
-            'finger_3_2_to_finger_3_3')] = self.cfg_task.env.openhand.distal_open
 
         # Stabilize!
         self.dof_vel[env_ids] = 0.0  # shape = (num_envs, num_dofs)
@@ -1286,6 +1231,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         """Fully close gripper using controller. Called outside RL loop (i.e., after last step of episode)."""
 
         gripper_dof_pos = self.gripper_dof_pos.clone()
+
         gripper_dof_pos[env_ids,
         list(self.dof_dict.values()).index(
             'base_to_finger_1_1') - 7] = self.cfg_task.env.openhand.base_angle
@@ -1293,45 +1239,30 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         list(self.dof_dict.values()).index(
             'base_to_finger_2_1') - 7] = -self.cfg_task.env.openhand.base_angle
 
-        gripper_proximal_close_noise = np.random.uniform(0.0, 0.01, 3)
         gripper_dof_pos[env_ids,
         list(self.dof_dict.values()).index(
-            'finger_1_1_to_finger_1_2') - 7] = self.cfg_task.env.openhand.proximal_close + \
-                                               gripper_proximal_close_noise[0]
+            'finger_1_1_to_finger_1_2') - 7] = self.cfg_task.env.openhand.proximal_close
         gripper_dof_pos[env_ids,
         list(self.dof_dict.values()).index(
-            'finger_2_1_to_finger_2_2') - 7] = self.cfg_task.env.openhand.proximal_close + \
-                                               gripper_proximal_close_noise[1]
+            'finger_2_1_to_finger_2_2') - 7] = self.cfg_task.env.openhand.proximal_close
         gripper_dof_pos[env_ids,
         list(self.dof_dict.values()).index(
-            'base_to_finger_3_2') - 7] = self.cfg_task.env.openhand.proximal_close + \
-                                         gripper_proximal_close_noise[2]
+            'base_to_finger_3_2') - 7] = self.cfg_task.env.openhand.proximal_close
 
-        gripper_distal_close_noise = np.random.uniform(0., 0.005, 3)
         gripper_dof_pos[env_ids,
         list(self.dof_dict.values()).index(
-            'finger_1_2_to_finger_1_3') - 7] = self.cfg_task.env.openhand.distal_close + \
-                                               gripper_distal_close_noise[0]
+            'finger_1_2_to_finger_1_3') - 7] = self.cfg_task.env.openhand.distal_close
         gripper_dof_pos[env_ids,
         list(self.dof_dict.values()).index(
-            'finger_2_2_to_finger_2_3') - 7] = self.cfg_task.env.openhand.distal_close + \
-                                               gripper_distal_close_noise[1]
+            'finger_2_2_to_finger_2_3') - 7] = self.cfg_task.env.openhand.distal_close
         gripper_dof_pos[env_ids,
         list(self.dof_dict.values()).index(
-            'finger_3_2_to_finger_3_3') - 7] = self.cfg_task.env.openhand.distal_close + \
-                                               gripper_distal_close_noise[2]
+            'finger_3_2_to_finger_3_3') - 7] = self.cfg_task.env.openhand.distal_close
 
-        # slowly grasp the plug
-        for i in range(300):
-            diff = gripper_dof_pos[env_ids, :] - self.gripper_dof_pos[env_ids, :]
-            self.ctrl_target_gripper_dof_pos = self.gripper_dof_pos[env_ids, :] + diff * 0.1
-            # print(self.ctrl_target_gripper_dof_pos)
-            self._move_gripper_to_dof_pos(env_ids=env_ids, gripper_dof_pos=self.ctrl_target_gripper_dof_pos,
-                                          sim_steps=1)
+        self.ctrl_target_gripper_dof_pos = gripper_dof_pos
 
-        # allows for inward squeeze to maintain stable grasp
-        # self.ctrl_target_gripper_dof_pos = gripper_dof_pos
-        # print(self.ctrl_target_gripper_dof_pos)
+        # self._move_gripper_to_dof_pos(env_ids=env_ids, gripper_dof_pos=gripper_dof_pos, sim_steps=sim_steps)
+
     def _move_gripper_to_dof_pos(self, env_ids, gripper_dof_pos, sim_steps=20):
         """Move gripper fingers to specified DOF position using controller."""
 
@@ -1464,9 +1395,9 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         super().step(actions)
         self.obs_dict['tactile_hist'] = self.tactile_queue.clone().to(self.rl_device)
         self.obs_dict['ft_hist'] = self.ft_queue.clone().to(self.rl_device)
-        self.obs_dict['priv_info'] = self.obs_dict['states'].clone().to(self.rl_device)
-        self.obs_dict['student_obs'] = self.obs_student_buf.clone().to(self.rl_device)
-        self.obs_dict['contacts'] = self.gt_extrinsic_contact.clone().to(self.rl_device)
+        self.obs_dict['priv_info'] = self.obs_dict['states'].to(self.rl_device)
+        self.obs_dict['student_obs'] = self.obs_student_buf.to(self.rl_device)
+        self.obs_dict['contacts'] = self.gt_extrinsic_contact.to(self.rl_device)
         self.obs_dict['socket_pos'] = self.socket_pos.clone().to(self.rl_device)
         return self.obs_dict, self.rew_buf, self.reset_buf, self.extras
 
@@ -1475,11 +1406,11 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.compute_observations()
         # self._refresh_task_tensors(update_tactile=True)
         super().reset()
-        self.obs_dict['priv_info'] = self.obs_dict['states'].clone().to(self.rl_device)
-        self.obs_dict['student_obs'] = self.obs_student_buf.clone().to(self.rl_device)
+        self.obs_dict['priv_info'] = self.obs_dict['states'].to(self.rl_device)
+        self.obs_dict['student_obs'] = self.obs_student_buf.to(self.rl_device)
         self.obs_dict['tactile_hist'] = self.tactile_queue.clone().to(self.rl_device)
         self.obs_dict['ft_hist'] = self.ft_queue.clone().to(self.rl_device)
-        self.obs_dict['contacts'] = self.gt_extrinsic_contact.clone().to(self.rl_device)
+        self.obs_dict['contacts'] = self.gt_extrinsic_contact.to(self.rl_device)
         self.obs_dict['socket_pos'] = self.socket_pos.clone().to(self.rl_device)
 
         return self.obs_dict

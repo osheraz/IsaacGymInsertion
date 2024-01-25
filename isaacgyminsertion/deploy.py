@@ -29,7 +29,8 @@ import warnings
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 # Enter here the model you want to test (base folder)
-model_to_test = 'test'
+model_to_test = 'contact'
+
 
 def find_config_folder(base_folder):
     for root, dirs, files in os.walk(base_folder):
@@ -43,22 +44,29 @@ def find_config_folder(base_folder):
 
     return None, None
 
-cfg_name = find_config_folder("./outputs/test/")
+
+cfg_name = find_config_folder(f"./outputs/{model_to_test}/")
+
+
 @hydra.main(config_name=f"config_{cfg_name[1]}", config_path=f"./outputs/{model_to_test}/{cfg_name[0]}")
 def main(config: DictConfig):
 
-    config.checkpoint = 'outputs/gt/last.pth'
+    config.checkpoint = f'outputs/{model_to_test}/stage1_nn/last.pth'
     if config.checkpoint:
         config.checkpoint = to_absolute_path(config.checkpoint)
 
     set_np_formatting()
     config.seed = set_seed(config.seed)
-    output_dif = os.path.join('outputs', str(datetime.now().strftime("%m-%d-%y")))
-    output_dif = os.path.join(output_dif, str(datetime.now().strftime("%H-%M-%S")))
+
+    # TODO change output dir to  teacher folder
+    output_dif = os.path.join(model_to_test + str(datetime.now().strftime("%m-%d-%y")))
+    # output_dif = os.path.join(output_dif, str(datetime.now().strftime("%H-%M-%S")))
+
     os.makedirs(output_dif, exist_ok=True)
     agent = HardwarePlayer(output_dif, config)
     agent.restore(config.checkpoint)
     agent.deploy()
+
 
 if __name__ == '__main__':
     main()
