@@ -47,7 +47,7 @@ randomize:
     domain_randomize: True
     randomization_params:
         # making frequency max_episode_length - 1, for randomization on every episode.
-        frequency: 499   # Define how many simulation steps between generating new randomization
+        frequency: 999   # Define how many simulation steps between generating new randomization
         observations:
             range: [ 0, .002 ] # range for the white noise
             range_correlated: [ 0, .000 ] # range for correlated noise, refreshed with freq `frequency`
@@ -88,7 +88,7 @@ randomize:
                 rigid_shape_properties:
                     friction:
                         num_buckets: 250
-                        range: [ 1.9, 2.1 ]
+                        range: [ 1.0, 1.0 ]
                         operation: "scaling"
                         distribution: "uniform"
             plug:
@@ -99,28 +99,28 @@ randomize:
 #                    setup_only: True # Property will only be randomized once before simulation is started. See Domain Randomization Documentation for more info.
 #                    # schedule: "linear"  # "linear" will scale the current random sample by ``min(current num steps, schedule_steps) / schedule_steps`
 #                    # schedule_steps: 30000
-                rigid_body_properties:
-                    mass:
-                        range: [ 0.7, 1.3 ]
-                        operation: "scaling"
-                        distribution: "uniform"
-                        setup_only: True # Property will only be randomized once before simulation is started. See Domain Randomization Documentation for more info.
-                        # schedule: "linear"  # "linear" will scale the current random sample by ``min(current num steps, schedule_steps) / schedule_steps`
-                        # schedule_steps: 30000
+                # rigid_body_properties:
+                #     mass:
+                #         range: [ 0.1, 0.1 ]
+                #         operation: "scaling"
+                #         distribution: "uniform"
+                #         setup_only: True # Property will only be randomized once before simulation is started. See Domain Randomization Documentation for more info.
+                #         # schedule: "linear"  # "linear" will scale the current random sample by ``min(current num steps, schedule_steps) / schedule_steps`
+                #         # schedule_steps: 30000
                 rigid_shape_properties:
                     friction:
                         num_buckets: 250
-                        range: [ 0.0, 2.0 ]
+                        range: [ 0.65, 1.0 ]
                         operation: "scaling"
                         distribution: "uniform"
-                        
+
                         # schedule: "linear"  # "linear" will scale the current random sample by `min(current num steps, schedule_steps) / schedule_steps`
                         # schedule_steps: 30000
             table:
                 rigid_shape_properties:
                     friction:
                         num_buckets: 250
-                        range: [ 0.0, 2.0 ]
+                        range: [ 0.0, 0.0 ]
                         operation: "scaling"
                         distribution: "uniform"
 
@@ -128,6 +128,6 @@ randomize:
                 rigid_shape_properties:
                     friction:
                         num_buckets: 250
-                        range: [ 0.0, 2.0 ]
+                        range: [ 0.5, 1.0 ]
                         operation: "scaling"
                         distribution: "uniform"

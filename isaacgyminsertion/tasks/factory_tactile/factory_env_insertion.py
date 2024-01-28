@@ -103,6 +103,7 @@ class ExtrinsicContact:
         self.num_envs = num_envs
         self.device = device
         self.plug_pose_no_rot = np.repeat(np.eye(4)[np.newaxis, :, :], num_envs, axis=0)
+        self.dec = torch.zeros((num_envs, self.n_points)).to(device)
 
     def _xyzquat_to_tf_numpy(self, position_quat: np.ndarray) -> np.ndarray:
         """
@@ -242,7 +243,7 @@ class ExtrinsicContact:
         return tf_curr_poses
 
     def get_extrinsic_contact(self, obj_pos, obj_quat, socket_pos, socket_quat, threshold=0.002, display=False):
-        
+
         object_poses = torch.cat((obj_pos, obj_quat), dim=1)
         object_poses = self._xyzquat_to_tf_numpy(object_poses.cpu().numpy())
         # self.plug_pose_no_rot = self.estimate_pose_batch(object_poses, self.plug_pose_no_rot)
@@ -258,12 +259,30 @@ class ExtrinsicContact:
         # query_points = self.apply_transform(self.plug_pose_no_rot, self.object_pc.copy().vertices)
         query_points = self.apply_transform(object_poses, self.object_pc.copy().vertices)
 
-        d = self.socket.compute_distance(o3d.core.Tensor.from_numpy(query_points.astype(np.float32))).numpy()
+        di = self.socket.compute_distance(o3d.core.Tensor.from_numpy(query_points.astype(np.float32))).numpy()
 
+        d = di.copy().flatten()
+        idx_2 = np.where(d > threshold)[0]
+        d[idx_2] = threshold
+        d = np.clip(d, 0.0, threshold)
+
+        d = 1.0 - d / threshold
+        d = np.clip(d, 0.0, 1.0)
+        d[d > 0.1] = 1.0
+
+        indices = np.where(d == 1.0)[0]
+        if len(indices) > 0:
+            np.random.shuffle(indices)
+            num_idx = int(d[indices].sum() * np.random.uniform(0.0, 0.25))
+            indices = indices[:num_idx]
+            d[indices] = 0.0
+
+        # Display
         if False:
             display_id = 0
             self.ax.plot(self.socket_pcl[:, 0], self.socket_pcl[:, 1], self.socket_pcl[:, 2], 'yo')
-            self.ax.plot(query_points[display_id, :, 0], query_points[display_id, :, 1], query_points[display_id, :, 2], 'ko')
+            self.ax.plot(query_points[display_id, :, 0], query_points[display_id, :, 1], query_points[display_id, :, 2],
+                         'ko')
             self.ax.set_xlabel('X')
             self.ax.set_ylabel('Y')
 
@@ -277,16 +296,8 @@ class ExtrinsicContact:
             plt.pause(0.0001)
             self.ax.cla()
 
-        d = d.flatten()
-        idx_2 = np.where(d > threshold)[0]
-        d[idx_2] = threshold
-        d = np.clip(d, 0.0, threshold)
-
-        d = 1.0 - d / threshold
-        d = np.clip(d, 0.0, 1.0)
-        d[d > 0.1] = 1.0
-
         return torch.from_numpy(np.array(d)).view(-1, self.n_points)
+
 
 class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
 
@@ -488,7 +499,6 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
         self.middle_fingertip_handle = []
         self.tactile_handles = []  # [num_envs , 3]
 
-
         actor_count = 0
 
         self.plug_heights = []
@@ -508,7 +518,6 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
         self.plug_pcd = torch.zeros((self.num_envs, self.cfg['env']['num_points'], 3), device=self.device)
         self.subassembly_to_env_ids = {}
 
-        
         # Create wrist and fingertip force sensors
         sensor_pose = gymapi.Transform()
         # for ft_handle in self.fingertip_handles:
@@ -548,7 +557,6 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
             self.kuka_actor_ids_sim.append(actor_count)
             actor_count += 1
 
-            
             subassembly = self.cfg_env.env.desired_subassemblies[j]
             components = list(self.asset_info_insertion[subassembly])
             # self.assembly_one_hot[i, j] = 1
@@ -664,7 +672,6 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
             self.socket_handles.append(socket_handle)
             self.table_handles.append(table_handle)
 
-
             self.camera_props = gymapi.CameraProperties()
             self.camera_props.width = 1280
             self.camera_props.height = 720
@@ -678,7 +685,7 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
 
                 rendering_camera2 = self.gym.create_camera_sensor(env_ptr, self.camera_props)
                 self.gym.set_camera_location(rendering_camera2, env_ptr, gymapi.Vec3(1.5, 1, 3.0),
-                                                gymapi.Vec3(0, 0, 0))
+                                             gymapi.Vec3(0, 0, 0))
                 self.all_rendering_camera[subassembly].append(rendering_camera2)
 
             # add Tactile modules for the tips
@@ -699,16 +706,15 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
             if self.cfg['env']['compute_contact_gt']:
                 socket_pos = [0.5, 0, 0.001]
                 if subassembly not in self.subassembly_extrinsic_contact:
+                    self.subassembly_extrinsic_contact[subassembly] = ExtrinsicContact(
+                        mesh_obj=os.path.join(mesh_root, plug_file),
+                        mesh_socket=os.path.join(mesh_root, socket_file),
+                        obj_scale=1.0,
+                        socket_scale=1.0,
+                        socket_pos=socket_pos,
+                        num_envs=self.num_envs,
+                        num_points=self.cfg['env']['num_points'])
 
-                    self.subassembly_extrinsic_contact[subassembly] = ExtrinsicContact(mesh_obj=os.path.join(mesh_root, plug_file),
-                                                                mesh_socket=os.path.join(mesh_root, socket_file),
-                                                                obj_scale=1.0,
-                                                                socket_scale=1.0,
-                                                                socket_pos=socket_pos,
-                                                                num_envs=self.num_envs,
-                                                                num_points=self.cfg['env']['num_points'])
-
-                
                 # self.extrinsic_contact_gt = ExtrinsicContact(mesh_obj=os.path.join(mesh_root, plug_file),
                 #                                              mesh_socket=os.path.join(mesh_root, socket_file),
                 #                                              obj_scale=1.0,
@@ -721,13 +727,13 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
             if subassembly not in self.subassembly_pcd:
                 object_trimesh = trimesh.load(os.path.join(mesh_root, plug_file))
                 # object_trimesh = object_trimesh.apply_scale(object_trimesh)
-                pointcloud_obj = trimesh.sample.sample_surface(object_trimesh, self.cfg['env']['num_points'], seed=42)[0]
+                pointcloud_obj = trimesh.sample.sample_surface(object_trimesh, self.cfg['env']['num_points'], seed=42)[
+                    0]
                 object_pc = trimesh.points.PointCloud(pointcloud_obj)
                 self.subassembly_pcd[subassembly] = torch.from_numpy(object_pc.vertices).to(self.device).float()
-                
+
             self.plug_pcd[i, ...] = self.subassembly_pcd[subassembly]
-            
-            
+
             if subassembly not in self.subassembly_to_env_ids:
                 self.subassembly_to_env_ids[subassembly] = []
             self.subassembly_to_env_ids[subassembly].append(i)
@@ -784,7 +790,7 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
 
         # for extrinsic contact
         self.subassembly_to_env_ids = {k: torch.tensor(v, dtype=torch.long, device=self.device) for k, v in
-                                        self.subassembly_to_env_ids.items()}
+                                       self.subassembly_to_env_ids.items()}
 
     def _acquire_env_tensors(self):
         """Acquire and wrap tensors. Create views."""
@@ -847,27 +853,28 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
         #     if self.complete_video_frames is not None:
         #         print(len(self.complete_video_frames))
         if self.record_now and self.complete_video_frames is not None and len(self.complete_video_frames) == 0:
-            
+
             video_frames = []
             for _, v in self.all_rendering_camera.items():
                 env_id = v[0]
                 camera_1 = v[1]
                 camera_2 = v[2]
 
-                bx, by, bz = self.init_plug_pos_cam[env_id, 0], self.init_plug_pos_cam[env_id, 1], self.init_plug_pos_cam[env_id, 2]
+                bx, by, bz = self.init_plug_pos_cam[env_id, 0], self.init_plug_pos_cam[env_id, 1], \
+                self.init_plug_pos_cam[env_id, 2]
 
                 self.gym.set_camera_location(camera_1, self.envs[env_id],
-                                            gymapi.Vec3(bx - 0.1, by - 0.1, bz + 0.1),
-                                            gymapi.Vec3(bx, by, bz))
+                                             gymapi.Vec3(bx - 0.1, by - 0.1, bz + 0.1),
+                                             gymapi.Vec3(bx, by, bz))
                 video_frame1 = self.gym.get_camera_image(self.sim, self.envs[env_id], camera_1,
-                                                            gymapi.IMAGE_COLOR)
+                                                         gymapi.IMAGE_COLOR)
                 video_frame1 = video_frame1.reshape((self.camera_props.height, self.camera_props.width, 4))
 
                 self.gym.set_camera_location(camera_2, self.envs[env_id],
-                                            gymapi.Vec3(bx - 0.1, by + 0.1, bz + 0.1),
-                                            gymapi.Vec3(bx, by, bz))
+                                             gymapi.Vec3(bx - 0.1, by + 0.1, bz + 0.1),
+                                             gymapi.Vec3(bx, by, bz))
                 self.video_frame2 = self.gym.get_camera_image(self.sim, self.envs[env_id], camera_2,
-                                                            gymapi.IMAGE_COLOR)
+                                                              gymapi.IMAGE_COLOR)
                 self.video_frame2 = self.video_frame2.reshape((self.camera_props.height, self.camera_props.width, 4))
 
                 video_frames.append(np.concatenate((video_frame1, self.video_frame2), axis=1))

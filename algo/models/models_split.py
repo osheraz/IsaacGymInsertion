@@ -17,10 +17,12 @@ import torch.nn as nn
 import torch.nn.functional as F
 from matplotlib import pyplot as plt
 
+
 def layer_init(layer, std=np.sqrt(2), bias_const=0.0):
     torch.nn.init.orthogonal_(layer.weight, std)
     torch.nn.init.constant_(layer.bias, bias_const)
     return layer
+
 
 class MLP(nn.Module):
     def __init__(self, units, input_size):
@@ -34,7 +36,22 @@ class MLP(nn.Module):
 
     def forward(self, x):
         return self.mlp(x)
-    
+
+
+class ContactAE(nn.Module):
+    def __init__(self, input_size, embedding_size=16):
+        nn.Module.__init__(self)
+        self.embedding_size = embedding_size
+        self.contact_enc_mlp = nn.Sequential(nn.Linear(input_size, 32), nn.ReLU(), nn.Linear(32, embedding_size),
+                                             nn.Tanh())
+        self.contact_dec_mlp = nn.Sequential(nn.Linear(embedding_size, 32), nn.ReLU(), nn.Linear(32, input_size))
+
+    def forward_enc(self, x):
+        return self.contact_enc_mlp(x)
+
+    def forward_dec(self, x):
+        return self.contact_dec_mlp(x)
+
 
 class FTAdaptTConv(nn.Module):
     def __init__(self, ft_dim=6 * 5, ft_out_dim=32):
@@ -63,7 +80,7 @@ class FTAdaptTConv(nn.Module):
         return x
 
 
-class ActorCritic(nn.Module):
+class ActorCriticSplit(nn.Module):
     def __init__(self, kwargs):
         nn.Module.__init__(self)
 
@@ -76,7 +93,9 @@ class ActorCritic(nn.Module):
         self.tactile_info = kwargs["tactile_info"]
         self.obs_info = kwargs["obs_info"]
         self.contact_info = kwargs['gt_contacts_info']
-        self.contact_mlp_units = kwargs['contacts_mlp_units']
+
+        # self.body_mlp_units = kwargs['body_mlp_units']
+        # out_size = self.body_mlp_units[-1]
         self.only_contact = kwargs['only_contact']
         self.priv_mlp_units = kwargs['priv_mlp_units']
         self.priv_info = kwargs['priv_info']
@@ -84,17 +103,32 @@ class ActorCritic(nn.Module):
         self.priv_info_dim = kwargs['priv_info_dim']
         self.shared_parameters = kwargs['shared_parameters']
 
+        self.contact_mlp_units = kwargs['contacts_mlp_units']
+        # self.pose_mlp_units = kwargs['pose_mlp_units']
+        # self.physics_mlp_units = kwargs['physics_mlp_units']
+
         self.temp_latent = []
         self.temp_extrin = []
 
+        self.fig = plt.figure(figsize=(8, 6))
+        self.ax = self.fig.add_subplot(111)
+        self.flag = True
+
         if self.priv_info:
-            mlp_input_shape += self.priv_mlp_units[-1]
+            force_dim = 3
+            # self.physics_mlp = MLP(units=self.physics_mlp_units, input_size=6)
+            # mlp_input_shape += self.physics_mlp_units[-1]
+            embedding_size = 16
+            mlp_input_shape += embedding_size
+            # mlp_input_shape += self.pose_mlp_units[-1]
 
-            if self.contact_info:
-                self.priv_info_dim += self.contact_mlp_units[-1]
-                self.contact_mlp = MLP(units=self.contact_mlp_units, input_size=kwargs["num_contact_points"])
+            self.contact_ae = ContactAE(input_size=kwargs["num_contact_points"] * 1, embedding_size=embedding_size)
 
-            self.env_mlp = MLP(units=self.priv_mlp_units, input_size=self.priv_info_dim)
+            # if self.contact_info:
+            #     mlp_input_shape += self.contact_mlp_units[-1]
+            #     self.contact_mlp = MLP(units=self.contact_mlp_units, input_size=kwargs["num_contact_points"])
+
+            # self.pose_mlp = MLP(units=self.pose_mlp_units, input_size=7)
 
             if self.priv_info_stage2:
                 # ---- tactile Decoder ----
@@ -116,13 +150,13 @@ class ActorCritic(nn.Module):
                         path_checkpoint = kwargs["checkpoint_tactile"]
 
                     # load a simple tactile decoder
-                    tactile_decoder_embed_dim = kwargs['tactile_decoder_embed_dim']
+                    tactile_encoder_embed_dim = kwargs['tactile_encoder_embed_dim']
                     tactile_input_dim = kwargs['tactile_input_dim']
                     num_channels = tactile_input_dim[-1]
                     num_fingers = 3
 
-                    # self.tactile_decoder_m = load_tactile_resnet(tactile_decoder_embed_dim, 3 * num_channels)
-                    self.tactile_decoder = load_tactile_resnet(tactile_decoder_embed_dim // num_fingers, num_channels)
+                    # self.tactile_decoder_m = load_tactile_resnet(tactile_encoder_embed_dim, 3 * num_channels)
+                    self.tactile_decoder = load_tactile_resnet(tactile_encoder_embed_dim // num_fingers, num_channels)
 
                     # add tactile mlp to the decoded features
                     self.tactile_units = kwargs["mlp_tactile_units"]
@@ -147,6 +181,7 @@ class ActorCritic(nn.Module):
                     self.ft_adapt_tconv = FTAdaptTConv(ft_dim=ft_input_shape,
                                                        ft_out_dim=self.ft_units[-1])
 
+        print("#####", mlp_input_shape)
         self.actor_mlp = MLP(units=self.units, input_size=mlp_input_shape)
         if not self.shared_parameters:
             self.critic_mlp = MLP(units=self.units, input_size=mlp_input_shape)
@@ -172,7 +207,7 @@ class ActorCritic(nn.Module):
     def act(self, obs_dict):
         # used specifically to collection samples during training
         # it contains exploration so needs to sample from distribution
-        mu, logstd, value, _, _ = self._actor_critic(obs_dict)
+        mu, logstd, value, _, _, dec = self._actor_critic(obs_dict)
         sigma = torch.exp(logstd)
         distr = torch.distributions.Normal(mu, sigma)
         selected_action = distr.sample()
@@ -182,45 +217,50 @@ class ActorCritic(nn.Module):
             'actions': selected_action,
             'mus': mu,
             'sigmas': sigma,
+            'dec': dec
         }
         return result
 
     @torch.no_grad()
     def act_inference(self, obs_dict):
         # used for testing
-        mu, logstd, value, latent, _ = self._actor_critic(obs_dict)
-        return mu, latent
+        mu, logstd, value, latent, _, dec = self._actor_critic(obs_dict)
+        return mu, latent, dec
 
     def _actor_critic(self, obs_dict, display=False):
 
         obs = obs_dict['obs']
         extrin, extrin_gt = None, None
 
-        # Transformer student ( latent pass is in frozen_ppo)
+        # Transformer student (latent pass is in frozen_ppo)
         if 'latent' in obs_dict and obs_dict['latent'] is not None:
-            extrin = obs_dict['latent']
-            obs = torch.cat([obs, extrin], dim=-1)
+            extrin = self.contact_ae.forward_enc((obs_dict['latent'] > 0.8) * 1.0)
 
             if 'priv_info' in obs_dict:
                 # with torch.inference_mode():
-                extrin_gt = self.env_mlp(obs_dict['priv_info'])
+                extrin_gt = self.contact_ae.forward_enc(obs_dict['contacts'])
+
                 # extrin_gt = torch.tanh(extrin_gt)
 
                 if display:
-                    plt.ylim(-1, 1)
-                    plt.scatter(list(range(extrin_gt.shape[-1])), extrin.clone().detach().cpu().numpy()[0, :], color='r')
-                    plt.scatter(list(range(extrin_gt.shape[-1])), extrin_gt.clone().cpu().numpy()[0, :], color='b')
+                    # self.ax.set_ylim(-1, 1)
+                    self.ax.scatter(list(range(extrin_gt.shape[-1])), extrin.clone().detach().cpu().numpy()[0, :],
+                                    color='r')
+                    self.ax.scatter(list(range(extrin_gt.shape[-1])), extrin_gt.clone().cpu().numpy()[0, :], color='b')
                     plt.pause(0.0001)
-                    plt.cla()
+                    self.ax.cla()
+
+            obs = torch.cat([obs, extrin], dim=-1)
+            dec = self.contact_ae.forward_dec(extrin)
 
         # MLP models
         else:
             # Contact obs with extrin/gt_extrin and pass to the actor
             if self.priv_info:
                 if self.priv_info_stage2:
-                    
+
                     if self.tactile_info:
-                        extrin_tactile = self._tactile_encode_multi(obs_dict['tactile_hist'])
+                        extrin_tactile = self._tactile_encode(obs_dict['tactile_hist'])
                     if self.obs_info:
                         extrin_obs = self.obs_mlp(obs_dict['student_obs'])
                     # If both, merge and create student extrin
@@ -237,11 +277,8 @@ class ActorCritic(nn.Module):
                         if 'priv_info' in obs_dict:
                             if self.contact_info:
                                 contact_features = self.contact_mlp(obs_dict['contacts'])
-                                if self.only_contact:
-                                    extrin_gt = contact_features
-                                else:
-                                    priv_obs = torch.cat([obs_dict['priv_info'], contact_features], dim=-1)
-                                    extrin_gt = self.env_mlp(priv_obs)  # extrin
+                                priv_obs = torch.cat([obs_dict['priv_info'], contact_features], dim=-1)
+                                extrin_gt = self.env_mlp(priv_obs)  # extrin
                             else:
                                 extrin_gt = self.env_mlp(obs_dict['priv_info'])
                         else:
@@ -253,38 +290,31 @@ class ActorCritic(nn.Module):
                     # extrin = torch.tanh(extrin)
 
                     # Applying action with student model
-                    obs = torch.cat([obs, extrin], dim=-1)
+                    obs = torch.cat([obs, extrin_gt], dim=-1)
 
                     # plot for latent viz
                     if display:
                         plt.ylim(-1, 1)
-                        plt.scatter(list(range(extrin.shape[-1])), extrin.clone().detach().cpu().numpy()[0, :], color='r')
+                        plt.scatter(list(range(extrin.shape[-1])), extrin.clone().detach().cpu().numpy()[0, :],
+                                    color='r')
                         plt.scatter(list(range(extrin_gt.shape[-1])), extrin_gt.clone().cpu().numpy()[0, :], color='b')
                         plt.pause(0.0001)
                         plt.cla()
 
                 else:
-                    # Stage1 -> Getting extrin from the priv_mlp
-                    if self.contact_info:
-                        contact_features = self.contact_mlp(obs_dict['contacts'])
-                        if self.only_contact:
-                            extrin = contact_features
-                        else:
-                            priv_obs = torch.cat([obs_dict['priv_info'], contact_features], dim=-1)
-                            extrin = self.env_mlp(priv_obs)
-                    else:
-                        extrin = self.env_mlp(obs_dict['priv_info'])
+                    # TODO add options to train with different priv
+                    enc = self.contact_ae.forward_enc(obs_dict['contacts'])
+                    dec = self.contact_ae.forward_dec(enc)
+                    extrin = enc
 
-                    # extrin = torch.tanh(extrin)
-
-                    # plot for latent viz
-                    if display and 'latent' in obs_dict:
+                    if display:
                         plt.ylim(-1, 1)
-                        plt.scatter(list(range(extrin.shape[-1])), extrin.clone().detach().cpu().numpy()[0, :], color='b')
-                        plt.scatter(list(range(extrin.shape[-1])), obs_dict['latent'].clone().cpu().numpy()[0, :], color='r')
+                        plt.scatter(list(range(extrin.shape[-1])), extrin.clone().detach().cpu().numpy()[0, :],
+                                    color='b')
+                        plt.scatter(list(range(extrin.shape[-1])), obs_dict['latent'].clone().cpu().numpy()[0, :],
+                                    color='r')
                         plt.pause(0.0001)
                         plt.cla()
-
                     obs = torch.cat([obs, extrin], dim=-1)
 
         x = self.actor_mlp(obs)
@@ -296,11 +326,11 @@ class ActorCritic(nn.Module):
         else:
             value = self.value(x)
 
-        return mu, mu * 0 + sigma, value, extrin, extrin_gt
+        return mu, mu * 0 + sigma, value, extrin, extrin_gt, dec
 
     def forward(self, input_dict):
         prev_actions = input_dict.get('prev_actions', None)
-        mu, logstd, value, extrin, extrin_gt = self._actor_critic(input_dict)
+        mu, logstd, value, extrin, extrin_gt, dec = self._actor_critic(input_dict)
         sigma = torch.exp(logstd)
         distr = torch.distributions.Normal(mu, sigma)
         entropy = distr.entropy().sum(dim=-1)
@@ -313,6 +343,7 @@ class ActorCritic(nn.Module):
             'sigmas': sigma,
             'extrin': extrin,
             'extrin_gt': extrin_gt,
+            'dec': dec
         }
         return result
 
@@ -349,6 +380,7 @@ class ActorCritic(nn.Module):
         tac_emb = self.tactile_mlp(tactile_embeddings)
 
         return tac_emb
+
 
 def load_tactile_resnet(embed_dim, num_channels,
                         root_dir=None, path_checkpoint=None, pre_trained=False):

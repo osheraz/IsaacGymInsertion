@@ -26,7 +26,8 @@ import numpy as np
 
 from algo.ppo.experience import ExperienceBuffer, DataLogger
 from algo.ppo.experience import VectorizedExperienceBuffer
-from algo.models.models import ActorCritic
+# from algo.models.models import ActorCritic
+from algo.models.models_split import ActorCriticSplit as ActorCritic
 from algo.models.running_mean_std import RunningMeanStd
 
 from isaacgyminsertion.utils.misc import AverageScalarMeter
@@ -68,10 +69,13 @@ class PPO(object):
         # ---- Tactile Info ---
         self.tactile_info = self.ppo_config["tactile_info"]
         self.tactile_seq_length = self.network_config.tactile_decoder.tactile_seq_length
-        self.tactile_input_dim = (self.network_config.tactile_decoder.img_width,
+        self.tactile_input_dim = [self.network_config.tactile_decoder.img_width,
                                   self.network_config.tactile_decoder.img_height,
-                                  self.network_config.tactile_decoder.num_channels)
+                                  self.network_config.tactile_decoder.num_channels]
+        if self.task_config.tactile.half_image:
+            self.tactile_input_dim[0] = self.tactile_input_dim[0] // 2
         self.mlp_tactile_info_dim = self.network_config.tactile_mlp.units[0]
+        self.tactile_hist_dim = (self.network_config.tactile_decoder.tactile_seq_length, 3, *self.tactile_input_dim)
         # ---- ft Info ---
         self.ft_info = self.ppo_config["ft_info"]
         self.ft_seq_length = self.ppo_config["ft_seq_length"]
@@ -113,8 +117,10 @@ class PPO(object):
             'tactile_seq_length': self.tactile_seq_length,
             "tactile_decoder_embed_dim": self.network_config.tactile_mlp.units[0],
             "shared_parameters": self.ppo_config.shared_parameters,
-            "merge_units": self.network_config.merge_mlp.units
-
+            "merge_units": self.network_config.merge_mlp.units,
+            # "pose_mlp_units": self.network_config.pose_mlp.units,
+            # "physics_mlp_units": self.network_config.physics_mlp.units,
+            # 'body_mlp_units': self.network_config.body_mlp.units,
         }
 
         self.model = ActorCritic(net_config)
@@ -140,6 +146,7 @@ class PPO(object):
         # ---- Optim ----
         self.last_lr = float(self.ppo_config['learning_rate'])
         self.weight_decay = self.ppo_config.get('weight_decay', 0.0)
+        self.decoder_criterion = torch.nn.BCEWithLogitsLoss()
         self.optimizer = torch.optim.Adam(self.model.parameters(), self.last_lr, weight_decay=self.weight_decay)
 
         # ---- PPO Train Param ----
@@ -194,6 +201,7 @@ class PPO(object):
                                         self.actions_num,
                                         self.priv_info_dim,
                                         self.num_contacts_points,
+                                        self.tactile_hist_dim,
                                         self.device, )
 
         # ---- Data Logger ----
@@ -286,6 +294,9 @@ class PPO(object):
 
         if 'contacts' in obs_dict and self.gt_contacts_info:
             input_dict['contacts'] = obs_dict['contacts']
+
+        # if 'tactile_hist' in obs_dict and self.tactile_info:
+        #     input_dict['tactile_hist'] = obs_dict['tactile_hist']
 
         res_dict = self.model.act(input_dict)
         res_dict['values'] = self.value_mean_std(res_dict['values'], True)
@@ -386,7 +397,7 @@ class PPO(object):
             
             for i in range(len(self.storage)):
                 value_preds, old_action_log_probs, advantage, old_mu, old_sigma, \
-                returns, actions, obs, priv_info, contacts, socket_pos = self.storage[i]
+                returns, actions, obs, priv_info, contacts, plug_socket_dist, tactile_hist = self.storage[i]
 
                 obs = self.running_mean_std(obs)
                 priv_info = self.priv_mean_std(priv_info)
@@ -395,7 +406,9 @@ class PPO(object):
                     'prev_actions': actions,
                     'obs': obs,
                     'priv_info': priv_info,
-                    'contacts': contacts
+                    'contacts': contacts,
+                    'plug_socket_dist': plug_socket_dist,
+                    # 'tactile_hist': tactile_hist
                 }
                 res_dict = self.model(batch_dict)
                 action_log_probs = res_dict['prev_neglogp']
@@ -403,6 +416,7 @@ class PPO(object):
                 entropy = res_dict['entropy']
                 mu = res_dict['mus']
                 sigma = res_dict['sigmas']
+                dec = res_dict['dec']
 
                 # actor loss
                 ratio = torch.exp(old_action_log_probs - action_log_probs)
@@ -424,7 +438,10 @@ class PPO(object):
                     b_loss = 0
                 a_loss, c_loss, entropy, b_loss = [torch.mean(loss) for loss in [a_loss, c_loss, entropy, b_loss]]
 
-                loss = a_loss + 0.5 * c_loss * self.critic_coef - entropy * self.entropy_coef + b_loss * self.bounds_loss_coef
+                # decoder_loss = self.decoder_criterion(dec, batch_dict['contacts'])
+                rl_loss = a_loss + 0.5 * c_loss * self.critic_coef - entropy * self.entropy_coef + b_loss * self.bounds_loss_coef
+                # print(decoder_loss.item(), rl_loss.item())
+                loss = rl_loss  # + decoder_loss
 
                 with torch.no_grad():
                     kl_dist = policy_kl(mu.detach(), sigma.detach(), old_mu, old_sigma)
@@ -550,6 +567,8 @@ class PPO(object):
             res_dict = self.model_act(self.obs)
             self.storage.update_data('obses', n, self.obs['obs'])
             self.storage.update_data('priv_info', n, self.obs['priv_info'])
+            # self.storage.update_data('tactile_hist', n, self.obs['tactile_hist'])
+            self.storage.update_data('plug_socket_dist', n, self.obs['plug_socket_dist'])
             self.storage.update_data('contacts', n, self.obs['contacts'])
             # self.storage.update_data('socket_pos', n, self.obs['socket_pos'])
 
@@ -558,7 +577,7 @@ class PPO(object):
 
             # do env step
             actions = torch.clamp(res_dict['actions'], -1.0, 1.0)
-            self.obs, rewards, self.dones, infos = self.env.step(actions)
+            self.obs, rewards, self.dones, infos = self.env.step(actions, res_dict['dec'])
 
             rewards = rewards.unsqueeze(1)
             # update dones and rewards after env step
@@ -619,7 +638,7 @@ class PPO(object):
             transforms.Normalize([0.5], [0.5])
         ])
         
-        action, latent, done = None, None, None
+        action, latent, done, dec = None, None, None, None
 
         save_trajectory = self.env.cfg_task.data_logger.collect_data
         offline_test = self.full_config.offline_training_w_env
@@ -645,7 +664,7 @@ class PPO(object):
                 self.data_logger.data_logger.reset()
             if not save_trajectory:
                 # record initial data for latent inference (not needed if recording trajectory data, TODO: check why?)
-                self.data_logger.log_trajectory_data(action, latent, done, save_trajectory=save_trajectory)
+                self.data_logger.log_trajectory_data(action, latent, done, dec, save_trajectory=save_trajectory)
 
         self.env_ids = torch.arange(self.env.num_envs).view(-1, 1)
         total_dones, num_success = 0, 0
@@ -675,9 +694,9 @@ class PPO(object):
                 'contacts': self.obs['contacts'],
                 'latent': latent,
             }
-            action, latent = self.model.act_inference(obs_dict)
+            action, latent, dec = self.model.act_inference(obs_dict)
             action = torch.clamp(action, -1.0, 1.0)
-            self.obs, r, done, info = self.env.step(action)
+            self.obs, r, done, info = self.env.step(action, dec)
 
             num_success += self.env.success_reset_buf[done.nonzero()].sum()
             # logging data
@@ -686,7 +705,7 @@ class PPO(object):
                 if total_dones > milestone:
                     print('success rate:', num_success/total_dones)
                     milestone += 100
-                self.data_logger.log_trajectory_data(action, latent, done, save_trajectory=save_trajectory)
+                self.data_logger.log_trajectory_data(action, latent, done, dec, save_trajectory=save_trajectory)
 
         print('success rate:', num_success/total_dones)
         return num_success, total_dones
@@ -707,22 +726,23 @@ class PPO(object):
         if normalize_dict is not None:
             arm_joints = (arm_joints - normalize_dict["mean"]["arm_joints"]) / normalize_dict["std"]["arm_joints"]
             eef_pos = (eef_pos - normalize_dict["mean"]["eef_pos"]) / normalize_dict["std"]["eef_pos"]
-            noisy_socket_pos = (noisy_socket_pos - normalize_dict["mean"]["noisy_socket_pos"][:2]) / normalize_dict["std"]["noisy_socket_pos"][:2]
+            noisy_socket_pos = (noisy_socket_pos - normalize_dict["mean"]["noisy_socket_pos"][:2]) / \
+                               normalize_dict["std"]["noisy_socket_pos"][:2]
             target = (target - normalize_dict["mean"]["target"]) / normalize_dict["std"]["target"]
 
         # making the inputs
         # cnn_input = torch.cat([tactile[:, :, 0, ...], tactile[:, :,  1, ...], tactile[:, :,  2, ...]], dim=-1)
         cnn_input_1 = tactile[:, :, 0, ...]
-        cnn_input_2 = tactile[:, :, 1, ...] 
+        cnn_input_2 = tactile[:, :, 1, ...]
         cnn_input_3 = tactile[:, :, 2, ...]
 
-        lin_input = torch.cat([arm_joints, eef_pos, noisy_socket_pos, action, target], dim=-1)
-        
+        lin_input = torch.cat([eef_pos, action, target], dim=-1)
+
         # check here
         # doing these operations to enable transform. They have no meaning if written separately.
-        cnn_input_1 = self.transform(cnn_input_1.permute(0, 1, 4, 2, 3)).permute(0, 1, 3, 4, 2)
-        cnn_input_2 = self.transform(cnn_input_2.permute(0, 1, 4, 2, 3)).permute(0, 1, 3, 4, 2)
-        cnn_input_3 = self.transform(cnn_input_3.permute(0, 1, 4, 2, 3)).permute(0, 1, 3, 4, 2)
+        # cnn_input_1 = self.transform(cnn_input_1.permute(0, 1, 4, 2, 3)).permute(0, 1, 3, 4, 2)
+        # cnn_input_2 = self.transform(cnn_input_2.permute(0, 1, 4, 2, 3)).permute(0, 1, 3, 4, 2)
+        # cnn_input_3 = self.transform(cnn_input_3.permute(0, 1, 4, 2, 3)).permute(0, 1, 3, 4, 2)
 
         if self.full_config.offline_train.model.transformer.full_sequence:
             return (cnn_input_1, cnn_input_2, cnn_input_3), lin_input
@@ -732,10 +752,14 @@ class PPO(object):
         padding_cnn3 = torch.zeros_like(cnn_input_3)
         padding_lin = torch.zeros_like(lin_input)
         for env_id in range(self.env.num_envs):
-            padding_cnn1[env_id, -(self.env.progress_buf[env_id]+1):, :] = cnn_input_1[env_id, :(self.env.progress_buf[env_id]+1), :]
-            padding_cnn2[env_id, -(self.env.progress_buf[env_id]+1):, :] = cnn_input_2[env_id, :(self.env.progress_buf[env_id]+1), :]
-            padding_cnn3[env_id, -(self.env.progress_buf[env_id]+1):, :] = cnn_input_3[env_id, :(self.env.progress_buf[env_id]+1), :]
-            padding_lin[env_id, -(self.env.progress_buf[env_id]+1):, :] = lin_input[env_id, :(self.env.progress_buf[env_id]+1), :]
+            padding_cnn1[env_id, -(self.env.progress_buf[env_id] + 1):, :] = cnn_input_1[env_id,
+                                                                             :(self.env.progress_buf[env_id] + 1), :]
+            padding_cnn2[env_id, -(self.env.progress_buf[env_id] + 1):, :] = cnn_input_2[env_id,
+                                                                             :(self.env.progress_buf[env_id] + 1), :]
+            padding_cnn3[env_id, -(self.env.progress_buf[env_id] + 1):, :] = cnn_input_3[env_id,
+                                                                             :(self.env.progress_buf[env_id] + 1), :]
+            padding_lin[env_id, -(self.env.progress_buf[env_id] + 1):, :] = lin_input[env_id,
+                                                                            :(self.env.progress_buf[env_id] + 1), :]
 
         cnn_input_1 = padding_cnn1[:, -self.full_config.offline_train.model.transformer.sequence_length:, :].clone()
         cnn_input_2 = padding_cnn2[:, -self.full_config.offline_train.model.transformer.sequence_length:, :].clone()

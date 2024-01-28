@@ -35,7 +35,7 @@ def transform_op(arr):
 
 
 class ExperienceBuffer(Dataset):
-    def __init__(self, num_envs, horizon_length, batch_size, minibatch_size, obs_dim, act_dim, priv_dim, pts_dim,
+    def __init__(self, num_envs, horizon_length, batch_size, minibatch_size, obs_dim, act_dim, priv_dim, pts_dim, tact_hist_shape,
                  device):
         self.device = device
         self.num_envs = num_envs
@@ -52,10 +52,14 @@ class ExperienceBuffer(Dataset):
                                  device=self.device),
             'priv_info': torch.zeros((self.transitions_per_env, self.num_envs, self.priv_dim), dtype=torch.float32,
                                      device=self.device),
+            # 'tactile_hist': torch.zeros((self.transitions_per_env, self.num_envs, *tact_hist_shape), dtype=torch.float32,
+            #                             device=self.device),
             'contacts': torch.zeros((self.transitions_per_env, self.num_envs, self.pts_dim), dtype=torch.float32,
                                     device=self.device),
             'socket_pos': torch.zeros((self.transitions_per_env, self.num_envs, 3), dtype=torch.float32,
                                       device=self.device),
+            'plug_socket_dist': torch.zeros((self.transitions_per_env, self.num_envs, 3), dtype=torch.float32,
+                                            device=self.device),
             'rewards': torch.zeros((self.transitions_per_env, self.num_envs, 1), dtype=torch.float32,
                                    device=self.device),
             'values': torch.zeros((self.transitions_per_env, self.num_envs, 1), dtype=torch.float32,
@@ -95,7 +99,7 @@ class ExperienceBuffer(Dataset):
                 input_dict[k] = v[batch_idx]
         return input_dict['values'], input_dict['neglogpacs'], input_dict['advantages'], input_dict['mus'], \
                input_dict['sigmas'], input_dict['returns'], input_dict['actions'], \
-               input_dict['obses'], input_dict['priv_info'], input_dict['contacts'], input_dict['socket_pos']
+               input_dict['obses'], input_dict['priv_info'], input_dict['contacts'], input_dict['plug_socket_dist'], None
 
     def update_mu_sigma(self, mu, sigma):
         start = self.last_range[0]
@@ -365,6 +369,8 @@ class SimLogger():
     def __init__(self, env):
         self.env = env
         ROT_MAT_SIZE = 9
+        self.split_latent = env.cfg_ppo.ppo.split_latent
+        self.gt_contact = env.cfg_task.env.compute_contact_gt
 
         log_items = {
             'contacts_shape': env.gt_extrinsic_contact.shape[-1],
@@ -376,7 +382,6 @@ class SimLogger():
             'action_shape': env.cfg_task.env.numActions,
             'target_shape': env.cfg_task.env.numTargets,
             'tactile_shape': env.tactile_imgs.shape[1:],
-            'latent_shape': env.cfg_ppo.network.priv_mlp.units[-1],
             'rigid_physics_params_shape': env.rigid_physics_params.shape[-1],
             'plug_hand_pos_shape': env.plug_hand_pos.shape[-1],
             'plug_hand_quat_shape': env.plug_hand_quat.shape[-1],
@@ -385,7 +390,24 @@ class SimLogger():
             'obs_hist_shape': env.obs_queue.shape[-1],
             'obs_hist_stud_shape': env.obs_student_buf.shape[-1],
             'priv_obs_shape': env.states_buf.shape[-1],
+            'dec_shape': env.gt_extrinsic_contact.shape[-1],
         }
+
+        if self.split_latent and False:
+            log_items.update({
+                'pose_latent_shape': env.cfg_ppo.network.pose_mlp.units[-1],
+                'physics_latent_shape': env.cfg_ppo.network.physics_mlp.units[-1],
+                'forces_latent_shape': 3,
+            })
+        else:
+            log_items.update({
+                'latent_shape': 16,  # env.cfg_ppo.network.priv_mlp.units[-1],
+            })
+
+        if self.gt_contact and False:
+            log_items.update({
+                'contact_latent_shape': 4,
+            })
 
         log_folder = env.cfg_task.data_logger.base_folder
         if 'oa348' in os.getcwd():
@@ -402,7 +424,7 @@ class SimLogger():
 
         self.data_logger = None
 
-    def log_trajectory_data(self, action, latent, done, save_trajectory=True):
+    def log_trajectory_data(self, action, latent, done, dec, save_trajectory=True):
         eef_pos = torch.cat(self.env.pose_world_to_robot_base(self.env.fingertip_centered_pos.clone(),
                                                               self.env.fingertip_centered_quat.clone()), dim=-1)
         plug_pos = torch.cat(self.env.pose_world_to_robot_base(self.env.plug_pos.clone(),
@@ -423,6 +445,16 @@ class SimLogger():
         priv_obs = self.env.states_buf.clone()
         obs_hist_stud = self.env.obs_student_buf.clone()
 
+        new_action = None
+        if action is not None:
+            new_action = action.clone()
+        new_done = None
+        if done is not None:
+            new_done = done.clone()
+        new_dec = None
+        if dec is not None:
+            new_dec = dec.clone()
+
         log_data = {
             'contacts': self.env.gt_extrinsic_contact,
             'arm_joints': self.env.arm_dof_pos,
@@ -430,10 +462,9 @@ class SimLogger():
             'socket_pos': socket_pos,
             'noisy_socket_pos': noisy_socket_pos,
             'plug_pos': plug_pos,
-            'action': action,
+            'action': new_action,
             'target': self.env.targets,
             'tactile': self.env.tactile_imgs,
-            'latent': latent,
             'rigid_physics_params': rigid_physics_params,
             'plug_hand_pos': plug_hand_pos,
             'plug_hand_quat': plug_hand_quat,
@@ -442,8 +473,29 @@ class SimLogger():
             'obs_hist': obs_hist,
             'obs_hist_stud': obs_hist_stud,
             'priv_obs': priv_obs,
-            'done': done
+            'done': new_done,
+            'dec': new_dec
         }
+
+        new_latent = None
+        if latent is not None:
+            new_latent = latent.clone()
+            if self.split_latent and False:
+                log_data.update({
+                    'pose_latent': new_latent[:, :4],
+                    'physics_latent': new_latent[:, 4:8],
+                    'forces_latent': new_latent[:, 8:11],
+
+                })
+            else:
+                log_data.update({
+                    'latent': new_latent
+                })
+
+            if self.gt_contact and False:
+                log_data.update({
+                    'contact_latent': new_latent[:, 11:15]
+                })
 
         self.data_logger.update(save_trajectory=save_trajectory, **log_data)
 
