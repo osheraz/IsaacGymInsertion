@@ -1,6 +1,6 @@
 #!/bin/bash
 GPUS=${1:-0}
-SEED=${2:-0}
+SEED=${2:-42}
 CACHE=${3:-test}
 NUM_ENVS=${4:-4096}
 HEADLESS=${5:-True}
@@ -19,7 +19,7 @@ task.env.tactile=False \
 task.env.tactile_display_viz=False \
 task.env.tactile_wrt_force=False \
 task.env.smooth_force=False \
-task.env.numObsHist=1 \
+task.env.numObsHist=25 \
 task.env.numObservations=18 \
 task.env.compute_contact_gt=True \
 task.env.numStates=7 \

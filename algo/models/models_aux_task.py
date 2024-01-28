@@ -85,14 +85,13 @@ class ActorCriticSplit(nn.Module):
         input_shape = kwargs['input_shape']
         mlp_input_shape = input_shape[0]
         self.units = kwargs['actor_units']
-        out_size = self.units[-1]
         self.ft_info = kwargs["ft_info"]
         self.tactile_info = kwargs["tactile_info"]
         self.obs_info = kwargs["obs_info"]
         self.contact_info = kwargs['gt_contacts_info']
 
-        # self.body_mlp_units = kwargs['body_mlp_units']
-        # out_size = self.body_mlp_units[-1]
+        self.body_mlp_units = kwargs['body_mlp_units']
+        out_size = self.body_mlp_units[-1]
 
         self.priv_mlp_units = kwargs['priv_mlp_units']
         self.priv_info = kwargs['priv_info']
@@ -177,11 +176,15 @@ class ActorCriticSplit(nn.Module):
                     self.ft_adapt_tconv = FTAdaptTConv(ft_dim=ft_input_shape,
                                                        ft_out_dim=self.ft_units[-1])
 
-        print("#####", mlp_input_shape)
-        self.actor_mlp = MLP(units=self.units, input_size=mlp_input_shape)
-        if not self.shared_parameters:
-            self.critic_mlp = MLP(units=self.units, input_size=mlp_input_shape)
+        # print("#####", mlp_input_shape)
 
+        self.main_mlp = MLP(units=self.body_mlp_units, input_size=mlp_input_shape)
+
+        # self.actor_mlp = MLP(units=self.units, input_size=mlp_input_shape)
+        # if not self.shared_parameters:
+        #     self.critic_mlp = MLP(units=self.units, input_size=mlp_input_shape)
+
+        self.aux_task = layer_init(torch.nn.Linear(out_size, 3), std=1.0)
         self.value = layer_init(torch.nn.Linear(out_size, 1), std=1.0)
         self.mu = layer_init(torch.nn.Linear(out_size, actions_num), std=0.01)
         self.sigma = nn.Parameter(torch.zeros(actions_num, requires_grad=True, dtype=torch.float32), requires_grad=True)
@@ -302,7 +305,7 @@ class ActorCriticSplit(nn.Module):
                 else:
                     
                     enc = self.contact_ae.forward_enc(obs_dict['contacts'])
-                    dec = self.contact_ae.forward_dec(enc)
+                    # dec = self.contact_ae.forward_dec(enc)
                     extrin = enc
 
                     if display:
@@ -313,16 +316,18 @@ class ActorCriticSplit(nn.Module):
                         plt.cla()
                     obs = torch.cat([obs, extrin], dim=-1)
 
-        x = self.actor_mlp(obs)
+        x = self.main_mlp(obs)
         mu = self.mu(x)
+        value = self.value(x)
+        aux_val = self.aux_task(x)
         sigma = self.sigma
-        if not self.shared_parameters:
-            v = self.critic_mlp(obs)
-            value = self.value(v)
-        else:
-            value = self.value(x)
+        # if not self.shared_parameters:
+        #     v = self.critic_mlp(obs)
+        #     value = self.value(v)
+        # else:
+        #     value = self.value(x)
         
-        return mu, mu * 0 + sigma, value, extrin, extrin_gt, dec
+        return mu, mu * 0 + sigma, value, extrin, extrin_gt, aux_val
 
     def forward(self, input_dict):
         prev_actions = input_dict.get('prev_actions', None)

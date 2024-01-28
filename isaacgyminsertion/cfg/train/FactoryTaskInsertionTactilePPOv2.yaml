@@ -3,6 +3,8 @@ algo: PPO # ExtrinsicAdapt, PPO
 load_path: ${..checkpoint} # path to the checkpoint to load
 
 network:
+  body_mlp:
+    units: [64, 32, 32]
   mlp:
     units: [512, 256, 128]
   priv_mlp:

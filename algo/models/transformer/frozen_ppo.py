@@ -27,6 +27,7 @@ import numpy as np
 from algo.ppo.experience import ExperienceBuffer, DataLogger
 from algo.ppo.experience import VectorizedExperienceBuffer
 from algo.models.models_split import ActorCriticSplit as ActorCritic
+# from algo.models.models_aux_task import ActorCriticSplit as ActorCritic
 # from algo.models.models import ActorCritic
 # from algo.models.models_baseline import ActorCritic
 from algo.models.running_mean_std import RunningMeanStd
@@ -120,7 +121,8 @@ class PPO(object):
             "shared_parameters": self.ppo_config.shared_parameters,
             "merge_units": self.network_config.merge_mlp.units,
             "pose_mlp_units": self.network_config.pose_mlp.units,
-            "physics_mlp_units": self.network_config.physics_mlp.units
+            "physics_mlp_units": self.network_config.physics_mlp.units,
+            'body_mlp_units': self.network_config.body_mlp.units,
         }
 
         self.model = ActorCritic(net_config)
@@ -399,7 +401,7 @@ class PPO(object):
             
             for i in range(len(self.storage)):
                 value_preds, old_action_log_probs, advantage, old_mu, old_sigma, \
-                returns, actions, obs, priv_info, contacts, socket_pos, tactile_hist = self.storage[i]
+                returns, actions, obs, priv_info, contacts, plug_socket_dist, tactile_hist = self.storage[i]
 
                 obs = self.running_mean_std(obs)
                 priv_info = self.priv_mean_std(priv_info)
@@ -409,6 +411,7 @@ class PPO(object):
                     'obs': obs,
                     'priv_info': priv_info,
                     'contacts': contacts,
+                    'plug_socket_dist': plug_socket_dist
                     # 'tactile_hist': tactile_hist
                 }
                 res_dict = self.model(batch_dict)
@@ -439,10 +442,10 @@ class PPO(object):
                     b_loss = 0
                 a_loss, c_loss, entropy, b_loss = [torch.mean(loss) for loss in [a_loss, c_loss, entropy, b_loss]]
 
-                decoder_loss = self.decoder_criterion(dec, batch_dict['contacts'])
+                # decoder_loss = self.decoder_criterion(dec, batch_dict['contacts'])
                 rl_loss = a_loss + 0.5 * c_loss * self.critic_coef - entropy * self.entropy_coef + b_loss * self.bounds_loss_coef 
                 # print(decoder_loss.item(), rl_loss.item())
-                loss  = decoder_loss + rl_loss
+                loss  = rl_loss # + decoder_loss
 
                 with torch.no_grad():
                     kl_dist = policy_kl(mu.detach(), sigma.detach(), old_mu, old_sigma)
@@ -570,6 +573,7 @@ class PPO(object):
             self.storage.update_data('priv_info', n, self.obs['priv_info'])
             # self.storage.update_data('tactile_hist', n, self.obs['tactile_hist'])
             self.storage.update_data('contacts', n, self.obs['contacts'])
+            self.storage.update_data('plug_socket_dist', n, self.obs['plug_socket_dist'])
             self.storage.update_data('socket_pos', n, self.obs['socket_pos'])
 
             for k in ['actions', 'neglogpacs', 'values', 'mus', 'sigmas']:
@@ -713,7 +717,7 @@ class PPO(object):
                 total_dones += len(done.nonzero())
                 if total_dones > milestone:
                     print('success rate:', num_success/total_dones)
-                    milestone += 10
+                    milestone += 100
                 self.data_logger.log_trajectory_data(action, latent, done, dec, save_trajectory=save_trajectory)
 
         print('success rate:', num_success/total_dones)

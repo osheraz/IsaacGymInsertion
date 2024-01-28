@@ -63,6 +63,8 @@ ppo:
 
 
 network:
+  body_mlp:
+    units: [64, 32, 32]
   mlp:
     units: [512, 256, 128]
   priv_mlp:

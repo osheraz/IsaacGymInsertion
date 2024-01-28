@@ -58,6 +58,8 @@ class ExperienceBuffer(Dataset):
                                     device=self.device),
             'socket_pos': torch.zeros((self.transitions_per_env, self.num_envs, 3), dtype=torch.float32,
                                     device=self.device),
+            'plug_socket_dist': torch.zeros((self.transitions_per_env, self.num_envs, 3), dtype=torch.float32,
+                                    device=self.device),
             'rewards': torch.zeros((self.transitions_per_env, self.num_envs, 1), dtype=torch.float32,
                                    device=self.device),
             'values': torch.zeros((self.transitions_per_env, self.num_envs, 1), dtype=torch.float32,
@@ -97,7 +99,7 @@ class ExperienceBuffer(Dataset):
                 input_dict[k] = v[batch_idx]
         return input_dict['values'], input_dict['neglogpacs'], input_dict['advantages'], input_dict['mus'], \
                input_dict['sigmas'], input_dict['returns'], input_dict['actions'], \
-               input_dict['obses'], input_dict['priv_info'], input_dict['contacts'], input_dict['socket_pos'], \
+               input_dict['obses'], input_dict['priv_info'], input_dict['contacts'], input_dict['plug_socket_dist'], \
                None
 
     def update_mu_sigma(self, mu, sigma):
@@ -380,7 +382,7 @@ class SimLogger():
             'plug_pos_shape': env.plug_pos.size()[-1] + ROT_MAT_SIZE,
             'action_shape': env.cfg_task.env.numActions,
             'target_shape': env.cfg_task.env.numTargets,
-            'tactile_shape': env.tactile_imgs.shape[1:],
+            # 'tactile_shape': env.tactile_imgs.shape[1:],
             'rigid_physics_params_shape': env.rigid_physics_params.shape[-1],
             'plug_hand_pos_shape': env.plug_hand_pos.shape[-1],
             'plug_hand_quat_shape': env.plug_hand_quat.shape[-1],
@@ -463,7 +465,7 @@ class SimLogger():
             'plug_pos': plug_pos,
             'action': new_action,
             'target': self.env.targets,
-            'tactile': self.env.tactile_imgs,
+            # 'tactile': self.env.tactile_imgs,
             'rigid_physics_params': rigid_physics_params,
             'plug_hand_pos': plug_hand_pos,
             'plug_hand_quat': plug_hand_quat,

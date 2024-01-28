@@ -145,16 +145,18 @@ class ExtrinsicContact:
             o3d.t.geometry.TriangleMesh.from_legacy(self.socket_trimesh.as_open3d)
         )
         self.socket_pcl = trimesh.sample.sample_surface_even(self.socket_trimesh, num_points, seed=42)[0]   
+        
 
         self.pointcloud_obj = trimesh.sample.sample_surface(self.object_trimesh, num_points, seed=42)[0]
+
         self.object_pc = trimesh.points.PointCloud(self.pointcloud_obj.copy())
 
         self.n_points = num_points
         # self.gt_extrinsic_contact = torch.zeros((num_envs, self.n_points))
         self.constant_socket = False
         self.fig = plt.figure(figsize=plt.figaspect(0.5))
-        self.ax1 = self.fig.add_subplot(1, 2, 1, projection='3d')
-        self.ax2 = self.fig.add_subplot(1, 2, 2, projection='3d')
+        self.ax = self.fig.add_subplot(1, 1, 1, projection='3d')
+        # self.ax2 = self.fig.add_subplot(1, 2, 2, projection='3d')
         self.num_envs = num_envs
         self.device = device
         self.dec = torch.zeros((num_envs, self.n_points)).to(device)
@@ -320,48 +322,13 @@ class ExtrinsicContact:
         if len(socket_poses.shape) == 2:
             socket_poses = socket_poses[None, ...]
 
+        
         query_points = self.apply_transform(self.plug_pose_no_rot, self.object_pc.copy().vertices)
 
-        d = self.socket.compute_distance(o3d.core.Tensor.from_numpy(query_points.astype(np.float32))).numpy()
+        # print(query_points.shape)
+        di = self.socket.compute_distance(o3d.core.Tensor.from_numpy(query_points.astype(np.float32))).numpy()
 
-        if display and False:
-            display_id = 0
-            self.ax2.cla()
-            self.ax1.cla()
-
-            self.ax1.plot(self.socket_pcl[:, 0], self.socket_pcl[:, 1], self.socket_pcl[:, 2], 'yo')
-            self.ax1.plot(query_points[display_id, :, 0], query_points[display_id, :, 1], query_points[display_id, :, 2], 'ko')
-            self.ax1.set_xlabel('X')
-            self.ax1.set_ylabel('Y')
-
-            intersecting_indices = d < threshold
-            contacts = np.zeros_like(query_points)
-            contacts[intersecting_indices] = query_points[intersecting_indices]
-            for c in contacts[display_id]: 
-                if np.linalg.norm(c, axis=0):
-                    self.ax1.plot(c[0], c[1], c[2], 'ro')
-
-            if dec is not None:
-                self.dec[:, :] = dec
-                self.ax2.plot(self.socket_pcl[:, 0], self.socket_pcl[:, 1], self.socket_pcl[:, 2], 'yo')
-                self.ax2.plot(query_points[display_id, :, 0], query_points[display_id, :, 1], query_points[display_id, :, 2], 'ko')
-                self.ax2.set_xlabel('X')
-                self.ax2.set_ylabel('Y')
-
-                intersecting_indices = (torch.sigmoid(self.dec) > 0.5).cpu().numpy()
-                contacts = np.zeros_like(query_points)
-                contacts[intersecting_indices] = query_points[intersecting_indices]
-                for c in contacts[display_id]:
-                    if np.linalg.norm(c, axis=0):
-                        self.ax2.plot(c[0], c[1], c[2], 'ro')
-
-            plt.pause(0.0001)
-            # plt.show()
-            
-        # else:
-        #     plt.close(self.fig)
-
-        d = d.flatten()
+        d = di.copy().flatten()
         idx_2 = np.where(d > threshold)[0]
         d[idx_2] = threshold
         d = np.clip(d, 0.0, threshold)
@@ -369,6 +336,53 @@ class ExtrinsicContact:
         d = 1.0 - d / threshold
         d = np.clip(d, 0.0, 1.0)
         d[d > 0.1] = 1.0
+
+
+        indices = np.where(d==1.0)[0]
+        if len(indices) > 0:
+            np.random.shuffle(indices)
+            num_idx = int(d[indices].sum() * np.random.uniform(0.0, 0.25))
+            indices = indices[:num_idx]
+            d[indices] = 0.0
+
+        if display and False:   
+            display_id = 0
+            # self.ax2.cla()
+            self.ax.cla()
+
+            self.ax.plot(self.socket_pcl[:, 0], self.socket_pcl[:, 1], self.socket_pcl[:, 2], 'yo')
+            self.ax.plot(query_points[display_id, :, 0], query_points[display_id, :, 1], query_points[display_id, :, 2], 'ko')
+            self.ax.set_xlabel('X')
+            self.ax.set_ylabel('Y')
+
+            intersecting_indices = (d == 1.0).reshape(-1, self.n_points)
+            contacts = np.zeros_like(query_points)
+            contacts[intersecting_indices] = query_points[intersecting_indices]
+            for c in contacts[display_id]: 
+                if np.linalg.norm(c, axis=0):
+                    self.ax.plot(c[0], c[1], c[2], 'ro')
+
+            # if dec is not None:
+            #     self.dec[:, :] = dec
+            #     self.ax2.plot(self.socket_pcl[:, 0], self.socket_pcl[:, 1], self.socket_pcl[:, 2], 'yo')
+            #     self.ax2.plot(query_points[display_id, :, 0], query_points[display_id, :, 1], query_points[display_id, :, 2], 'ko')
+            #     self.ax2.set_xlabel('X')
+            #     self.ax2.set_ylabel('Y')
+
+            #     intersecting_indices = (torch.sigmoid(self.dec) > 0.5).cpu().numpy()
+            #     contacts = np.zeros_like(query_points)
+            #     contacts[intersecting_indices] = query_points[intersecting_indices]
+            #     for c in contacts[display_id]:
+            #         if np.linalg.norm(c, axis=0):
+            #             self.ax2.plot(c[0], c[1], c[2], 'ro')
+
+            plt.pause(0.0001)
+            # plt.show()
+            
+        # else:
+        #     plt.close(self.fig)
+
+        
 
         return torch.from_numpy(np.array(d)).view(-1, self.n_points)
 
