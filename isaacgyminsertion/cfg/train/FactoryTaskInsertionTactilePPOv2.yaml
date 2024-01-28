@@ -6,7 +6,7 @@ network:
   mlp:
     units: [512, 256, 128]
   priv_mlp:
-    units: [256, 128, 8]
+    units: [256, 128, 16]
   ft_mlp:
     units: [128, 64, 16]
   obs_mlp:
@@ -14,9 +14,9 @@ network:
   tactile_mlp:
     units: [300, 128, 32]
   merge_mlp:
-    units: [128, 64, 8]
+    units: [128, 64, 16]
   contact_mlp:
-    units: [128, 64, 8]
+    units: [128, 64, 16]
 
   tactile_decoder:
     num_channels: ${....task.tactile.decoder.num_channels}

@@ -27,7 +27,7 @@ data_logger:
 # actually, we should write different config for each observation we test
 rl:
     max_episode_length: 2000
-    pos_action_scale: [0.01, 0.01, 0.01]
+    pos_action_scale: [0.005, 0.005, 0.005]
     rot_action_scale: [0.002, 0.002, 0.002]
     clamp_rot: ${...task.rl.clamp_rot}
     clamp_rot_thresh: ${...task.rl.clamp_rot_thresh}

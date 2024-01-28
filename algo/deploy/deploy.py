@@ -7,7 +7,8 @@
 # --------------------------------------------------------
 
 import rospy
-from algo.models.models import ActorCritic
+# from algo.models.models import ActorCritic
+from algo.models.models_split import ActorCriticSplit as ActorCritic
 from algo.models.running_mean_std import RunningMeanStd
 import torch
 import os
@@ -577,7 +578,7 @@ class HardwarePlayer(object):
             self.eef_queue.reshape(1, -1),  # (envs, 12 * hist)
             # self.goal_noisy_queue.reshape(1, -1),  # (envs, 12 * hist)
             self.actions_queue.reshape(1, -1),  # (envs, 6 * hist)
-            self.targets_queue.reshape(1, -1),  # (envs, 6 * hist)
+            # self.targets_queue.reshape(1, -1),  # (envs, 6 * hist)
         ]
 
         obs_tensors_student = [
@@ -585,7 +586,7 @@ class HardwarePlayer(object):
             self.eef_queue_student.reshape(1, -1),  # (envs, 12 * stud_hist)
             # self.goal_noisy_queue_student.reshape(1, -1),  # (envs, 12 * stud_hist)
             self.actions_queue_student.reshape(1, -1),  # (envs, 6 * stud_hist)
-            self.targets_queue_student.reshape(1, -1),  # (envs, 6 * stud_hist)
+            # self.targets_queue_student.reshape(1, -1),  # (envs, 6 * stud_hist)
         ]
 
         self.obs_buf = torch.cat(obs_tensors, dim=-1)
@@ -750,7 +751,14 @@ class HardwarePlayer(object):
         # Apply the action
         if regulize_force:
             ft = torch.tensor(self.env.get_ft(), device=self.device, dtype=torch.float).unsqueeze(0)
-            actions = torch.where(torch.abs(ft) > 5.0, torch.clamp(actions, min=0.0), actions)
+            condition_mask = torch.abs(ft[:, 2]) > 1.5
+            before = actions.clone()
+            check_ft = (torch.abs(ft) > 0.35)
+            condition_mask = torch.abs(ft[:, 2]) > 1.5
+            actions[:, 2] = torch.where(condition_mask, torch.clamp(actions[:, 2], min=0.0), actions[:, 2])
+            actions[:, 2] = (((check_ft[:, 2]) & (actions[:, 2] > 0.0)) | ~check_ft[:, 2]) * 1.0 * actions[:, 2]
+
+            # actions = torch.where(torch.abs(ft) > 1.5, torch.clamp(actions, min=0.0), actions)
             print("Regularized Actions:", np.round(actions[0].cpu().numpy(), 4))
 
         if do_clamp:
@@ -905,7 +913,7 @@ class HardwarePlayer(object):
                     'contacts': self.contacts.clone()
                 }
 
-                action, latent = self.model.act_inference(input_dict)
+                action, latent, dec = self.model.act_inference(input_dict)
                 action = torch.clamp(action, -1.0, 1.0)
 
                 start_time = time()
