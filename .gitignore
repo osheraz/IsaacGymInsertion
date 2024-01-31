@@ -35,3 +35,4 @@ outputs/
 *.mp4
 *-checkpoint.ipynb
 isaacgyminsertion/allsight/experiments/allsight_dataset
+student_model/
