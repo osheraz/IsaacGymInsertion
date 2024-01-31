@@ -4,6 +4,7 @@ from algo.deploy.env.openhand_env import OpenhandEnv
 from algo.deploy.env.robots import RobotWithFtEnv
 from std_msgs.msg import Bool, Float64MultiArray, Float32MultiArray
 from geometry_msgs.msg import PoseStamped
+from apriltag_ros.msg import AprilTagDetectionArray
 from tf.transformations import quaternion_matrix, quaternion_from_matrix, euler_from_quaternion, quaternion_from_euler
 from isaacgyminsertion.tasks.factory_tactile.factory_utils import quat2R
 import numpy as np
@@ -36,14 +37,17 @@ class ExperimentEnv:
         self.joints_above_socket = [0.00512505369261, 0.306541800499, -0.00611614901572, -1.69656717777, 0.00215246272273, 1.13829433918, -1.57246220112]
 
         self.pub_regularize = rospy.Publisher('/iiwa/regularize', Bool, queue_size=10)
+        self.pub_reset_pose = rospy.Publisher('/external_tracker/reset_pose', Bool, queue_size=1)
         # rospy.Subscriber('/hand_control/plug_camera_pose', PoseStamped, self.plug_camera_pose_callback)
         rospy.Subscriber('/external_tracker/plug_pose_world', PoseStamped, self.external_plug_pose_world_callback)
         rospy.Subscriber('/external_tracker/plug_pose_camera', PoseStamped, self.external_plug_pose_camera_callback)
         rospy.Subscriber('/external_tracker/socket_pose_camera', PoseStamped, self.external_socket_pose_camera_callback)
+        rospy.Subscriber('/external_tracker/socket_pose_world', PoseStamped, self.external_socket_pose_world_callback)
         rospy.Subscriber('/external_tracker/robot_base_pose_camera', PoseStamped, self.external_robot_base_pose_camera_callback)
         rospy.Subscriber('/extrinsic_contact', Float64MultiArray, self.extrinsic_contact_callback)
         rospy.Subscriber('/gripper/load', Float32MultiArray, self.gripper_load_callback)
         rospy.Subscriber('/gripper/pos', Float32MultiArray, self.gripper_pos_callback)
+        rospy.Subscriber('/tag_detections', AprilTagDetectionArray, self.callbackDetection)
 
         self.plug_pose_camera = None
         self.plug_pose_world = None
@@ -52,6 +56,7 @@ class ExperimentEnv:
         self.extrinsic_contact = None
         self.gripper_load = None
         self.gripper_pos = None
+        self.palm_plug_pose_camera = None
 
     def regularize_force(self, status):
         self.pub_regularize.publish(status)
@@ -67,6 +72,7 @@ class ExperimentEnv:
         pos, quat = self.arm.get_ee_pose()
         joints = self.arm.get_joint_values()
         plug_pose_world = self.get_plug_pose_world()
+        socket_pose_world =  self.get_socket_pose_world()
         plug_pose_camera = self.get_plug_pose_camera()
         extrinsic_contact = self.get_extrinsic_contact()
 
@@ -76,6 +82,7 @@ class ExperimentEnv:
                 'frames': (left, right, bottom),
                 'plug_pose_world': plug_pose_world,
                 'plug_pose_camera': plug_pose_camera,
+                'socket_pose_world': socket_pose_world,
                 'extrinsic_contact': extrinsic_contact,
                 }
 
@@ -86,6 +93,7 @@ class ExperimentEnv:
         camera_pose = self.arm.get_camera_pose()
         plug_pose_world = self.get_plug_pose_world()
         plug_pose_camera = self.get_plug_pose_camera()
+        socket_pose_world =  self.get_socket_pose_world()
         extrinsic_contact = self.get_extrinsic_contact()
 
         return {'joints': joints,
@@ -93,6 +101,7 @@ class ExperimentEnv:
                 'jacob': jacob,
                 'camera_pose': camera_pose,
                 'plug_pose_world': plug_pose_world,
+                'socket_pose_world': socket_pose_world,
                 'plug_pose_camera': plug_pose_camera,
                 'extrinsic_contact': extrinsic_contact,
                 }
@@ -104,7 +113,6 @@ class ExperimentEnv:
 
     def get_ft(self):
         ft = self.arm.robotiq_wrench_filtered_state.tolist()
-
         return ft
 
     def move_to_init_state(self):
@@ -120,8 +128,10 @@ class ExperimentEnv:
         self.hand.set_gripper_joints_to_init()
 
     def move_to_joint_values(self, values, wait=False):
-
         result = self.arm.set_trajectory_joints(values, wait=wait)
+    
+    def reset_pose(self):
+        self.pub_reset_pose.publish(True)
 
     def external_plug_pose_camera_callback(self, msg):
         self.plug_pose_camera = self.convert_msg_to_matrix(msg.pose)
@@ -140,6 +150,12 @@ class ExperimentEnv:
     
     def get_socket_pose_camera(self):
         return self.socket_pose_camera
+
+    def external_socket_pose_world_callback(self, msg):
+        self.socket_pose_world = self.convert_msg_to_matrix(msg.pose)
+    
+    def get_socket_pose_world(self):
+        return self.socket_pose_world
     
     def external_robot_base_pose_camera_callback(self, msg):
         self.robot_base_pose_camera = self.convert_msg_to_matrix(msg.pose)
@@ -164,4 +180,22 @@ class ExperimentEnv:
     
     def get_gripper_pos(self):
         return self.gripper_pos
+
+    def callbackDetection(self, msg):
+        if msg.detections == []:
+            return
+        detection = msg.detections[0]
+        tag_id = detection.id[0]
+        if tag_id == 3:
+            pos = detection.pose.pose.pose.position
+            quat = detection.pose.pose.pose.orientation
+            mat = quaternion_matrix([quat.x, quat.y, quat.z, quat.w])
+            mat[:3, 3] = np.array([pos.x, pos.y, pos.z])
+            self.palm_plug_pose_camera = mat
+    
+    def get_palm_plug_pose_camera(self):
+        return self.palm_plug_pose_camera
+    
+
+
 

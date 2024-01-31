@@ -49,8 +49,8 @@ env:
   table_height: ${...task.env.table_height}
 
 task:
-  collect_data: False
-  data_folder: '/home/robotics/dhruv/tactile/datastore_tactile'
+  collect_data: True
+  data_folder: '/home/robotics/dhruv/tactile/datastore_with_tactile_images'
 
 ppo:
   priv_info: True

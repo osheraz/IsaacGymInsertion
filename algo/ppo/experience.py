@@ -460,7 +460,8 @@ class RealLogger():
         log_items = {
             # 'arm_joints_shape': 7,
             'eef_pos_shape': POS_SIZE + ROT_MAT_SIZE,
-            # 'socket_pos_shape': POS_SIZE + ROT_MAT_SIZE,
+            'plug_pos_shape': 16,
+            'socket_pos_shape': 16,
             # 'noisy_socket_pos_shape': POS_SIZE + ROT_MAT_SIZE,
             'action_shape': ACT_SIZE,
             # 'target_shape': ACT_SIZE,
@@ -468,7 +469,8 @@ class RealLogger():
             # 'obs_hist_stud_shape': env.obs_buf_stud.shape[-1],
             'tactile_shape': env.tactile_imgs.shape[1:],
             'contact_shape': env.num_contact_points,
-            # 'latent_shape': LATENT_SIZE,
+            'latent_shape': LATENT_SIZE,
+            'ft_shape': env.ft_data.shape[-1],
         }
 
         log_folder = env.deploy_config.task.data_folder
@@ -495,20 +497,25 @@ class RealLogger():
         #                               self.env.noisy_gripper_goal_quat.clone()), dim=-1)
 
         obs_hist = self.env.obs_buf.clone()
+        ft = self.env.ft_data.clone()
+        plug_pos =  torch.from_numpy(self.env.plug_pose_world.copy().flatten().reshape(1, -1)).to(torch.float32).to(obs_hist.device)
+        socket_pos = torch.from_numpy(self.env.socket_pose_world.copy().flatten().reshape(1, -1)).to(torch.float32).to(obs_hist.device)
         contacts = self.env.contacts.clone()
 
         log_data = {
             # 'arm_joints': self.env.arm_dof_pos,
             'eef_pos': obs_hist[:, :12].clone().contiguous(),
-            # 'socket_pos': socket_pos,
+            'plug_pos': plug_pos,
+            'socket_pos': socket_pos,
             # 'noisy_socket_pos': noisy_socket_pos,
             'action': action,
             # 'target': self.env.targets,
             'tactile': self.env.tactile_imgs.clone(),
-            # 'latent': latent,
+            'latent': latent,
             'obs_hist': obs_hist,
             'contact': contacts,
-            'done': done
+            'ft': ft,
+            'done': done.squeeze(0)
         }
 
         self.data_logger.update(save_trajectory=save_trajectory, **log_data)
