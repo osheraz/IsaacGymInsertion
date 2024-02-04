@@ -1,4 +1,4 @@
-from algo.models.transformer.data import TactileDataset
+from algo.models.transformer.data import TactileRealDataset as TactileDataset
 from torch.utils.data import DataLoader
 from torch.nn import functional as F
 from torch import optim
@@ -318,8 +318,9 @@ class Runner:
         if 'oa348' in os.getcwd():
             self.cfg.data_folder.replace("dm1487", "oa348")
             self.cfg.output_dir.replace("dm1487", "oa348")
-        file_list = glob(os.path.join(self.cfg.data_folder, '*/*/*.npz'))
-        ff = input('Folder_name: ')
+
+        file_list = glob(os.path.join(self.cfg.data_folder, '*.npz'))
+        ff = 'test' # input('Folder_name: ')
         save_folder = f'{to_absolute_path(self.cfg.output_dir)}/{ff}_{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}'
         os.makedirs(save_folder, exist_ok=True)
 

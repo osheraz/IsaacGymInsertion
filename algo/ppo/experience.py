@@ -521,11 +521,13 @@ class RealLogger():
             'obs_hist_shape': env.obs_buf.shape[-1],
             'obs_hist_stud_shape': env.obs_student_buf.shape[-1],
             'tactile_shape': env.tactile_imgs.shape[1:],
+            'contact_shape': env.num_contact_points,
             'latent_shape': env.deploy_config.network.merge_mlp.units[-1],
             'plug_hand_pos_shape': POS_SIZE + QUAT_SIZE,
             'plug_pos_error_shape': POS_SIZE + QUAT_SIZE,
             'plug_pos_shape': POS_SIZE + QUAT_SIZE,
             'priv_obs_shape': env.priv_info_dim,
+            'ft_shape': env.ft_data.shape[-1],
         }
 
         log_folder = env.deploy_config.data_logger.base_folder
@@ -546,18 +548,21 @@ class RealLogger():
 
         eef_pos = torch.cat((self.env.fingertip_centered_pos.clone(),
                              self.env.fingertip_centered_quat.clone()), dim=-1)
+
         socket_pos = torch.cat((self.env.socket_pos.clone(),
                                 self.env.identity_quat.clone()), dim=-1)
         noisy_socket_pos = torch.cat((self.env.noisy_gripper_goal_pos.clone(),
                                       self.env.noisy_gripper_goal_quat.clone()), dim=-1)
-        plug_pos = torch.cat((self.env.plug_pos.clone(),
-                                    self.env.plug_quat.clone()), dim=-1)
 
+        plug_pos = torch.cat((self.env.plug_pos.clone(),
+                              self.env.plug_quat.clone()), dim=-1)
         plug_hand_pos = torch.cat((self.env.plug_hand_pos.clone(),
                                    self.env.plug_hand_quat.clone()), dim=-1)
         plug_pos_error = torch.cat((self.env.plug_pos_error.clone(),
                                     self.env.plug_quat_error.clone()), dim=-1)
 
+        ft = self.env.ft_data.clone()
+        contacts = self.env.contacts.clone()
         obs_hist = self.env.obs_buf.clone()
         obs_hist_stud = self.env.obs_student_buf.clone()
         priv_obs = self.env.states_buf.clone()
@@ -566,18 +571,20 @@ class RealLogger():
             'plug_pos': plug_pos,
             'plug_hand_pos': plug_hand_pos,
             'plug_pos_error': plug_pos_error,
-            'arm_joints': self.env.arm_dof_pos,
+            'arm_joints': self.env.arm_dof_pos.clone(),
             'eef_pos': eef_pos,
             'socket_pos': socket_pos,
             'noisy_socket_pos': noisy_socket_pos,
             'action': action,
             'target': self.env.targets,
-            'tactile': self.env.tactile_imgs,
+            'tactile': self.env.tactile_imgs.clone(),
             'latent': latent,
             'obs_hist': obs_hist,
             'obs_hist_stud': obs_hist_stud,
             'priv_obs': priv_obs,
-            'done': done
+            'done': done.squeeze(0),
+            'contact': contacts,
+            'ft': ft
         }
 
         self.data_logger.update(save_trajectory=save_trajectory, **log_data)

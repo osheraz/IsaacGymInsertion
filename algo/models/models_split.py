@@ -93,6 +93,7 @@ class ActorCriticSplit(nn.Module):
         self.tactile_info = kwargs["tactile_info"]
         self.obs_info = kwargs["obs_info"]
         self.contact_info = kwargs['gt_contacts_info']
+        self.only_contact = kwargs['only_contact']
 
         # self.body_mlp_units = kwargs['body_mlp_units']
         # out_size = self.body_mlp_units[-1]
@@ -107,26 +108,21 @@ class ActorCriticSplit(nn.Module):
         # self.pose_mlp_units = kwargs['pose_mlp_units']
         # self.physics_mlp_units = kwargs['physics_mlp_units']
 
-        self.temp_latent = []
-        self.temp_extrin = []
-
         self.fig = plt.figure(figsize=(8, 6))
         self.ax = self.fig.add_subplot(111)
         self.flag = True
 
         if self.priv_info:
-            force_dim = 3
+
+            # force_dim = 3
             # self.physics_mlp = MLP(units=self.physics_mlp_units, input_size=6)
             # mlp_input_shape += self.physics_mlp_units[-1]
-            embedding_size = 16
-            mlp_input_shape += embedding_size
             # mlp_input_shape += self.pose_mlp_units[-1]
 
-            self.contact_ae = ContactAE(input_size=kwargs["num_contact_points"] * 1, embedding_size=embedding_size)
-
-            # if self.contact_info:
-            #     mlp_input_shape += self.contact_mlp_units[-1]
-            #     self.contact_mlp = MLP(units=self.contact_mlp_units, input_size=kwargs["num_contact_points"])
+            if self.contact_info:
+                mlp_input_shape += self.contact_mlp_units[-1]
+                self.contact_ae = ContactAE(input_size=kwargs["num_contact_points"] * 1, embedding_size=self.contact_mlp_units[-1])
+                # self.contact_mlp = MLP(units=self.contact_mlp_units, input_size=kwargs["num_contact_points"])
 
             # self.pose_mlp = MLP(units=self.pose_mlp_units, input_size=7)
 
@@ -181,7 +177,7 @@ class ActorCriticSplit(nn.Module):
                     self.ft_adapt_tconv = FTAdaptTConv(ft_dim=ft_input_shape,
                                                        ft_out_dim=self.ft_units[-1])
 
-        print("#####", mlp_input_shape)
+
         self.actor_mlp = MLP(units=self.units, input_size=mlp_input_shape)
         if not self.shared_parameters:
             self.critic_mlp = MLP(units=self.units, input_size=mlp_input_shape)
@@ -230,16 +226,15 @@ class ActorCriticSplit(nn.Module):
     def _actor_critic(self, obs_dict, display=False):
 
         obs = obs_dict['obs']
-        extrin, extrin_gt = None, None
+        extrin, extrin_gt, dec = None, None, None
 
         # Transformer student (latent pass is in frozen_ppo)
         if 'latent' in obs_dict and obs_dict['latent'] is not None:
             extrin = self.contact_ae.forward_enc((obs_dict['latent'] > 0.8) * 1.0)
 
             if 'priv_info' in obs_dict:
-                # with torch.inference_mode():
-                extrin_gt = self.contact_ae.forward_enc(obs_dict['contacts'])
 
+                extrin_gt = self.contact_ae.forward_enc(obs_dict['contacts'])
                 # extrin_gt = torch.tanh(extrin_gt)
 
                 if display:
@@ -303,9 +298,14 @@ class ActorCriticSplit(nn.Module):
 
                 else:
                     # TODO add options to train with different priv
-                    enc = self.contact_ae.forward_enc(obs_dict['contacts'])
-                    dec = self.contact_ae.forward_dec(enc)
-                    extrin = enc
+                    if self.contact_info:
+                        enc = self.contact_ae.forward_enc(obs_dict['contacts'])
+                        dec = self.contact_ae.forward_dec(enc)
+                        if self.only_contact:
+                            extrin = enc
+                        else:
+                            priv_obs = torch.cat([obs_dict['priv_info'], enc], dim=-1)
+                            extrin = self.env_mlp(priv_obs)
 
                     if display:
                         plt.ylim(-1, 1)
@@ -315,6 +315,7 @@ class ActorCriticSplit(nn.Module):
                                     color='r')
                         plt.pause(0.0001)
                         plt.cla()
+
                     obs = torch.cat([obs, extrin], dim=-1)
 
         x = self.actor_mlp(obs)

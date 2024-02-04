@@ -74,6 +74,18 @@ def run(cfg: DictConfig):
 
     # sets seed. if seed is -1 will pick a random one
     # cfg.seed = set_seed(cfg.seed, torch_deterministic=cfg.torch_deterministic, rank=global_rank)
+    if cfg.offline_real_training:
+        from algo.models.transformer.runner import Runner as TransformerRunner
+        from algo.models.transformer.frozen_ppo import PPO
+
+        agent = None
+
+        # perform train
+        runner = TransformerRunner(cfg.offline_train, agent=agent)
+        runner.run()
+
+        exit()
+
 
     # for training the transformer with offline data only
     if cfg.offline_training:

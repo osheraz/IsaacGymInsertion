@@ -42,7 +42,7 @@ class Trainer(object):
         self.params = params
 
         leds = params['leds']
-        indenter = ['sphere3']#, 'sphere4', 'sphere5', 'square', 'hexagon', 'ellipse']
+        indenter = ['sphere3', 'sphere4', 'sphere5', 'square', 'hexagon', 'ellipse']
 
         buffer_paths_to_train = get_buffer_paths_clear(leds, indenter, params)
 

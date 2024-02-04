@@ -5,8 +5,17 @@ from algo.models.models import load_tactile_resnet
 
 
 class TactileTransformer(nn.Module):
-    def __init__(self, lin_input_size, in_channels, out_channels, kernel_size, embed_size, hidden_size, num_heads,
-                 max_sequence_length, num_layers, output_size, layer_norm=False):
+    def __init__(self, lin_input_size,
+                 in_channels,
+                 out_channels,
+                 kernel_size,
+                 embed_size,
+                 hidden_size,
+                 num_heads,
+                 max_sequence_length,
+                 num_layers,
+                 output_size,
+                 layer_norm=False):
 
         super(TactileTransformer, self).__init__()
 
@@ -15,7 +24,9 @@ class TactileTransformer(nn.Module):
         self.num_layers = num_layers
         self.max_sequence_length = max_sequence_length
 
-        self.linear_in = nn.Linear(lin_input_size, 14)  # removed embed_size // 2 for no cnn
+        # self.linear_in = nn.Linear(lin_input_size, 14)  # removed embed_size // 2 for no cnn
+        self.linear_in = nn.Sequential(nn.Linear(lin_input_size, 64), nn.ReLU(), nn.Linear(64, 14))
+
         # for cnn_embedding, input is (B*T, C=1, W, H) and output is (B*T, 6)
         self.cnn_embedding = ConvEmbedding(in_channels, out_channels, kernel_size)
         # self.cnn_embedding = load_tactile_resnet(embed_size , num_channels=in_channels)

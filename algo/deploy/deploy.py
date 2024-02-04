@@ -31,129 +31,6 @@ from matplotlib import pyplot as plt
 from tqdm import tqdm
 
 
-# import extrinsic contact here, this way we can do privileged information inference in real world.
-class ExtrinsicContact:
-    def __init__(
-            self,
-            mesh_plug,
-            mesh_socket,
-            socket_pos,
-            num_envs=1,
-            num_points=50,
-            device='cuda:0'
-    ) -> None:
-
-        self.object_trimesh = trimesh.load(mesh_plug)
-        self.reset_object_trimesh = self.object_trimesh.copy()
-        self.socket_trimesh = trimesh.load(mesh_socket)
-
-        # T = np.eye(4)
-        # T[0:3, -1] = socket_pos
-        self.socket_trimesh.apply_transform(socket_pos)
-
-        self.socket_pos = socket_pos
-        self.socket = o3d.t.geometry.RaycastingScene()
-        self.socket.add_triangles(
-            o3d.t.geometry.TriangleMesh.from_legacy(self.socket_trimesh.as_open3d)
-        )
-        self.socket_pcl = trimesh.sample.sample_surface_even(self.socket_trimesh, num_points, seed=42)[0]
-
-        self.pointcloud_obj = trimesh.sample.sample_surface(self.object_trimesh, num_points, seed=42)[0]
-        self.object_pc = trimesh.points.PointCloud(self.pointcloud_obj.copy())
-
-        self.n_points = num_points
-        self.constant_socket = False
-        self.fig = plt.figure(figsize=(10, 10))
-        self.ax1 = self.fig.add_subplot(1, 2, 1, projection='3d')
-        self.ax2 = self.fig.add_subplot(1, 2, 2, projection='3d')
-        self.num_envs = num_envs
-        self.device = device
-        self.dec = torch.zeros((num_envs, self.n_points)).to(device)
-
-    def _xyzquat_to_tf_numpy(self, position_quat: np.ndarray) -> np.ndarray:
-        """
-        convert [x, y, z, qx, qy, qz, qw] to 4 x 4 transformation matrices
-        """
-        position_quat = np.atleast_2d(position_quat)  # (N, 7)
-        N = position_quat.shape[0]
-        T = np.zeros((N, 4, 4))
-        T[:, 0:3, 0:3] = R.from_quat(position_quat[:, 3:]).as_matrix()
-        T[:, :3, 3] = position_quat[:, :3]
-        T[:, 3, 3] = 1
-        return T.squeeze()
-
-    def reset_extrinsic_contact(self):
-        self.gt_extrinsic_contact *= 0
-        self.step = 0
-
-    def apply_transform(self, poses, pc_vertices):
-        count, dim = pc_vertices.shape
-        pc_vertices_wtrans = np.column_stack((pc_vertices, np.ones(count)))
-        stack = np.repeat(pc_vertices_wtrans[np.newaxis, ...], poses.shape[0], axis=0)
-        transformed = np.matmul(poses, np.transpose(stack, (0, 2, 1)))
-        transformed = np.transpose(transformed, (0, 2, 1))[..., :3]
-        return transformed
-
-    def reset_socket_pos(self, socket_pos):
-        self.socket_pos = socket_pos
-        self.socket = o3d.t.geometry.RaycastingScene()
-        self.socket.add_triangles(
-            o3d.t.geometry.TriangleMesh.from_legacy(self.socket_trimesh.as_open3d)
-        )
-        self.socket_pcl = trimesh.sample.sample_surface_even(self.socket_trimesh, self.n_points, seed=42)[0]
-
-    def get_extrinsic_contact(self, object_pos, threshold=0.005, display=False, dec=None):
-
-        self.object_trimesh = self.reset_object_trimesh.copy()
-        self.object_trimesh.apply_transform(object_pos)
-        query_points = trimesh.points.PointCloud(
-            trimesh.sample.sample_surface(self.object_trimesh, self.n_points, seed=42)[0]).vertices
-        d = self.socket.compute_distance(o3d.core.Tensor.from_numpy(query_points.astype(np.float32))).numpy()
-        intersecting_indices = d < threshold
-        contacts = query_points[intersecting_indices]
-
-        if display:
-            self.ax1.clear()
-            self.ax1.plot(self.socket_pcl[:, 0], self.socket_pcl[:, 1], self.socket_pcl[:, 2], 'yo')
-            self.ax1.plot(query_points[:, 0], query_points[:, 1], query_points[:, 2], 'ko')
-            self.ax1.set_xlabel('X')
-            self.ax1.set_ylabel('Y')
-            intersecting_indices = d < threshold
-            contacts = query_points[intersecting_indices]
-            self.ax1.plot(contacts[:, 0], contacts[:, 1], contacts[:, 2], 'ro')
-            # for c in contacts:
-            #     if np.linalg.norm(c, axis=0):
-            #         self.ax.plot(c[0], c[1], c[2], 'ro')
-
-            if dec is not None:
-                self.ax2.clear()
-                self.ax2.plot(self.socket_pcl[:, 0], self.socket_pcl[:, 1], self.socket_pcl[:, 2], 'yo')
-                self.ax2.plot(query_points[:, 0], query_points[:, 1], query_points[:, 2], 'ko')
-                intersecting_indices = (torch.sigmoid(dec) > 0.5).reshape(-1).numpy()
-                contacts = query_points[intersecting_indices]
-                for c in contacts:
-                    if np.linalg.norm(c, axis=0):
-                        self.ax2.plot(c[0], c[1], c[2], 'ro')
-                # self.ax2.plot(contacts[:, 0], contacts[:, 1], contacts[:, 2], 'ro')
-                self.ax2.set_xlabel('X')
-                self.ax2.set_ylabel('Y')
-            plt.pause(0.00001)
-            self.fig.savefig('/home/robotics/dhruv/object_tracking/contact.png')
-        else:
-            plt.close(self.fig)
-
-        d = d.flatten()
-        idx_2 = np.where(d > threshold)[0]
-        d[idx_2] = threshold
-        d = np.clip(d, 0.0, threshold)
-
-        d = 1.0 - d / threshold
-        d = np.clip(d, 0.0, 1.0)
-        d[d > 0.1] = 1.0
-
-        return np.array(d).copy(), query_points, contacts, self.socket_pcl
-
-
 class HardwarePlayer(object):
     def __init__(self, output_dir, full_config):
 
@@ -619,15 +496,25 @@ class HardwarePlayer(object):
 
         plug_socket_xy_distance = torch.norm(self.fingertip_centered_pos[:, :2] - self.socket_pos[:, :2])
 
-        is_very_close = plug_socket_xy_distance < 0.005
+        is_very_close = plug_socket_xy_distance < 0.03
+
         below_socket_top = (self.fingertip_centered_pos[:, 2] < 0.085)
+        really_below_socket = (self.fingertip_centered_pos[:, 2] < 0.075)
 
         inserted = is_very_close & below_socket_top
-        is_too_far = (plug_socket_xy_distance > 0.05) | (self.fingertip_centered_pos[:, 2] > 0.125)
+
+        is_too_far =  (plug_socket_xy_distance > 0.08) | (self.fingertip_centered_pos[:, 2] > 0.125)
 
         timeout = (self.episode_length >= self.max_episode_length)
 
-        self.done = is_too_far | timeout | inserted
+        self.done = is_too_far | timeout | inserted | really_below_socket
+
+        if self.done[0, 0].item():
+            print('Reset because ',
+                  "far away" if is_too_far[0].item() else "",
+                  "timeoout" if timeout.item() else "",
+                  "inserted" if inserted.item() else "",
+                  "really_below_socket" if really_below_socket[0].item() else "")
 
     def reset(self):
 
@@ -752,12 +639,7 @@ class HardwarePlayer(object):
         if regulize_force:
             ft = torch.tensor(self.env.get_ft(), device=self.device, dtype=torch.float).unsqueeze(0)
             condition_mask = torch.abs(ft[:, 2]) > 1.5
-            before = actions.clone()
-            check_ft = (torch.abs(ft) > 0.35)
-            condition_mask = torch.abs(ft[:, 2]) > 1.5
             actions[:, 2] = torch.where(condition_mask, torch.clamp(actions[:, 2], min=0.0), actions[:, 2])
-            actions[:, 2] = (((check_ft[:, 2]) & (actions[:, 2] > 0.0)) | ~check_ft[:, 2]) * 1.0 * actions[:, 2]
-
             # actions = torch.where(torch.abs(ft) > 1.5, torch.clamp(actions, min=0.0), actions)
             print("Regularized Actions:", np.round(actions[0].cpu().numpy(), 4))
 
@@ -833,13 +715,8 @@ class HardwarePlayer(object):
         # self.ctrl_target_dof_pos = self.ctrl_target_dof_pos[:, :6]
 
         target_joints = self.ctrl_target_dof_pos.cpu().detach().numpy().squeeze().tolist()
-
-        delta = torch.norm(self.ctrl_target_dof_pos - arm_dof_pos, p=2, dim=-1)
         try:
-            if delta < 1.0:
-                self.env.move_to_joint_values(target_joints, wait=wait, by_moveit=by_moveit, by_vel=by_vel)
-            else:
-                print('Issues in target joint values:\t', delta)
+            self.env.move_to_joint_values(target_joints, wait=wait, by_moveit=by_moveit, by_vel=by_vel)
         except:
             print(f'failed to reach {target_joints}')
 
@@ -852,9 +729,6 @@ class HardwarePlayer(object):
         self.env.arm.move_manipulator.scale_vel(scale_vel=0.004, scale_acc=0.004)
 
         rospy.logwarn('Finished setting the env, lets play.')
-
-        # Wait for connections.
-        rospy.sleep(0.5)
 
         hz = 40
         ros_rate = rospy.Rate(hz)
@@ -879,10 +753,9 @@ class HardwarePlayer(object):
             # grasp and move on top of the socket
             self.grasp_and_init()
 
-            # Sample init error
+            # TODO add a module that set init interaction with the socket
             # self.env.set_random_init_error(true_socket_pose=true_socket_pose)
             # self.env.grasp()  # little squeeze
-            # TODO add a module that set init interaction with the socket
 
             # Bias the ft sensor
             self.env.arm.calib_robotiq()
@@ -894,10 +767,6 @@ class HardwarePlayer(object):
 
             for i in range(self.full_config.task.env.numObsHist):
                 pass
-
-            # done = torch.tensor([0]).to(self.device)
-
-            # max_steps = self.max_episode_length
 
             while not self.done[0, 0]:
 
@@ -916,9 +785,8 @@ class HardwarePlayer(object):
                 action, latent, dec = self.model.act_inference(input_dict)
                 action = torch.clamp(action, -1.0, 1.0)
 
-                start_time = time()
+                # start_time = time()
                 self.update_and_apply_action(action, wait=False, by_moveit=False, by_vel=True)
-
                 # print("Actions:", np.round(action[0].cpu().numpy(), 3), "\tFPS: ", 1.0 / (time() - start_time))
 
                 ros_rate.sleep()

@@ -202,7 +202,6 @@ class ActorCritic(nn.Module):
             obs = torch.cat([obs, extrin], dim=-1)
 
             if 'priv_info' in obs_dict:
-                # with torch.inference_mode():
                 extrin_gt = self.env_mlp(obs_dict['priv_info'])
                 # extrin_gt = torch.tanh(extrin_gt)
 

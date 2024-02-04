@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-import timm
+# import timm
 from datasets import output_map
 
 # import resnets as srn
@@ -8,6 +8,36 @@ import os
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")  # cuda or cpu
 
+def _tactile_encode(self, images):
+
+    #                E, T,(finger) W, H, C  ->   E, T, C, W, H
+    left_seq = images[:, :, 0, :, :, :].permute(0, 1, 4, 2, 3)
+    right_seq = images[:, :, 1, :, :, :].permute(0, 1, 4, 2, 3)
+    bot_seq = images[:, :, 2, :, :, :].permute(0, 1, 4, 2, 3)
+
+    emb_left = self.tactile_decoder(left_seq)
+    emb_right = self.tactile_decoder(right_seq)
+    emb_bottom = self.tactile_decoder(bot_seq)
+
+    tactile_embeddings = torch.cat((emb_left, emb_right, emb_bottom), dim=-1)
+    tac_emb = self.tactile_mlp(tactile_embeddings)
+
+    return tac_emb
+
+def load_tactile_resnet(embed_dim, num_channels,root_dir=None, path_checkpoint=None, pre_trained=False):
+    import algo.models.convnets.resnets as resnet
+    import os
+
+    tactile_encoder = resnet.resnet18(False, False, num_classes=embed_dim,
+                                      num_channels=num_channels)
+    # E, T, C, W, H
+    if pre_trained:
+        tactile_encoder.load_state_dict(os.path.join(root_dir, path_checkpoint))
+        tactile_encoder.eval()
+        for param in tactile_encoder.parameters():
+            param.requires_grad = False
+
+    return tactile_encoder
 
 def get_model(model_params):
 
