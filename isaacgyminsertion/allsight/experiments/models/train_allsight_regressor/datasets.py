@@ -54,35 +54,78 @@ def get_buffer_paths(leds, gel, indenter, sensor_id=None):
     else:
         leds_list = [leds]
 
-    for l in leds_list:
-        paths = [f"/home/{pc_name}/catkin_ws/src/allsight/dataset/{gel}/{l}/data/{ind}" for ind in indenter]
-        buffer_paths = []
-        summ_paths = []
+    if gel == 'combined':
+        gels = ['clear', 'markers']
+    else:
+        gels = [gel]
 
-        for p in paths:
-            buffer_paths += [y for x in os.walk(p) for y in glob(os.path.join(x[0], '*_transformed_annotated.json'))]
-            summ_paths += [y for x in os.walk(p) for y in glob(os.path.join(x[0], 'summary.json'))]
+    for gel in gels:
+        for l in leds_list:
+            paths = [f"/home/{pc_name}/catkin_ws/src/allsight/dataset/{gel}/{l}/data/{ind}" for ind in indenter]
+            buffer_paths = []
+            summ_paths = []
 
-        for bp, s in zip(buffer_paths, summ_paths):
-            with open(s, 'rb') as handle:
-                summ = json.load(handle)
-                summ['sensor_id'] = summ['sensor_id'] if isinstance(summ['sensor_id'], list) else [summ['sensor_id']]
+            for p in paths:
+                buffer_paths += [y for x in os.walk(p) for y in
+                                 glob(os.path.join(x[0], '*_transformed_annotated.json'))]
+                summ_paths += [y for x in os.walk(p) for y in glob(os.path.join(x[0], 'summary.json'))]
 
-            for sm in summ['sensor_id']:
-                if sensor_id is not None:
-                    train_sensor = sensor_id
-                else:
-                    train_sensor = sensor_dict[gel][l][0]
+            for bp, s in zip(buffer_paths, summ_paths):
+                with open(s, 'rb') as handle:
+                    summ = json.load(handle)
+                    summ['sensor_id'] = summ['sensor_id'] if isinstance(summ['sensor_id'], list) else [
+                        summ['sensor_id']]
 
-                if sm == train_sensor:
-                    buffer_paths_to_train.append(bp)
-                    trained_sensor_id.append(sm)
+                for sm in summ['sensor_id']:
+                    if sensor_id is not None:
+                        train_sensor = sensor_id
+                    else:
+                        train_sensor = sensor_dict[gel][l][0]
 
-                else:
-                    buffer_paths_to_test.append(bp)
-                    test_sensor_id.append(sm)
+                    if sm == train_sensor:
+                        buffer_paths_to_train.append(bp)
+                        trained_sensor_id.append(sm)
+
+                    else:
+                        buffer_paths_to_test.append(bp)
+                        test_sensor_id.append(sm)
 
     return buffer_paths_to_train, buffer_paths_to_test, list(set(trained_sensor_id)), list(set(test_sensor_id))
+
+
+def get_buffer_paths_sim(leds, indenter, params):
+    # if leds == 'combined':
+    #     leds_list = ['rrrgggbbb', 'rgbrgbrgb', 'white']
+    # else:
+    #     leds_list = [leds]
+
+    # buffer_paths = []
+    # for l in leds_list:
+    #     path_alon = '/home/roblab20/Documents/repose/Allsight_sim2real/allsight_sim2real/datasets/data_Allsight/json_data/'
+    #     # paths = [f"/home/roblab20/allsight_sim/experiments/dataset/{l}/data/{ind}" for ind in indenter]
+    #     paths = path_alon
+    #     for p in paths:
+    #         buffer_paths += [y for x in os.walk(p) for y in glob(os.path.join(x[0], '*.json'))]
+    if params['train_type'] == 'real':
+        train_path = './datasets/data_Allsight/json_data/real_train_{}_transformed.json'.format(params['real_data_num'])
+    elif params['train_type'] == 'sim':
+        train_path = './datasets/data_Allsight/json_data/sim_train_{}_transformed.json'.format(params['sim_data_num'])
+    elif params['train_type'] == 'gan':
+        train_path = './datasets/data_Allsight/json_data/{}_test_{}_{}_{}_transformed_ref.json'.format(
+            params['gan_name'],
+            params['gan_num'],
+            params['sim_data_num'],
+            params['gan_epoch'])
+    else:
+        print('No data provided')
+    test_path = './datasets/data_Allsight/json_data/real_test_{}_transformed.json'.format(params['real_data_num'])
+    # return [train_path,test_path]
+    train_path = './datasets/data_Allsight/json_data/sim_test_8_transformed.json'
+    test_path = './datasets/data_Allsight/json_data/real_test_9_transformed.json'
+    return [train_path, test_path]
+    # train_path = './datasets/data_Allsight/json_data/real_train_8_transformed.json'
+    # test_path = './datasets/data_Allsight/json_data/real_test_9_transformed.json'
+    # return [train_path,test_path]
 
 
 def get_buffer_paths_clear(leds, indenter, params=None):
@@ -155,7 +198,7 @@ def get_inputs_and_targets(group, output_type):
 
 class TactileDataset(torch.utils.data.Dataset):
     def __init__(self, params, df, output_type='pose_force_pixel',
-                 transform=None, apply_mask=False, remove_ref=True, statistics=None):
+                 transform=None, apply_mask=True, remove_ref=True, statistics=None, fix_border=True, num_channels=1, half_image=True):
 
         self.df = df
         self.transform = transform
@@ -168,8 +211,11 @@ class TactileDataset(torch.utils.data.Dataset):
         # define the labels:
         self.X, self.X_ref, self.Y = get_inputs_and_targets(df, self.output_type)
 
+        self.fix_border = fix_border
+        self.num_channels = num_channels
+        self.half_image = half_image
         if self.apply_mask:
-            self.mask = circle_mask((self.w, self.h))
+            self.mask = circle_mask((self.w - 10, self.h - 10))
 
         if pc_name != 'osher':
             old_path = "/home/osher/catkin_ws/src/allsight/dataset/"
@@ -203,22 +249,51 @@ class TactileDataset(torch.utils.data.Dataset):
         diff = diff / 255.0 + offset
         return diff
 
+    def align_center(self, img, fix=(0,0), size=(480,480)):
+
+        center_x, center_y = size[0] // 2 - fix[0], size[1] // 2 - fix[1]
+        extra = max(abs(fix[0]), abs(fix[1]))
+
+        half_size = min(size[0], size[1]) // 2 - max(abs(fix[0]), abs(fix[1]))
+
+        # half_size = min(size) // 2
+        left = max(0, center_x - half_size)
+        top = max(0, center_y - half_size)
+        right = min(img.shape[1], center_x + half_size)
+        bottom = min(img.shape[0], center_y + half_size)
+
+        cropped_image = img[top:bottom, left:right]
+
+        return cropped_image
+
     def __getitem__(self, idx):
 
         img = cv2.imread(self.X[idx])
         ref_img = cv2.imread(self.X_ref[idx])
 
+        if self.fix_border:
+            # Assuming images loaded with old settings (480,480) with irregular center
+            img = self.align_center(img)
+            ref_img = self.align_center(ref_img)
+
+        if self.apply_mask:
+            img = img * self.mask
+            ref_img = ref_img * self.mask
+
         if self.remove_ref:
             img = self._subtract_bg(img, ref_img)
 
-        if self.apply_mask:
-            img = (255 * img * self.mask).astype(np.uint8)
-            ref_img = (ref_img * self.mask).astype(np.uint8)
+        if self.half_image:
+            w = img.shape[0]
+            img = img[:w // 2, :, :]
+            ref_img = ref_img[:w // 2, :, :]
 
-        img = cv2.cvtColor((255 * img).astype(np.uint8), cv2.COLOR_BGR2RGB)
-        ref_img = cv2.cvtColor(ref_img, cv2.COLOR_BGR2RGB)
+        if self.num_channels == 1:
+            img = cv2.cvtColor(img.astype('float32'), cv2.COLOR_BGR2GRAY)
+            ref_img = cv2.cvtColor(ref_img.astype('float32'), cv2.COLOR_BGR2GRAY)
 
         if self.transform:
+            # apply the same seed to the image and the ref, kinda unnecessary.
             seed = np.random.randint(2147483647)
             random.seed(seed)
             torch.manual_seed(seed)
@@ -230,7 +305,7 @@ class TactileDataset(torch.utils.data.Dataset):
             ref_img = self.transform(ref_img).to(device)
 
         y = torch.Tensor(self.Y[idx])
-        y_ref = torch.Tensor(self.Y_ref[idx])  # contact or no contact
+        # y_ref = torch.Tensor(self.Y_ref[idx])  # contact or no contact
 
         if self.normalize_output:
             if self.norm_method == 'maxmin':
@@ -405,9 +480,10 @@ class CircleMaskTransform(object):
         border (int): Border thickness of the circular mask.
     """
 
-    def __init__(self, size=(224, 224), border=10):
+    def __init__(self, size=(224, 224), border=10, half_image=False):
         self.size = size
         self.border = border
+        self.half_image = half_image
 
     def __call__(self, image):
         # Convert PIL image to NumPy array
@@ -424,5 +500,9 @@ class CircleMaskTransform(object):
 
         # Convert back to PIL image
         masked_image = Image.fromarray(masked_image.astype('uint8'), 'RGB')
+
+        if self.half_image:
+            w = masked_image.shape[0]
+            masked_image = masked_image[:w // 2, :, :]
 
         return masked_image

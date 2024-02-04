@@ -4,8 +4,9 @@ from torch.nn import init
 import functools
 from torch.optim import lr_scheduler
 
-# from isaacgyminsertion.allsight.experiments.models.train_allsight_regressor.models import PreTrainedModel, PreTrainedModelWithRef
-# from isaacgyminsertion.allsight.experiments.models.train_allsight_regressor.datasets import TactileSimDataset, output_map, get_buffer_paths_sim
+from train_allsight_regressor.models import PreTrainedModel, PreTrainedModelWithRef
+from train_allsight_regressor.datasets import TactileSimDataset, output_map, get_buffer_paths_sim
+
 ###############################################################################
 # Helper Functions
 ###############################################################################
@@ -241,9 +242,9 @@ def define_regressor(reg_path, gpu_ids=[]):
     """
     net = None
 
-    net = PreTrainedModel('resnet18', output_map['pose'])
-    net.load_state_dict(torch.load(reg_path))
-
+    net = PreTrainedModelWithRef('resnet18', output_map['pose'])
+    net.load_state_dict(torch.load(reg_path, map_location=torch.device(f'cuda:{gpu_ids[0]}')))
+    # net = net.to(device=f'cuda:{gpu_ids[0]}')
     return init_reg(net, gpu_ids)
 
 ##############################################################################

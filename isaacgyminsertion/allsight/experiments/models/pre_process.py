@@ -3,17 +3,14 @@ from PIL import Image
 import torchvision.transforms as transforms
 
 
-def get_transform(opt, params=None, grayscale=False, method=transforms.InterpolationMode.BICUBIC, convert=True, half=False):
+def get_transform(opt, params=None, grayscale=False, method=transforms.InterpolationMode.BICUBIC, convert=True):
     transform_list = []
     transform_list += [transforms.ToPILImage()]
     
     if grayscale:
         transform_list.append(transforms.Grayscale(1))
     if 'resize' in opt['preprocess']:
-        if half:
-            osize = [opt['load_size'] // 2, opt['load_size']]
-        else:
-            osize = [opt['load_size'], opt['load_size']]
+        osize = [opt['load_size'], opt['load_size']]
         transform_list.append(transforms.Resize(osize, method))
 
     if 'crop' in opt['preprocess']:
@@ -35,7 +32,6 @@ def get_transform(opt, params=None, grayscale=False, method=transforms.Interpola
         else:
             transform_list += [transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]
     return transforms.Compose(transform_list)
-
 
 
 

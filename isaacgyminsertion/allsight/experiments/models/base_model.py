@@ -46,6 +46,8 @@ class BaseModel(ABC):
         if self.isTrain: 
             # epoch counter
             self.epoch_counter = self.opt.epoch_count
+            ##
+            self.isMask = False
             # using distil loss param
             self.isDistil = False
             self.init_lambda_C = self.opt.lambda_C
@@ -165,7 +167,23 @@ class BaseModel(ABC):
             if isinstance(name, str) and hasattr(self,'loss_' + name):
                 errors_ret[name] = float(getattr(self, 'loss_' + name))  # float(...) works for both scalar tensor and float number
         return errors_ret
+    
+    def get_current_dis_losses(self):
+        """Return distil traning losses / errors. train.py will print out these errors on console, and save them to a file"""
+        errors_ret = OrderedDict()
+        for name in self.loss_names_dis :
+            if isinstance(name, str) and hasattr(self,'loss_' + name):
+                errors_ret[name] = float(getattr(self, 'loss_' + name))  # float(...) works for both scalar tensor and float number
+        return errors_ret
 
+    def get_current_mask_losses(self):
+        """Return mask traning losses / errors. train.py will print out these errors on console, and save them to a file"""
+        errors_ret = OrderedDict()
+        for name in self.loss_names_mask :
+            if isinstance(name, str) and hasattr(self,'loss_' + name):
+                errors_ret[name] = float(getattr(self, 'loss_' + name))  # float(...) works for both scalar tensor and float number
+        return errors_ret
+    
     def save_networks(self, epoch):
         """Save all the networks to the disk.
 

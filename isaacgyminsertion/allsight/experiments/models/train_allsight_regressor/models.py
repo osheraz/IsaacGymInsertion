@@ -15,12 +15,12 @@ def _tactile_encode(self, images):
     right_seq = images[:, :, 1, :, :, :].permute(0, 1, 4, 2, 3)
     bot_seq = images[:, :, 2, :, :, :].permute(0, 1, 4, 2, 3)
 
-    emb_left = self.tactile_decoder(left_seq)
-    emb_right = self.tactile_decoder(right_seq)
-    emb_bottom = self.tactile_decoder(bot_seq)
+    tac_emb = self.tactile_decoder(left_seq)
+    # emb_right = self.tactile_decoder(right_seq)
+    # emb_bottom = self.tactile_decoder(bot_seq)
 
-    tactile_embeddings = torch.cat((emb_left, emb_right, emb_bottom), dim=-1)
-    tac_emb = self.tactile_mlp(tactile_embeddings)
+    # tactile_embeddings = torch.cat((emb_left, emb_right, emb_bottom), dim=-1)
+    # tac_emb = self.tactile_mlp(tactile_embeddings)
 
     return tac_emb
 
