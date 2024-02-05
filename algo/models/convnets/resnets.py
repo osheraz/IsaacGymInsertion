@@ -269,6 +269,7 @@ class ResNet(nn.Module):
         if len(x.size()) == 4:
             B, C, W, H = x.size()[0], x.size()[1], x.size()[2], x.size()[3]
             T = 1
+
         # else:  # [B*T, C, W, H]
         #     BT, C, W, H = x.size()[0], x.size()[1], x.size()[2], x.size()[3]
         #     T = 32

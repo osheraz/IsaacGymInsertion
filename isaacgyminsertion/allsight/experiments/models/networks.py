@@ -4,8 +4,8 @@ from torch.nn import init
 import functools
 from torch.optim import lr_scheduler
 
-from train_allsight_regressor.models import PreTrainedModel, PreTrainedModelWithRef
-from train_allsight_regressor.datasets import TactileSimDataset, output_map, get_buffer_paths_sim
+from isaacgyminsertion.allsight.experiments.models.train_allsight_regressor.models import PreTrainedModel, PreTrainedModelWithRef
+from isaacgyminsertion.allsight.experiments.models.train_allsight_regressor.datasets import TactileSimDataset, output_map, get_buffer_paths_sim
 
 ###############################################################################
 # Helper Functions

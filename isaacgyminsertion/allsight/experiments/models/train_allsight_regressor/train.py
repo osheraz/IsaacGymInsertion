@@ -25,10 +25,10 @@ from transformations import quaternion_matrix
 from scipy import spatial
 from tqdm import tqdm
 import random
+from isaacgyminsertion.allsight.experiments.models.train_allsight_regressor.vit_pytorch import SimpleViT, SmallViT
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")  # cuda or cpu
 np.set_printoptions(suppress=True, linewidth=np.inf)  # to widen the printed array
-
 
 random.seed(42)
 torch.manual_seed(42)
@@ -48,7 +48,7 @@ class Trainer(object):
         print_sensor_ids(leds, gel, indenter)
 
         buffer_paths_to_train, buffer_test_paths, sensors_1, sensors_2 = get_buffer_paths(leds, gel, indenter,
-                                                                                          train_sensor_id=[4,12,13,14,15,16,17,18],
+                                                                                          train_sensor_id=[3, 10, 9, 18, 4, 17, 15, 16, 12, 14, 13, 11, 2, 1, 0, 7, 8, 6, 5],
                                                                                           test_sensor_id=[19])
 
         #####################
@@ -85,8 +85,31 @@ class Trainer(object):
         self.prepare_data(buffer_paths_to_train, buffer_test_paths, params['output'])
 
         if params['input_type'] == 'single':
-            self.model = load_tactile_resnet(num_channels=params['num_channels'],
-                                             embed_dim=output_map[params['output']]).to(device)
+            # self.model = load_tactile_resnet(num_channels=params['num_channels'],
+            #                                  embed_dim=output_map[params['output']]).to(device)
+            # self.model = SimpleViT(image_size=params['image_size'],
+            #                        patch_size=14,
+            #                        num_classes=output_map[params['output']],
+            #                        channels=params['num_channels'],
+            #                        dim=1024,
+            #                        depth=6,
+            #                        heads=16,
+            #                        mlp_dim=2048
+            #                        ).to(device)
+
+            self.model = SmallViT(image_size=params['image_size'],
+                                  patch_size=14,
+                                  num_classes=output_map[params['output']],
+                                  channels=params['num_channels'],
+                                  dim=128,
+                                  depth=6,
+                                  heads=8,
+                                  mlp_dim=128,
+                                  dropout=0.1,
+                                  emb_dropout=0.1
+                                  ).to(device)
+
+
             # self.model = PreTrainedModel(params['model_name'], output_map[params['output']]).to(device)
         elif params['input_type'] == 'with_ref_6c':
             self.model = PreTrainedModelWithRef(params['model_name'], output_map[params['output']]).to(device)
@@ -132,16 +155,36 @@ class Trainer(object):
                 # new_df = new_df.sample(n=s)
                 df_data = pd.concat([df_data, new_df], axis=0)
 
+        for idx, p in enumerate(path_test):
+            if idx == 0:
+                df_data_test = pd.read_json(p).transpose()
+                # s = min(df_data_test.shape[0], 4000)
+                # df_data_test = df_data_test.sample(n=s)
+            else:
+                new_df = pd.read_json(p).transpose()
+                # s = min(new_df.shape[0], 4000)
+                # new_df = new_df.sample(n=s)
+                df_data_test = pd.concat([df_data_test, new_df], axis=0)
+
         if self.half_image:
             condition1 = (df_data['theta_transformed'] > np.pi / 4)
             condition2 = (df_data['theta_transformed'] < 3 * np.pi / 2)
-
             df_data = df_data[condition1 & condition2]
+            df_data = df_data.reset_index(drop=True)
+
+            condition1 = (df_data_test['theta_transformed'] > np.pi / 4)
+            condition2 = (df_data_test['theta_transformed'] < 3 * np.pi / 2)
+            df_data_test = df_data_test[condition1 & condition2]
+            df_data_test = df_data_test.reset_index(drop=True)
 
         df_data = df_data[df_data.time > 1]  # train only over touching samples!
+        df_data = df_data.reset_index(drop=True)
+
+        df_data_test = df_data_test[df_data_test.time > 1]  # train only over touching samples!
+        df_data_test = df_data_test.reset_index(drop=True)
 
         train_df, valid_df = train_test_split(df_data, test_size=0.22, shuffle=True)
-        test_df = valid_df
+        test_df = df_data_test
 
         if self.num_channels == 3:
             norm = transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
@@ -152,6 +195,7 @@ class Trainer(object):
             w, h = self.params['image_size'] // 2, self.params['image_size']
         else:
             w, h = self.params['image_size'], self.params['image_size']
+
         self.train_transform = transforms.Compose([
             transforms.ToPILImage(),
             transforms.Resize((w, h)),
@@ -199,8 +243,10 @@ class Trainer(object):
         else:
             self.trainset = self.originalset
 
-        self.validset = TactileDataset(self.model_params, valid_df, output_type, self.test_transform, half_image=self.half_image)
-        self.testset = TactileDataset(self.model_params, test_df, output_type, self.test_transform, half_image=self.half_image)
+        self.validset = TactileDataset(self.model_params, valid_df, output_type, self.test_transform,
+                                       half_image=self.half_image)
+        self.testset = TactileDataset(self.model_params, test_df, output_type, self.test_transform,
+                                      half_image=self.half_image)
 
         self.trainloader = DataLoader(self.trainset, batch_size=self.params['batch_size'], shuffle=True, drop_last=True)
         self.validloader = DataLoader(self.validset, batch_size=self.params['batch_size'], shuffle=True, drop_last=True)
@@ -227,7 +273,7 @@ class Trainer(object):
             with tqdm(self.trainloader, unit="batch") as tepoch:
                 for (batch_x, batch_x_ref, batch_y) in tepoch:
                     tepoch.set_description(f"Epoch [{epoch}/{epochs}]")
-                    pred_px = self.model(batch_x, batch_x_ref).to(device)
+                    pred_px = self.model(batch_x).to(device)  # batch_x_ref
                     true_px = batch_y.to(device)
 
                     loss = nn.functional.mse_loss(pred_px, true_px)
@@ -290,7 +336,7 @@ class Trainer(object):
                 tepoch.set_description("Validate")
 
                 with torch.no_grad():
-                    pred_px = self.model(batch_x, batch_x_ref).to(device)
+                    pred_px = self.model(batch_x).to(device)
                     true_px = batch_y.to(device)
                     cost = nn.functional.mse_loss(pred_px, true_px)
 
@@ -324,7 +370,7 @@ class Trainer(object):
 
         for b, (batch_x, batch_x_ref, batch_y) in enumerate(self.testloader):
             with torch.no_grad():
-                pred_px = self.model(batch_x, batch_x_ref).to(device)
+                pred_px = self.model(batch_x).to(device)
                 true_px = batch_y.to(device)
                 cost = nn.functional.mse_loss(pred_px, true_px)
 
@@ -552,13 +598,13 @@ def main():
     parser.add_argument('--portion', '-pr', type=float, default=1.0)
     parser.add_argument('--model_name', '-mn', type=str, default='resnet18')
     parser.add_argument('--input_type', '-it', type=str, default='single')  # with_ref_6c, single
-    parser.add_argument('--leds', '-ld', type=str, default='white')  # rrrgggbbb
-    parser.add_argument('--gel', '-gl', type=str, default='clear')  # rrrgggbbb
+    parser.add_argument('--leds', '-ld', type=str, default='combined')  # rrrgggbbb
+    parser.add_argument('--gel', '-gl', type=str, default='combined')  # rrrgggbbb
 
     parser.add_argument('--norm_method', '-im', type=str, default='meanstd')
     parser.add_argument('--aug', '-aug', default=False)
 
-    parser.add_argument('--output', '-op', type=str, default='pose_force_pixel')
+    parser.add_argument('--output', '-op', type=str, default='pose_force')
     parser.add_argument('--scheduler', '-sch', type=str, default='none')
 
     parser.add_argument('--image_size', '-iz', type=int, default=224)
