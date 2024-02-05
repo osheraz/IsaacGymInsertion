@@ -18,7 +18,7 @@ from sklearn.model_selection import train_test_split
 from torch.optim.lr_scheduler import CosineAnnealingLR, ReduceLROnPlateau, StepLR  # Learning rate schedulers
 from models import PreTrainedModel, PreTrainedModelWithRef, load_tactile_resnet
 from vis_utils import data_for_cylinder_along_z, data_for_sphere_along_z, set_axes_equal
-from datasets import TactileDataset, output_map, get_buffer_paths, CircleMaskTransform
+from datasets import TactileDataset, output_map, get_buffer_paths, CircleMaskTransform, print_sensor_ids
 from surface import create_finger_geometry
 from geometry import convert_quat_wxyz_to_xyzw, convert_quat_xyzw_to_wxyz
 from transformations import quaternion_matrix
@@ -42,9 +42,14 @@ class Trainer(object):
         self.params = params
 
         leds = params['leds']
+        gel = params['gel']
         indenter = ['sphere3', 'sphere4', 'sphere5', 'square', 'hexagon', 'ellipse']
 
-        buffer_paths_to_train = get_buffer_paths(leds, indenter, params)
+        print_sensor_ids(leds, gel, indenter)
+
+        buffer_paths_to_train, buffer_test_paths, sensors_1, sensors_2 = get_buffer_paths(leds, gel, indenter,
+                                                                                          train_sensor_id=[4,12,13,14,15,16,17,18],
+                                                                                          test_sensor_id=[19])
 
         #####################
         ## SET AGENT PARAMS
@@ -77,11 +82,11 @@ class Trainer(object):
 
         self.finger_geometry = create_finger_geometry()
         self.tree = spatial.KDTree(self.finger_geometry[0])
-        self.prepare_data(buffer_paths_to_train, params['output'])
+        self.prepare_data(buffer_paths_to_train, buffer_test_paths, params['output'])
 
         if params['input_type'] == 'single':
             self.model = load_tactile_resnet(num_channels=params['num_channels'],
-                                             embed_dim=output_map[params['output']])
+                                             embed_dim=output_map[params['output']]).to(device)
             # self.model = PreTrainedModel(params['model_name'], output_map[params['output']]).to(device)
         elif params['input_type'] == 'with_ref_6c':
             self.model = PreTrainedModelWithRef(params['model_name'], output_map[params['output']]).to(device)
@@ -114,9 +119,9 @@ class Trainer(object):
 
         self.best_model = copy.deepcopy(self.model)
 
-    def prepare_data(self, paths, output_type):
+    def prepare_data(self, paths_train, path_test, output_type):
 
-        for idx, p in enumerate(paths):
+        for idx, p in enumerate(paths_train):
             if idx == 0:
                 df_data = pd.read_json(p).transpose()
                 # s = min(df_data.shape[0], 4000)
@@ -126,6 +131,12 @@ class Trainer(object):
                 # s = min(new_df.shape[0], 4000)
                 # new_df = new_df.sample(n=s)
                 df_data = pd.concat([df_data, new_df], axis=0)
+
+        if self.half_image:
+            condition1 = (df_data['theta_transformed'] > np.pi / 4)
+            condition2 = (df_data['theta_transformed'] < 3 * np.pi / 2)
+
+            df_data = df_data[condition1 & condition2]
 
         df_data = df_data[df_data.time > 1]  # train only over touching samples!
 
@@ -137,9 +148,13 @@ class Trainer(object):
         else:
             norm = transforms.Normalize([0.5], [0.5])
 
+        if self.half_image:
+            w, h = self.params['image_size'] // 2, self.params['image_size']
+        else:
+            w, h = self.params['image_size'], self.params['image_size']
         self.train_transform = transforms.Compose([
             transforms.ToPILImage(),
-            transforms.Resize((self.params['image_size'], self.params['image_size'])),
+            transforms.Resize((w, h)),
             # CircleMaskTransform(size=(self.params['image_size'], self.params['image_size']), border=0),
             # transforms.RandomChoice([
             #     transforms.ColorJitter(brightness=0.05, contrast=0.05, saturation=0.05, hue=0.05),
@@ -150,7 +165,7 @@ class Trainer(object):
 
         self.aug_transform = transforms.Compose([
             transforms.ToPILImage(),
-            transforms.Resize((self.params['image_size'], self.params['image_size'])),
+            transforms.Resize((w, h)),
             # CircleMaskTransform(size=(self.params['image_size'], self.params['image_size']), border=0),
             transforms.RandomApply([transforms.ColorJitter(0.2, 0.2, 0.2, 0.1)], p=0.5),
             transforms.RandomGrayscale(p=0.2),
@@ -167,25 +182,25 @@ class Trainer(object):
 
         self.test_transform = transforms.Compose([
             transforms.ToPILImage(),
-            transforms.Resize((self.params['image_size'], self.params['image_size'])),
+            transforms.Resize((w, h)),
             # CircleMaskTransform(size=(self.params['image_size'], self.params['image_size']), border=0),
             transforms.ToTensor(),
             norm
         ])
 
         self.originalset = TactileDataset(self.model_params, train_df, output_type,
-                                          self.train_transform,
+                                          self.train_transform, half_image=self.half_image
                                           )
 
         if self.params['aug']:
             self.augset = TactileDataset(self.model_params, train_df, output_type,
-                                         self.aug_transform, )
+                                         self.aug_transform, half_image=self.half_image)
             self.trainset = torch.utils.data.ConcatDataset([self.originalset, self.augset])
         else:
             self.trainset = self.originalset
 
-        self.validset = TactileDataset(self.model_params, valid_df, output_type, self.test_transform, )
-        self.testset = TactileDataset(self.model_params, test_df, output_type, self.test_transform, )
+        self.validset = TactileDataset(self.model_params, valid_df, output_type, self.test_transform, half_image=self.half_image)
+        self.testset = TactileDataset(self.model_params, test_df, output_type, self.test_transform, half_image=self.half_image)
 
         self.trainloader = DataLoader(self.trainset, batch_size=self.params['batch_size'], shuffle=True, drop_last=True)
         self.validloader = DataLoader(self.validset, batch_size=self.params['batch_size'], shuffle=True, drop_last=True)
@@ -356,10 +371,17 @@ class Trainer(object):
             f.write(f'rmse: {rmse}\n')
 
         # display visual model inputs
-        inv_normalize = transforms.Normalize(
-            mean=[-1, -1, -1],
-            std=[2.0, 2.0, 2.0]
-        )
+        if self.num_channels == 3:
+            inv_normalize = transforms.Normalize(
+                mean=[-1, -1, -1],
+                std=[2.0, 2.0, 2.0]
+            )
+        else:
+            inv_normalize = transforms.Normalize(
+                mean=[-1],
+                std=[2.0]
+            )
+
         im_inv = inv_normalize(batch_x)  # back to [0,1]
 
         self.fig.clf()
@@ -373,9 +395,16 @@ class Trainer(object):
             # Inverse normalize the images
             IDX = 0 if self.model_params['output'] == 'pixel' else 6
 
+            if self.half_image:
+                w = self.originalset.w // 2
+                h = self.originalset.h
+            else:
+                w = self.originalset.w
+                h = self.originalset.h
+
             im_inv_resized = [torch.nn.functional.interpolate(
                 img_i.unsqueeze(1),
-                size=[self.originalset.h, self.originalset.w],  # 480, 640
+                size=[w, h],  # 480, 640
                 mode="bicubic",
                 align_corners=False,
             ).squeeze() for img_i in im_inv]
@@ -524,11 +553,12 @@ def main():
     parser.add_argument('--model_name', '-mn', type=str, default='resnet18')
     parser.add_argument('--input_type', '-it', type=str, default='single')  # with_ref_6c, single
     parser.add_argument('--leds', '-ld', type=str, default='white')  # rrrgggbbb
+    parser.add_argument('--gel', '-gl', type=str, default='clear')  # rrrgggbbb
 
     parser.add_argument('--norm_method', '-im', type=str, default='meanstd')
     parser.add_argument('--aug', '-aug', default=False)
 
-    parser.add_argument('--output', '-op', type=str, default='pose')
+    parser.add_argument('--output', '-op', type=str, default='pose_force_pixel')
     parser.add_argument('--scheduler', '-sch', type=str, default='none')
 
     parser.add_argument('--image_size', '-iz', type=int, default=224)

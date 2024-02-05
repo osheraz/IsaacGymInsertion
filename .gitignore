@@ -35,3 +35,4 @@ outputs/
 *.mp4
 *-checkpoint.ipynb
 isaacgyminsertion/allsight/experiments/allsight_dataset
+isaacgyminsertion/allsight/experiments/models/train_allsight_regressor/train_history

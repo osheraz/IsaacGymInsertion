@@ -14,7 +14,7 @@ from PIL import Image
 np.set_printoptions(precision=4)
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")  # cuda or cpu
-pc_name = os.getcwd()
+pc_name = os.getlogin()
 
 output_map = {'pixel': 3,  # px, py, r
               'force': 3,  # fx, fy, f
@@ -42,9 +42,56 @@ sensor_dict = {'markers': {'rrrgggbbb': [2, 1, 0, 11],
                }
 
 
-def get_buffer_paths(leds, gel, indenter, sensor_id=None):
-    trained_sensor_id = []
-    test_sensor_id = []
+def print_sensor_ids(leds, gel, indenter):
+    trained_sensor_id_list = set()  # Use a set to store unique sensor IDs
+    size_sensor_id_list = {}
+
+
+    if leds == 'combined':
+        leds_list = ['rrrgggbbb', 'rgbrgbrgb', 'white']
+    else:
+        leds_list = [leds]
+
+    if gel == 'combined':
+        gels = ['clear', 'markers']
+    else:
+        gels = [gel]
+
+    for gel in gels:
+        for l in leds_list:
+
+            paths = [f"/home/{pc_name}/allsight_dataset/{gel}/{l}/data/{ind}" for ind in indenter]
+
+            buffer_paths = []
+            summ_paths = []
+
+            for p in paths:
+                buffer_paths += [y for x in os.walk(p) for y in
+                                 glob(os.path.join(x[0], '*_transformed_annotated.json'))]
+                summ_paths += [y for x in os.walk(p) for y in glob(os.path.join(x[0], 'summary.json'))]
+
+            for bp, s in zip(buffer_paths, summ_paths):
+                with open(s, 'rb') as handle:
+                    summ = json.load(handle)
+                    summ['sensor_id'] = summ['sensor_id'][0] if isinstance(summ['sensor_id'], list) else summ['sensor_id']
+
+                trained_sensor_id_list.update([summ['sensor_id']])  # Update the set with unique sensor IDs
+                if summ['sensor_id'] in size_sensor_id_list.keys():
+                    size_sensor_id_list[summ['sensor_id']] += pd.read_json(bp).transpose().shape[0]
+                size_sensor_id_list[summ['sensor_id']] = pd.read_json(bp).transpose().shape[0]
+
+
+    # Print the unique sensor IDs
+    print("Unique Sensor IDs:")
+    # print("Sensor IDs:", trained_sensor_id_list)
+    print("Sizes IDs:", size_sensor_id_list)
+
+
+
+def get_buffer_paths(leds, gel, indenter, train_sensor_id=None, test_sensor_id=None):
+
+    trained_sensor_id_list = []
+    test_sensor_id_list = []
 
     buffer_paths_to_train = []
     buffer_paths_to_test = []
@@ -61,7 +108,9 @@ def get_buffer_paths(leds, gel, indenter, sensor_id=None):
 
     for gel in gels:
         for l in leds_list:
-            paths = [f"/home/{pc_name}/catkin_ws/src/allsight/dataset/{gel}/{l}/data/{ind}" for ind in indenter]
+
+            paths = [f"/home/{pc_name}/allsight_dataset/{gel}/{l}/data/{ind}" for ind in indenter]
+
             buffer_paths = []
             summ_paths = []
 
@@ -77,20 +126,18 @@ def get_buffer_paths(leds, gel, indenter, sensor_id=None):
                         summ['sensor_id']]
 
                 for sm in summ['sensor_id']:
-                    if sensor_id is not None:
-                        train_sensor = sensor_id
-                    else:
-                        train_sensor = sensor_dict[gel][l][0]
-
-                    if sm == train_sensor:
+                    if sm in train_sensor_id:
                         buffer_paths_to_train.append(bp)
-                        trained_sensor_id.append(sm)
-
-                    else:
+                        trained_sensor_id_list.append(sm)
+                        print(f'Sensor {sm} is in the train set')
+                    elif sm in test_sensor_id:
                         buffer_paths_to_test.append(bp)
-                        test_sensor_id.append(sm)
+                        test_sensor_id_list.append(sm)
+                        print(f'Sensor {sm} is in the test set')
+                    else:
+                        print(f'Sensor {sm} is not in the train set and not in the test set')
 
-    return buffer_paths_to_train, buffer_paths_to_test, list(set(trained_sensor_id)), list(set(test_sensor_id))
+    return buffer_paths_to_train, buffer_paths_to_test, list(set(trained_sensor_id_list)), list(set(test_sensor_id_list))
 
 
 def get_buffer_paths_sim(leds, indenter, params):
@@ -149,7 +196,7 @@ def get_inputs_and_targets(group, output_type):
     inputs_ref = [group.iloc[idx].ref_frame for idx in range(group.shape[0])]
 
     if output_type == 'pixel':
-        target = np.array(group.iloc[idx].contact_px for idx in range(group.shape[0]))
+        target = np.array([group.iloc[idx].contact_px for idx in range(group.shape[0])])
     elif output_type == 'force':
         target = np.array([group.iloc[idx].ft_ee_transformed[:3] for idx in range(group.shape[0])])
     elif output_type == 'force_torque':
@@ -219,7 +266,7 @@ class TactileDataset(torch.utils.data.Dataset):
 
         if pc_name != 'osher':
             old_path = "/home/osher/catkin_ws/src/allsight/dataset/"
-            new_path = os.path.dirname(os.path.abspath(__file__)) + '/../../allsight_dataset/'
+            new_path = f'/home/{pc_name}//allsight_dataset/'
 
             self.X = [f.replace(old_path, new_path) for f in self.X]
             self.X_ref = [f.replace(old_path, new_path) for f in self.X_ref]
@@ -276,12 +323,13 @@ class TactileDataset(torch.utils.data.Dataset):
             img = self.align_center(img)
             ref_img = self.align_center(ref_img)
 
-        if self.apply_mask:
-            img = img * self.mask
-            ref_img = ref_img * self.mask
-
         if self.remove_ref:
             img = self._subtract_bg(img, ref_img)
+
+        if self.apply_mask:
+            w, h, c = self.mask.shape
+            img = img[:w,:h,:] * self.mask
+            ref_img = ref_img[:w,:h,:] * self.mask
 
         if self.half_image:
             w = img.shape[0]

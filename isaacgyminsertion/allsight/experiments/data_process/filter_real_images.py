@@ -69,7 +69,7 @@ def get_third_element(lst):
 
 
 def get_buffer_paths(leds, gel, indenter, train_sensor_id, test_sensor_id,
-                     dataset_path='/datasets/data_Allsight/all_data/allsight_dataset'):
+                     dataset_path='/datasets/all_data/allsight_dataset'):
     # sensor id = train sensors id
     trained_sensor_id_final = []
     test_sensor_id_final = []

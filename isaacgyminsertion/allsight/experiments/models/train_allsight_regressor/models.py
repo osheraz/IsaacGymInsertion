@@ -8,22 +8,6 @@ import os
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")  # cuda or cpu
 
-def _tactile_encode(self, images):
-
-    #                E, T,(finger) W, H, C  ->   E, T, C, W, H
-    left_seq = images[:, :, 0, :, :, :].permute(0, 1, 4, 2, 3)
-    right_seq = images[:, :, 1, :, :, :].permute(0, 1, 4, 2, 3)
-    bot_seq = images[:, :, 2, :, :, :].permute(0, 1, 4, 2, 3)
-
-    tac_emb = self.tactile_decoder(left_seq)
-    # emb_right = self.tactile_decoder(right_seq)
-    # emb_bottom = self.tactile_decoder(bot_seq)
-
-    # tactile_embeddings = torch.cat((emb_left, emb_right, emb_bottom), dim=-1)
-    # tac_emb = self.tactile_mlp(tactile_embeddings)
-
-    return tac_emb
-
 def load_tactile_resnet(embed_dim, num_channels,root_dir=None, path_checkpoint=None, pre_trained=False):
     import algo.models.convnets.resnets as resnet
     import os
