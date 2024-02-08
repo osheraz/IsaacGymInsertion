@@ -1,8 +1,23 @@
 import torch
 import torch.nn as nn
 # import timm
-from datasets import output_map
-
+# from datasets import output_map
+output_map = {'pixel': 3,  # px, py, r
+              'force': 3,  # fx, fy, f
+              'torque': 3,  # mx, my, mz
+              'force_torque_full': 6,  # fx, fy, fz, mx, my, mz
+              'force_torque': 4,  # fx, fy, fz, mx, my, mz
+              'pose': 3,  # x, y ,z
+              'pose_force': 6,  # fx, fy, fz
+              'touch_detect': 1,  # bool
+              'depth': 1,  # max depth
+              # order by name
+              'pose_force_torque': 7,
+              'pose_force_pixel': 9,
+              'pose_force_pixel_depth': 10,
+              'pose_force_pixel_torque_depth': 11,
+              'pose_force_pixel_torque': 10
+              }
 # import resnets as srn
 import os
 

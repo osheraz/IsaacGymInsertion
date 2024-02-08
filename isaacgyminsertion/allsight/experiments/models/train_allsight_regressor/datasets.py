@@ -1,10 +1,10 @@
 import os
 import torch
 from torch.utils.data import DataLoader
-from misc import normalize, unnormalize, normalize_max_min, unnormalize_max_min  #
+from src.allsight.train.utils.misc import normalize, unnormalize, normalize_max_min, unnormalize_max_min  #
 import numpy as np
 import cv2
-from img_utils import circle_mask
+from src.allsight.train.utils.img_utils import circle_mask
 import pandas as pd
 import random
 from glob import glob
@@ -46,7 +46,6 @@ def print_sensor_ids(leds, gel, indenter):
     trained_sensor_id_list = set()  # Use a set to store unique sensor IDs
     size_sensor_id_list = {}
 
-
     if leds == 'combined':
         leds_list = ['rrrgggbbb', 'rgbrgbrgb', 'white']
     else:
@@ -73,13 +72,13 @@ def print_sensor_ids(leds, gel, indenter):
             for bp, s in zip(buffer_paths, summ_paths):
                 with open(s, 'rb') as handle:
                     summ = json.load(handle)
-                    summ['sensor_id'] = summ['sensor_id'][0] if isinstance(summ['sensor_id'], list) else summ['sensor_id']
+                    summ['sensor_id'] = summ['sensor_id'][0] if isinstance(summ['sensor_id'], list) else summ[
+                        'sensor_id']
 
                 trained_sensor_id_list.update([summ['sensor_id']])  # Update the set with unique sensor IDs
                 if summ['sensor_id'] in size_sensor_id_list.keys():
                     size_sensor_id_list[summ['sensor_id']] += pd.read_json(bp).transpose().shape[0]
                 size_sensor_id_list[summ['sensor_id']] = pd.read_json(bp).transpose().shape[0]
-
 
     # Print the unique sensor IDs
     print("Unique Sensor IDs:")
@@ -87,9 +86,7 @@ def print_sensor_ids(leds, gel, indenter):
     print("Sizes IDs:", size_sensor_id_list)
 
 
-
 def get_buffer_paths(leds, gel, indenter, train_sensor_id=None, test_sensor_id=None):
-
     trained_sensor_id_list = []
     test_sensor_id_list = []
 
@@ -137,7 +134,8 @@ def get_buffer_paths(leds, gel, indenter, train_sensor_id=None, test_sensor_id=N
                     else:
                         print(f'Sensor {sm} is not in the train set and not in the test set')
 
-    return buffer_paths_to_train, buffer_paths_to_test, list(set(trained_sensor_id_list)), list(set(test_sensor_id_list))
+    return buffer_paths_to_train, buffer_paths_to_test, list(set(trained_sensor_id_list)), list(
+        set(test_sensor_id_list))
 
 
 def get_buffer_paths_sim(leds, indenter, params):
@@ -245,7 +243,8 @@ def get_inputs_and_targets(group, output_type):
 
 class TactileDataset(torch.utils.data.Dataset):
     def __init__(self, params, df, output_type='pose_force_pixel',
-                 transform=None, apply_mask=True, remove_ref=True, statistics=None, fix_border=True, num_channels=1, half_image=True):
+                 transform=None, apply_mask=True, remove_ref=True, statistics=None, fix_border=True, num_channels=1,
+                 half_image=True):
 
         self.df = df
         self.transform = transform
@@ -296,7 +295,7 @@ class TactileDataset(torch.utils.data.Dataset):
         diff = diff / 255.0 + offset
         return diff
 
-    def align_center(self, img, fix=(0,0), size=(480,480)):
+    def align_center(self, img, fix=(0, 0), size=(480, 480)):
 
         center_x, center_y = size[0] // 2 - fix[0], size[1] // 2 - fix[1]
         extra = max(abs(fix[0]), abs(fix[1]))
@@ -318,6 +317,8 @@ class TactileDataset(torch.utils.data.Dataset):
         img = cv2.imread(self.X[idx])
         ref_img = cv2.imread(self.X_ref[idx])
 
+        # should i add bgr to rgb
+
         if self.fix_border:
             # Assuming images loaded with old settings (480,480) with irregular center
             img = self.align_center(img)
@@ -328,8 +329,8 @@ class TactileDataset(torch.utils.data.Dataset):
 
         if self.apply_mask:
             w, h, c = self.mask.shape
-            img = img[:w,:h,:] * self.mask
-            ref_img = ref_img[:w,:h,:] * self.mask
+            img = img[:w, :h, :] * self.mask
+            ref_img = ref_img[:w, :h, :] * self.mask
 
         if self.half_image:
             w = img.shape[0]
@@ -339,17 +340,18 @@ class TactileDataset(torch.utils.data.Dataset):
         if self.num_channels == 1:
             img = cv2.cvtColor(img.astype('float32'), cv2.COLOR_BGR2GRAY)
             ref_img = cv2.cvtColor(ref_img.astype('float32'), cv2.COLOR_BGR2GRAY)
+        if self.num_channels == 3 and self.remove_ref:
+            img = (img * 255.0).astype('uint8')
+            ref_img = (ref_img * 255.0).astype('uint8')
 
         if self.transform:
             # apply the same seed to the image and the ref, kinda unnecessary.
-            seed = np.random.randint(2147483647)
-            random.seed(seed)
-            torch.manual_seed(seed)
-
+            # seed = np.random.randint(2147483647)
+            # random.seed(seed)
+            # torch.manual_seed(seed)
             img = self.transform(img).to(device)
-
-            random.seed(seed)
-            torch.manual_seed(seed)
+            # random.seed(seed)
+            # torch.manual_seed(seed)
             ref_img = self.transform(ref_img).to(device)
 
         y = torch.Tensor(self.Y[idx])
