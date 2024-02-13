@@ -44,6 +44,42 @@ class MAE(nn.Module):
         self.decoder_pos_emb = nn.Embedding(num_patches, decoder_dim)
         self.to_pixels = nn.Linear(decoder_dim, pixel_values_per_patch)
 
+    def get_encoding(self, img):
+
+        device = img.device
+
+        # get patches
+
+        patches = self.to_patch(img)
+        batch, num_patches, *_ = patches.shape
+
+        # patch to encoder tokens and add positions
+
+        tokens = self.patch_to_emb(patches)
+        if self.encoder.pool == "cls":
+            tokens += self.encoder.pos_embedding[:, 1:(num_patches + 1)]
+        elif self.encoder.pool == "mean":
+            tokens += self.encoder.pos_embedding.to(device, dtype=tokens.dtype)
+
+            # calculate of patches needed to be masked, and get random indices, dividing it up for mask vs unmasked
+
+        num_masked = int(self.masking_ratio * num_patches)
+        rand_indices = torch.rand(batch, num_patches, device=device).argsort(dim=-1)
+        masked_indices, unmasked_indices = rand_indices[:, :num_masked], rand_indices[:, num_masked:]
+
+        # get the unmasked tokens to be encoded
+
+        batch_range = torch.arange(batch, device=device)[:, None]
+        tokens = tokens[batch_range, unmasked_indices]
+
+        # get the patches to be masked for the final reconstruction loss
+        # attend with vision transformer
+
+        encoded_tokens = self.encoder.transformer(tokens)
+        encoded_tokens = encoded_tokens.mean(dim=1)
+
+        return encoded_tokens
+
     def forward(self, img):
         device = img.device
 
