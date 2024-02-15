@@ -77,7 +77,7 @@ class allsight_renderer:
         height = cfg.tacto.height
         self.half_image = cfg.half_image
 
-        self.subtract_bg = True
+        self.subtract_bg = cfg.diff
         leds = 'white'
         path_to_refs = os.path.join(os.path.dirname(__file__), "../")
         bg = cv2.imread(os.path.join(path_to_refs, f"experiments/conf/ref/ref_frame_{leds}{bg_id}.jpg"))

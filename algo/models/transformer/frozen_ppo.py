@@ -91,7 +91,8 @@ class PPO(object):
         self.priv_info_embed_dim = self.network_config.priv_mlp.units[-1]
         # ---- Obs Info (student)----
         self.obs_info = self.ppo_config["obs_info"]
-
+        # ---- Hand Info (joints)----
+        self.hand_info = self.ppo_config["hand_info"]
         # ---- Model ----
         net_config = {
             'actor_units': self.network_config.mlp.units,
@@ -118,7 +119,8 @@ class PPO(object):
             "tactile_decoder_embed_dim": self.network_config.tactile_mlp.units[0],
             "shared_parameters": self.ppo_config.shared_parameters,
             "merge_units": self.network_config.merge_mlp.units,
-            # "pose_mlp_units": self.network_config.pose_mlp.units,
+            "hand_mlp_units": self.network_config.hand_mlp.units,
+            "hand_info": self.hand_info
             # "physics_mlp_units": self.network_config.physics_mlp.units,
             # 'body_mlp_units': self.network_config.body_mlp.units,
         }
@@ -132,7 +134,6 @@ class PPO(object):
         self.value_mean_std = RunningMeanStd((1,)).to(self.device)
         if env is not None and not full_config.offline_training:
             # ---- Output Dir ----
-            # allows us to specify a folder where all experiments will reside
             self.output_dir = output_dif
             self.nn_dir = os.path.join(self.output_dir, 'stage1_nn')
             self.tb_dif = os.path.join(self.output_dir, 'stage1_tb')
@@ -284,10 +285,12 @@ class PPO(object):
 
         processed_obs = self.running_mean_std(obs_dict['obs'])
         processed_priv = self.priv_mean_std(obs_dict['priv_info'])
+
         input_dict = {
             'obs': processed_obs,
             'priv_info': processed_priv,
         }
+
         if 'latent' in obs_dict and obs_dict['latent'] is not None:
             input_dict['latent'] = obs_dict['latent']
 
@@ -381,7 +384,7 @@ class PPO(object):
         # collect minibatch data
         _t = time.time()
         self.set_eval()
-        self.play_steps()
+        self.play_steps() # collect data
         self.data_collect_time += (time.time() - _t)
         # update network
         _t = time.time()
@@ -501,7 +504,6 @@ class PPO(object):
             frame = np.uint8(frame)
             writer.append_data(frame)
         writer.close()
-
 
     def _write_ft(self, data, output_loc):
         import matplotlib.pyplot as plt
@@ -626,12 +628,11 @@ class PPO(object):
         self.storage.data_dict['values'] = values
         self.storage.data_dict['returns'] = returns
 
-    def test(self, get_latent=None, normalize_dict=None):
+    def test(self, get_latent=None, normalize_dict=None, milestone=100):
         # this will test either the student or the teacher model.
         # (check if the student model can be tested within models)
-        # TODO move all of the transformer related functions to other file
+
         self.set_eval()
-        milestone = 100
 
         self.transform = transforms.Compose([
             transforms.Normalize([0.5], [0.5])
@@ -698,15 +699,16 @@ class PPO(object):
             self.obs, r, done, info = self.env.step(action, dec)
 
             num_success += self.env.success_reset_buf[done.nonzero()].sum()
+
             # logging data
             if save_trajectory or offline_test:
+                self.data_logger.log_trajectory_data(action, latent, done, dec, save_trajectory=save_trajectory)
                 total_dones += len(done.nonzero())
                 if total_dones > milestone:
-                    print('success rate:', num_success/total_dones)
+                    print('[Test] success rate:', num_success/total_dones)
                     milestone += 100
-                self.data_logger.log_trajectory_data(action, latent, done, dec, save_trajectory=save_trajectory)
 
-        print('success rate:', num_success/total_dones)
+        print('[LastTest] success rate:', num_success/total_dones)
         return num_success, total_dones
 
     def _make_data(self, data, normalize_dict):

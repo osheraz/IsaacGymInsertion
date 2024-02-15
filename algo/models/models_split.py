@@ -118,11 +118,12 @@ class ActorCriticSplit(nn.Module):
             # self.physics_mlp = MLP(units=self.physics_mlp_units, input_size=6)
             # mlp_input_shape += self.physics_mlp_units[-1]
             # mlp_input_shape += self.pose_mlp_units[-1]
+            mlp_input_shape += self.contact_mlp_units[-1] # env_mlp[-1
 
             if self.contact_info:
-                mlp_input_shape += self.contact_mlp_units[-1]
                 self.contact_ae = ContactAE(input_size=kwargs["num_contact_points"] * 1, embedding_size=self.contact_mlp_units[-1])
                 # self.contact_mlp = MLP(units=self.contact_mlp_units, input_size=kwargs["num_contact_points"])
+            self.env_mlp = MLP(units=self.priv_mlp_units, input_size=self.priv_info_dim)
 
             # self.pose_mlp = MLP(units=self.pose_mlp_units, input_size=7)
 
@@ -306,6 +307,9 @@ class ActorCriticSplit(nn.Module):
                         else:
                             priv_obs = torch.cat([obs_dict['priv_info'], enc], dim=-1)
                             extrin = self.env_mlp(priv_obs)
+                    else:
+                        # using only the priv information
+                        extrin = self.env_mlp(obs_dict['priv_info'])
 
                     if display:
                         plt.ylim(-1, 1)

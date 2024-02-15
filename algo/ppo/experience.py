@@ -254,7 +254,7 @@ class DataLogger():
         if save_trajectory:
             self.pbar = tqdm(total=self.total_trajectories)
             self.total_trajectories = total_trajectories
-            self.num_workers = 1
+            self.num_workers = 8
             try:
                 self.q_s = [mp.JoinableQueue(maxsize=500) for _ in range(self.num_workers)]
                 self.workers = [mp.Process(target=self.worker, args=(q, idx)) for idx, q in enumerate(self.q_s)]
@@ -391,8 +391,10 @@ class SimLogger():
             'obs_hist_stud_shape': env.obs_student_buf.shape[-1],
             'priv_obs_shape': env.states_buf.shape[-1],
             'dec_shape': env.gt_extrinsic_contact.shape[-1],
+            'hand_joints_shape': env.hand_joints.shape[-1],
         }
 
+        # In case we want to use different encoders for each latent
         if self.split_latent and False:
             log_items.update({
                 'pose_latent_shape': env.cfg_ppo.network.pose_mlp.units[-1],
@@ -401,7 +403,7 @@ class SimLogger():
             })
         else:
             log_items.update({
-                'latent_shape': 16,  # env.cfg_ppo.network.priv_mlp.units[-1],
+                'latent_shape': env.cfg_ppo.network.priv_mlp.units[-1],
             })
 
         if self.gt_contact and False:
@@ -425,6 +427,7 @@ class SimLogger():
         self.data_logger = None
 
     def log_trajectory_data(self, action, latent, done, dec, save_trajectory=True):
+
         eef_pos = torch.cat(self.env.pose_world_to_robot_base(self.env.fingertip_centered_pos.clone(),
                                                               self.env.fingertip_centered_quat.clone()), dim=-1)
         plug_pos = torch.cat(self.env.pose_world_to_robot_base(self.env.plug_pos.clone(),
@@ -444,6 +447,10 @@ class SimLogger():
         obs_hist = self.env.obs_buf.clone()
         priv_obs = self.env.states_buf.clone()
         obs_hist_stud = self.env.obs_student_buf.clone()
+
+        hand_joints = self.env.hand_joints.clone()
+
+        # is_inserted = self.env.success_reset_buf.clone()
 
         new_action = None
         if action is not None:
@@ -474,7 +481,8 @@ class SimLogger():
             'obs_hist_stud': obs_hist_stud,
             'priv_obs': priv_obs,
             'done': new_done,
-            'dec': new_dec
+            'dec': new_dec,
+            'hand_joints': hand_joints,
         }
 
         new_latent = None

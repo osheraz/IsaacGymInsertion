@@ -23,7 +23,7 @@ sensor:
     curvatureMax: -0.94  # Deformation of the gel due to convexity 
     R: 0.5 # Radius of curved gel
     countW: 100 # Number of samples for horizontal direction; higher the finer details
-    mesh: "../assets/meshes/allsight_fine01.STL" # when there is mesh, every other param is ignored
+    mesh: "assets/urdf/kuka_openhand_description/meshes/allsight/allsight_fine01.obj"
 
   lights:
     # Light position & properties. 

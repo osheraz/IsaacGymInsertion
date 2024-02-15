@@ -6,17 +6,19 @@ network:
   mlp:
     units: [512, 256, 128]
   priv_mlp:
-    units: [256, 128, 16]
+    units: [256, 128, 8]
   ft_mlp:
-    units: [128, 64, 16]
+    units: [128, 64, 8]
   obs_mlp:
-    units: [1024, 512, 128, 32]
+    units: [512, 128, 32]
   tactile_mlp:
     units: [300, 128, 32]
   merge_mlp:
-    units: [128, 64, 16]
+    units: [128, 64, 8]
   contact_mlp:
-    units: [128, 64, 16]
+    units: [128, 64, 8]
+  hand_mlp:
+    units: [128, 64, 8]
 
   tactile_decoder:
     num_channels: ${....task.tactile.decoder.num_channels}
@@ -62,11 +64,14 @@ ppo:
   tactile_info: False
   ft_info: False
   obs_info: False
+  hand_info: False
+  only_contact: True # use only extrinsic for teacher
+  split_latent: False
+
   ft_seq_length: ${...task.env.ft_history_len}
   obs_seq_length: ${...task.env.numObsHist}
   priv_info_dim: ${...task.env.numStates}
   compute_contact_gt: ${...task.env.compute_contact_gt}
-  only_contact: True
 
   num_points: ${...task.env.num_points}
   sim2real: ${...task.tactile.sim2real}
