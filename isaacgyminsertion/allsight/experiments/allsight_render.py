@@ -128,6 +128,7 @@ class allsight_renderer:
 
         # concatenate colors horizontally (axis=1)
         color = np.concatenate(colors, axis=1)
+
         if self.subtract_bg:
             color = (255 * color).astype(np.uint8)
 

@@ -30,7 +30,7 @@ tactile: # Pulling from task
   with_bg: True # add background reference frame
   show_depth: True # visualize depth
   show_detect: False #
-  diff: False
+  diff: True
   half_image: True # --> tacto & decoder width // 2
   tactile_freq: 2
 
@@ -75,8 +75,8 @@ env:
     socket_base_height: 0.003
     plug_grasp_threshold: 0.01
 
-    tactile: True
-    tactile_display_viz: True
+    tactile: False
+    tactile_display_viz: False
     tactile_wrt_force: False
 
     compute_contact_gt: False
