@@ -400,7 +400,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                 if self.cfg_task.env.tactile_wrt_force:
                     force = 100 * finger_normalized_forces[e, n].cpu().detach().numpy()
                 else:
-                    force = 1000
+                    force = 50
 
                 # Render the image
                 tactile_img, height_map = self.tactile_handles[e][n].render(object_pose[e], force)
@@ -890,8 +890,8 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             # env_id = v[0]
             # camera_1 = v[1]
             # camera_2 = v[2]
-            print(self.init_plug_pos_cam)
-            print(plug_pos)
+            # print(self.init_plug_pos_cam)
+            # print(plug_pos)
             self.init_plug_pos_cam[v[0], :] = plug_pos[v[0], :]
 
         object_pose = {
@@ -966,8 +966,6 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         # self.dof_pos[env_ids, :] = new_pose.to(device=self.device)  # .repeat((len(env_ids), 1))
 
-        # self.dof_pos[env_ids, :] = new_pose.to(device=self.device)  # .repeat((len(env_ids), 1))
-        self.dof_pos[env_ids, :] = new_pose.to(device=self.device)  # .repeat((len(env_ids), 1))
         self.dof_pos[env_ids, :7] = torch.tensor(self.cfg_task.randomize.kuka_arm_initial_dof_pos,
                                                  device=self.device).repeat((len(env_ids), 1))
         # dont play with these joints (no actuation here)#

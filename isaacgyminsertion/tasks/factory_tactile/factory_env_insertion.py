@@ -246,7 +246,7 @@ class ExtrinsicContact:
 
         object_poses = torch.cat((obj_pos, obj_quat), dim=1)
         object_poses = self._xyzquat_to_tf_numpy(object_poses.cpu().numpy())
-        # self.plug_pose_no_rot = self.estimate_pose_batch(object_poses, self.plug_pose_no_rot)
+        self.plug_pose_no_rot = self.estimate_pose_batch(object_poses, self.plug_pose_no_rot)
 
         socket_poses = torch.cat((socket_pos, socket_quat), dim=1)
         socket_poses = self._xyzquat_to_tf_numpy(socket_poses.cpu().numpy())
@@ -266,16 +266,17 @@ class ExtrinsicContact:
         d[idx_2] = threshold
         d = np.clip(d, 0.0, threshold)
 
+        # TODO convert to Neural implicit representations https://arxiv.org/pdf/1812.03828.pdf?
         d = 1.0 - d / threshold
         d = np.clip(d, 0.0, 1.0)
         d[d > 0.1] = 1.0
-
-        indices = np.where(d == 1.0)[0]
-        if len(indices) > 0:
-            np.random.shuffle(indices)
-            num_idx = int(d[indices].sum() * np.random.uniform(0.0, 0.25))
-            indices = indices[:num_idx]
-            d[indices] = 0.0
+        #
+        # indices = np.where(d == 1.0)[0]
+        # if len(indices) > 0:
+        #     np.random.shuffle(indices)
+        #     num_idx = int(d[indices].sum() * np.random.uniform(0.0, 0.25))
+        #     indices = indices[:num_idx]
+        #     d[indices] = 0.0
 
         # Display
         if False:
@@ -286,7 +287,8 @@ class ExtrinsicContact:
             self.ax.set_xlabel('X')
             self.ax.set_ylabel('Y')
 
-            intersecting_indices = d < threshold
+            # intersecting_indices = d < threshold
+            intersecting_indices = (d == 1.0).reshape(-1, self.n_points)
             contacts = np.zeros_like(query_points)
             contacts[intersecting_indices] = query_points[intersecting_indices]
             for c in contacts[display_id]:

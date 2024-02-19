@@ -7,6 +7,8 @@ network:
     units: [512, 256, 128]
   priv_mlp:
     units: [256, 128, 8]
+  contact_mlp:
+    units: [ 128, 64, 8]
   ft_mlp:
     units: [128, 64, 8]
   obs_mlp:
@@ -14,8 +16,6 @@ network:
   tactile_mlp:
     units: [300, 128, 32]
   merge_mlp:
-    units: [128, 64, 8]
-  contact_mlp:
     units: [128, 64, 8]
   hand_mlp:
     units: [128, 64, 8]

@@ -114,18 +114,16 @@ class ActorCriticSplit(nn.Module):
 
         if self.priv_info:
 
-            # force_dim = 3
-            # self.physics_mlp = MLP(units=self.physics_mlp_units, input_size=6)
-            # mlp_input_shape += self.physics_mlp_units[-1]
-            # mlp_input_shape += self.pose_mlp_units[-1]
-            mlp_input_shape += self.contact_mlp_units[-1] # env_mlp[-1
-
-            if self.contact_info:
-                self.contact_ae = ContactAE(input_size=kwargs["num_contact_points"] * 1, embedding_size=self.contact_mlp_units[-1])
-                # self.contact_mlp = MLP(units=self.contact_mlp_units, input_size=kwargs["num_contact_points"])
+            mlp_input_shape += self.priv_mlp_units[-1]
             self.env_mlp = MLP(units=self.priv_mlp_units, input_size=self.priv_info_dim)
 
-            # self.pose_mlp = MLP(units=self.pose_mlp_units, input_size=7)
+            if self.contact_info:
+
+                self.contact_ae = ContactAE(input_size=kwargs["num_contact_points"] * 1, embedding_size=self.contact_mlp_units[-1])
+                if not self.only_contact:
+                    mlp_input_shape += self.contact_mlp_units[-1]
+
+                # self.contact_mlp = MLP(units=self.contact_mlp_units, input_size=kwargs["num_contact_points"])
 
             if self.priv_info_stage2:
                 # ---- tactile Decoder ----
@@ -231,6 +229,7 @@ class ActorCriticSplit(nn.Module):
 
         # Transformer student (latent pass is in frozen_ppo)
         if 'latent' in obs_dict and obs_dict['latent'] is not None:
+            # TODO check
             extrin = self.contact_ae.forward_enc((obs_dict['latent'] > 0.8) * 1.0)
 
             if 'priv_info' in obs_dict:
@@ -269,12 +268,13 @@ class ActorCriticSplit(nn.Module):
                         extrin = extrin_obs
 
                     # During supervised training, pass to priv_mlp -> extrin has gt label
+                    # TODO, move to new implt using encoders
                     with torch.no_grad():
                         if 'priv_info' in obs_dict:
                             if self.contact_info:
                                 contact_features = self.contact_mlp(obs_dict['contacts'])
                                 priv_obs = torch.cat([obs_dict['priv_info'], contact_features], dim=-1)
-                                extrin_gt = self.env_mlp(priv_obs)  # extrin
+                                extrin_gt = self.env_mlp(priv_obs)
                             else:
                                 extrin_gt = self.env_mlp(obs_dict['priv_info'])
                         else:
@@ -299,17 +299,17 @@ class ActorCriticSplit(nn.Module):
 
                 else:
                     # TODO add options to train with different priv
+                    extrin_priv = self.env_mlp(obs_dict['priv_info'])
+
                     if self.contact_info:
                         enc = self.contact_ae.forward_enc(obs_dict['contacts'])
                         dec = self.contact_ae.forward_dec(enc)
                         if self.only_contact:
                             extrin = enc
                         else:
-                            priv_obs = torch.cat([obs_dict['priv_info'], enc], dim=-1)
-                            extrin = self.env_mlp(priv_obs)
+                            extrin = torch.cat([extrin_priv, enc], dim=-1)
                     else:
-                        # using only the priv information
-                        extrin = self.env_mlp(obs_dict['priv_info'])
+                        extrin = extrin_priv
 
                     if display:
                         plt.ylim(-1, 1)
