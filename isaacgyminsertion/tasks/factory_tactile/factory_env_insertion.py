@@ -271,12 +271,12 @@ class ExtrinsicContact:
         d = np.clip(d, 0.0, 1.0)
         d[d > 0.1] = 1.0
         #
-        # indices = np.where(d == 1.0)[0]
-        # if len(indices) > 0:
-        #     np.random.shuffle(indices)
-        #     num_idx = int(d[indices].sum() * np.random.uniform(0.0, 0.25))
-        #     indices = indices[:num_idx]
-        #     d[indices] = 0.0
+        indices = np.where(d == 1.0)[0]
+        if len(indices) > 0:
+            np.random.shuffle(indices)
+            num_idx = int(d[indices].sum() * np.random.uniform(0.0, 0.25))
+            indices = indices[:num_idx]
+            d[indices] = 0.0
 
         # Display
         if False:

@@ -181,7 +181,7 @@ class allsight_renderer:
 
         if object_poses is not None:
             obj_pos_dict = {'object': matrix2trans(object_poses)}
-            normal_force_dict = {'object': normal_forces}  # Todo collect force
+            normal_force_dict = {'object': normal_forces}
         else:
             obj_pos_dict, normal_force_dict = None, None
 

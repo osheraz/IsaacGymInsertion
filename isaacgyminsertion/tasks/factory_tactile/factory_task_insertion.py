@@ -39,6 +39,7 @@ import omegaconf
 import time
 import os
 import torch
+os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
 
 from isaacgym import gymapi, gymtorch
 from isaacgyminsertion.tasks.factory_tactile.factory_env_insertion import FactoryEnvInsertionTactile
@@ -400,9 +401,8 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                 if self.cfg_task.env.tactile_wrt_force:
                     force = 100 * finger_normalized_forces[e, n].cpu().detach().numpy()
                 else:
-                    force = 50
+                    force = 30
 
-                # Render the image
                 tactile_img, height_map = self.tactile_handles[e][n].render(object_pose[e], force)
 
                 if self.cfg_tactile.sim2real:
@@ -835,7 +835,8 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         # self.degrasp_buf[:] |= fingertips_plug_dist
 
         # TODO: Reset at grasping fails
-        # self.reset_buf[:] |= self.degrasp_buf[:]
+        # if self.cfg_task.data_logger.collect_data or self.cfg_task.data_logger.collect_test_sim:
+        #     self.reset_buf[:] |= self.degrasp_buf[:]
 
         # If plug is too far from socket pos
         self.dist_plug_socket = torch.norm(self.plug_pos - self.socket_pos, p=2, dim=-1)
@@ -890,8 +891,6 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             # env_id = v[0]
             # camera_1 = v[1]
             # camera_2 = v[2]
-            # print(self.init_plug_pos_cam)
-            # print(plug_pos)
             self.init_plug_pos_cam[v[0], :] = plug_pos[v[0], :]
 
         object_pose = {
@@ -926,13 +925,13 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                                           device=self.device) - 0.5)) * self.cfg_task.randomize.grasp_plug_noise
         first_plug_pose = self.plug_grasp_pos.clone()
 
-        first_plug_pose[:, :] += plug_pos_noise[:, :]
+        first_plug_pose[env_ids, :] += plug_pos_noise[:, :]
 
         self._move_arm_to_desired_pose(env_ids, first_plug_pose,
                                        sim_steps=self.cfg_task.env.num_gripper_move_sim_steps * 2)
         # self._zero_velocities(env_ids)
         self._refresh_task_tensors(update_tactile=False)
-        self._close_gripper(env_ids)
+        self._close_gripper(env_ids) # torch.arange(self.num_envs)
 
         self.enable_gravity(-9.81)
 
@@ -966,6 +965,8 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         # self.dof_pos[env_ids, :] = new_pose.to(device=self.device)  # .repeat((len(env_ids), 1))
 
+        # self.dof_pos[env_ids, :] = new_pose.to(device=self.device)  # .repeat((len(env_ids), 1))
+        self.dof_pos[env_ids, :] = new_pose.to(device=self.device)  # .repeat((len(env_ids), 1))
         self.dof_pos[env_ids, :7] = torch.tensor(self.cfg_task.randomize.kuka_arm_initial_dof_pos,
                                                  device=self.device).repeat((len(env_ids), 1))
         # dont play with these joints (no actuation here)#
@@ -1315,8 +1316,8 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         # slowly grasp the plug
         for i in range(100):
             diff = gripper_dof_pos[env_ids, :] - self.gripper_dof_pos[env_ids, :]
-            self.ctrl_target_gripper_dof_pos = self.gripper_dof_pos[env_ids, :] + diff * 0.1
-            # print(self.ctrl_target_gripper_dof_pos)
+            self.ctrl_target_gripper_dof_pos[env_ids, :] = self.gripper_dof_pos[env_ids, :] + diff * 0.1
+
             self._move_gripper_to_dof_pos(env_ids=env_ids, gripper_dof_pos=self.ctrl_target_gripper_dof_pos,
                                           sim_steps=1)
 

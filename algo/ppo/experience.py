@@ -483,6 +483,7 @@ class SimLogger():
             'done': new_done,
             'dec': new_dec,
             'hand_joints': hand_joints,
+            # 'is_inserted': is_inserted,
         }
 
         new_latent = None

@@ -14,7 +14,7 @@ grasp_logger:
 data_logger:
     # for data collection
     collect_data: False
-    total_trajectories: 5000
+    total_trajectories: 500
     base_folder: "/home/roblab20/tactile_insertion"
     sub_folder: "datastore_0"
 
@@ -75,8 +75,8 @@ env:
     socket_base_height: 0.003
     plug_grasp_threshold: 0.01
 
-    tactile: False
-    tactile_display_viz: False
+    tactile: True
+    tactile_display_viz: True
     tactile_wrt_force: False
 
     compute_contact_gt: False
@@ -125,7 +125,7 @@ rl:
     keypoint_scale: 1.0  # length of line of keypoints
 
 
-    max_episode_length: 1000 # 8192  # terminate episode after this number of timesteps (failure)
+    max_episode_length: 500 # 8192  # terminate episode after this number of timesteps (failure)
 
     orientation_threshold: 0.1
     far_error_thresh: 0.100  # threshold above which plug is considered too far from bolt
