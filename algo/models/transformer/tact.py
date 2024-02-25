@@ -135,7 +135,7 @@ class TacT(BaseModel):
 
         self.decoder = MultiLayerDecoder(
             embed_dim=self.obs_encoding_size,
-            seq_len=self.context_size + 2,
+            seq_len=self.context_size * 2,
             output_layers=[256, 128, 64, 32],
             nhead=mha_num_attention_heads,
             num_layers=mha_num_attention_layers,
@@ -146,39 +146,40 @@ class TacT(BaseModel):
         )
 
     def forward(
-            self, obs_img: torch.tensor, goal_img: torch.tensor,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+            self, obs_img: torch.tensor, lin_input: torch.tensor,) -> Tuple[torch.Tensor, torch.Tensor]:
 
         # currently, the size of lin_encoding is [batch_size, num_lin_features]
-        lin_encoding = self.lin_encoder.extract_features(goal_img)
+        lin_encoding = self.lin_encoder(lin_input)
         if len(lin_encoding.shape) == 2:
             lin_encoding = lin_encoding.unsqueeze(1)
         # currently, the size of goal_encoding is [batch_size, 1, self.goal_encoding_size]
         assert lin_encoding.shape[2] == self.lin_encoding_size
 
         # split the observation into context based on the context size
+        # TODO make sure information is not mixed between batchs.
+        B, T, CF, W, H = obs_img.shape
+        obs_img = obs_img.reshape(B*T, CF, W, H)
         # image size is [batch_size, C*self.context_size, H, W]
-        obs_img = torch.split(obs_img, self.num_channels, dim=1)
-
+        # obs_img = torch.split(obs_img, self.num_channels, dim=1)
         # image size is [batch_size*self.context_size, self.num_channels, H, W]
-        obs_img = torch.concat(obs_img, dim=0)
+        # obs_img = torch.concat(obs_img, dim=0)
 
         # get the observation encoding
         obs_encoding = self.obs_encoder.extract_features(obs_img)
-        # currently the size is [batch_size*(self.context_size + 1), 1280, H/32, W/32]
+        # currently the size is [batch_size*(self.context_size), 1280, H/32, W/32]
         obs_encoding = self.obs_encoder._avg_pooling(obs_encoding)
-        # currently the size is [batch_size*(self.context_size + 1), 1280, 1, 1]
+        # currently the size is [batch_size*(self.context_size), 1280, 1, 1]
         if self.obs_encoder._global_params.include_top:
             obs_encoding = obs_encoding.flatten(start_dim=1)
             obs_encoding = self.obs_encoder._dropout(obs_encoding)
-        # currently, the size is [batch_size, self.context_size+2, self.obs_encoding_size]
+        # currently, the size is [batch_size, self.context_size, self.obs_encoding_size]
 
         obs_encoding = self.compress_obs_enc(obs_encoding)
-        # currently, the size is [batch_size*(self.context_size + 1), self.obs_encoding_size]
+        # currently, the size is [batch_size*(self.context_size), self.obs_encoding_size]
         # reshape the obs_encoding to [context + 1, batch, encoding_size], note that the order is flipped
-        obs_encoding = obs_encoding.reshape((self.context_size + 1, -1, self.obs_encoding_size))
+        obs_encoding = obs_encoding.reshape((self.context_size, -1, self.obs_encoding_size)) #+ 1
         obs_encoding = torch.transpose(obs_encoding, 0, 1)
-        # currently, the size is [batch_size, self.context_size+1, self.obs_encoding_size]
+        # currently, the size is [batch_size, self.context_size, self.obs_encoding_size]
 
         # concatenate the goal encoding to the observation encoding
         tokens = torch.cat((obs_encoding, lin_encoding), dim=1)

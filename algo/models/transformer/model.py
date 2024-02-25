@@ -54,11 +54,10 @@ class TactileTransformer(nn.Module):
     def forward(self, cnn_input, lin_input, batch_size, embed_size, src_mask=None):
 
         lin_x = self.linear_in(lin_input)
-        cnn_embeddings = []
-        for i in range(len(cnn_input)):
-            cnn_embeddings.append(self.cnn_embedding(cnn_input[i]))
+        # process each finger seperate.
+        cnn_embeddings = [self.cnn_embedding(cnn) for cnn in cnn_input]
         cnn_x = torch.cat(cnn_embeddings, dim=-1)
-        cnn_x = cnn_x.view(batch_size, self.max_sequence_length, 18)
+        cnn_x = cnn_x.view(batch_size, self.max_sequence_length, -1)
         x = torch.cat([lin_x, cnn_x], dim=-1)
         # x = lin_x
         # if self.layer_norm:

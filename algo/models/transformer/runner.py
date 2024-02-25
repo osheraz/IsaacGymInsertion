@@ -1,8 +1,10 @@
-from algo.models.transformer.data import TactileRealDataset as TactileDataset
+from algo.models.transformer.data import TactileDataset
 from torch.utils.data import DataLoader
 from torch.nn import functional as F
 from torch import optim
 from algo.models.transformer.model import TactileTransformer
+from algo.models.transformer.tact import TacT
+
 from tqdm import tqdm
 import torch
 import pickle
@@ -15,6 +17,7 @@ import wandb
 import time
 from algo.models.transformer.utils import set_seed
 from hydra.utils import to_absolute_path
+from warmup_scheduler import GradualWarmupScheduler
 
 
 class Runner:
@@ -30,16 +33,26 @@ class Runner:
         self.sequence_length = 500 if self.full_sequence else self.cfg.model.transformer.sequence_length
         self.device = 'cuda:0'
 
-        self.model = TactileTransformer(lin_input_size=self.cfg.model.linear.input_size,
-                                        in_channels=self.cfg.model.cnn.in_channels,
-                                        out_channels=self.cfg.model.cnn.out_channels,
-                                        kernel_size=self.cfg.model.cnn.kernel_size,
-                                        embed_size=self.cfg.model.transformer.embed_size,
-                                        hidden_size=self.cfg.model.transformer.hidden_size,
-                                        num_heads=self.cfg.model.transformer.num_heads,
-                                        num_layers=self.cfg.model.transformer.num_layers,
-                                        max_sequence_length=self.sequence_length,
-                                        output_size=self.cfg.model.transformer.output_size)
+        # self.model = TactileTransformer(lin_input_size=self.cfg.model.linear.input_size,
+        #                                 in_channels=self.cfg.model.cnn.in_channels,
+        #                                 out_channels=self.cfg.model.cnn.out_channels,
+        #                                 kernel_size=self.cfg.model.cnn.kernel_size,
+        #                                 embed_size=self.cfg.model.transformer.embed_size,
+        #                                 hidden_size=self.cfg.model.transformer.hidden_size,
+        #                                 num_heads=self.cfg.model.transformer.num_heads,
+        #                                 num_layers=self.cfg.model.transformer.num_layers,
+        #                                 max_sequence_length=self.sequence_length,
+        #                                 output_size=self.cfg.model.transformer.output_size)
+
+        self.model = TacT(context_size=self.sequence_length,
+                          num_channels=self.cfg.model.cnn.in_channels,  # stacking along finger
+                          num_lin_features=self.cfg.model.linear.input_size,
+                          num_outputs=self.cfg.model.transformer.output_size,
+                          obs_encoder="efficientnet-b0",
+                          obs_encoding_size=self.cfg.model.transformer.obs_encoding_size,
+                          mha_num_attention_heads=self.cfg.model.transformer.num_heads,
+                          mha_num_attention_layers=self.cfg.model.transformer.num_layers,
+                          mha_ff_dim_factor=self.cfg.model.transformer.dim_factor, )
 
         self.src_mask = torch.triu(torch.ones(self.sequence_length, self.sequence_length), diagonal=1).bool().to(
             self.device)
@@ -58,57 +71,45 @@ class Runner:
         train_loss, val_loss = [], 0
         latent_loss_list, action_loss_list = [], []
 
-        for i, (cnn_input, lin_input, obs_hist, latent, action, mask) in tqdm(enumerate(dl)):
+        for i, (tac_input, lin_input, obs_hist, latent, action, mask) in tqdm(enumerate(dl)):
             self.model.train()
-            cnn_inputs = []
-            for finger in cnn_input:
-                # for ii in range(self.sequence_length):
-                #     plt.imshow(finger[0, ii, :, :].clone().cpu().numpy())
-                #     plt.pause(0.0001)
-                #     plt.cla()
-                finger = finger.to(self.device)
-                finger = finger.view(finger.shape[0] * self.sequence_length, *finger.size()[-3:])
-                finger = finger.permute(0, 3, 1, 2)
-                cnn_inputs.append(finger)
 
+            tac_input = tac_input.to(self.device)
             lin_input = lin_input.to(self.device)
             latent = latent.to(self.device)
             action = action.to(self.device)
             mask = mask.to(self.device).unsqueeze(-1)
 
-            out = self.model(cnn_inputs, lin_input,
-                             batch_size=lin_input.shape[0],
-                             embed_size=self.cfg.model.transformer.embed_size // 2,
-                             src_mask=self.src_mask)
+            out = self.model(tac_input, lin_input)
 
-            loss_action = 0  # torch.nn.Parameter(torch.zeros(1), requires_grad=True).to(self.device)
+            loss_action = torch.zeros(1, device=self.device)
             if self.full_sequence:
                 loss_latent = torch.sum(self.loss_fn(out, latent), dim=-1).unsqueeze(-1)
                 loss_latent = torch.sum(loss_latent * mask) / torch.sum(mask)
-                if self.ppo_step is not None:  # action regularization
+                # Action regularization
+                if self.ppo_step is not None:
                     obs_hist = obs_hist.to(self.device).view(obs_hist.shape[0] * self.sequence_length,
                                                              obs_hist.shape[-1])
                     pred_action, _ = self.ppo_step(
                         {'obs': obs_hist, 'latent': out.view(out.shape[0] * out.shape[1], out.shape[-1])})
-
                     loss_action = torch.sum(self.loss_fn(pred_action.view(*action.shape), action), dim=-1).unsqueeze(-1)
                     loss_action = torch.sum(loss_action * mask) / torch.sum(mask)
-                    with torch.no_grad():
-                        action_loss_list.append(loss_action.item())
+                    action_loss_list.append(loss_action.item())
+
             else:
-                loss_latent = self.loss_fn_mean(out[:, -1, :], latent[:, -1, :])
+                loss_latent = self.loss_fn_mean(out[:, :], latent[:, -1, :])
                 if self.ppo_step is not None:  # action regularization
                     obs_hist = obs_hist[:, -1, :].to(self.device).view(obs_hist.shape[0], obs_hist.shape[-1])
                     pred_action, _ = self.ppo_step({'obs': obs_hist, 'latent': out[:, -1, :]})
                     pred_action = torch.clamp(pred_action, -1, 1)
                     loss_action = self.loss_fn_mean(pred_action, action[:, -1, :].squeeze(1))
 
-            # TODO: add scaling loss coefficients
-            loss = (1. * loss_latent) + (0.25 * loss_action)
+            loss = (self.cfg.train.latent_scale * loss_latent) + (self.cfg.train.action_scale * loss_action[0])
 
             self.optimizer.zero_grad()
             loss.backward()
             self.optimizer.step()
+
             train_loss.append(loss.item())
             latent_loss_list.append(loss_latent.item())
             if self.ppo_step is not None:
@@ -140,7 +141,6 @@ class Runner:
                 plt.legend()
                 self.fig.savefig(f'{ckpt_path}/train_val_comp.png', dpi=200, bbox_inches='tight')
                 self.model.train()
-                # val_loss = 0.
 
             if (i + 1) % test_every == 0:
                 try:
@@ -156,26 +156,16 @@ class Runner:
         with torch.inference_mode():
             val_loss = []
             latent_loss_list, action_loss_list = [], []
-            for i, (cnn_input, lin_input, obs_hist, latent, action, mask) in tqdm(enumerate(dl)):
-                # [envs, seq_len, W, H, C] => [envs*seq_len, C, W, H]
-                
-                cnn_inputs = []
-                for finger in cnn_input:
-                    finger = finger.to(self.device)
-                    finger = finger.view(finger.shape[0] * self.sequence_length, *finger.size()[-3:])
-                    finger = finger.permute(0, 3, 1, 2)
-                    cnn_inputs.append(finger)
+            for i, (tac_input, lin_input, obs_hist, latent, action, mask) in tqdm(enumerate(dl)):
 
+                tac_input = tac_input.to(self.device)
                 lin_input = lin_input.to(self.device)
                 latent = latent.to(self.device)
                 action = action.to(self.device)
                 mask = mask.to(self.device).unsqueeze(-1)
-                out = self.model(cnn_inputs, lin_input,
-                                 batch_size=lin_input.shape[0],
-                                 embed_size=self.cfg.model.transformer.embed_size // 2,
-                                 src_mask=self.src_mask)
+                out = self.model(tac_input, lin_input)
 
-                loss_action = 0
+                loss_action = torch.zeros(1, device=self.device)
 
                 if self.full_sequence:
                     loss_latent = torch.sum(self.loss_fn(out, latent), dim=-1).unsqueeze(-1)
@@ -189,7 +179,6 @@ class Runner:
                         loss_action = torch.sum(self.loss_fn(pred_action.view(*action.shape), action),
                                                 dim=-1).unsqueeze(-1)
                         loss_action = torch.sum(loss_action * mask) / torch.sum(mask)
-                        # loss += loss_action
                 else:
                     loss_latent = self.loss_fn_mean(out[:, -1, :], latent[:, -1, :])
 
@@ -199,10 +188,9 @@ class Runner:
                         pred_action, _ = self.ppo_step({'obs': obs_hist, 'latent': out[:, -1, :]})
                         pred_action = torch.clamp(pred_action, -1, 1)
                         loss_action = self.loss_fn_mean(pred_action, action[:, -1, :].squeeze(1))
-                        # loss += loss_action
 
                 # TODO: add scaling loss coefficients
-                loss = (1. * loss_latent) + (0.25 * loss_action)
+                loss = (self.cfg.train.latent_scale * loss_latent) + (self.cfg.train.action_scale * loss_action)
 
                 val_loss.append(loss.item())
                 latent_loss_list.append(loss_latent.item())
@@ -270,10 +258,26 @@ class Runner:
         self.model = self.model.to(self.device)
         self.src_mask = self.src_mask.to(self.device)
 
-        self.optimizer = optim.Adam(self.model.parameters(), lr=learning_rate)
+        self.optimizer = optim.AdamW(self.model.parameters(), lr=learning_rate)
 
-        self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, mode='min', factor=0.5, patience=5,
-                                                              verbose=True)
+        if self.cfg.train.scheduler == 'reduce':
+            self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(self.optimizer,
+                                                                  mode='min',
+                                                                  factor=0.5,
+                                                                  patience=3,
+                                                                  verbose=True)
+
+        if self.cfg.train.scheduler == 'cosine':
+            self.scheduler = optim.lr_scheduler.CosineAnnealingLR(self.optimizer, T_max=epochs)
+
+        if self.cfg.train.warmup:
+            print("Using warmup scheduler")
+            self.scheduler = GradualWarmupScheduler(
+                self.optimizer,
+                multiplier=1,
+                total_epoch=self.cfg.train.warmup_epochs,
+                after_scheduler=self.scheduler,
+            )
 
         num_train_envs = int(len(file_list) * train_test_split)
         train_idxs = np.arange(0, num_train_envs).astype(int).tolist()
@@ -315,12 +319,12 @@ class Runner:
         from pathlib import Path
 
         # Load trajectories
-        if 'oa348' in os.getcwd():
-            self.cfg.data_folder.replace("dm1487", "oa348")
-            self.cfg.output_dir.replace("dm1487", "oa348")
+        # if 'oa348' in os.getcwd():
+        #     self.cfg.data_folder.replace("dm1487", "oa348")
+        #     self.cfg.output_dir.replace("dm1487", "oa348")
 
-        file_list = glob(os.path.join(self.cfg.data_folder, '*.npz'))
-        ff = 'test' # input('Folder_name: ')
+        file_list = glob(os.path.join(self.cfg.data_folder, '*/*.npz'))
+        ff = 'test'
         save_folder = f'{to_absolute_path(self.cfg.output_dir)}/{ff}_{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}'
         os.makedirs(save_folder, exist_ok=True)
 
@@ -388,7 +392,7 @@ class Runner:
             for norm_keys in normalize_keys:
                 data = []
                 print('Creating new normalization file:')
-                for file in tqdm(random.sample(file_list, min(1000, len(file_list)))):
+                for file in tqdm(random.sample(file_list, len(file_list))):
                     try:
                         d = np.load(file)
                         done_idx = d['done'].nonzero()[0][-1]
