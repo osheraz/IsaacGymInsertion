@@ -14,7 +14,7 @@ grasp_logger:
 data_logger:
     # for data collection
     collect_data: False
-    total_trajectories: 500
+    total_trajectories: 1000
     base_folder: "/home/roblab20/tactile_insertion"
     sub_folder: "datastore_0"
 
@@ -75,8 +75,8 @@ env:
     socket_base_height: 0.003
     plug_grasp_threshold: 0.01
 
-    tactile: True
-    tactile_display_viz: True
+    tactile: False
+    tactile_display_viz: False
     tactile_wrt_force: False
 
     compute_contact_gt: False

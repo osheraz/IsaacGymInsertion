@@ -379,6 +379,17 @@ if False:
     plt.scatter(data['socket_pos'][1:done_idx, 0], data['socket_pos'][1:done_idx, 1], color='r', s=35)
     plt.show()
 
+if True:
+    path = random.sample(all_paths, 1)[0]
+    # path = all_paths[i]
+    data = np.load(path)
+    done_idx = data['done'].nonzero()[-1][0]
+
+    fig = plt.figure(figsize=(18, 10))
+    ax = fig.add_subplot(111)
+    plt.plot(data['hand_joints'][1:done_idx, :], color='black')
+    plt.show()
+
 # %%
 if False:
     latent = data['latent']
@@ -394,7 +405,7 @@ if False:
     plt.show()
 
 
-if True:
+if False:
     import cv2
     import numpy as np
     from tqdm import tqdm

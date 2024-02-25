@@ -1,6 +1,6 @@
 #!/bin/bash
 GPUS=${1:-0}
-SEED=${2:-42}
+SEED=${2:-0}
 CACHE=${3:-contact2}
 NUM_ENVS=${4:-9}
 HEADLESS=${5:-True}
@@ -43,5 +43,3 @@ train.ppo.output_name="${CACHE}" \
 checkpoint="${model_to_load}" \
 ${EXTRA_ARGS}
 
-# task.data_logger.base_folder="/common/users/dm1487/inhand_manipulation_data_store" \
-#task.data_logger.base_folder="/home/osher/Desktop/isaacgym/python/IsaacGymInsertion/isaacgyminsertion/outputs/test/data" \
