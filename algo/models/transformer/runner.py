@@ -71,16 +71,17 @@ class Runner:
         train_loss, val_loss = [], 0
         latent_loss_list, action_loss_list = [], []
 
-        for i, (tac_input, lin_input, obs_hist, latent, action, mask) in tqdm(enumerate(dl)):
+        for i, (tac_input, lin_input, contacts, obs_hist, latent, action, mask) in tqdm(enumerate(dl)):
             self.model.train()
 
             tac_input = tac_input.to(self.device)
             lin_input = lin_input.to(self.device)
             latent = latent.to(self.device)
             action = action.to(self.device)
+            contacts = contacts.to(self.device)
             mask = mask.to(self.device).unsqueeze(-1)
 
-            out = self.model(tac_input, lin_input)
+            out = self.model(tac_input, lin_input, contacts)
 
             loss_action = torch.zeros(1, device=self.device)
             if self.full_sequence:
@@ -156,14 +157,16 @@ class Runner:
         with torch.inference_mode():
             val_loss = []
             latent_loss_list, action_loss_list = [], []
-            for i, (tac_input, lin_input, obs_hist, latent, action, mask) in tqdm(enumerate(dl)):
+            for i, (tac_input, lin_input, contacts, obs_hist, latent, action, mask) in tqdm(enumerate(dl)):
 
                 tac_input = tac_input.to(self.device)
                 lin_input = lin_input.to(self.device)
                 latent = latent.to(self.device)
                 action = action.to(self.device)
                 mask = mask.to(self.device).unsqueeze(-1)
-                out = self.model(tac_input, lin_input)
+                contacts = contacts.to(self.device)
+
+                out = self.model(tac_input, lin_input, contacts)
 
                 loss_action = torch.zeros(1, device=self.device)
 
@@ -180,7 +183,7 @@ class Runner:
                                                 dim=-1).unsqueeze(-1)
                         loss_action = torch.sum(loss_action * mask) / torch.sum(mask)
                 else:
-                    loss_latent = self.loss_fn_mean(out[:, -1, :], latent[:, -1, :])
+                    loss_latent = self.loss_fn_mean(out[:, :], latent[:, -1, :])
 
                     # loss = loss_latent
                     if self.ppo_step is not None:

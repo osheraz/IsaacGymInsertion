@@ -7,10 +7,11 @@ import torch
 
 
 class TactileDataset(Dataset):
-    def __init__(self, files, sequence_length=500, full_sequence=False, normalize_dict=None):
+    def __init__(self, files, sequence_length=500, full_sequence=False, normalize_dict=None, stride = 10):
 
         self.all_folders = files
         self.sequence_length = sequence_length
+        self.stride = sequence_length
         self.full_sequence = full_sequence
         self.normalize_dict = normalize_dict
 
@@ -25,9 +26,10 @@ class TactileDataset(Dataset):
                 assert total_len == sequence_length, f"Sequence length mismatch in {file}."
                 self.indices_per_trajectory.append((file_idx, 0))
             else:
-                num_subsequences = total_len - self.sequence_length + 1
-                if num_subsequences > 0:
-                    self.indices_per_trajectory.extend([(file_idx, i) for i in range(num_subsequences)])
+                if total_len >= self.sequence_length:
+                    num_subsequences = (total_len - self.sequence_length) // self.stride + 1
+                    self.indices_per_trajectory.extend([(file_idx, i * self.stride) for i in range(num_subsequences)])
+        print('Total sub trajectories:', len(self.indices_per_trajectory))
 
     def __len__(self):
         return int((len(self.indices_per_trajectory)))
@@ -64,7 +66,7 @@ class TactileDataset(Dataset):
         eef_pos = data["eef_pos"]
         hand_joints = data["hand_joints"]
         action = data["action"]
-
+        contacts = data["action"] # data["contacts"]
         # For teacher predictions - will be normalized by the model
         obs_hist = data["obs_hist"]
         latent = data["latent"]
@@ -81,6 +83,7 @@ class TactileDataset(Dataset):
         # Convert to torch tensors
         tensors = [self.to_torch(tensor) for tensor in [tactile_input,
                                                         lin_input,
+                                                        contacts,
                                                         obs_hist,
                                                         latent,
                                                         action,

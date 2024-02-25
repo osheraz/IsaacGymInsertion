@@ -74,7 +74,7 @@ class BaseModel(nn.Module):
         return z
 
     def forward(
-            self, obs_img: torch.tensor, obs_lin: torch.tensor,
+            self, obs_img: torch.tensor, obs_lin: torch.tensor, contacts: torch.tensor,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Forward pass of the model
@@ -128,6 +128,10 @@ class TacT(BaseModel):
                                          nn.ReLU(),
                                          nn.Linear(lin_encoding_size // 2, lin_encoding_size))
 
+        # self.contact_encoder = nn.Sequential(nn.Linear(500, lin_encoding_size // 2),
+        #                                  nn.ReLU(),
+        #                                  nn.Linear(lin_encoding_size // 2, lin_encoding_size // 2))
+
         if self.num_obs_features != self.obs_encoding_size:
             self.compress_obs_enc = nn.Linear(self.num_obs_features, self.obs_encoding_size)
         else:
@@ -146,10 +150,15 @@ class TacT(BaseModel):
         )
 
     def forward(
-            self, obs_img: torch.tensor, lin_input: torch.tensor,) -> Tuple[torch.Tensor, torch.Tensor]:
+            self, obs_img: torch.tensor,
+            lin_input: torch.tensor, contacts: torch.tensor) -> Tuple[torch.Tensor, torch.Tensor]:
 
         # currently, the size of lin_encoding is [batch_size, num_lin_features]
         lin_encoding = self.lin_encoder(lin_input)
+
+        # contact_encodings = self.contact_encoder(contacts)
+        # lin_encoding = torch.cat((contact_encodings, lin_encoding), dim=2)
+
         if len(lin_encoding.shape) == 2:
             lin_encoding = lin_encoding.unsqueeze(1)
         # currently, the size of goal_encoding is [batch_size, 1, self.goal_encoding_size]
