@@ -33,17 +33,6 @@ class Runner:
         self.sequence_length = 500 if self.full_sequence else self.cfg.model.transformer.sequence_length
         self.device = 'cuda:0'
 
-        # self.model = TactileTransformer(lin_input_size=self.cfg.model.linear.input_size,
-        #                                 in_channels=self.cfg.model.cnn.in_channels,
-        #                                 out_channels=self.cfg.model.cnn.out_channels,
-        #                                 kernel_size=self.cfg.model.cnn.kernel_size,
-        #                                 embed_size=self.cfg.model.transformer.embed_size,
-        #                                 hidden_size=self.cfg.model.transformer.hidden_size,
-        #                                 num_heads=self.cfg.model.transformer.num_heads,
-        #                                 num_layers=self.cfg.model.transformer.num_layers,
-        #                                 max_sequence_length=self.sequence_length,
-        #                                 output_size=self.cfg.model.transformer.output_size)
-
         self.model = TacT(context_size=self.sequence_length,
                           num_channels=self.cfg.model.cnn.in_channels,  # stacking along finger
                           num_lin_features=self.cfg.model.linear.input_size,
@@ -154,7 +143,7 @@ class Runner:
 
     def validate(self, dl):
         self.model.eval()
-        with torch.inference_mode():
+        with torch.no_grad():
             val_loss = []
             latent_loss_list, action_loss_list = [], []
             for i, (tac_input, lin_input, contacts, obs_hist, latent, action, mask) in tqdm(enumerate(dl)):
@@ -200,21 +189,21 @@ class Runner:
                 if self.ppo_step is not None:
                     action_loss_list.append(loss_action.item())
 
-            self._wandb_log({
-                'val/loss': np.mean(val_loss),
-                'val/latent_loss': np.mean(latent_loss_list),
+            # self._wandb_log({
+            #     'val/loss': np.mean(val_loss),
+            #     'val/latent_loss': np.mean(latent_loss_list),
                 # 'val/action_loss': np.mean(action_loss_list)
-            })
-            if self.ppo_step is not None:
-                self._wandb_log({
-                    'val/action_loss': np.mean(action_loss_list)
-                })
+            # })
+            # if self.ppo_step is not None:
+            #     self._wandb_log({
+            #         'val/action_loss': np.mean(action_loss_list)
+            #     })
         return np.mean(val_loss)
 
     def test(self):
         with torch.inference_mode():
             normalize_dict = self.normalize_dict.copy()
-            num_success, total_trials = self.agent.test(self.predict, normalize_dict)
+            num_success, total_trials = self.agent.test(self.get_latent, normalize_dict)
             if total_trials > 0:
                 print(f'{num_success}/{total_trials}, success rate on :', num_success / total_trials)
                 self._wandb_log({
@@ -228,23 +217,13 @@ class Runner:
         # self.model.eval()
         self.device = device
 
-    def predict(self, cnn_input, lin_input):
+    def get_latent(self, tac_input, lin_input):
         self.model.eval()
         with torch.inference_mode():
-            # [envs, seq_len, W, H, C] => [envs*seq_len, C, W, H]
-            cnn_inputs = []
-            for finger in cnn_input:
-                finger = finger.to(self.device)
-                finger = finger.view(finger.shape[0] * self.sequence_length, *finger.size()[-3:])
-                finger = finger.permute(0, 3, 1, 2)
-                cnn_inputs.append(finger)
-
+            tac_input = tac_input.to(self.device)
             lin_input = lin_input.to(self.device)
 
-            out = self.model(cnn_inputs, lin_input,
-                             src_mask=self.src_mask,
-                             batch_size=lin_input.shape[0],
-                             embed_size=self.cfg.model.transformer.embed_size // 2)
+            out = self.model(tac_input, lin_input)
         return out
 
     def _run(self, file_list, save_folder, epochs=100, train_test_split=0.9, train_batch_size=32, val_batch_size=32,
@@ -306,8 +285,12 @@ class Runner:
             else:
                 val_loss = self.train(train_dl, val_dl, ckpt_path, print_every=print_every, eval_every=eval_every,
                                       test_every=test_every)
-                # self.scheduler.step(val_loss)
-
+                if self.scheduler is not None:
+                    if isinstance(self.scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
+                        self.scheduler.step(np.mean(val_loss))
+                    else:
+                        self.scheduler.step()
+                print('Saving the model')
                 torch.save(self.model.state_dict(), f'{ckpt_path}/model_{epoch}.pt')
                 # torch.jit.save(torch.jit.script(self.model), f'{ckpt_path}/model_{epoch}.pt')
 
@@ -321,11 +304,6 @@ class Runner:
         from tqdm import tqdm
         from pathlib import Path
 
-        # Load trajectories
-        # if 'oa348' in os.getcwd():
-        #     self.cfg.data_folder.replace("dm1487", "oa348")
-        #     self.cfg.output_dir.replace("dm1487", "oa348")
-
         file_list = glob(os.path.join(self.cfg.data_folder, '*/*.npz'))
         ff = 'test'
         save_folder = f'{to_absolute_path(self.cfg.output_dir)}/{ff}_{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}'
@@ -335,9 +313,7 @@ class Runner:
 
         # Load student checkpoint.
         if self.cfg.train.load_checkpoint:
-            # TODO We should also save the optimizer, and load him here.
-            # TODO Need to make sure we are loading the same normalization?
-            model_path = self.cfg.train.ckpt_path
+            model_path = self.cfg.train.student_ckpt_path
             self.load_model(model_path, device=device)
 
         train_config = {

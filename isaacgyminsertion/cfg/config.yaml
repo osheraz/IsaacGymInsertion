@@ -36,11 +36,9 @@ num_subscenes: 4 # Splits the simulation into N physics scenes and runs each one
 test: False
 
 # offline config arguments
-offline_training: True # flag for offline latent training (if True, will not train/test RL)
+offline_training: False # flag for offline latent training (if True, will not train/test RL)
 offline_real_training: False # flag for real offline
 offline_training_w_env: False # flag for offline latent training with environment (if True, will not train/test RL)
-# offline_test: False
-# offline_test_w_env: False
 
 # used to set checkpoint path
 checkpoint: ''

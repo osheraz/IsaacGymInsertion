@@ -12,12 +12,12 @@ EXTRA_ARGS_SLUG=${EXTRA_ARGS// /_}
 
 echo extra "${EXTRA_ARGS}"
 
-C=outputs/${CACHE}/stage1_nn/last.pth
+model_to_load=outputs/${CACHE}/stage1_nn/last.pth
 data=/home/roblab20/tactile_insertion
 data_folder=/home/roblab20/tactile_insertion/datastore_0_contact2 #/datastore_${SEED}_${CACHE}
 output_dir=outputs/${CACHE}
 path_norm=/home/roblab20/tactile_insertion/datastore_0_contact2/normalization.pkl
-model_to_load=outputs/${CACHE}/stage1_nn/last.pth
+student_ckpt_path=/home/roblab20/tactile_insertion/datastore_0_contact2/tac+eef/checkpoints/model_2.pt
 
 CUDA_VISIBLE_DEVICES=${GPUS} \
 python trainV2.py task=FactoryTaskInsertionTactile headless=${HEADLESS} seed=${SEED} \
@@ -29,7 +29,7 @@ offline_train.train.action_regularization=False \
 offline_train.model.transformer.full_sequence=False \
 offline_train.model.transformer.sequence_length=5 \
 offline_train.train.load_checkpoint=False \
-offline_train.train.ckpt_path="${model_to_load}" \
+offline_train.train.student_ckpt_path="${student_ckpt_path}" \
 task.env.tactile=True \
 task.tactile.tacto.width=224 \
 task.tactile.tacto.height=224 \
@@ -49,6 +49,6 @@ offline_train.train.normalize_file="${path_norm}" \
 offline_train.data_folder="${data_folder}" \
 offline_train.output_dir="${output_dir}" \
 train.ppo.output_name="${CACHE}" \
-checkpoint="${C}" \
+checkpoint="${model_to_load}" \
 ${EXTRA_ARGS}
 

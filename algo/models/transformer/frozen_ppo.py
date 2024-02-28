@@ -139,7 +139,7 @@ class PPO(object):
             self.tb_dif = os.path.join(self.output_dir, 'stage1_tb')
             os.makedirs(self.nn_dir, exist_ok=True)
             os.makedirs(self.tb_dif, exist_ok=True)
-             # ---- Tensorboard Logger ----
+            # ---- Tensorboard Logger ----
             self.extra_info = {}
             writer = SummaryWriter(self.tb_dif)
             self.writer = writer
@@ -324,7 +324,7 @@ class PPO(object):
                           f'Train RL Time: {self.rl_train_time / 60:.1f} min | ' \
                           f'Priv info: {self.full_config.train.ppo.priv_info} | ' \
                           f'Extrinsic Contact: {self.full_config.task.env.compute_contact_gt}'
-                        #   f'Mean Reward: {self.best_rewards:.2f} | ' \
+            #   f'Mean Reward: {self.best_rewards:.2f} | ' \
             print(info_string)
             self.write_stats(a_losses, c_losses, b_losses, entropies, kls, grad_norms, returns_list)
             mean_rewards = self.episode_rewards.get_mean()
@@ -384,7 +384,7 @@ class PPO(object):
         # collect minibatch data
         _t = time.time()
         self.set_eval()
-        self.play_steps() # collect data
+        self.play_steps()  # collect data
         self.data_collect_time += (time.time() - _t)
         # update network
         _t = time.time()
@@ -396,10 +396,10 @@ class PPO(object):
         for _ in range(0, self.mini_epochs_num):
             ep_kls = []
             approx_kl_divs = []
-            
+
             for i in range(len(self.storage)):
                 value_preds, old_action_log_probs, advantage, old_mu, old_sigma, \
-                returns, actions, obs, priv_info, contacts, plug_socket_dist, tactile_hist = self.storage[i]
+                    returns, actions, obs, priv_info, contacts, plug_socket_dist, tactile_hist = self.storage[i]
 
                 obs = self.running_mean_std(obs)
                 priv_info = self.priv_mean_std(priv_info)
@@ -471,7 +471,7 @@ class PPO(object):
                     torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.grad_norm)
                 self.optimizer.step()
 
-                a_losses.append(a_loss)             
+                a_losses.append(a_loss)
                 c_losses.append(c_loss)
                 returns_list.append(returns)
                 if self.bounds_loss_coef is not None:
@@ -484,10 +484,9 @@ class PPO(object):
             for param_group in self.optimizer.param_groups:
                 param_group['lr'] = self.last_lr
             kls.append(av_kls)
-            
+
             if not continue_training:
                 break
-
 
         self.rl_train_time += (time.time() - _t)
         return a_losses, c_losses, b_losses, entropies, kls, grad_norms, returns_list
@@ -499,7 +498,8 @@ class PPO(object):
             frame = np.uint8(frames[i])
             x, y = 30, 100
             for item in ft_frames[i].tolist():
-                cv2.putText(frame, str(round(item, 3)), (x, y), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2, cv2.LINE_AA)
+                cv2.putText(frame, str(round(item, 3)), (x, y), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2,
+                            cv2.LINE_AA)
                 y += 30  # Move down to the next line
             frame = np.uint8(frame)
             writer.append_data(frame)
@@ -634,10 +634,6 @@ class PPO(object):
 
         self.set_eval()
 
-        self.transform = transforms.Compose([
-            transforms.Normalize([0.5], [0.5])
-        ])
-        
         action, latent, done, dec = None, None, None, None
 
         save_trajectory = self.env.cfg_task.data_logger.collect_data
@@ -670,22 +666,22 @@ class PPO(object):
         total_dones, num_success = 0, 0
         total_env_runs = self.full_config.offline_train.train.test_episodes
 
-        while save_trajectory or (total_dones < total_env_runs):  # or True for testing without saving
-        # for _ in tqdm(range(1000)):
+        while save_trajectory or (total_dones < total_env_runs):
             # log video during test
             self.log_video()
             # getting data from data logger
             latent = None
             if offline_test:
-                data = self.data_logger.data_logger.get_data()
+                buffer = self.data_logger.data_logger.get_data()
                 if get_latent is not None:
                     # Making data for the latent prediction from student model
-                    cnn_input, lin_input = self._make_data(data, new_normalize_dict)
+                    tactile, lin_input = self.get_last_student_obs(buffer, new_normalize_dict)
                     # getting the latent data from the student model
                     if self.full_config.offline_train.model.transformer.full_sequence:
-                        latent = get_latent(cnn_input, lin_input)[self.env_ids, self.env.progress_buf.view(-1, 1), :].squeeze(1)
+                        latent = get_latent(tactile, lin_input)[self.env_ids,
+                                                                self.env.progress_buf.view(-1, 1), :].squeeze(1)
                     else:
-                        latent = get_latent(cnn_input, lin_input)[:, -1, :].squeeze(1)
+                        latent = get_latent(tactile, lin_input)
 
             # Adding the latent to the obs_dict (if present test with student, else test with teacher)
             obs_dict = {
@@ -705,70 +701,44 @@ class PPO(object):
                 self.data_logger.log_trajectory_data(action, latent, done, dec, save_trajectory=save_trajectory)
                 total_dones += len(done.nonzero())
                 if total_dones > milestone:
-                    print('[Test] success rate:', num_success/total_dones)
+                    print('[Test] success rate:', num_success / total_dones)
                     milestone += 100
 
-        print('[LastTest] success rate:', num_success/total_dones)
+        print('[LastTest] success rate:', num_success / total_dones)
         return num_success, total_dones
 
-    def _make_data(self, data, normalize_dict):
+    def get_last_student_obs(self, data, normalize_dict):
         # This function is used to make the data for the student model
 
         # cnn input
         tactile = data["tactile"]
 
         # linear input
-        arm_joints = data["arm_joints"]
         eef_pos = data['eef_pos']
-        noisy_socket_pos = data["noisy_socket_pos"][..., :2]
         action = data["action"]
-        target = data["target"]
 
         if normalize_dict is not None:
-            arm_joints = (arm_joints - normalize_dict["mean"]["arm_joints"]) / normalize_dict["std"]["arm_joints"]
             eef_pos = (eef_pos - normalize_dict["mean"]["eef_pos"]) / normalize_dict["std"]["eef_pos"]
-            noisy_socket_pos = (noisy_socket_pos - normalize_dict["mean"]["noisy_socket_pos"][:2]) / \
-                               normalize_dict["std"]["noisy_socket_pos"][:2]
-            target = (target - normalize_dict["mean"]["target"]) / normalize_dict["std"]["target"]
 
-        # making the inputs
-        # cnn_input = torch.cat([tactile[:, :, 0, ...], tactile[:, :,  1, ...], tactile[:, :,  2, ...]], dim=-1)
-        cnn_input_1 = tactile[:, :, 0, ...]
-        cnn_input_2 = tactile[:, :, 1, ...]
-        cnn_input_3 = tactile[:, :, 2, ...]
-
-        lin_input = torch.cat([eef_pos, action, target], dim=-1)
-
-        # check here
-        # doing these operations to enable transform. They have no meaning if written separately.
-        # cnn_input_1 = self.transform(cnn_input_1.permute(0, 1, 4, 2, 3)).permute(0, 1, 3, 4, 2)
-        # cnn_input_2 = self.transform(cnn_input_2.permute(0, 1, 4, 2, 3)).permute(0, 1, 3, 4, 2)
-        # cnn_input_3 = self.transform(cnn_input_3.permute(0, 1, 4, 2, 3)).permute(0, 1, 3, 4, 2)
+        lin_input = torch.cat([eef_pos, action], dim=-1)
 
         if self.full_config.offline_train.model.transformer.full_sequence:
-            return (cnn_input_1, cnn_input_2, cnn_input_3), lin_input
+            return tactile, lin_input
 
-        padding_cnn1 = torch.zeros_like(cnn_input_1)
-        padding_cnn2 = torch.zeros_like(cnn_input_2)
-        padding_cnn3 = torch.zeros_like(cnn_input_3)
+        padding_tactile = torch.zeros_like(tactile)
         padding_lin = torch.zeros_like(lin_input)
+
         for env_id in range(self.env.num_envs):
-            padding_cnn1[env_id, -(self.env.progress_buf[env_id] + 1):, :] = cnn_input_1[env_id,
-                                                                             :(self.env.progress_buf[env_id] + 1), :]
-            padding_cnn2[env_id, -(self.env.progress_buf[env_id] + 1):, :] = cnn_input_2[env_id,
-                                                                             :(self.env.progress_buf[env_id] + 1), :]
-            padding_cnn3[env_id, -(self.env.progress_buf[env_id] + 1):, :] = cnn_input_3[env_id,
-                                                                             :(self.env.progress_buf[env_id] + 1), :]
+            padding_tactile[env_id, -(self.env.progress_buf[env_id] + 1):, :] = tactile[env_id,
+                                                                                :(self.env.progress_buf[env_id] + 1), :]
             padding_lin[env_id, -(self.env.progress_buf[env_id] + 1):, :] = lin_input[env_id,
                                                                             :(self.env.progress_buf[env_id] + 1), :]
 
-        cnn_input_1 = padding_cnn1[:, -self.full_config.offline_train.model.transformer.sequence_length:, :].clone()
-        cnn_input_2 = padding_cnn2[:, -self.full_config.offline_train.model.transformer.sequence_length:, :].clone()
-        cnn_input_3 = padding_cnn3[:, -self.full_config.offline_train.model.transformer.sequence_length:, :].clone()
+        tactile = padding_tactile[:, -self.full_config.offline_train.model.transformer.sequence_length:, :].clone()
 
         lin_input = padding_lin[:, -self.full_config.offline_train.model.transformer.sequence_length:, :].clone()
 
-        return (cnn_input_1, cnn_input_2, cnn_input_3), lin_input
+        return tactile, lin_input
 
 
 def policy_kl(p0_mu, p0_sigma, p1_mu, p1_sigma):

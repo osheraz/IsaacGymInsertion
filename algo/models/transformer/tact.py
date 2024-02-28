@@ -151,7 +151,7 @@ class TacT(BaseModel):
 
     def forward(
             self, obs_img: torch.tensor,
-            lin_input: torch.tensor, contacts: torch.tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+            lin_input: torch.tensor, contacts: torch.tensor = None) -> Tuple[torch.Tensor, torch.Tensor]:
 
         # currently, the size of lin_encoding is [batch_size, num_lin_features]
         lin_encoding = self.lin_encoder(lin_input)

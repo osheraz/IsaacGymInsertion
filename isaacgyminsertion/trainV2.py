@@ -75,6 +75,7 @@ def run(cfg: DictConfig):
     # sets seed. if seed is -1 will pick a random one
     # cfg.seed = set_seed(cfg.seed, torch_deterministic=cfg.torch_deterministic, rank=global_rank)
     if cfg.offline_real_training:
+        # TODO edit
         from algo.models.transformer.runner import Runner as TransformerRunner
         from algo.models.transformer.frozen_ppo import PPO
 
@@ -120,10 +121,15 @@ def run(cfg: DictConfig):
     if cfg.test:
         assert cfg.train.load_path
         agent.restore_test(cfg.train.load_path)
+        # Test insertion accuracy in the simulation Student\Teacher (not the transformer)
         if not cfg.offline_training_w_env:
             num_success, total_trials = agent.test()
             print(f"Success rate: {num_success / total_trials}")
         else:
+            # Test transformer
+            print("Loading Teacher model from", cfg.train.load_path)
+            print("Loading Student model from", cfg.offline_train.train.student_ckpt_path)
+
             from algo.models.transformer.runner import Runner as TransformerRunner 
             from algo.models.transformer.frozen_ppo import PPO as PPOv3
             agent = PPOv3(envs, output_dif, full_config=cfg)

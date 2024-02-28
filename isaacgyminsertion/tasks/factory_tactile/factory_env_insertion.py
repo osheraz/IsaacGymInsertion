@@ -246,7 +246,7 @@ class ExtrinsicContact:
 
         object_poses = torch.cat((obj_pos, obj_quat), dim=1)
         object_poses = self._xyzquat_to_tf_numpy(object_poses.cpu().numpy())
-        self.plug_pose_no_rot = self.estimate_pose_batch(object_poses, self.plug_pose_no_rot)
+        # self.plug_pose_no_rot = self.estimate_pose_batch(object_poses, self.plug_pose_no_rot)
 
         socket_poses = torch.cat((socket_pos, socket_quat), dim=1)
         socket_poses = self._xyzquat_to_tf_numpy(socket_poses.cpu().numpy())

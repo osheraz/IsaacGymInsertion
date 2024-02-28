@@ -4,6 +4,7 @@ from glob import glob
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
+from scipy.spatial.transform import Rotation
 
 
 class TactileDataset(Dataset):
@@ -11,7 +12,7 @@ class TactileDataset(Dataset):
 
         self.all_folders = files
         self.sequence_length = sequence_length
-        self.stride = sequence_length
+        self.stride = sequence_length * 2
         self.full_sequence = full_sequence
         self.normalize_dict = normalize_dict
 
@@ -21,7 +22,9 @@ class TactileDataset(Dataset):
         self.indices_per_trajectory = []
         for file_idx, file in enumerate(self.all_folders):
             data = np.load(file)
-            total_len = len(data["action"])
+            done = data["done"]
+            done_idx = done.nonzero()[0][-1]
+            total_len = done_idx
             if self.full_sequence:
                 assert total_len == sequence_length, f"Sequence length mismatch in {file}."
                 self.indices_per_trajectory.append((file_idx, 0))
@@ -53,7 +56,7 @@ class TactileDataset(Dataset):
         mask = np.ones(self.sequence_length)
         mask[:padding_length] = 0
 
-        keys = ["tactile", "eef_pos", "action", "latent", "obs_hist", "contacts", "hand_joints"]
+        keys = ["tactile", "eef_pos", "action", "latent", "obs_hist", "contacts", "hand_joints", "plug_hand_quat"]
         data = {key: self.extract_sequence(data, key, start_idx) for key in keys}
 
         # Tactile input [T F C W H]
@@ -69,7 +72,7 @@ class TactileDataset(Dataset):
         contacts = data["action"] # data["contacts"]
         # For teacher predictions - will be normalized by the model
         obs_hist = data["obs_hist"]
-        latent = data["latent"]
+        latent = data["latent"] #Rotation.from_quat(data["plug_hand_quat"]).as_euler('xyz')
 
         # Normalizing inputs
         if self.normalize_dict is not None:
@@ -78,7 +81,10 @@ class TactileDataset(Dataset):
 
         # Output
         shift_action_right = np.concatenate([np.zeros((1, action.shape[-1])), action[:-1, :]], axis=0)
-        lin_input = np.concatenate([eef_pos, hand_joints, shift_action_right], axis=-1)
+        lin_input = np.concatenate([eef_pos,
+                                    # hand_joints,
+                                    shift_action_right
+                                    ], axis=-1)
 
         # Convert to torch tensors
         tensors = [self.to_torch(tensor) for tensor in [tactile_input,

@@ -229,13 +229,20 @@ class ActorCriticSplit(nn.Module):
 
         # Transformer student (latent pass is in frozen_ppo)
         if 'latent' in obs_dict and obs_dict['latent'] is not None:
-            # TODO check
-            extrin = self.contact_ae.forward_enc((obs_dict['latent'] > 0.8) * 1.0)
+
+            extrin = obs_dict['latent']
 
             if 'priv_info' in obs_dict:
 
-                extrin_gt = self.contact_ae.forward_enc(obs_dict['contacts'])
-                # extrin_gt = torch.tanh(extrin_gt)
+                extrin_priv = self.env_mlp(obs_dict['priv_info'])
+                if self.contact_info:
+                    extrin_contact = self.contact_ae.forward_enc(obs_dict['contacts'])
+                    if self.only_contact:
+                        extrin_gt = extrin_contact
+                    else:
+                        extrin_gt = torch.cat([extrin_priv, extrin_contact], dim=-1)
+                else:
+                    extrin_gt = extrin_priv
 
                 if display:
                     # self.ax.set_ylim(-1, 1)
@@ -245,8 +252,10 @@ class ActorCriticSplit(nn.Module):
                     plt.pause(0.0001)
                     self.ax.cla()
 
+            # predict with the student extrinsic
             obs = torch.cat([obs, extrin], dim=-1)
-            dec = self.contact_ae.forward_dec(extrin)
+            if self.contact_info:
+                dec = self.contact_ae.forward_dec(extrin)
 
         # MLP models
         else:
