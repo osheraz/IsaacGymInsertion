@@ -463,15 +463,15 @@ class SimLogger():
             new_dec = dec.clone()
 
         log_data = {
-            'contacts': self.env.gt_extrinsic_contact,
-            'arm_joints': self.env.arm_dof_pos,
+            'contacts': self.env.gt_extrinsic_contact.clone(),
+            'arm_joints': self.env.arm_dof_pos.clone(),
             'eef_pos': eef_pos,
             'socket_pos': socket_pos,
             'noisy_socket_pos': noisy_socket_pos,
             'plug_pos': plug_pos,
             'action': new_action,
-            'target': self.env.targets,
-            'tactile': self.env.tactile_imgs,
+            'target': self.env.targets.clone(),
+            'tactile': self.env.tactile_imgs.clone(),
             'rigid_physics_params': rigid_physics_params,
             'plug_hand_pos': plug_hand_pos,
             'plug_hand_quat': plug_hand_quat,

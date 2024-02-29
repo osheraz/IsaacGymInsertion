@@ -641,13 +641,13 @@ class PPO(object):
 
         # convert normalizing measures to torch and add to device
         if normalize_dict is not None:
-            new_normalize_dict = {
+            stud_norm_dict = {
                 'mean': {},
                 'std': {}
             }
             for key in normalize_dict['mean'].keys():
-                new_normalize_dict['mean'][key] = torch.tensor(normalize_dict['mean'][key], device=self.device)
-                new_normalize_dict['std'][key] = torch.tensor(normalize_dict['std'][key], device=self.device)
+                stud_norm_dict['mean'][key] = torch.tensor(normalize_dict['mean'][key], device=self.device)
+                stud_norm_dict['std'][key] = torch.tensor(normalize_dict['std'][key], device=self.device)
 
         # reset all envs
         self.obs = self.env.reset()
@@ -672,10 +672,17 @@ class PPO(object):
             # getting data from data logger
             latent = None
             if offline_test:
-                buffer = self.data_logger.data_logger.get_data()
                 if get_latent is not None:
                     # Making data for the latent prediction from student model
-                    tactile, lin_input = self.get_last_student_obs(buffer, new_normalize_dict)
+                    tactile, lin_input = self.get_last_student_obs(self.data_logger.data_logger.get_data(), stud_norm_dict)
+
+                    # for i in range(tactile.shape[1]):  # Iterate through the sequence of images
+                    #     img = tactile[0, i].clone().cpu().detach() # Select the ith image; result is [3, 112, 224]
+                    #     img = img.permute(1, 2, 0).numpy()   # Change the order to [112, 224, 3] for plotting
+                    #     img = img / 2 + 0.5  # Unnormalize if necessary
+                    #     cv2.imshow('test', img)  # Display the image
+                    #     cv2.waitKey(1)
+
                     # getting the latent data from the student model
                     if self.full_config.offline_train.model.transformer.full_sequence:
                         latent = get_latent(tactile, lin_input)[self.env_ids,
@@ -708,39 +715,59 @@ class PPO(object):
         return num_success, total_dones
 
     def get_last_student_obs(self, data, normalize_dict):
-        # This function is used to make the data for the student model
-
         # cnn input
         tactile = data["tactile"]
-
-        # linear input
+        E, T, F, W, H, C = tactile.shape
+        tactile = tactile.reshape(E, T, F*C, W, H)
         eef_pos = data['eef_pos']
         action = data["action"]
 
-        if normalize_dict is not None:
-            eef_pos = (eef_pos - normalize_dict["mean"]["eef_pos"]) / normalize_dict["std"]["eef_pos"]
+        # if normalize_dict is not None:
+        #     eef_pos = (eef_pos - normalize_dict["mean"]["eef_pos"]) / normalize_dict["std"]["eef_pos"]
 
         lin_input = torch.cat([eef_pos, action], dim=-1)
 
         if self.full_config.offline_train.model.transformer.full_sequence:
             return tactile, lin_input
 
-        padding_tactile = torch.zeros_like(tactile)
-        padding_lin = torch.zeros_like(lin_input)
+        sequence_length = self.full_config.offline_train.model.transformer.sequence_length
+        # Adjust tactile and lin_input based on the sequence length and progress buffer
+        tactile_adjusted = self.get_last_sequence(tactile, self.env.progress_buf, sequence_length)
+        lin_input_adjusted = self.get_last_sequence(lin_input, self.env.progress_buf, sequence_length)
 
-        for env_id in range(self.env.num_envs):
-            padding_tactile[env_id, -(self.env.progress_buf[env_id] + 1):, :] = tactile[env_id,
-                                                                                :(self.env.progress_buf[env_id] + 1), :]
-            padding_lin[env_id, -(self.env.progress_buf[env_id] + 1):, :] = lin_input[env_id,
-                                                                            :(self.env.progress_buf[env_id] + 1), :]
-
-        tactile = padding_tactile[:, -self.full_config.offline_train.model.transformer.sequence_length:, :].clone()
-
-        lin_input = padding_lin[:, -self.full_config.offline_train.model.transformer.sequence_length:, :].clone()
-
-        return tactile, lin_input
+        return tactile_adjusted, lin_input_adjusted
 
 
+    def get_last_sequence(self, input_tensor, progress_buf, sequence_length):
+        """
+        Adjusts the input tensor to the desired sequence length by padding with zeros if the
+        actual sequence length is less than the desired, or by selecting the most recent
+        entries up to the desired sequence length if the actual sequence is longer.
+
+        Parameters:
+        - input_tensor: A tensor with shape [E, T, ...], where E is the number of environments,
+          and T is the temporal dimension.
+        - progress_buf: A tensor or an array indicating the actual sequence length for each environment.
+        - sequence_length: The desired sequence length.
+
+        Returns:
+        - A tensor adjusted to [E, sequence_length, ...].
+        """
+        E, _, *other_dims = input_tensor.shape
+        adjusted_tensor = torch.zeros(E, sequence_length, *other_dims, device=input_tensor.device, dtype=input_tensor.dtype)
+
+        for env_id in range(E):
+
+            actual_seq_len = progress_buf[env_id]
+            if actual_seq_len < sequence_length:
+                # If the sequence is shorter, pad the beginning with zeros
+                start_pad = sequence_length - actual_seq_len
+                adjusted_tensor[env_id, start_pad:, :] = input_tensor[env_id, :actual_seq_len, :]
+            else:
+                # If the sequence is longer, take the most recent `sequence_length` entries
+                adjusted_tensor[env_id, :, :] = input_tensor[env_id, actual_seq_len - sequence_length:actual_seq_len, :]
+
+        return adjusted_tensor
 def policy_kl(p0_mu, p0_sigma, p1_mu, p1_sigma):
     c1 = torch.log(p1_sigma / p0_sigma + 1e-5)
     c2 = (p0_sigma ** 2 + (p1_mu - p0_mu) ** 2) / (2.0 * (p1_sigma ** 2 + 1e-5))

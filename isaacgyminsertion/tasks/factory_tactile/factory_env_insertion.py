@@ -99,7 +99,7 @@ class ExtrinsicContact:
         self.n_points = num_points
         # self.gt_extrinsic_contact = torch.zeros((num_envs, self.n_points))
         self.constant_socket = False
-        self.ax = plt.axes(projection='3d')
+        self.first_init = True
         self.num_envs = num_envs
         self.device = device
         self.plug_pose_no_rot = np.repeat(np.eye(4)[np.newaxis, :, :], num_envs, axis=0)
@@ -280,6 +280,10 @@ class ExtrinsicContact:
 
         # Display
         if False:
+            if self.first_init:
+                self.ax = plt.axes(projection='3d')
+                self.first_init = False
+
             display_id = 0
             self.ax.plot(self.socket_pcl[:, 0], self.socket_pcl[:, 1], self.socket_pcl[:, 2], 'yo')
             self.ax.plot(query_points[display_id, :, 0], query_points[display_id, :, 1], query_points[display_id, :, 2],

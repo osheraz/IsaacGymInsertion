@@ -16,7 +16,7 @@ data_logger:
     collect_data: False
     total_trajectories: 1000
     base_folder: "/home/roblab20/tactile_insertion"
-    sub_folder: "datastore_0"
+    sub_folder: "datastore_0_contact2"
 
     # for logging (tests) during student training
     collect_test_sim: ${...offline_training_w_env}
@@ -37,7 +37,7 @@ tactile: # Pulling from task
   decoder:
     width: 224
     height: 224
-    num_channels: 3 # 1 (Grayscale), 3 (RGB)
+    num_channels: 1 # 1 (Grayscale), 3 (RGB)
 
   sim2real: False
   model_G: latest_net_G_B.pth # path for the generator
@@ -79,7 +79,7 @@ env:
     tactile_display_viz: False
     tactile_wrt_force: False
 
-    compute_contact_gt: False
+    compute_contact_gt: True
     num_points: 500
 
     record_video: True

@@ -220,6 +220,8 @@ class Runner:
     def get_latent(self, tac_input, lin_input):
         self.model.eval()
         with torch.inference_mode():
+            # [envs, seq_len, ... ] => [envs*seq_len, C, W, H]
+
             tac_input = tac_input.to(self.device)
             lin_input = lin_input.to(self.device)
 

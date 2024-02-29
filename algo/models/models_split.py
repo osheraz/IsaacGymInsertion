@@ -108,10 +108,6 @@ class ActorCriticSplit(nn.Module):
         # self.pose_mlp_units = kwargs['pose_mlp_units']
         # self.physics_mlp_units = kwargs['physics_mlp_units']
 
-        self.fig = plt.figure(figsize=(8, 6))
-        self.ax = self.fig.add_subplot(111)
-        self.flag = True
-
         if self.priv_info:
 
             mlp_input_shape += self.priv_mlp_units[-1]
@@ -185,8 +181,6 @@ class ActorCriticSplit(nn.Module):
         self.mu = layer_init(torch.nn.Linear(out_size, actions_num), std=0.01)
         self.sigma = nn.Parameter(torch.zeros(actions_num, requires_grad=True, dtype=torch.float32), requires_grad=True)
 
-        self.fig = plt.figure(figsize=(8, 6))
-
         for m in self.modules():
             if isinstance(m, nn.Conv2d) or isinstance(m, nn.Conv1d):
                 fan_out = m.kernel_size[0] * m.out_channels
@@ -222,7 +216,7 @@ class ActorCriticSplit(nn.Module):
         mu, logstd, value, latent, _, dec = self._actor_critic(obs_dict)
         return mu, latent, dec
 
-    def _actor_critic(self, obs_dict, display=False):
+    def _actor_critic(self, obs_dict, display=True):
 
         obs = obs_dict['obs']
         extrin, extrin_gt, dec = None, None, None
@@ -245,12 +239,11 @@ class ActorCriticSplit(nn.Module):
                     extrin_gt = extrin_priv
 
                 if display:
-                    # self.ax.set_ylim(-1, 1)
-                    self.ax.scatter(list(range(extrin_gt.shape[-1])), extrin.clone().detach().cpu().numpy()[0, :],
-                                    color='r')
-                    self.ax.scatter(list(range(extrin_gt.shape[-1])), extrin_gt.clone().cpu().numpy()[0, :], color='b')
+                    plt.ylim(-1, 1)
+                    plt.scatter(list(range(extrin.shape[-1])), extrin.clone().detach().cpu().numpy()[0, :], color='r')
+                    plt.scatter(list(range(extrin_gt.shape[-1])), extrin_gt.clone().cpu().numpy()[0, :], color='b')
                     plt.pause(0.0001)
-                    self.ax.cla()
+                    plt.cla()
 
             # predict with the student extrinsic
             obs = torch.cat([obs, extrin], dim=-1)

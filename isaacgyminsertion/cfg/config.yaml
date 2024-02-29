@@ -42,8 +42,6 @@ offline_training_w_env: False # flag for offline latent training with environmen
 
 # used to set checkpoint path
 checkpoint: ''
-# used to set decoder checkpoint path
-checkpoint_tactile: ''
 # set sigma when restoring network
 sigma: ''
 # set to True to use multi-gpu training
