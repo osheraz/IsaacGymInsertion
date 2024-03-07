@@ -202,14 +202,14 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         self.tactile_imgs = torch.zeros(
             (self.num_envs, len(self.fingertips),  # left, right, bottom
-             self.width, self.height, self.num_channels),
+             self.num_channels, self.width, self.height),
             device=self.device,
             dtype=torch.float,
         )
         # Way too big tensor.
         self.tactile_queue = torch.zeros(
             (self.num_envs, self.tact_hist_len, len(self.fingertips),  # left, right, bottom
-             self.width, self.height, self.num_channels),
+             self.num_channels, self.width, self.height),
             device=self.device,
             dtype=torch.float,
         )
@@ -422,16 +422,14 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                     tactile_img = tactile_img[:w // 2]
                     height_map = height_map[:w // 2]
 
-                # Resizing to decoder size
+                # Resizing to encoder size
                 resized_img = cv2.resize(tactile_img, (self.height, self.width), interpolation=cv2.INTER_AREA)
 
                 if self.num_channels == 3:
-                    self.tactile_imgs[e, n] = torch_jit_utils.rgb_transform(resized_img).to(self.device).permute(1, 2,
-                                                                                                                 0)
+                    self.tactile_imgs[e, n] = torch_jit_utils.rgb_transform(resized_img).to(self.device)
                 else:
                     resized_img = cv2.cvtColor(resized_img.astype('float32'), cv2.COLOR_BGR2GRAY)
-                    self.tactile_imgs[e, n] = torch_jit_utils.gray_transform(resized_img).to(self.device).permute(1, 2,
-                                                                                                                  0)
+                    self.tactile_imgs[e, n] = torch_jit_utils.gray_transform(resized_img).to(self.device)
 
                 tactile_imgs_per_env.append(tactile_img)
                 height_maps_per_env.append(height_map)
@@ -608,7 +606,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         # Compute tactile
         self.tactile_queue[:, 1:] = self.tactile_queue[:, :-1].clone().detach()
-        self.tactile_queue[:, 0, :] = self.tactile_imgs
+        self.tactile_queue[:, 0, ...] = self.tactile_imgs
 
         self.ft_queue[:, 1:] = self.ft_queue[:, :-1].clone().detach()
         self.ft_queue[:, 0, :] = 0.1 * self.ft_sensor_tensor.clone()
@@ -719,8 +717,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                     display=display_key == k
                 ).to(self.device)
 
-                self.contact_points_hist[:, (self.cfg_task.env.num_points * 0):,
-                ...] = self.gt_extrinsic_contact.clone()
+                self.contact_points_hist[:, (self.cfg_task.env.num_points * 0):, ...] = self.gt_extrinsic_contact.clone()
 
         state_tensors = [
             #  add delta error
@@ -868,8 +865,8 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         socket_pos[:, :] += torch.from_numpy(socket_pos_noise)
 
         socket_euler_w_noise = np.array([0, 0, 0])
-        socket_euler_w_noise[2] = np.random.uniform(-self.cfg_task.randomize.socket_rot_euler_noise,
-                                                     self.cfg_task.randomize.socket_rot_euler_noise, 1)  # -2 to 2 deg
+        # socket_euler_w_noise[2] = np.random.uniform(-self.cfg_task.randomize.socket_rot_euler_noise,
+        #                                              self.cfg_task.randomize.socket_rot_euler_noise, 1)  # -2 to 2 deg
         socket_quat[:, :] = torch.from_numpy(R.from_euler('xyz', socket_euler_w_noise).as_quat())
 
         # above socket with overlap
@@ -877,7 +874,10 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         plug_pos_noise = torch.rand((len(env_ids), 3)) * self.cfg_task.randomize.plug_pos_xy_noise[0]  # 0 to 0.0254
         plug_pos_noise[:, 2] = ((torch.rand((len(env_ids),)) * (0.007 - 0.003)) + 0.003) + 0.02  # 0.003 to 0.01
         plug_pos[:, :] += plug_pos_noise
-        plug_quat[:, -1] = 1.
+        plug_euler_w_noise = np.array([0., 0., 0.])
+        plug_euler_w_noise += np.random.uniform(-0.4, 0.4, plug_euler_w_noise.shape)
+        plug_quat[:, :] = torch.from_numpy(R.from_euler('xyz', plug_euler_w_noise).as_quat())
+        # plug_quat[:, -1] = 1.
 
         for i, e in enumerate(env_ids):
             subassembly = subassemblies[e]
@@ -1042,13 +1042,14 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.root_linvel[env_ids, self.plug_actor_id_env] = 0.0
         self.root_angvel[env_ids, self.plug_actor_id_env] = 0.0
 
-        plug_actor_ids_sim_int32 = self.plug_actor_ids_sim.to(dtype=torch.int32, device=self.device)
-        # self.gym.set_actor_root_state_tensor_indexed(self.sim,
-        #                                              gymtorch.unwrap_tensor(self.root_state),
-        #                                              gymtorch.unwrap_tensor(plug_actor_ids_sim_int32[env_ids]),
-        #                                              len(plug_actor_ids_sim_int32[env_ids]))
+        # Set plug root state
+        plug_actor_ids_sim_int32 = self.plug_actor_ids_sim.clone().to(dtype=torch.int32, device=self.device)
+        self.gym.set_actor_root_state_tensor_indexed(self.sim,
+                                                     gymtorch.unwrap_tensor(self.root_state),
+                                                     gymtorch.unwrap_tensor(plug_actor_ids_sim_int32[env_ids]),
+                                                     len(plug_actor_ids_sim_int32[env_ids]))
 
-        # self._simulate_and_refresh()
+        self._simulate_and_refresh()
 
         # Randomize root state of socket
         # socket_noise_xy = 2 * (torch.rand((self.num_envs, 2), dtype=torch.float32, device=self.device) - 0.5)  # [-1, 1]
@@ -1064,6 +1065,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         # self.root_quat[env_ids, self.socket_actor_id_env] = torch.tensor([0.0, 0.0, 0.0, 1.0], dtype=torch.float32,
         #                                                                device=self.device).repeat(len(env_ids), 1)
 
+        # RESET SOCKET
         socket_pose = new_pose['socket_pose']
         socket_quat = new_pose['socket_quat']
 
@@ -1074,19 +1076,18 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.root_linvel[env_ids, self.socket_actor_id_env] = 0.0
         self.root_angvel[env_ids, self.socket_actor_id_env] = 0.0
 
-        socket_actor_ids_sim_int32 = self.socket_actor_ids_sim.to(dtype=torch.int32, device=self.device)
+        socket_actor_ids_sim_int32 = self.socket_actor_ids_sim.clone().to(dtype=torch.int32, device=self.device)
 
         # print(torch.cat([plug_actor_ids_sim_int32[env_ids], socket_actor_ids_sim_int32[env_ids]]), plug_actor_ids_sim_int32, socket_actor_ids_sim_int32)
         # print(self.root_state[:, plug_actor_ids_sim_int32, :])
         # print(self.root_state[:, socket_actor_ids_sim_int32, :])
 
-        self.gym.set_actor_root_state_tensor_indexed(self.sim,
-                                                     gymtorch.unwrap_tensor(self.root_state),
-                                                     gymtorch.unwrap_tensor(torch.cat(
-                                                         [plug_actor_ids_sim_int32[env_ids],
-                                                          socket_actor_ids_sim_int32[env_ids]])),
-                                                     len(torch.cat([plug_actor_ids_sim_int32[env_ids],
-                                                                    socket_actor_ids_sim_int32[env_ids]])))
+        self.gym.set_actor_root_state_tensor_indexed(
+            self.sim,
+            gymtorch.unwrap_tensor(self.root_state),
+            gymtorch.unwrap_tensor(socket_actor_ids_sim_int32),
+            len(socket_actor_ids_sim_int32),
+        )
 
         # Simulate one step to apply changes
         self._simulate_and_refresh()

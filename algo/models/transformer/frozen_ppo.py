@@ -37,6 +37,7 @@ from tensorboardX import SummaryWriter
 # import wandb
 from torchvision import transforms
 
+from scipy.spatial.transform import Rotation
 
 class PPO(object):
     def __init__(self, env, output_dif, full_config):
@@ -635,6 +636,7 @@ class PPO(object):
         self.set_eval()
 
         action, latent, done, dec = None, None, None, None
+        object_ori = None
 
         save_trajectory = self.env.cfg_task.data_logger.collect_data
         offline_test = self.full_config.offline_training_w_env
@@ -674,15 +676,8 @@ class PPO(object):
             if offline_test:
                 if get_latent is not None:
                     # Making data for the latent prediction from student model
-                    tactile, lin_input = self.get_last_student_obs(self.data_logger.data_logger.get_data(), stud_norm_dict)
-
-                    # for i in range(tactile.shape[1]):  # Iterate through the sequence of images
-                    #     img = tactile[0, i].clone().cpu().detach() # Select the ith image; result is [3, 112, 224]
-                    #     img = img.permute(1, 2, 0).numpy()   # Change the order to [112, 224, 3] for plotting
-                    #     img = img / 2 + 0.5  # Unnormalize if necessary
-                    #     cv2.imshow('test', img)  # Display the image
-                    #     cv2.waitKey(1)
-
+                    tactile, lin_input, object_ori = self.get_last_student_obs(self.data_logger.data_logger.get_data(), stud_norm_dict)
+                    self.display_tactile_images(tactile.clone())
                     # getting the latent data from the student model
                     if self.full_config.offline_train.model.transformer.full_sequence:
                         latent = get_latent(tactile, lin_input)[self.env_ids,
@@ -696,6 +691,7 @@ class PPO(object):
                 'priv_info': self.priv_mean_std(self.obs['priv_info']),
                 'contacts': self.obs['contacts'],
                 'latent': latent,
+                'object_ori': object_ori,
             }
             action, latent, dec = self.model.act_inference(obs_dict)
             action = torch.clamp(action, -1.0, 1.0)
@@ -705,7 +701,7 @@ class PPO(object):
 
             # logging data
             if save_trajectory or offline_test:
-                self.data_logger.log_trajectory_data(action, latent, done, dec, save_trajectory=save_trajectory)
+                self.data_logger.log_trajectory_data(action, None, done, dec, save_trajectory=save_trajectory)
                 total_dones += len(done.nonzero())
                 if total_dones > milestone:
                     print('[Test] success rate:', num_success / total_dones)
@@ -714,18 +710,56 @@ class PPO(object):
         print('[LastTest] success rate:', num_success / total_dones)
         return num_success, total_dones
 
+    def display_tactile_images(self, tactile):
+        for t in range(tactile.shape[1]):  # Iterate through the sequence of images
+            # Extract the images for all fingers at time step 't' and adjust dimensions for display.
+            fingers_images = tactile[0, t]  # This selects all fingers at time 't', shape is [F, C, W, H]
+
+            # Prepare the images for concatenation and display
+            imgs = []
+            for f in range(fingers_images.shape[0]):
+                img = fingers_images[f]
+                img = img.cpu().detach()  # Move tensor to CPU and detach from its computation history
+                # Inverse normalize the image
+                img = transforms.functional.normalize(
+                    img, [-0.5 / 0.5] * img.shape[0], [1 / 0.5] * img.shape[0], inplace=False)
+                img = img.numpy()  # Convert to numpy
+                img = np.transpose(img, (1, 2, 0))  # Reorder dimensions to [W, H, C]
+                # Scale the image data to [0, 255] and convert to uint8
+                img = (img * 255).astype(np.uint8)
+                if img.shape[2] == 1:  # If grayscale, convert to BGR for consistent OpenCV display
+                    img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+                imgs.append(img)
+
+            concatenated_img = np.concatenate(imgs, axis=1)  # Concatenate images horizontally
+            cv2.imshow('Tactile Sequence', concatenated_img)  # Display the concatenated image
+            cv2.waitKey(1)
     def get_last_student_obs(self, data, normalize_dict):
         # cnn input
+        self.to_torch = lambda x: torch.from_numpy(x).float()
+
         tactile = data["tactile"]
-        E, T, F, W, H, C = tactile.shape
-        tactile = tactile.reshape(E, T, F*C, W, H)
+        # E, T, F, C, W, H = tactile.shape
+        # tactile = tactile.reshape(E, T, F*C, W, H)
         eef_pos = data['eef_pos']
+        hand_joints = data['hand_joints']
+
+        ori = data["plug_hand_quat"].cpu().numpy().squeeze(0) + 1e-8
+        object_ori = Rotation.from_quat(ori).as_euler('xyz')
+        object_ori = np.hstack((np.sin(object_ori[:, 0:1]), np.cos(object_ori[:, 0:1]),
+                           np.sin(object_ori[:, 1:2]), np.cos(object_ori[:, 1:2]),))
+        object_ori = self.to_torch(object_ori).unsqueeze(0)
         action = data["action"]
 
-        # if normalize_dict is not None:
-        #     eef_pos = (eef_pos - normalize_dict["mean"]["eef_pos"]) / normalize_dict["std"]["eef_pos"]
+        if normalize_dict is not None:
+            eef_pos = (eef_pos - normalize_dict["mean"]["eef_pos"]) / normalize_dict["std"]["eef_pos"]
+            hand_joints = (hand_joints - normalize_dict["mean"]["hand_joints"]) / normalize_dict["std"]["hand_joints"]
 
-        lin_input = torch.cat([eef_pos, action], dim=-1)
+        lin_input = torch.cat([
+                                # eef_pos,
+                                hand_joints,
+                                # action
+        ], dim=-1)
 
         if self.full_config.offline_train.model.transformer.full_sequence:
             return tactile, lin_input
@@ -734,8 +768,10 @@ class PPO(object):
         # Adjust tactile and lin_input based on the sequence length and progress buffer
         tactile_adjusted = self.get_last_sequence(tactile, self.env.progress_buf, sequence_length)
         lin_input_adjusted = self.get_last_sequence(lin_input, self.env.progress_buf, sequence_length)
+        ori_adjusted = self.get_last_sequence(object_ori, self.env.progress_buf, sequence_length)
 
-        return tactile_adjusted, lin_input_adjusted
+        print(tactile_adjusted.shape)
+        return tactile_adjusted, lin_input_adjusted, ori_adjusted
 
 
     def get_last_sequence(self, input_tensor, progress_buf, sequence_length):
@@ -753,6 +789,7 @@ class PPO(object):
         Returns:
         - A tensor adjusted to [E, sequence_length, ...].
         """
+
         E, _, *other_dims = input_tensor.shape
         adjusted_tensor = torch.zeros(E, sequence_length, *other_dims, device=input_tensor.device, dtype=input_tensor.dtype)
 
@@ -768,6 +805,7 @@ class PPO(object):
                 adjusted_tensor[env_id, :, :] = input_tensor[env_id, actual_seq_len - sequence_length:actual_seq_len, :]
 
         return adjusted_tensor
+
 def policy_kl(p0_mu, p0_sigma, p1_mu, p1_sigma):
     c1 = torch.log(p1_sigma / p0_sigma + 1e-5)
     c2 = (p0_sigma ** 2 + (p1_mu - p0_mu) ** 2) / (2.0 * (p1_sigma ** 2 + 1e-5))

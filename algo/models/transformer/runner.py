@@ -1,6 +1,5 @@
-from algo.models.transformer.data import TactileDataset
+from algo.models.transformer.data import TactileDataset, DataNormalizer
 from torch.utils.data import DataLoader
-from torch.nn import functional as F
 from torch import optim
 from algo.models.transformer.model import TactileTransformer
 from algo.models.transformer.tact import TacT
@@ -18,6 +17,8 @@ import time
 from algo.models.transformer.utils import set_seed
 from hydra.utils import to_absolute_path
 from warmup_scheduler import GradualWarmupScheduler
+from matplotlib import pyplot as plt
+from scipy.spatial.transform import Rotation
 
 
 class Runner:
@@ -34,7 +35,7 @@ class Runner:
         self.device = 'cuda:0'
 
         self.model = TacT(context_size=self.sequence_length,
-                          num_channels=self.cfg.model.cnn.in_channels,  # stacking along finger
+                          num_channels=self.cfg.model.cnn.in_channels,
                           num_lin_features=self.cfg.model.linear.input_size,
                           num_outputs=self.cfg.model.transformer.output_size,
                           obs_encoder="efficientnet-b0",
@@ -49,13 +50,11 @@ class Runner:
         self.loss_fn_mean = torch.nn.MSELoss(reduction='mean')
         self.loss_fn = torch.nn.MSELoss(reduction='none')
 
-        import matplotlib.pyplot as plt
         self.fig = plt.figure(figsize=(20, 15))
         self.train_loss, self.val_loss = [], []
 
     def train(self, dl, val_dl, ckpt_path, print_every=50, eval_every=250, test_every=500):
 
-        from matplotlib import pyplot as plt
         self.model.train()
         train_loss, val_loss = [], 0
         latent_loss_list, action_loss_list = [], []
@@ -87,7 +86,7 @@ class Runner:
                     action_loss_list.append(loss_action.item())
 
             else:
-                loss_latent = self.loss_fn_mean(out[:, :], latent[:, -1, :])
+                loss_latent = self.loss_fn_mean(out, latent[:, -1, :])
                 if self.ppo_step is not None:  # action regularization
                     obs_hist = obs_hist[:, -1, :].to(self.device).view(obs_hist.shape[0], obs_hist.shape[-1])
                     pred_action, _ = self.ppo_step({'obs': obs_hist, 'latent': out[:, -1, :]})
@@ -118,18 +117,23 @@ class Runner:
                 self.fig.clf()
                 self.train_loss.append(np.mean(train_loss))
                 plt.plot(self.train_loss, '-ro', linewidth=3, label='train loss')
-
                 train_loss = []
                 latent_loss_list = []
                 action_loss_list = []
 
             if (i + 1) % eval_every == 0:
+                self.log_output(tac_input.clone(),
+                                lin_input.clone(),
+                                out.clone(),
+                                latent.clone(),
+                                'train')
+
                 val_loss = self.validate(val_dl)
                 print(f'validation loss: {val_loss}')
                 self.val_loss.append(val_loss)
                 plt.plot(self.val_loss, '-ko', linewidth=3, label='val loss')
                 plt.legend()
-                self.fig.savefig(f'{ckpt_path}/train_val_comp.png', dpi=200, bbox_inches='tight')
+                self.fig.savefig(f'{self.save_folder}/train_val_comp.png', dpi=200, bbox_inches='tight')
                 self.model.train()
 
             if (i + 1) % test_every == 0:
@@ -192,13 +196,85 @@ class Runner:
             # self._wandb_log({
             #     'val/loss': np.mean(val_loss),
             #     'val/latent_loss': np.mean(latent_loss_list),
-                # 'val/action_loss': np.mean(action_loss_list)
+            # 'val/action_loss': np.mean(action_loss_list)
             # })
             # if self.ppo_step is not None:
             #     self._wandb_log({
             #         'val/action_loss': np.mean(action_loss_list)
             #     })
+
+            self.log_output(tac_input.clone(),
+                            lin_input.clone(),
+                            out.clone(),
+                            latent.clone(),
+                            'valid')
+
         return np.mean(val_loss)
+
+    def log_output(self, tac_input, lin_input, out, latent, session='train'):
+        # Assuming lin_input now includes eef_pos and shift_action_right concatenated
+
+        # Selecting the first example from the batch for demonstration
+        image_sequence = tac_input[0].cpu().detach().numpy()
+        linear_features = lin_input[0].cpu().detach().numpy()  # Shape should be [sequence_length, eef_pos+action]
+        predicted_output = out[0].cpu().detach().numpy()
+        true_label = latent[0, -1, :].cpu().detach().numpy()
+
+        # Extracting eef_pos for the first example
+        eef_pos = linear_features[:, :12]  # Assuming the first 12 are eef_pos
+        eef_pos = eef_pos * self.normalize_dict["std"]["eef_pos"] + self.normalize_dict["mean"]["eef_pos"]
+
+        # Plotting
+        fig = plt.figure(figsize=(20, 10))
+
+        # Adding subplot for image sequence (adjust as needed)
+        ax1 = fig.add_subplot(2, 2, 1)
+        image_sequence = [np.transpose(img, (1, 2, 0)) for img in image_sequence]
+        image_sequence = [img / 2 + 0.5 for img in image_sequence]
+        image_sequence = np.hstack(image_sequence)
+        ax1.imshow(image_sequence)  # Adjust based on image normalization
+        ax1.set_title('Input Image Sequence - Example')
+
+        # Adding subplot for linear features (adjust as needed)
+        ax2 = fig.add_subplot(2, 2, 2)
+        ax2.plot(linear_features[:, -6:], 'ro', label='actions')  # Assuming the rest are actions
+        ax2.plot(linear_features[:, 12:-6], 'k', label='hand_joints')  # Assuming the rest are actions
+        ax2.set_title('Linear input')
+        ax2.legend()
+
+        # Adding 3D subplot for eef_pos
+        ax3 = fig.add_subplot(2, 2, 3, projection='3d')
+        # Plotting the XYZ position
+        ax3.plot(eef_pos[:, 0], eef_pos[:, 1], eef_pos[:, 2], c='r')
+        for i in range(eef_pos.shape[0]):
+            # Plotting a line for orientation using the first column of the rotation matrix
+            # Adjust the scaling factor as needed for visibility
+            scale_factor = 0.01
+            x, y, z = eef_pos[i, :3]
+            u, v, w = eef_pos[i, 3:6] * scale_factor  # Simplified orientation representation
+            ax3.quiver(x, y, z, u, v, w, length=0.01)
+        ax3.set_title('End-Effector Position and Orientation')
+        ax3.set_xlabel('X')
+        ax3.set_ylabel('Y')
+        ax3.set_zlabel('Z')
+
+        # Adding subplot for Output vs. True Label comparison
+        ax4 = fig.add_subplot(2, 2, 4)
+        width = 0.35
+        indices = np.arange(len(predicted_output))
+        ax4.bar(indices - width / 2, predicted_output, width, label='Predicted')
+        ax4.bar(indices + width / 2, true_label, width, label='True Label')
+        ax4.set_title('Model Output vs. True Label')
+        ax4.legend()
+
+        # Adjust layout
+        plt.tight_layout()
+
+        # Saving the figure
+        plt.savefig(f'{self.save_folder}/{session}_example.png')
+
+        # Clean up plt to free memory
+        plt.close(fig)
 
     def test(self):
         with torch.inference_mode():
@@ -285,16 +361,18 @@ class Runner:
             elif self.cfg.train.only_validate:
                 self.validate(val_dl)
             else:
-                val_loss = self.train(train_dl, val_dl, ckpt_path, print_every=print_every, eval_every=eval_every,
+                val_loss = self.train(train_dl, val_dl, ckpt_path,
+                                      print_every=print_every,
+                                      eval_every=eval_every,
                                       test_every=test_every)
+
                 if self.scheduler is not None:
                     if isinstance(self.scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
                         self.scheduler.step(np.mean(val_loss))
                     else:
                         self.scheduler.step()
                 print('Saving the model')
-                torch.save(self.model.state_dict(), f'{ckpt_path}/model_{epoch}.pt')
-                # torch.jit.save(torch.jit.script(self.model), f'{ckpt_path}/model_{epoch}.pt')
+                torch.save(self.model.state_dict(), f'{ckpt_path}/model_last.pt')  # {epoch}.pt')
 
     def _wandb_log(self, data):
         if self.cfg.wandb.wandb_enabled:
@@ -303,9 +381,8 @@ class Runner:
     def run(self):
         from datetime import datetime
         from glob import glob
-        from tqdm import tqdm
-        from pathlib import Path
 
+        print('Loading trajectories from', self.cfg.data_folder)
         file_list = glob(os.path.join(self.cfg.data_folder, '*/*.npz'))
         ff = 'test'
         save_folder = f'{to_absolute_path(self.cfg.output_dir)}/{ff}_{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}'
@@ -338,54 +415,9 @@ class Runner:
                 dir=save_folder,
             )
 
-        # Removing failed trajectories
-        print('Removing failed trajectories')
-        for file in tqdm(file_list):
-            try:
-                d = np.load(file)
-                # tactile = d["tactile"]
-                done_idx = d['done'].nonzero()[0]
-                if done_idx == 0:
-                    file_list.remove(file)
-            except KeyboardInterrupt:
-                exit()
-            except:
-                print(file)
-                file_list.remove(file)
-                os.remove(file)
+        normalizer = DataNormalizer(self.cfg, file_list)
+        normalizer.run()
+        self.normalize_dict = normalizer.normalize_dict
 
-        normalize_keys = self.cfg.train.normalize_keys
-
-        # TODO Move to function, make clean run
-        normalization_path = self.cfg.train.normalize_file
-        if Path(normalization_path).parent.absolute().exists() is False:
-            Path(normalization_path).parent.absolute().mkdir(parents=True, exist_ok=True)
-        if os.path.exists(normalization_path):
-            # if already exisits, just load
-            with open(normalization_path, 'rb') as f:
-                normalize_dict = pickle.load(f)
-        else:
-            # means and standard deviations for normalization
-            normalize_dict = {
-                "mean": {},
-                "std": {}
-            }
-            for norm_keys in normalize_keys:
-                data = []
-                print('Creating new normalization file:')
-                for file in tqdm(random.sample(file_list, len(file_list))):
-                    try:
-                        d = np.load(file)
-                        done_idx = d['done'].nonzero()[0][-1]
-                        data.append(d[norm_keys][:done_idx, :])
-                    except:
-                        print(file, 'shit file')
-                data = np.concatenate(data, axis=0)
-                normalize_dict['mean'][norm_keys] = np.mean(data, axis=0)
-                normalize_dict['std'][norm_keys] = np.std(data, axis=0)
-            print('Saved new normalization file at: ', normalization_path)
-            with open(f'{normalization_path}', 'wb') as f:
-                pickle.dump(normalize_dict, f)
-
-        self.normalize_dict = normalize_dict
+        self.save_folder = save_folder
         self._run(file_list, save_folder, device=device, **train_config)

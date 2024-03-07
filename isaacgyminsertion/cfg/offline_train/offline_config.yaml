@@ -1,6 +1,6 @@
 seed: 42 # not sure if this is used yet.
-data_folder: "/home/roblab20/tactile_insertion/datastore_0_contact2" # where is all your data, can include * for globbing
-output_dir: "/home/roblab20/tactile_insertion/datastore_0_contact2" # where to save checkpoints and logs
+data_folder: "/home/roblab20/tactile_insertion/datastore_42_contact2" # where is all your data, can include * for globbing
+output_dir: "/home/roblab20/tactile_insertion/datastore_42_contact2" # where to save checkpoints and logs
 
 # supervised learning
 train:
@@ -26,47 +26,43 @@ train:
 
   # Train params for on screen logging
   print_every: 10
-  eval_every: 5000
+  eval_every: 4000
   test_every: 10000
   test_episodes: 2 # per epoch batch
 
   # Only val/test ( val- dataset, test - env)
-  only_test: True
+  only_test: False
   only_validate: False
 
   # normalize data
-  normalize_keys: ["eef_pos", "action", "obs_hist", "hand_joints"]
-  normalize_file: "/home/roblab20/tactile_insertion/datastore_0_contact2/normalization.pkl"
+  normalize_keys: ["eef_pos", "action", "obs_hist", "hand_joints", "plug_hand_quat"]
+  normalize_file: "/home/roblab20/tactile_insertion/datastore_42_contact2/normalization.pkl"
 
   # load student checkpoint
-  load_checkpoint: True
+  load_checkpoint: False
   student_ckpt_path: "/home/roblab20/tactile_insertion/datastore_0_contact2/tac+eef/checkpoints/model_2.pt"
 
 # model configuration
 model:
   # linear embedding
   linear:
-    input_size: 18
+    input_size: 6
     # TODO: add model layers here
 
   # tactile embedding
   cnn:
     in_channels: 3
-    out_channels: 1 # 32
-    kernel_size: 3
     # TODO: add model layers here
 
   # tactile+obs encoder
   transformer:
     full_sequence: False # if True, it makes sequence length 500
-    sequence_length: 5 # ${...task.rl.max_episode_length}
-    embed_size: 32
-    hidden_size: 64
+    sequence_length: 1 # ${...task.rl.max_episode_length}
     num_layers: 4
     num_heads: 4
     dim_factor: 4
-    output_size: 8
-    obs_encoding_size: 512
+    output_size: 4
+    obs_encoding_size: 128
 
 # wandb logging
 wandb:

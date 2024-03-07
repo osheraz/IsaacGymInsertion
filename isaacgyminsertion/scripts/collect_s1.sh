@@ -1,6 +1,6 @@
 #!/bin/bash
 GPUS=${1:-0}
-SEED=${2:-0}
+SEED=${2:-42}
 CACHE=${3:-contact2}
 NUM_ENVS=${4:-9}
 HEADLESS=${5:-True}
@@ -28,7 +28,7 @@ task.tactile.decoder.width=224 \
 task.tactile.decoder.height=224 \
 task.env.tactile_wrt_force=False \
 task.env.tactile_history_len=1 \
-task.tactile.decoder.num_channels=1 \
+task.tactile.decoder.num_channels=3 \
 task.env.compute_contact_gt=True \
 task.env.numObsHist=1 \
 task.tactile.half_image=True \

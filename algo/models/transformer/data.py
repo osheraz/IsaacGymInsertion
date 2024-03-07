@@ -6,13 +6,108 @@ import numpy as np
 import torch
 from scipy.spatial.transform import Rotation
 
+import os
+import pickle
+from scipy.spatial.transform import Rotation
+from pathlib import Path
+from tqdm import tqdm
+import random
+
+
+class DataNormalizer:
+    def __init__(self, cfg, file_list):
+        self.cfg = cfg
+        self.normalize_keys = self.cfg.train.normalize_keys
+        self.normalization_path = self.cfg.train.normalize_file
+        self.normalize_dict = {"mean": {}, "std": {}}
+        self.file_list = file_list
+        self.remove_failed_trajectories()
+
+    def ensure_directory_exists(self, path):
+        """Ensure the directory for the given path exists."""
+        directory = Path(path).parent.absolute()
+        directory.mkdir(parents=True, exist_ok=True)
+
+    def remove_failed_trajectories(self):
+        """Remove files corresponding to failed trajectories."""
+        print('Removing failed trajectories')
+        cleaned_file_list = []
+        for file in tqdm(self.file_list, desc="Cleaning files"):
+            try:
+                d = np.load(file)
+                done_idx = d['done'].nonzero()[0]
+                if len(done_idx) > 0:  # Ensure done_idx is not empty
+                    cleaned_file_list.append(file)
+                else:
+                    os.remove(file)
+            except KeyboardInterrupt:
+                exit()
+            except Exception as e:
+                print(f"Error processing {file}: {e}")
+                os.remove(file)
+        self.file_list = cleaned_file_list
+
+    def load_or_create_normalization_file(self):
+        """Load the normalization file if it exists, otherwise create it."""
+        if os.path.exists(self.normalization_path):
+            with open(self.normalization_path, 'rb') as f:
+                self.normalize_dict = pickle.load(f)
+        else:
+            self.create_normalization_file()
+
+    def create_normalization_file(self):
+        """Create a new normalization file."""
+        for norm_key in self.normalize_keys:
+            print(f'Creating new normalization file for {norm_key}')
+            data = self.aggregate_data(norm_key)
+            self.calculate_normalization_values(data, norm_key)
+        self.save_normalization_file()
+
+    def aggregate_data(self, norm_key):
+        """Aggregate data for the given normalization key."""
+        data = []
+        file_list = self.file_list
+        for file in tqdm(random.sample(file_list, len(file_list)), desc=f"Processing {norm_key}"):
+            try:
+                d = np.load(file)
+                done_idx = d['done'].nonzero()[0][-1]
+                data.append(d[norm_key][:done_idx, :])
+            except Exception as e:
+                print(f"{file} could not be processed: {e}")
+        return np.concatenate(data, axis=0)
+
+    def calculate_normalization_values(self, data, norm_key):
+        """Calculate mean and standard deviation for the given data."""
+        if norm_key == 'plug_hand_quat':
+            euler = Rotation.from_quat(data).as_euler('xyz')
+            euler[:, 0] = np.where(euler[:, 0] > 0, euler[:, 0] - np.pi, euler[:, 0] + np.pi)
+
+            sin_cos_repr = np.hstack((np.sin(euler[:, 0:1]), np.cos(euler[:, 0:1]),
+                                      np.sin(euler[:, 1:2]), np.cos(euler[:, 1:2]),))
+            self.normalize_dict['mean']["plug_hand_sin_cos_euler"] = np.mean(sin_cos_repr, axis=0)
+            self.normalize_dict['std']["plug_hand_sin_cos_euler"] = np.std(sin_cos_repr, axis=0)
+
+        self.normalize_dict['mean'][norm_key] = np.mean(data, axis=0)
+        self.normalize_dict['std'][norm_key] = np.std(data, axis=0)
+
+    def save_normalization_file(self):
+        """Save the normalization values to file."""
+        print(f'Saved new normalization file at: {self.normalization_path}')
+        with open(self.normalization_path, 'wb') as f:
+            pickle.dump(self.normalize_dict, f)
+
+    def run(self):
+        """Main method to run the process."""
+        self.ensure_directory_exists(self.normalization_path)
+        self.load_or_create_normalization_file()
+
 
 class TactileDataset(Dataset):
-    def __init__(self, files, sequence_length=500, full_sequence=False, normalize_dict=None, stride = 10):
+    def __init__(self, files, sequence_length=500, full_sequence=False, normalize_dict=None, stride=10):
 
         self.all_folders = files
         self.sequence_length = sequence_length
-        self.stride = sequence_length * 2
+        self.stride = sequence_length  # sequence_length
         self.full_sequence = full_sequence
         self.normalize_dict = normalize_dict
 
@@ -59,31 +154,35 @@ class TactileDataset(Dataset):
         keys = ["tactile", "eef_pos", "action", "latent", "obs_hist", "contacts", "hand_joints", "plug_hand_quat"]
         data = {key: self.extract_sequence(data, key, start_idx) for key in keys}
 
-        # Tactile input [T F C W H]
+        # Tactile input [T F W H C]
+        tactile_input = data["tactile"]
+        # T, F, C, W, H = tactile_input.shape
+        # tactile_input = tactile_input.reshape(T, F * C, W, H)
         # left_finger, right_finger, bottom_finger = [data["tactile"][:, i, ...] for i in range(3)]
 
-        #  For student predictions
-        tactile_input = data["tactile"]
-        T, F, W, H, C = tactile_input.shape
-        tactile_input = tactile_input.reshape(T, F*C, W, H)
         eef_pos = data["eef_pos"]
         hand_joints = data["hand_joints"]
         action = data["action"]
-        contacts = data["action"] # data["contacts"]
-        # For teacher predictions - will be normalized by the model
+        contacts = data["action"]  # contact
         obs_hist = data["obs_hist"]
-        latent = data["latent"] #Rotation.from_quat(data["plug_hand_quat"]).as_euler('xyz')
+
+        label = Rotation.from_quat(data["plug_hand_quat"]).as_euler('xyz')  # data["latent"] #
+        label[:, 0] = np.where(label[:, 0] > 0, label[:, 0] - np.pi, label[:, 0] + np.pi)
+        label = np.hstack((np.sin(label[:, 0:1]), np.cos(label[:, 0:1]),
+                           np.sin(label[:, 1:2]), np.cos(label[:, 1:2]),))
 
         # Normalizing inputs
         if self.normalize_dict is not None:
             eef_pos = (eef_pos - self.normalize_dict["mean"]["eef_pos"]) / self.normalize_dict["std"]["eef_pos"]
             hand_joints = (hand_joints - self.normalize_dict["mean"]["hand_joints"]) / self.normalize_dict["std"]["hand_joints"]
+            # label = (label - self.normalize_dict["mean"]["plug_hand_sin_cos_euler"]) / self.normalize_dict["std"]["plug_hand_sin_cos_euler"]
 
         # Output
         shift_action_right = np.concatenate([np.zeros((1, action.shape[-1])), action[:-1, :]], axis=0)
-        lin_input = np.concatenate([eef_pos,
-                                    # hand_joints,
-                                    shift_action_right
+        lin_input = np.concatenate([
+                                    # eef_pos,
+                                    hand_joints,
+                                    # shift_action_right
                                     ], axis=-1)
 
         # Convert to torch tensors
@@ -91,7 +190,7 @@ class TactileDataset(Dataset):
                                                         lin_input,
                                                         contacts,
                                                         obs_hist,
-                                                        latent,
+                                                        label,
                                                         action,
                                                         mask]]
 
@@ -178,9 +277,9 @@ class TactileRealDataset(Dataset):
         # if the frames before that index are less than sequence_length, we pad with zeros
 
         # generating mask (for varied sequence lengths)
-        end_idx = np.random.randint(0, done_idx)  # 0 and 500
-        start_idx = max(0, end_idx - self.sequence_length)  # max(0, 60 - 50) = 10 -> 60
-        padding_length = self.sequence_length - (end_idx - start_idx)  # 50 - (60 - 10) = 0 -> 50
+        end_idx = np.random.randint(0, done_idx)
+        start_idx = max(0, end_idx - self.sequence_length)
+        padding_length = self.sequence_length - (end_idx - start_idx)
 
         # print("start_idx: ", start_idx, "end_idx: ", end_idx, "padding_length: ", padding_length)
         build_traj = lambda x: np.concatenate([np.zeros((padding_length, *x.shape[1:])), x[start_idx: end_idx, ...]],

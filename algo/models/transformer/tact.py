@@ -95,9 +95,10 @@ class TacT(BaseModel):
             num_channels: int = 3,
             num_lin_features: int = 10,
             num_outputs: int = 5,
+            share_encoding: Optional[bool] = True,
             obs_encoder: Optional[str] = "efficientnet-b0",
-            obs_encoding_size: Optional[int] = 512,
-            lin_encoding_size: Optional[int] = 512,
+            obs_encoding_size: Optional[int] = 128,
+            lin_encoding_size: Optional[int] = 128,
             mha_num_attention_heads: Optional[int] = 2,
             mha_num_attention_layers: Optional[int] = 2,
             mha_ff_dim_factor: Optional[int] = 4,
@@ -117,6 +118,7 @@ class TacT(BaseModel):
         self.num_lin_features = num_lin_features
         self.lin_encoding_size = lin_encoding_size
         self.num_channels = num_channels
+        self.share_encoding = share_encoding
 
         if obs_encoder.split("-")[0] == "efficientnet":
             self.obs_encoder = EfficientNet.from_name(obs_encoder, in_channels=num_channels)  # context
@@ -128,9 +130,6 @@ class TacT(BaseModel):
                                          nn.ReLU(),
                                          nn.Linear(lin_encoding_size // 2, lin_encoding_size))
 
-        # self.contact_encoder = nn.Sequential(nn.Linear(500, lin_encoding_size // 2),
-        #                                  nn.ReLU(),
-        #                                  nn.Linear(lin_encoding_size // 2, lin_encoding_size // 2))
 
         if self.num_obs_features != self.obs_encoding_size:
             self.compress_obs_enc = nn.Linear(self.num_obs_features, self.obs_encoding_size)
@@ -139,7 +138,7 @@ class TacT(BaseModel):
 
         self.decoder = MultiLayerDecoder(
             embed_dim=self.obs_encoding_size,
-            seq_len=self.context_size * 2,
+            seq_len=self.context_size * (3 + 1),
             output_layers=[256, 128, 64, 32],
             nhead=mha_num_attention_heads,
             num_layers=mha_num_attention_layers,
@@ -156,45 +155,43 @@ class TacT(BaseModel):
         # currently, the size of lin_encoding is [batch_size, num_lin_features]
         lin_encoding = self.lin_encoder(lin_input)
 
-        # contact_encodings = self.contact_encoder(contacts)
-        # lin_encoding = torch.cat((contact_encodings, lin_encoding), dim=2)
-
         if len(lin_encoding.shape) == 2:
             lin_encoding = lin_encoding.unsqueeze(1)
         # currently, the size of goal_encoding is [batch_size, 1, self.goal_encoding_size]
         assert lin_encoding.shape[2] == self.lin_encoding_size
 
         # split the observation into context based on the context size
-        # TODO make sure information is not mixed between batchs.
-        B, T, CF, W, H = obs_img.shape
-        obs_img = obs_img.reshape(B*T, CF, W, H)
-        # image size is [batch_size, C*self.context_size, H, W]
-        # obs_img = torch.split(obs_img, self.num_channels, dim=1)
-        # image size is [batch_size*self.context_size, self.num_channels, H, W]
-        # obs_img = torch.concat(obs_img, dim=0)
+        B, T, F, C, W, H = obs_img.shape
+        # obs_img = obs_img.reshape(B*T, CF, W, H)
+        fingers = [obs_img[:, :, i, ...].reshape(B*T, C, W, H) for i in range(F)]
 
-        # get the observation encoding
-        obs_encoding = self.obs_encoder.extract_features(obs_img)
-        # currently the size is [batch_size*(self.context_size), 1280, H/32, W/32]
-        obs_encoding = self.obs_encoder._avg_pooling(obs_encoding)
-        # currently the size is [batch_size*(self.context_size), 1280, 1, 1]
-        if self.obs_encoder._global_params.include_top:
-            obs_encoding = obs_encoding.flatten(start_dim=1)
-            obs_encoding = self.obs_encoder._dropout(obs_encoding)
-        # currently, the size is [batch_size, self.context_size, self.obs_encoding_size]
+        obs_features = []
+        if self.share_encoding:
+            for finger in fingers:
+                # get the observation encoding
+                obs_encoding = self.obs_encoder.extract_features(finger)
+                # currently the size is [batch_size*(self.context_size), 1280, H/32, W/32]
+                obs_encoding = self.obs_encoder._avg_pooling(obs_encoding)
+                # currently the size is [batch_size*(self.context_size), 1280, 1, 1]
+                if self.obs_encoder._global_params.include_top:
+                    obs_encoding = obs_encoding.flatten(start_dim=1)
+                    obs_encoding = self.obs_encoder._dropout(obs_encoding)
+                # currently, the size is [batch_size, self.context_size, self.obs_encoding_size]
+                obs_encoding = self.compress_obs_enc(obs_encoding)
+                # currently, the size is [batch_size*(self.context_size), self.obs_encoding_size]
+                # reshape the obs_encoding to [context + 1, batch, encoding_size], note that the order is flipped
+                obs_encoding = obs_encoding.reshape((self.context_size, -1, self.obs_encoding_size)) #+ 1
+                obs_encoding = torch.transpose(obs_encoding, 0, 1)
+                # currently, the size is [batch_size, self.context_size, self.obs_encoding_size]
+                obs_features.append(obs_encoding)
+        else:
+            raise NotImplementedError
 
-        obs_encoding = self.compress_obs_enc(obs_encoding)
-        # currently, the size is [batch_size*(self.context_size), self.obs_encoding_size]
-        # reshape the obs_encoding to [context + 1, batch, encoding_size], note that the order is flipped
-        obs_encoding = obs_encoding.reshape((self.context_size, -1, self.obs_encoding_size)) #+ 1
-        obs_encoding = torch.transpose(obs_encoding, 0, 1)
-        # currently, the size is [batch_size, self.context_size, self.obs_encoding_size]
-
+        obs_features = torch.cat(obs_features, dim=1)
         # concatenate the goal encoding to the observation encoding
-        tokens = torch.cat((obs_encoding, lin_encoding), dim=1)
+        tokens = torch.cat((obs_features, lin_encoding), dim=1)
         final_repr = self.decoder(tokens)
         # currently, the size is [batch_size, 32]
-
         latent_pred = self.latent_predictor(final_repr)
 
         return latent_pred

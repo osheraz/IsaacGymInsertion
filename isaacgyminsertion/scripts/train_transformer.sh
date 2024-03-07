@@ -14,9 +14,9 @@ echo extra "${EXTRA_ARGS}"
 
 model_to_load=outputs/${CACHE}/stage1_nn/last.pth
 data=/home/roblab20/tactile_insertion
-data_folder=/home/roblab20/tactile_insertion/datastore_0_contact2 #/datastore_${SEED}_${CACHE}
+data_folder=/home/roblab20/tactile_insertion/datastore_42_contact2
 output_dir=outputs/${CACHE}
-path_norm=/home/roblab20/tactile_insertion/datastore_0_contact2/normalization.pkl
+path_norm=${data_folder}/normalization.pkl
 student_ckpt_path=/home/roblab20/tactile_insertion/datastore_0_contact2/tac+eef/checkpoints/model_2.pt
 
 CUDA_VISIBLE_DEVICES=${GPUS} \
@@ -27,7 +27,7 @@ test=False \
 offline_training_w_env=False \
 offline_train.train.action_regularization=False \
 offline_train.model.transformer.full_sequence=False \
-offline_train.model.transformer.sequence_length=5 \
+offline_train.model.transformer.sequence_length=1 \
 offline_train.train.load_checkpoint=False \
 offline_train.train.student_ckpt_path="${student_ckpt_path}" \
 task.env.tactile=True \
@@ -35,7 +35,7 @@ task.tactile.tacto.width=224 \
 task.tactile.tacto.height=224 \
 task.tactile.decoder.width=224 \
 task.tactile.decoder.height=224 \
-task.tactile.decoder.num_channels=1 \
+task.tactile.decoder.num_channels=3 \
 task.tactile.half_image=True \
 task.env.smooth_force=True \
 task.env.tactile_history_len=1 \

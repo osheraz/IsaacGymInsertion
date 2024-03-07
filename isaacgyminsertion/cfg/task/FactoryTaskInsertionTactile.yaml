@@ -14,7 +14,7 @@ grasp_logger:
 data_logger:
     # for data collection
     collect_data: False
-    total_trajectories: 1000
+    total_trajectories: 15000
     base_folder: "/home/roblab20/tactile_insertion"
     sub_folder: "datastore_0_contact2"
 
@@ -37,7 +37,7 @@ tactile: # Pulling from task
   decoder:
     width: 224
     height: 224
-    num_channels: 1 # 1 (Grayscale), 3 (RGB)
+    num_channels: 3 # 1 (Grayscale), 3 (RGB)
 
   sim2real: False
   model_G: latest_net_G_B.pth # path for the generator
@@ -125,7 +125,7 @@ rl:
     keypoint_scale: 1.0  # length of line of keypoints
 
 
-    max_episode_length: 500 # 8192  # terminate episode after this number of timesteps (failure)
+    max_episode_length: 100 # 8192  # terminate episode after this number of timesteps (failure)
 
     orientation_threshold: 0.1
     far_error_thresh: 0.100  # threshold above which plug is considered too far from bolt

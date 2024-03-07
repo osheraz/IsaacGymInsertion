@@ -10,7 +10,6 @@ import random
 # %%
 import yaml
 
-
 all_paths = glob('/home/roblab20/tactile_insertion/datastore_42_contact2/*/*.npz')
 print(len(all_paths))
 
@@ -51,6 +50,7 @@ if False:
             import numpy as np
             from tqdm import tqdm
 
+
             # choose codec according to format needed
             # fourcc = cv2.VideoWriter_fourcc(*'XVID')
             # video = cv2.VideoWriter('video.avi', fourcc, 20, (112, 672), isColor=False)
@@ -68,22 +68,22 @@ if False:
 
             print(data.files)
 
-            tactile_img = data['tactile'][:done_idx,...]
-            latent = data['latent'][:done_idx,...]
-            plug_pos = data['plug_pos'][:done_idx,...]
-            socket_pos = data['socket_pos'][:done_idx,...]
+            tactile_img = data['tactile'][:done_idx, ...]
+            latent = data['latent'][:done_idx, ...]
+            plug_pos = data['plug_pos'][:done_idx, ...]
+            socket_pos = data['socket_pos'][:done_idx, ...]
 
             plug_pos_x = plug_pos[:, 0]
             plug_pos_y = plug_pos[:, 1]
             plug_pos_z = plug_pos[:, 2]
-            pose_orientations = plug_pos[:, 3:].reshape(plug_pos.shape[0], 3,3)  # Extracting the orientation part of the pose matrix
+            pose_orientations = plug_pos[:, 3:].reshape(plug_pos.shape[0], 3,
+                                                        3)  # Extracting the orientation part of the pose matrix
 
             from scipy.spatial.transform import Rotation as R
 
             euler_angles = np.array([R.from_matrix(pose_orientations[i]).as_euler('xyz', degrees=True)
                                      for i in range(len(pose_orientations))])
             # Converting quaternion to Euler angles (roll, pitch, yaw)
-
 
             socket_pos_x = socket_pos[:, 0]
             socket_pos_y = socket_pos[:, 1]
@@ -96,11 +96,11 @@ if False:
                 # ax4 = fig.add_subplot(312)
                 ax2 = fig.add_subplot(121)
                 ax3 = fig.add_subplot(122, projection='3d')
-                test= True
+                test = True
                 # Initialize the line objects for dynamic updating
             line_latent, = ax2.plot([], [], 'o')
             line_plug, = ax3.plot([], [], [])
-            line_socket, = ax3.plot([], [], [],'o')
+            line_socket, = ax3.plot([], [], [], 'o')
 
             # ax1.set_title('Tactile Image')
             # ax1.axis('off')
@@ -117,7 +117,7 @@ if False:
             ax3.set_zlabel('Z')
             # ax3.legend()
 
-        # ax3.set_xlim([min(min(plug_pos_x), min(socket_pos_x)), max(max(plug_pos_x), max(socket_pos_x))])
+            # ax3.set_xlim([min(min(plug_pos_x), min(socket_pos_x)), max(max(plug_pos_x), max(socket_pos_x))])
             ax3.set_xlim([0.47, 0.52])
             ax3.set_ylim([min(min(plug_pos_y), min(socket_pos_y)), max(max(plug_pos_y), max(socket_pos_y))])
             ax3.set_zlim([min(min(plug_pos_z), min(socket_pos_z)), max(max(plug_pos_z), max(socket_pos_z))])
@@ -187,8 +187,6 @@ if False:
             # plt.ioff()  # Turn off interactive mode at the end
     plt.show()
 
-
-
 if False:
     import cv2
     import numpy as np
@@ -217,10 +215,10 @@ if False:
 
     print(data.files)
 
-    tactile_img = data['tactile'][:done_idx,...]
-    latent = data['latent'][:done_idx,...]
-    plug_pos = data['plug_pos'].reshape(-1, 4, 4)[:done_idx,...]
-    socket_pos = data['socket_pos'].reshape(-1, 4, 4)[:done_idx,...]
+    tactile_img = data['tactile'][:done_idx, ...]
+    latent = data['latent'][:done_idx, ...]
+    plug_pos = data['plug_pos'].reshape(-1, 4, 4)[:done_idx, ...]
+    socket_pos = data['socket_pos'].reshape(-1, 4, 4)[:done_idx, ...]
 
     plug_pos_x = plug_pos[:, 0, 3]
     plug_pos_y = plug_pos[:, 1, 3]
@@ -232,7 +230,6 @@ if False:
     euler_angles = np.array([R.from_matrix(pose_orientations[i]).as_euler('xyz', degrees=True)
                              for i in range(len(pose_orientations))])
     # Converting quaternion to Euler angles (roll, pitch, yaw)
-
 
     socket_pos_x = socket_pos[:, 0, 3]
     socket_pos_y = socket_pos[:, 1, 3]
@@ -349,12 +346,13 @@ if False:
     done_idx = data['done'].nonzero()[-1][0]
 
     fig = plt.figure(figsize=(18, 10))
-    ax = fig.add_subplot(111,projection='3d')
-    ax.plot(data['priv_obs'][:done_idx, 0], data['priv_obs'][:done_idx, 1], zs=data['priv_obs'][:done_idx, 2], marker='o')
+    ax = fig.add_subplot(111, projection='3d')
+    ax.plot(data['priv_obs'][:done_idx, 0], data['priv_obs'][:done_idx, 1], zs=data['priv_obs'][:done_idx, 2],
+            marker='o')
     # ax.plot(data['plug_pos'][:done_idx, 0], data['plug_pos'][:done_idx, 1], zs=data['plug_pos'][:done_idx, 2])
     # ax.plot(data['eef_pos'][:done_idx, 0], data['eef_pos'][:done_idx, 1], zs=data['eef_pos'][:done_idx, 2])
     ax.set_xlabel('$X$', fontsize=20, rotation=150)
-    ax.set_ylabel('$Y$',fontsize=20, rotation=150)
+    ax.set_ylabel('$Y$', fontsize=20, rotation=150)
     ax.set_zlabel('$Z$', fontsize=30, rotation=60)
 
     delta = 0.06
@@ -378,16 +376,57 @@ if False:
     plt.plot(data['eef_pos'][1:done_idx, 0], data['eef_pos'][1:done_idx, 1])
     plt.scatter(data['socket_pos'][1:done_idx, 0], data['socket_pos'][1:done_idx, 1], color='r', s=35)
     plt.show()
+from scipy.spatial.transform import Rotation
 
-if True:
-    path = random.sample(all_paths, 1)[0]
-    # path = all_paths[i]
-    data = np.load(path)
-    done_idx = data['done'].nonzero()[-1][0]
-
+if False:
     fig = plt.figure(figsize=(18, 10))
     ax = fig.add_subplot(111)
-    plt.plot(data['hand_joints'][1:done_idx, :], color='black')
+
+    for i in range(100):
+        path = random.sample(all_paths, 1)[0]
+        print(path)
+        # path = all_paths[i]
+        data = np.load(path)
+        done_idx = data['done'].nonzero()[-1][0]
+
+        euler_angles = Rotation.from_quat(data["plug_hand_quat"][1:done_idx, :]).as_euler('xyz')
+        euler_angles[:,0] = np.where(euler_angles[:,0] > 0, euler_angles[:,0] - np.pi, euler_angles[:,0] + np.pi)
+
+        # Extract and reshape rotation matrices for the plug and the EEF
+        # rot_mats_plug = data["plug_pos"][:, 3:].reshape(-1, 3, 3)[1:done_idx, :]
+        # rot_mats_eef = data["eef_pos"][:, 3:].reshape(-1, 3, 3)[1:done_idx, :]
+
+        # # Step 1: Invert (transpose) the EEF's rotation matrices
+        # rot_mats_eef_inv = np.transpose(rot_mats_eef, (0, 2, 1))
+        #
+        # # Step 2: Compute the relative rotation matrix
+        # rel_rot_mats = np.matmul(rot_mats_eef_inv, rot_mats_plug)
+        #
+        # # Convert the relative rotation matrices to Rotation objects
+        # rel_rot_objs = Rotation.from_matrix(rel_rot_mats)
+        #
+        # # Step 3: Convert to Euler angles ('xyz' sequence)
+        # rel_euler_angles = rel_rot_objs.as_euler('xyz')
+
+        # euler_angles = rel_euler_angles
+
+        sin_cos_representation = np.hstack((np.sin(euler_angles[:, 0:1]), np.cos(euler_angles[:, 0:1]),
+                                            np.sin(euler_angles[:, 1:2]), np.cos(euler_angles[:, 1:2]),
+                                            np.sin(euler_angles[:, 2:3]), np.cos(euler_angles[:, 2:3])))
+
+        to_show_roll = np.arctan2(np.sin(euler_angles[:, 0:1]), np.cos(euler_angles[:, 0:1])) * 180 / np.pi
+        to_show_pitch = np.arctan2(np.sin(euler_angles[:, 1:2]), np.cos(euler_angles[:, 1:2])) * 180 / np.pi
+        to_show_yaw = np.arctan2(np.sin(euler_angles[:, 2:3]), np.cos(euler_angles[:, 2:3])) * 180 / np.pi
+        #
+
+        # to_show_roll_unwrapped = np.unwrap(to_show_roll)
+        # to_show_pitch_unwrapped = np.unwrap(to_show_pitch)
+        # to_show_yaw_unwrapped = np.unwrap(to_show_yaw)
+        plt.plot(to_show_roll[:, 0], 'o')
+
+        # plt.plot(sin_cos_representation[:,2:4], 'ko')
+        # plt.plot(sin_cos_representation[:,4:6], 'go')
+
     plt.show()
 
 # %%
@@ -404,8 +443,7 @@ if False:
     plt.scatter(data['socket_pos'][1:done_idx, 0], data['socket_pos'][1:done_idx, 1], color='r', s=35)
     plt.show()
 
-
-if False:
+if True:
     import cv2
     import numpy as np
     from tqdm import tqdm
@@ -416,6 +454,7 @@ if False:
     # path = all_paths[i]
     data = np.load(path)
     done_idx = data['done'].nonzero()[-1][0]
+
 
     def reverse_normalize(image):
         mean = np.array([0.5, 0.5, 0.5])
@@ -430,12 +469,16 @@ if False:
 
     print(data.files)
 
-    tactile_img = data['tactile'][:done_idx,...]
+    tactile_img = data['tactile'][:done_idx, ...]
 
     for j in tqdm(range(0, done_idx)):
         img1 = tactile_img[j][0]
         img2 = tactile_img[j][1]
         img3 = tactile_img[j][2]
+
+        img1 = np.transpose(img1, (1, 2, 0))
+        img2 = np.transpose(img2, (1, 2, 0))
+        img3 = np.transpose(img3, (1, 2, 0))
 
         img1 = reverse_normalize(img1)
         img2 = reverse_normalize(img2)
@@ -443,6 +486,5 @@ if False:
         img = np.concatenate((img1, img2, img3), axis=1)
 
         # Update and redraw the tactile image
-        cv2.imshow('test',img)
-        cv2.waitKey(20)
-
+        cv2.imshow('test', (img*255).astype(np.uint8))
+        cv2.waitKey(2000)

@@ -239,16 +239,32 @@ class ActorCriticSplit(nn.Module):
                     extrin_gt = extrin_priv
 
                 if display:
-                    plt.ylim(-1, 1)
+                    plt.ylim(-np.pi,np.pi)
+
+                    # Convert model output (to_show) back to roll and pitch angles
+                    to_show = obs_dict['object_ori'][:, -1, :]
+                    sin_roll, cos_roll = to_show[:, 0], to_show[:, 1]
+                    sin_pitch, cos_pitch = to_show[:, 2], to_show[:, 3]
+                    to_show_roll = torch.atan2(sin_roll, cos_roll)
+                    to_show_pitch = torch.atan2(sin_pitch, cos_pitch)
+                    to_show = torch.cat((to_show_roll.unsqueeze(1), to_show_pitch.unsqueeze(1)), dim=1)
+
+                    # Convert extrin back to roll and pitch angles
+                    sin_roll_e, cos_roll_e = extrin[:, 0], extrin[:, 1]
+                    sin_pitch_e, cos_pitch_e = extrin[:, 2], extrin[:, 3]
+                    extrin_roll = torch.atan2(sin_roll_e, cos_roll_e)
+                    extrin_pitch = torch.atan2(sin_pitch_e, cos_pitch_e)
+                    extrin = torch.cat((extrin_roll.unsqueeze(1), extrin_pitch.unsqueeze(1)), dim=1)
+
                     plt.scatter(list(range(extrin.shape[-1])), extrin.clone().detach().cpu().numpy()[0, :], color='r')
-                    plt.scatter(list(range(extrin_gt.shape[-1])), extrin_gt.clone().cpu().numpy()[0, :], color='b')
+                    plt.scatter(list(range(to_show.shape[-1])), to_show.clone().cpu().numpy()[0, :], color='b')
                     plt.pause(0.0001)
                     plt.cla()
 
             # predict with the student extrinsic
-            obs = torch.cat([obs, extrin], dim=-1)
+            obs = torch.cat([obs, extrin_gt], dim=-1)
             if self.contact_info:
-                dec = self.contact_ae.forward_dec(extrin)
+                dec = self.contact_ae.forward_dec(extrin_gt)
 
         # MLP models
         else:
@@ -313,7 +329,7 @@ class ActorCriticSplit(nn.Module):
                     else:
                         extrin = extrin_priv
 
-                    if display:
+                    if display and 'latent' in obs_dict and obs_dict['latent'] is not None:
                         plt.ylim(-1, 1)
                         plt.scatter(list(range(extrin.shape[-1])), extrin.clone().detach().cpu().numpy()[0, :],
                                     color='b')
