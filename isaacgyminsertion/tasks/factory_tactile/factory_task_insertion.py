@@ -38,6 +38,8 @@ import hydra
 import omegaconf
 import time
 import os
+from scipy.spatial.transform import Rotation as R
+
 import torch
 os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
 
@@ -52,6 +54,7 @@ from multiprocessing import Process, Queue, Manager
 import cv2
 # from isaacgyminsertion.allsight.experiments.allsight_render import allsight_renderer
 from isaacgyminsertion.allsight.tacto_allsight_wrapper.util.util import tensor2im
+from matplotlib import pyplot as plt
 
 torch.set_printoptions(sci_mode=False)
 
@@ -129,8 +132,10 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         self.hand_joints = torch.zeros((self.num_envs, 6), device=self.device)
 
-        self.plug_grasp_pos_local = self.plug_heights * 0.95 * torch.tensor([0.0, 0.0, 1.0], device=self.device).repeat(
+        self.plug_grasp_pos_local = self.plug_heights * 0.97 * torch.tensor([0.0, 0.0, 1.0], device=self.device).repeat(
             (self.num_envs, 1))
+        self.plug_grasp_pos_local[:, 0] = -0.08*self.plug_widths.squeeze()
+
         self.plug_grasp_quat_local = torch.tensor([0.0, 0.0, 0.0, 1.0], device=self.device).unsqueeze(0).repeat(
             self.num_envs, 1)
 
@@ -227,9 +232,12 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             torch.zeros((self.num_envs, 4), device=self.device)
         self.plug_pos_error, self.plug_quat_error = torch.zeros((self.num_envs, 3), device=self.device), \
             torch.zeros((self.num_envs, 4), device=self.device)
+        self.plug_hand_pos_diff, self.plug_hand_quat_diff = torch.zeros((self.num_envs, 3), device=self.device), \
+            torch.zeros((self.num_envs, 4), device=self.device)
+        self.plug_hand_pos_init, self.plug_hand_quat_init = torch.zeros((self.num_envs, 3), device=self.device), \
+            torch.zeros((self.num_envs, 4), device=self.device)
 
-        self.rigid_physics_params = torch.zeros((self.num_envs, 6), device=self.device,
-                                                dtype=torch.float)  # TODO: Take num_params to config
+        self.rigid_physics_params = torch.zeros((self.num_envs, 6), device=self.device,dtype=torch.float)
         self.finger_normalized_forces = torch.zeros((self.num_envs, 3), device=self.device, dtype=torch.float)
 
         self.gt_extrinsic_contact = torch.zeros((self.num_envs, self.cfg_task.env.num_points),
@@ -608,8 +616,8 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.tactile_queue[:, 1:] = self.tactile_queue[:, :-1].clone().detach()
         self.tactile_queue[:, 0, ...] = self.tactile_imgs
 
-        self.ft_queue[:, 1:] = self.ft_queue[:, :-1].clone().detach()
-        self.ft_queue[:, 0, :] = 0.1 * self.ft_sensor_tensor.clone()
+        # self.ft_queue[:, 1:] = self.ft_queue[:, :-1].clone().detach()
+        # self.ft_queue[:, 0, :] = 0.1 * self.ft_sensor_tensor.clone()
 
         # Compute Observation and state at current timestep
         # delta_pos = self.socket_tip - self.fingertip_centered_pos
@@ -623,7 +631,11 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         targets = self.targets.clone()
 
         # obs = torch.cat([eef_pos, actions, targets], dim=-1)
-        obs = torch.cat([eef_pos, actions], dim=-1)
+        obs = torch.cat([eef_pos,
+                         actions,
+                         self.noisy_gripper_goal_pos.clone(),
+                         noisy_delta_pos
+                         ], dim=-1)
 
         self.obs_queue[:, :-self.num_observations] = self.obs_queue[:, self.num_observations:]
         self.obs_queue[:, -self.num_observations:] = obs
@@ -636,7 +648,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             # self.delta_pos_noisy_queue.reshape(self.num_envs, -1),
             self.actions_queue.reshape(self.num_envs, -1),  # (envs, 6 * hist)
             # self.delta_noisy_queue.reshape(self.num_envs, -1),  # (envs, 3 * hist)
-            self.targets_queue.reshape(self.num_envs, -1),  # (envs, 6 * hist)
+            # self.targets_queue.reshape(self.num_envs, -1),  # (envs, 6 * hist)
         ]
 
         obs_tensors_student = [
@@ -644,7 +656,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             self.eef_queue_student.reshape(self.num_envs, -1),  # (envs, 12 * hist)
             # self.goal_noisy_queue_student.reshape(self.num_envs, -1),  # (envs, 3 * hist)
             self.actions_queue_student.reshape(self.num_envs, -1),  # (envs, 6 * hist)
-            self.targets_queue_student.reshape(self.num_envs, -1),  # (envs, 6 * hist)
+            # self.targets_queue_student.reshape(self.num_envs, -1),  # (envs, 6 * hist)
         ]
 
         # Define state (for teacher)
@@ -667,6 +679,15 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         plug_hand_pos, plug_hand_quat = self.pose_world_to_hand_base(self.plug_pos, self.plug_quat, as_matrix=False)
         self.plug_hand_pos[...] = plug_hand_pos
         self.plug_hand_quat[...] = plug_hand_quat
+
+        self.plug_hand_pos_diff[...] = plug_hand_pos - self.plug_hand_pos_init
+        self.plug_hand_quat_diff[...] = plug_hand_quat - self.plug_hand_quat_init
+
+        # to_plot = self.plug_hand_pos_diff.clone().cpu().numpy()[0, :]
+        # # to_plot = R.from_quat(to_plot).as_euler('xyz', degrees=True)
+        # plt.scatter(list(range(to_plot.shape[-1])), to_plot,color='b')
+        # plt.pause(0.0001)
+        # plt.cla()
 
         plug_pos_error, plug_quat_error = fc.get_pose_error(
             fingertip_midpoint_pos=self.plug_pos.clone(),
@@ -728,10 +749,10 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             # self.socket_pos.clone(), # 3
             # self.socket_quat.clone(), # 4
 
-            # plug_hand_pos,   # 3
-            # plug_hand_quat,  # 4
-            plug_pos_error,  # 3
-            plug_quat_error,  # 4
+            self.plug_hand_pos_diff,   # 3
+            self.plug_hand_quat_diff,  # 4
+            # plug_pos_error,  # 3
+            # plug_quat_error,  # 4
             # physics_params,  # 6
             # self.finger_normalized_forces,  # 3
             # self.plug_pcd.view(self.num_envs, -1),  # 3 * num_points =  3 * 10 = 30
@@ -875,7 +896,8 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         plug_pos_noise[:, 2] = ((torch.rand((len(env_ids),)) * (0.007 - 0.003)) + 0.003) + 0.02  # 0.003 to 0.01
         plug_pos[:, :] += plug_pos_noise
         plug_euler_w_noise = np.array([0., 0., 0.])
-        plug_euler_w_noise += np.random.uniform(-0.4, 0.4, plug_euler_w_noise.shape)
+        plug_euler_w_noise += np.random.uniform(-0.3, 0.3, plug_euler_w_noise.shape)
+        plug_euler_w_noise[-1] = 0
         plug_quat[:, :] = torch.from_numpy(R.from_euler('xyz', plug_euler_w_noise).as_quat())
         # plug_quat[:, -1] = 1.
 
@@ -925,13 +947,13 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                                           device=self.device) - 0.5)) * self.cfg_task.randomize.grasp_plug_noise
         first_plug_pose = self.plug_grasp_pos.clone()
 
-        first_plug_pose[env_ids, :] += plug_pos_noise[:, :]
+        first_plug_pose[env_ids, :2] += plug_pos_noise[:, :2]
 
         self._move_arm_to_desired_pose(env_ids, first_plug_pose,
                                        sim_steps=self.cfg_task.env.num_gripper_move_sim_steps * 2)
         # self._zero_velocities(env_ids)
         self._refresh_task_tensors(update_tactile=False)
-        self._close_gripper(env_ids) # torch.arange(self.num_envs)
+        self._close_gripper(env_ids)  # torch.arange(self.num_envs)
 
         self.enable_gravity(-9.81)
 
@@ -939,6 +961,11 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.refresh_base_tensors()
         self.refresh_env_tensors()
         self._refresh_task_tensors(update_tactile=True)
+
+        # Update init grasp pos
+        plug_hand_pos, plug_hand_quat = self.pose_world_to_hand_base(self.plug_pos, self.plug_quat, as_matrix=False)
+        self.plug_hand_pos_init[...] = plug_hand_pos
+        self.plug_hand_quat_init[...] = plug_hand_quat
 
         if self.cfg_task.env.record_video and 0 in env_ids:
             if self.complete_video_frames is None:
@@ -980,7 +1007,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.dof_pos[env_ids, list(self.dof_dict.values()).index(
             'finger_2_1_to_finger_2_2')] = self.cfg_task.env.openhand.proximal_open
         self.dof_pos[env_ids, list(self.dof_dict.values()).index(
-            'base_to_finger_3_2')] = self.cfg_task.env.openhand.proximal_open + 0.15
+            'base_to_finger_3_2')] = self.cfg_task.env.openhand.proximal_open + 0.5
         self.dof_pos[env_ids, list(self.dof_dict.values()).index(
             'finger_1_2_to_finger_1_3')] = self.cfg_task.env.openhand.distal_open
         self.dof_pos[env_ids, list(self.dof_dict.values()).index(
@@ -1198,6 +1225,8 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         if self.cfg_task.env.compute_contact_gt:
             self.gt_extrinsic_contact[env_ids] *= 0
+
+        # update init grasp pos
 
     def _set_viewer_params(self):
         """Set viewer parameters."""

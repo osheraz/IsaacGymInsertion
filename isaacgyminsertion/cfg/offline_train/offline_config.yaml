@@ -6,8 +6,8 @@ output_dir: "/home/roblab20/tactile_insertion/datastore_42_contact2" # where to 
 train:
   # basic training hyperparameters
   epochs: 100
-  train_batch_size: 16
-  val_batch_size: 16
+  train_batch_size: 8
+  val_batch_size: 8
   learning_rate: 5e-4
   train_test_split: 0.98
   action_regularization: False # propagate gradients for action loss
@@ -25,7 +25,7 @@ train:
   action_scale: 1.0
 
   # Train params for on screen logging
-  print_every: 10
+  print_every: 100
   eval_every: 4000
   test_every: 10000
   test_episodes: 2 # per epoch batch
@@ -35,7 +35,7 @@ train:
   only_validate: False
 
   # normalize data
-  normalize_keys: ["eef_pos", "action", "obs_hist", "hand_joints", "plug_hand_quat"]
+  normalize_keys: ["eef_pos", "action", "obs_hist", "hand_joints", "plug_hand_quat", "plug_hand_pos"]
   normalize_file: "/home/roblab20/tactile_insertion/datastore_42_contact2/normalization.pkl"
 
   # load student checkpoint
@@ -57,11 +57,11 @@ model:
   # tactile+obs encoder
   transformer:
     full_sequence: False # if True, it makes sequence length 500
-    sequence_length: 1 # ${...task.rl.max_episode_length}
+    sequence_length: 5 # ${...task.rl.max_episode_length}
     num_layers: 4
     num_heads: 4
     dim_factor: 4
-    output_size: 4
+    output_size: 6
     obs_encoding_size: 128
 
 # wandb logging

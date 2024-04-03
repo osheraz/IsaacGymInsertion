@@ -13,6 +13,8 @@ import yaml
 all_paths = glob('/home/roblab20/tactile_insertion/datastore_42_contact2/*/*.npz')
 print(len(all_paths))
 
+test=False
+
 if False:
     for i in range(len(all_paths)):
         # while not opened:
@@ -29,10 +31,10 @@ if False:
         except Exception as e:
             print(f"Error loading file {path}: {e}")
             # Remove the bad file path from the list
-            # all_paths.remove(path)
+            all_paths.remove(path)
             try:
                 # Remove the file from the computer
-                # os.remove(path)
+                os.remove(path)
                 print(f"File {path} removed from the computer.")
             except Exception as e:
                 print(f"Error removing file {path}: {e}")
@@ -68,21 +70,21 @@ if False:
 
             print(data.files)
 
-            tactile_img = data['tactile'][:done_idx, ...]
-            latent = data['latent'][:done_idx, ...]
-            plug_pos = data['plug_pos'][:done_idx, ...]
-            socket_pos = data['socket_pos'][:done_idx, ...]
+            # tactile_img = data['tactile'][:done_idx, ...]
+            # latent = data['latent'][:done_idx, ...]
+            plug_pos = data['eef_pos'][:done_idx, ...]
+            socket_pos = data['eef_pos'][:done_idx, ...]
 
             plug_pos_x = plug_pos[:, 0]
             plug_pos_y = plug_pos[:, 1]
             plug_pos_z = plug_pos[:, 2]
-            pose_orientations = plug_pos[:, 3:].reshape(plug_pos.shape[0], 3,
-                                                        3)  # Extracting the orientation part of the pose matrix
-
-            from scipy.spatial.transform import Rotation as R
-
-            euler_angles = np.array([R.from_matrix(pose_orientations[i]).as_euler('xyz', degrees=True)
-                                     for i in range(len(pose_orientations))])
+            # pose_orientations = plug_pos[:, 3:].reshape(plug_pos.shape[0], 3,
+            #                                             3)  # Extracting the orientation part of the pose matrix
+            #
+            # from scipy.spatial.transform import Rotation as R
+            #
+            # euler_angles = np.array([R.from_matrix(pose_orientations[i]).as_euler('xyz', degrees=True)
+            #                          for i in range(len(pose_orientations))])
             # Converting quaternion to Euler angles (roll, pitch, yaw)
 
             socket_pos_x = socket_pos[:, 0]
@@ -98,18 +100,18 @@ if False:
                 ax3 = fig.add_subplot(122, projection='3d')
                 test = True
                 # Initialize the line objects for dynamic updating
-            line_latent, = ax2.plot([], [], 'o')
+            line_latent, = ax2.plot([], [], '-')
             line_plug, = ax3.plot([], [], [])
-            line_socket, = ax3.plot([], [], [], 'o')
+            line_socket, = ax3.plot([], [], [], '-')
 
             # ax1.set_title('Tactile Image')
             # ax1.axis('off')
             # ax4.set_title('Diff Tactile Image')
             # ax4.axis('off')
-            ax2.set_title('Latent Representation')
-            ax2.axis('on')
-            ax2.set_xlim([-0.1, 8.1])
-            ax2.set_ylim([-1.1, 1.1])
+            # ax2.set_title('Latent Representation')
+            # ax2.axis('on')
+            # ax2.set_xlim([-0.1, 8.1])
+            # ax2.set_ylim([-1.1, 1.1])
 
             ax3.set_title('Plug and Socket Positions')
             ax3.set_xlabel('X')
@@ -148,10 +150,10 @@ if False:
                 # ax1.axis('off')
 
                 # Update and redraw the latent representation
-                line_latent.set_xdata(range(len(latent[j])))
-                line_latent.set_ydata(latent[j])
-                ax2.set_title('Latent Representation')
-                ax2.axis('on')
+                # line_latent.set_xdata(range(len(latent[j])))
+                # line_latent.set_ydata(latent[j])
+                # ax2.set_title('Latent Representation')
+                # ax2.axis('on')
 
                 # Update and redraw the plug and socket positions in 3D
                 line_plug.set_xdata(plug_pos_x[:j + 1])
@@ -443,7 +445,7 @@ if False:
     plt.scatter(data['socket_pos'][1:done_idx, 0], data['socket_pos'][1:done_idx, 1], color='r', s=35)
     plt.show()
 
-if True:
+if False:
     import cv2
     import numpy as np
     from tqdm import tqdm
@@ -457,8 +459,8 @@ if True:
 
 
     def reverse_normalize(image):
-        mean = np.array([0.5, 0.5, 0.5])
-        std = np.array([0.5, 0.5, 0.5])
+        mean = np.array([0.5])
+        std = np.array([0.5])
         reversed_image = (image * std) + mean
         return reversed_image
 
@@ -476,9 +478,9 @@ if True:
         img2 = tactile_img[j][1]
         img3 = tactile_img[j][2]
 
-        img1 = np.transpose(img1, (1, 2, 0))
-        img2 = np.transpose(img2, (1, 2, 0))
-        img3 = np.transpose(img3, (1, 2, 0))
+        # img1 = np.transpose(img1, (1, 2, 0))
+        # img2 = np.transpose(img2, (1, 2, 0))
+        # img3 = np.transpose(img3, (1, 2, 0))
 
         img1 = reverse_normalize(img1)
         img2 = reverse_normalize(img2)
@@ -487,4 +489,29 @@ if True:
 
         # Update and redraw the tactile image
         cv2.imshow('test', (img*255).astype(np.uint8))
-        cv2.waitKey(2000)
+        cv2.waitKey(5)
+
+if True:
+    fig = plt.figure(figsize=(18, 10))
+    ax = fig.add_subplot(111)
+    a = []
+    for i in range(1000):
+        path = random.sample(all_paths, 1)[0]
+        # print(path)
+        # path = all_paths[i]
+        data = np.load(path)
+        done_idx = data['done'].nonzero()[-1][0]
+        label = Rotation.from_quat(data["plug_hand_quat"][:done_idx, :]).as_euler('xyz', degrees=True)  # data["latent"] #
+        to_plot = label - label[0, :]
+
+        if i == 0:
+            a = to_plot
+        else:
+            a = np.vstack((a, to_plot))
+
+        plt.plot(to_plot[:,2], 'o')
+
+        # plt.plot(sin_cos_representation[:,2:4], 'ko')
+        # plt.plot(sin_cos_representation[:,4:6], 'go')
+
+    plt.show()

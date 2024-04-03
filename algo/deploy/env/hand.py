@@ -77,7 +77,7 @@ class Hand():
 
         return left, right, bottom
 
-    def show_fingers_view(self, display_diff=False):
+    def show_fingers_view(self, display_diff=True):
         """
         Creates OpenCV named window with live view of Finger device, ESC to close window
         :param ref_frame: Specify reference frame to show image difference

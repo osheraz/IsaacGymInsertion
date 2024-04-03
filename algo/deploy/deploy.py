@@ -132,7 +132,8 @@ class HardwarePlayer(object):
 
         asset_info_path = '../../../../assets/factory/yaml/factory_asset_info_insertion.yaml'
         self.asset_info_insertion = hydra.compose(config_name=asset_info_path)
-        self.asset_info_insertion = self.asset_info_insertion['']['']['']['']['']['']['']['']['']['']['']['']['assets']['factory']['yaml']
+        self.asset_info_insertion = \
+        self.asset_info_insertion['']['']['']['']['']['']['']['']['']['']['']['']['assets']['factory']['yaml']
 
         self.extrinsic_contact = None
 
@@ -232,7 +233,8 @@ class HardwarePlayer(object):
         self.actions = torch.zeros((1, self.num_actions), device=self.device)
         self.targets = torch.zeros((1, self.full_config.task.env.numTargets), device=self.device)
         self.contacts = torch.zeros((1, self.num_contact_points), device=self.device)
-        self.prev_targets = torch.zeros((1, self.full_config.task.env.numTargets), dtype=torch.float, device=self.device)
+        self.prev_targets = torch.zeros((1, self.full_config.task.env.numTargets), dtype=torch.float,
+                                        device=self.device)
 
         # Keep track of history
         self.arm_joint_queue = torch.zeros((1, self.full_config.task.env.numObsHist, 7), dtype=torch.float,
@@ -269,14 +271,14 @@ class HardwarePlayer(object):
         # tactile buffers
         self.tactile_imgs = torch.zeros(
             (1, 3,  # left, right, bottom
-             self.width, self.height, self.num_channels),
+             self.num_channels, self.width, self.height),
             device=self.device,
             dtype=torch.float,
         )
         # Way too big tensor.
         self.tactile_queue = torch.zeros(
             (1, self.tactile_seq_length, 3,  # left, right, bottom
-             self.width, self.height, self.num_channels),
+             self.num_channels, self.width, self.height),
             device=self.device,
             dtype=torch.float,
         )
@@ -375,7 +377,7 @@ class HardwarePlayer(object):
         if self.gt_contacts_info:
             self.contacts[0, :] = torch.tensor(self.env.tracker.extrinsic_contact).to(self.device)
 
-    def compute_observations(self, display_image=True, with_priv=False):
+    def compute_observations(self, display_image=False, with_priv=False):
 
         obses = self.env.get_obs()
 
@@ -410,7 +412,7 @@ class HardwarePlayer(object):
             right = right[:w // 2, :, :]
             bottom = bottom[:w // 2, :, :]
 
-        # Resizing to decoder size
+        # Resizing to encoder size
         left = cv2.resize(left, (self.height, self.width), interpolation=cv2.INTER_AREA)
         right = cv2.resize(right, (self.height, self.width), interpolation=cv2.INTER_AREA)
         bottom = cv2.resize(bottom, (self.height, self.width), interpolation=cv2.INTER_AREA)
@@ -420,17 +422,16 @@ class HardwarePlayer(object):
             cv2.waitKey(1)
 
         if self.num_channels == 3:
-            self.tactile_imgs[0, 0] = torch_jit_utils.rgb_transform(left).to(self.device).permute(1, 2, 0)
-            self.tactile_imgs[0, 1] = torch_jit_utils.rgb_transform(right).to(self.device).permute(1, 2, 0)
-            self.tactile_imgs[0, 2] = torch_jit_utils.rgb_transform(bottom).to(self.device).permute(1, 2, 0)
+            self.tactile_imgs[0, 0] = torch_jit_utils.rgb_transform(left).to(self.device)
+            self.tactile_imgs[0, 1] = torch_jit_utils.rgb_transform(right).to(self.device)
+            self.tactile_imgs[0, 2] = torch_jit_utils.rgb_transform(bottom).to(self.device)
         else:
-
             self.tactile_imgs[0, 0] = torch_jit_utils.gray_transform(
-                cv2.cvtColor(left.astype('float32'), cv2.COLOR_BGR2GRAY)).to(self.device).permute(1, 2, 0)
+                cv2.cvtColor(left.astype('float32'), cv2.COLOR_BGR2GRAY)).to(self.device)
             self.tactile_imgs[0, 1] = torch_jit_utils.gray_transform(
-                cv2.cvtColor(right.astype('float32'), cv2.COLOR_BGR2GRAY)).to(self.device).permute(1, 2, 0)
+                cv2.cvtColor(right.astype('float32'), cv2.COLOR_BGR2GRAY)).to(self.device)
             self.tactile_imgs[0, 2] = torch_jit_utils.gray_transform(
-                cv2.cvtColor(bottom.astype('float32'), cv2.COLOR_BGR2GRAY)).to(self.device).permute(1, 2, 0)
+                cv2.cvtColor(bottom.astype('float32'), cv2.COLOR_BGR2GRAY)).to(self.device)
 
         self.tactile_queue[:, 1:] = self.tactile_queue[:, :-1].clone().detach()
         self.tactile_queue[:, 0, :] = self.tactile_imgs
@@ -488,33 +489,23 @@ class HardwarePlayer(object):
 
     def _update_reset_buf(self):
 
-        info = self.env.get_info_for_control()
-        ee_pose = info['ee_pose']
+        plug_socket_xy_distance = torch.norm(self.plug_pos_error[:, :2])
 
-        self.fingertip_centered_pos = torch.tensor(ee_pose[:3], device=self.device, dtype=torch.float).unsqueeze(0)
-        self.fingertip_centered_quat = torch.tensor(ee_pose[3:], device=self.device, dtype=torch.float).unsqueeze(0)
+        is_very_close_xy = plug_socket_xy_distance < 0.003
+        is_bellow_surface = self.plug_pos_error[:, 2] > -0.005
 
-        plug_socket_xy_distance = torch.norm(self.fingertip_centered_pos[:, :2] - self.socket_pos[:, :2])
-
-        is_very_close = plug_socket_xy_distance < 0.03
-
-        below_socket_top = (self.fingertip_centered_pos[:, 2] < 0.085)
-        really_below_socket = (self.fingertip_centered_pos[:, 2] < 0.075)
-
-        inserted = is_very_close & below_socket_top
-
-        is_too_far =  (plug_socket_xy_distance > 0.08) | (self.fingertip_centered_pos[:, 2] > 0.125)
+        self.inserted = is_very_close_xy & is_bellow_surface
+        is_too_far = (plug_socket_xy_distance > 0.08) | (self.fingertip_centered_pos[:, 2] > 0.125)
 
         timeout = (self.episode_length >= self.max_episode_length)
 
-        self.done = is_too_far | timeout | inserted | really_below_socket
+        self.done = is_too_far | timeout | self.inserted
 
         if self.done[0, 0].item():
             print('Reset because ',
                   "far away" if is_too_far[0].item() else "",
                   "timeoout" if timeout.item() else "",
-                  "inserted" if inserted.item() else "",
-                  "really_below_socket" if really_below_socket[0].item() else "")
+                  "inserted" if self.inserted.item() else "", )
 
     def reset(self):
 
@@ -522,12 +513,19 @@ class HardwarePlayer(object):
         joints_above_plug = self.deploy_config.common_poses.joints_above_plug
         self.env.arm.move_manipulator.scale_vel(scale_vel=0.1, scale_acc=0.1)
         self.env.move_to_joint_values(joints_above_socket, wait=True)
-        self.env.arm.move_manipulator.scale_vel(scale_vel=0.5, scale_acc=0.5)
-        self.env.move_to_joint_values(joints_above_plug, wait=True)
-        self.env.arm.move_manipulator.scale_vel(scale_vel=0.1, scale_acc=0.1)
-        self.env.align_and_release(init_plug_pose=[0.4103839067235552, 0.17531695171951858, 0.001])
-        self.env.arm.move_manipulator.scale_vel(scale_vel=0.02, scale_acc=0.02)
+        self.env.set_random_init_error(self.socket_pos)
 
+        if not self.inserted:
+            # fail case
+            self.env.arm.move_manipulator.scale_vel(scale_vel=0.5, scale_acc=0.5)
+            self.env.move_to_joint_values(joints_above_plug, wait=True)
+            self.env.arm.move_manipulator.scale_vel(scale_vel=0.1, scale_acc=0.1)
+            self.env.align_and_release(init_plug_pose=[0.4103839067235552, 0.17531695171951858, 0.001])
+
+            self.grasp_and_init()
+
+        self.env.arm.move_manipulator.scale_vel(scale_vel=0.02, scale_acc=0.02)
+        self.inserted[...] = False
         self.done[...] = False
         self.episode_length[...] = 0.
 
@@ -541,7 +539,10 @@ class HardwarePlayer(object):
         self.env.arm.move_manipulator.scale_vel(scale_vel=0.5, scale_acc=0.5)
         self.env.move_to_joint_values(joints_above_plug, wait=True)
         self.env.move_to_joint_values(joints_above_socket, wait=True)
+        self.env.arm.move_manipulator.scale_vel(scale_vel=0.1, scale_acc=0.1)
+        self.env.set_random_init_error(self.socket_pos)
         self.env.arm.move_manipulator.scale_vel(scale_vel=0.02, scale_acc=0.02)
+
         self.done[...] = False
         self.episode_length[...] = 0.
 
@@ -638,7 +639,7 @@ class HardwarePlayer(object):
         # Apply the action
         if regulize_force:
             ft = torch.tensor(self.env.get_ft(), device=self.device, dtype=torch.float).unsqueeze(0)
-            condition_mask = torch.abs(ft[:, 2]) > 1.5
+            condition_mask = torch.abs(ft[:, 2]) > 3.0
             actions[:, 2] = torch.where(condition_mask, torch.clamp(actions[:, 2], min=0.0), actions[:, 2])
             # actions = torch.where(torch.abs(ft) > 1.5, torch.clamp(actions, min=0.0), actions)
             print("Regularized Actions:", np.round(actions[0].cpu().numpy(), 4))
@@ -747,11 +748,9 @@ class HardwarePlayer(object):
 
         self.env.arm.move_manipulator.scale_vel(scale_vel=0.5, scale_acc=0.5)
         self.env.move_to_init_state()
+        self.grasp_and_init()
 
         while True:
-
-            # grasp and move on top of the socket
-            self.grasp_and_init()
 
             # TODO add a module that set init interaction with the socket
             # self.env.set_random_init_error(true_socket_pose=true_socket_pose)
@@ -759,8 +758,8 @@ class HardwarePlayer(object):
 
             # Bias the ft sensor
             self.env.arm.calib_robotiq()
-            rospy.sleep(2.0)
-            self.env.arm.calib_robotiq()
+            # rospy.sleep(2.0)
+            # self.env.arm.calib_robotiq()
 
             obs, obs_stud, tactile, priv = self.compute_observations(with_priv=True)
             self._update_reset_buf()
@@ -771,12 +770,12 @@ class HardwarePlayer(object):
             while not self.done[0, 0]:
 
                 obs = self.running_mean_std(obs.clone())
-                obs_stud = self.running_mean_std_stud(obs_stud.clone())
+                # obs_stud = self.running_mean_std_stud(obs_stud.clone())
                 priv = self.priv_mean_std(priv.clone())
 
                 input_dict = {
                     'obs': obs,
-                    'student_obs': obs_stud,
+                    # 'student_obs': obs_stud,
                     'tactile_hist': tactile,
                     'priv_info': priv,
                     'contacts': self.contacts.clone()
@@ -790,7 +789,7 @@ class HardwarePlayer(object):
                 # print("Actions:", np.round(action[0].cpu().numpy(), 3), "\tFPS: ", 1.0 / (time() - start_time))
 
                 ros_rate.sleep()
-                # self._update_reset_buf()
+                self._update_reset_buf()
                 self.episode_length += 1
 
                 # if self.episode_length >= max_steps:

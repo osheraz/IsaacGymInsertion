@@ -80,12 +80,24 @@ class DataNormalizer:
         """Calculate mean and standard deviation for the given data."""
         if norm_key == 'plug_hand_quat':
             euler = Rotation.from_quat(data).as_euler('xyz')
-            euler[:, 0] = np.where(euler[:, 0] > 0, euler[:, 0] - np.pi, euler[:, 0] + np.pi)
+            self.normalize_dict['mean']["plug_hand_euler"] = np.mean(euler, axis=0)
+            self.normalize_dict['std']["plug_hand_euler"] = np.std(euler, axis=0)
+
+            diff_euler = euler - euler[0, :]
+            self.normalize_dict['mean']["plug_hand_diff_euler"] = np.mean(diff_euler, axis=0)
+            self.normalize_dict['std']["plug_hand_diff_euler"] = np.std(diff_euler, axis=0)
 
             sin_cos_repr = np.hstack((np.sin(euler[:, 0:1]), np.cos(euler[:, 0:1]),
                                       np.sin(euler[:, 1:2]), np.cos(euler[:, 1:2]),))
+
             self.normalize_dict['mean']["plug_hand_sin_cos_euler"] = np.mean(sin_cos_repr, axis=0)
             self.normalize_dict['std']["plug_hand_sin_cos_euler"] = np.std(sin_cos_repr, axis=0)
+
+        if norm_key == 'plug_hand_pos':
+            pos = data
+            diff_pos = pos - pos[0, :]
+            self.normalize_dict['mean']["plug_hand_pos_diff"] = np.mean(diff_pos, axis=0)
+            self.normalize_dict['std']["plug_hand_pos_diff"] = np.std(diff_pos, axis=0)
 
         self.normalize_dict['mean'][norm_key] = np.mean(data, axis=0)
         self.normalize_dict['std'][norm_key] = np.std(data, axis=0)
@@ -151,39 +163,51 @@ class TactileDataset(Dataset):
         mask = np.ones(self.sequence_length)
         mask[:padding_length] = 0
 
-        keys = ["tactile", "eef_pos", "action", "latent", "obs_hist", "contacts", "hand_joints", "plug_hand_quat"]
-        data = {key: self.extract_sequence(data, key, start_idx) for key in keys}
+        diff = True
+        keys = ["tactile", "eef_pos", "action", "latent", "obs_hist", "contacts", "hand_joints", "plug_hand_quat", "plug_hand_pos"]
+        data_seq = {key: self.extract_sequence(data, key, start_idx) for key in keys}
 
         # Tactile input [T F W H C]
-        tactile_input = data["tactile"]
+        tactile_input = data_seq["tactile"]
         # T, F, C, W, H = tactile_input.shape
         # tactile_input = tactile_input.reshape(T, F * C, W, H)
-        # left_finger, right_finger, bottom_finger = [data["tactile"][:, i, ...] for i in range(3)]
+        # left_finger, right_finger, bottom_finger = [data_seq["tactile"][:, i, ...] for i in range(3)]
 
-        eef_pos = data["eef_pos"]
-        hand_joints = data["hand_joints"]
-        action = data["action"]
-        contacts = data["action"]  # contact
-        obs_hist = data["obs_hist"]
+        eef_pos = data_seq["eef_pos"]
+        hand_joints = data_seq["hand_joints"]
+        action = data_seq["action"]
+        contacts = data_seq["action"]  # contact
+        obs_hist = data_seq["obs_hist"]
 
-        label = Rotation.from_quat(data["plug_hand_quat"]).as_euler('xyz')  # data["latent"] #
-        label[:, 0] = np.where(label[:, 0] > 0, label[:, 0] - np.pi, label[:, 0] + np.pi)
-        label = np.hstack((np.sin(label[:, 0:1]), np.cos(label[:, 0:1]),
-                           np.sin(label[:, 1:2]), np.cos(label[:, 1:2]),))
+        euler = Rotation.from_quat(data_seq["plug_hand_quat"]).as_euler('xyz')  # data_seq["latent"] #
+        plug_hand_pos = data_seq["plug_hand_pos"]
 
-        # Normalizing inputs
+        if diff:
+            euler = euler - Rotation.from_quat(data["plug_hand_quat"][start_idx, :]).as_euler('xyz')
+            plug_hand_pos = plug_hand_pos - data["plug_hand_pos"][start_idx, :]
+
+        # Normalizing
         if self.normalize_dict is not None:
             eef_pos = (eef_pos - self.normalize_dict["mean"]["eef_pos"]) / self.normalize_dict["std"]["eef_pos"]
             hand_joints = (hand_joints - self.normalize_dict["mean"]["hand_joints"]) / self.normalize_dict["std"]["hand_joints"]
-            # label = (label - self.normalize_dict["mean"]["plug_hand_sin_cos_euler"]) / self.normalize_dict["std"]["plug_hand_sin_cos_euler"]
+
+            if not diff:
+                euler = (euler - self.normalize_dict["mean"]["plug_hand_euler"]) / self.normalize_dict["std"]["plug_hand_euler"]
+                plug_hand_pos = (plug_hand_pos - self.normalize_dict["mean"]["plug_hand_pos"]) / self.normalize_dict["std"]["plug_hand_pos"]
+
+            else:
+                euler = (euler - self.normalize_dict["mean"]["plug_hand_diff_euler"]) / self.normalize_dict["std"]["plug_hand_diff_euler"]
+                plug_hand_pos = (plug_hand_pos - self.normalize_dict["mean"]["plug_hand_pos_diff"]) / self.normalize_dict["std"]["plug_hand_pos_diff"]
+
+        label = np.hstack((plug_hand_pos, euler))
 
         # Output
         shift_action_right = np.concatenate([np.zeros((1, action.shape[-1])), action[:-1, :]], axis=0)
         lin_input = np.concatenate([
-                                    # eef_pos,
-                                    hand_joints,
-                                    # shift_action_right
-                                    ], axis=-1)
+            # eef_pos,
+            hand_joints,
+            # shift_action_right
+        ], axis=-1)
 
         # Convert to torch tensors
         tensors = [self.to_torch(tensor) for tensor in [tactile_input,

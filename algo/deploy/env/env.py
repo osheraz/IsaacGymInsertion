@@ -1,4 +1,6 @@
 import rospy
+import torch
+
 from algo.deploy.env.hand_ros import HandROSSubscriberFinger
 from algo.deploy.env.openhand_env import OpenhandEnv
 from algo.deploy.env.robots import RobotWithFtEnv
@@ -165,21 +167,24 @@ class ExperimentEnv:
     def set_random_init_error(self, true_socket_pose):
 
         # TODO change motion to be without moveit
+        if torch.is_tensor(true_socket_pose):
+            true_socket_pose = true_socket_pose[0].cpu().detach().numpy()
 
         for i in range(5):
 
             ee_pose = self.arm.move_manipulator.get_cartesian_pose_moveit()
             ee_pos = [ee_pose.position.x, ee_pose.position.y, ee_pose.position.z]
             ee_quat = [ee_pose.orientation.x, ee_pose.orientation.y, ee_pose.orientation.z, ee_pose.orientation.w]
-            obj_pos = self.tracker.get_obj_pos()
+            obj_pos = self.tracker.get_obj_pos()  # tracker already gives the bottom of the object
             obj_height = 0  # 0.07
-            init_delta_height = 0.02
+            init_delta_height = 0.05
 
             if not np.isnan(np.sum(obj_pos)):
 
+                rand_add = np.random.uniform(-0.01, 0.01, 2)
                 # added delta_x/delta_y to approximately center the object
-                ee_pos[0] = true_socket_pose[0] + (ee_pos[0] - obj_pos[0])
-                ee_pos[1] = true_socket_pose[1] + (ee_pos[1] - obj_pos[1])
+                ee_pos[0] = true_socket_pose[0] + (ee_pos[0] - obj_pos[0]) + rand_add[0]
+                ee_pos[1] = true_socket_pose[1] + (ee_pos[1] - obj_pos[1]) + rand_add[1]
                 ee_pos[2] = true_socket_pose[2] + obj_pos[2] - obj_height + init_delta_height
 
                 # Orientation is different due to moveit orientation, kinova/orientation ( -0.707,0.707,0,0 ~ 0.707,-0.707,0,0)

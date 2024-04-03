@@ -654,8 +654,18 @@ class FactoryBaseTactile(VecTask, FactoryABCBase):
         """Convert pose from world frame to robot base frame."""
 
         # convert TODO should we clone here?
+        torch_pi = torch.tensor(
+            np.pi,
+            dtype=torch.float32,
+            device=self.device
+        )
+        rotation_quat_x = torch_utils.quat_from_angle_axis(torch_pi, torch.tensor([1, 0, 0], dtype=torch.float32, device=self.device)).repeat((self.num_envs, 1))
+        rotation_quat_z = torch_utils.quat_from_angle_axis(-torch_pi * 0.5, torch.tensor([0, 0, 1], dtype=torch.float32, device=self.device)).repeat((self.num_envs, 1))
+
+        q_rotated = torch_utils.quat_mul(rotation_quat_x, self.fingertip_centered_quat.clone())
+        q_rotated = torch_utils.quat_mul(rotation_quat_z, q_rotated)
         robot_base_transform_inv = torch_utils.tf_inverse(
-            self.fingertip_centered_quat.clone(), self.fingertip_centered_pos.clone()
+            q_rotated, self.fingertip_centered_pos.clone()
         )
         quat_in_robot_base, pos_in_robot_base = torch_utils.tf_combine(
             robot_base_transform_inv[0], robot_base_transform_inv[1], quat, pos

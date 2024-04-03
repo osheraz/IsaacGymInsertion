@@ -196,9 +196,12 @@ class Renderer:
             gel_trimesh = trimesh.load(os.path.join(os.path.dirname(__file__), "../../../") + g.mesh)
 
             # scale up for clearer indentation
-            matrix = np.eye(4)
-            matrix[[0, 1, 2], [0, 1, 2]] = 1.02
-            gel_trimesh = gel_trimesh.apply_transform(matrix)
+            # matrix = np.eye(4)
+            # matrix[[0, 1, 2], [0, 1, 2]] = 1.08
+            # gel_trimesh = gel_trimesh.apply_transform(matrix)
+            gel_scale = 1.02
+            gel_trimesh.vertices[:, 0] *= gel_scale  # Scale x
+            gel_trimesh.vertices[:, 1] *= gel_scale  # Scale y
             self.sensor_vertices = gel_trimesh.vertices
             self.sensor_normals = gel_trimesh.vertex_normals
 

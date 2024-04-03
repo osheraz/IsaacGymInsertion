@@ -62,7 +62,7 @@ class Runner:
         for i, (tac_input, lin_input, contacts, obs_hist, latent, action, mask) in tqdm(enumerate(dl)):
             self.model.train()
 
-            tac_input = tac_input.to(self.device)
+            tac_input = tac_input.to(self.device)  # [B T F W H C]
             lin_input = lin_input.to(self.device)
             latent = latent.to(self.device)
             action = action.to(self.device)
@@ -212,8 +212,7 @@ class Runner:
         return np.mean(val_loss)
 
     def log_output(self, tac_input, lin_input, out, latent, session='train'):
-        # Assuming lin_input now includes eef_pos and shift_action_right concatenated
-
+        # tac_input [B T F W H C]
         # Selecting the first example from the batch for demonstration
         image_sequence = tac_input[0].cpu().detach().numpy()
         linear_features = lin_input[0].cpu().detach().numpy()  # Shape should be [sequence_length, eef_pos+action]
@@ -221,42 +220,47 @@ class Runner:
         true_label = latent[0, -1, :].cpu().detach().numpy()
 
         # Extracting eef_pos for the first example
-        eef_pos = linear_features[:, :12]  # Assuming the first 12 are eef_pos
-        eef_pos = eef_pos * self.normalize_dict["std"]["eef_pos"] + self.normalize_dict["mean"]["eef_pos"]
+        # eef_pos = linear_features[:, :12]  # Assuming the first 12 are eef_pos
+        # eef_pos = eef_pos * self.normalize_dict["std"]["eef_pos"] + self.normalize_dict["mean"]["eef_pos"]
 
         # Plotting
         fig = plt.figure(figsize=(20, 10))
 
         # Adding subplot for image sequence (adjust as needed)
         ax1 = fig.add_subplot(2, 2, 1)
-        image_sequence = [np.transpose(img, (1, 2, 0)) for img in image_sequence]
-        image_sequence = [img / 2 + 0.5 for img in image_sequence]
-        image_sequence = np.hstack(image_sequence)
-        ax1.imshow(image_sequence)  # Adjust based on image normalization
+        concat_images = []
+        # image_sequence [T F W H C]
+        for finger_idx in range(image_sequence.shape[1]):
+            finger_sequence = [np.transpose(img, (1, 2, 0)) for img in image_sequence[:, finger_idx, ...]]
+            finger_sequence = [img / 2 + 0.5 for img in finger_sequence]
+            finger_sequence = np.hstack(finger_sequence)
+            concat_images.append(finger_sequence)
+
+        ax1.imshow(np.vstack(concat_images))  # Adjust based on image normalization
         ax1.set_title('Input Image Sequence - Example')
 
         # Adding subplot for linear features (adjust as needed)
         ax2 = fig.add_subplot(2, 2, 2)
-        ax2.plot(linear_features[:, -6:], 'ro', label='actions')  # Assuming the rest are actions
-        ax2.plot(linear_features[:, 12:-6], 'k', label='hand_joints')  # Assuming the rest are actions
+        # ax2.plot(linear_features[:, -6:], 'ro', label='actions')  # Assuming the rest are actions
+        ax2.plot(linear_features[:, :], 'ok', label='hand_joints')  # Assuming the rest are actions
         ax2.set_title('Linear input')
         ax2.legend()
 
-        # Adding 3D subplot for eef_pos
-        ax3 = fig.add_subplot(2, 2, 3, projection='3d')
-        # Plotting the XYZ position
-        ax3.plot(eef_pos[:, 0], eef_pos[:, 1], eef_pos[:, 2], c='r')
-        for i in range(eef_pos.shape[0]):
-            # Plotting a line for orientation using the first column of the rotation matrix
-            # Adjust the scaling factor as needed for visibility
-            scale_factor = 0.01
-            x, y, z = eef_pos[i, :3]
-            u, v, w = eef_pos[i, 3:6] * scale_factor  # Simplified orientation representation
-            ax3.quiver(x, y, z, u, v, w, length=0.01)
-        ax3.set_title('End-Effector Position and Orientation')
-        ax3.set_xlabel('X')
-        ax3.set_ylabel('Y')
-        ax3.set_zlabel('Z')
+        # # Adding 3D subplot for eef_pos
+        # ax3 = fig.add_subplot(2, 2, 3, projection='3d')
+        # # Plotting the XYZ position
+        # ax3.plot(eef_pos[:, 0], eef_pos[:, 1], eef_pos[:, 2], c='r')
+        # for i in range(eef_pos.shape[0]):
+        #     # Plotting a line for orientation using the first column of the rotation matrix
+        #     # Adjust the scaling factor as needed for visibility
+        #     scale_factor = 0.01
+        #     x, y, z = eef_pos[i, :3]
+        #     u, v, w = eef_pos[i, 3:6] * scale_factor  # Simplified orientation representation
+        #     ax3.quiver(x, y, z, u, v, w, length=0.01)
+        # ax3.set_title('End-Effector Position and Orientation')
+        # ax3.set_xlabel('X')
+        # ax3.set_ylabel('Y')
+        # ax3.set_zlabel('Z')
 
         # Adding subplot for Output vs. True Label comparison
         ax4 = fig.add_subplot(2, 2, 4)

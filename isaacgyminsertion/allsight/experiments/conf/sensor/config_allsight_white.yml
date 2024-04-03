@@ -10,9 +10,9 @@ sensor:
   
   camera:
     - cam0:
-      position: [0.012, 0.0, 0.0] # Camera position
+      position: [0.003, 0.0, 0.0] # Camera position
       orientation: [90, 0 , -90] # Euler angles, "xyz", in degrees; e.g. [0, 0, 0]: towards negative z-axis; [90, 0, -90]: towards x-axis
-      yfov: 110  #140.8 # Vertical field of view in degrees
+      yfov: 90  #140.8 # Vertical field of view in degrees
       znear: 0.001  # Distance to the near clipping plane, in meters
       #lightIDList: [0, 1, 2, 3 ,4 ,5, 6, 7, 8] # Select light ID list for rendering (OpenGL has max limit of 8 lights)
       lightIDList: [0,1,2] 

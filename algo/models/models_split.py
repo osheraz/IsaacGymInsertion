@@ -105,8 +105,6 @@ class ActorCriticSplit(nn.Module):
         self.shared_parameters = kwargs['shared_parameters']
 
         self.contact_mlp_units = kwargs['contacts_mlp_units']
-        # self.pose_mlp_units = kwargs['pose_mlp_units']
-        # self.physics_mlp_units = kwargs['physics_mlp_units']
 
         if self.priv_info:
 
@@ -216,7 +214,7 @@ class ActorCriticSplit(nn.Module):
         mu, logstd, value, latent, _, dec = self._actor_critic(obs_dict)
         return mu, latent, dec
 
-    def _actor_critic(self, obs_dict, display=True):
+    def _actor_critic(self, obs_dict, display=False):
 
         obs = obs_dict['obs']
         extrin, extrin_gt, dec = None, None, None
@@ -316,7 +314,7 @@ class ActorCriticSplit(nn.Module):
                         plt.cla()
 
                 else:
-                    # TODO add options to train with different priv
+
                     extrin_priv = self.env_mlp(obs_dict['priv_info'])
 
                     if self.contact_info:

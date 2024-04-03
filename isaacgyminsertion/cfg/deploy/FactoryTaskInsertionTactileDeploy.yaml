@@ -10,7 +10,7 @@ desired_subassemblies: ['yellow_round_peg_2in']
 #                            'rectangular_peg_hole_4mm_loose',
 #                            'rectangular_peg_hole_8mm_loose',
 #                            'rectangular_peg_hole_12mm_loose',
-#                            'rectangular_peg_hole_16mm_loose']
+#                            'rectangular_peg_hole_16mm_loose']w
 
 record_video: True
 record_ft: True
@@ -21,14 +21,14 @@ data_logger:
     collect_data: False
     total_trajectories: 10
     base_folder: "/home/roblab20/tactile_insertion"
-    sub_folder: "datastore_0"
+    sub_folder: "datastore_real"
 
 # taking from training default, allows to over write
 # actually, we should write different config for each observation we test
 rl:
-    max_episode_length: 2000
-    pos_action_scale: [0.005, 0.005, 0.005]
-    rot_action_scale: [0.002, 0.002, 0.002]
+    max_episode_length: 500
+    pos_action_scale: [0.005, 0.005, 0.004]
+    rot_action_scale: [0.02, 0.02, 0.02]
     clamp_rot: ${...task.rl.clamp_rot}
     clamp_rot_thresh: ${...task.rl.clamp_rot_thresh}
 
@@ -93,7 +93,7 @@ network:
     img_height: ${....task.tactile.decoder.height}
 
 common_poses:
-  socket_pos: [0.5006071086121126, 0.0006204513881582756, 0.001]
+  socket_pos: [0.4984895154889335, 0.0001349234280779866, 0.001] # [0.5005785990398001, -0.0012649703391055273, 0.0
   joints_above_socket: [-0.01306919673345508, 0.46035625642851, -3.115810324760627, -1.5234410615555438, -0.012022574425053278, -1.1572361716453639, 1.5847205313963213, 0.0]
   joints_above_plug: [-0.4343525190442179, 0.3393440474185589, -3.118461501625801, -1.762369221913092, -0.010365555594806786, -1.0404064904168955, 1.172501677329807]
 

@@ -138,7 +138,7 @@ class TacT(BaseModel):
 
         self.decoder = MultiLayerDecoder(
             embed_dim=self.obs_encoding_size,
-            seq_len=self.context_size * (3 + 1),
+            seq_len=self.context_size * (3),
             output_layers=[256, 128, 64, 32],
             nhead=mha_num_attention_heads,
             num_layers=mha_num_attention_layers,
@@ -150,7 +150,8 @@ class TacT(BaseModel):
 
     def forward(
             self, obs_img: torch.tensor,
-            lin_input: torch.tensor, contacts: torch.tensor = None) -> Tuple[torch.Tensor, torch.Tensor]:
+            lin_input: torch.tensor,
+            contacts: torch.tensor = None) -> Tuple[torch.Tensor, torch.Tensor]:
 
         # currently, the size of lin_encoding is [batch_size, num_lin_features]
         lin_encoding = self.lin_encoder(lin_input)
@@ -189,7 +190,8 @@ class TacT(BaseModel):
 
         obs_features = torch.cat(obs_features, dim=1)
         # concatenate the goal encoding to the observation encoding
-        tokens = torch.cat((obs_features, lin_encoding), dim=1)
+        # tokens = torch.cat((obs_features, lin_encoding), dim=1)
+        tokens = obs_features
         final_repr = self.decoder(tokens)
         # currently, the size is [batch_size, 32]
         latent_pred = self.latent_predictor(final_repr)

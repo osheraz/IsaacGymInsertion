@@ -66,7 +66,7 @@ class allsight_renderer:
 
         if randomize:
             bg_id = 12 # random.randint(12, 19)
-            obj_scale = 1.02 # 0.01 * random.randint(115, 130)
+            obj_scale = 1.04 # 0.01 * random.randint(115, 130)
         else:
             bg_id = 15
             obj_scale = 1.0
@@ -100,7 +100,9 @@ class allsight_renderer:
         if obj_path is not None:
             self.obj_loader = object_loader(obj_path)
             obj_trimesh = trimesh.load(obj_path)
-            obj_trimesh.apply_scale(obj_scale)
+            obj_trimesh.vertices[:, 0] *= obj_scale  # Scale x
+            obj_trimesh.vertices[:, 1] *= obj_scale  # Scale y
+            # obj_trimesh.apply_scale(obj_scale)
             self.obj_mesh = obj_trimesh
             obj_euler = R.from_quat([0.0, 0.0, 0.0, 1.0]).as_euler("xyz", degrees=False)
             self.renderer.add_object(obj_trimesh, "object", orientation=obj_euler)
