@@ -875,15 +875,51 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         plug_pos = torch.zeros((len(env_ids), 3))
         plug_quat = torch.zeros((len(env_ids), 4))
 
-        # socket around within x[-1cm, 1cm], y[-1cm, 1cm], z[-2mm, 3mm]
-        socket_pos[:, 0] = self.cfg_task.randomize.plug_pos_xy_initial[0]
-        socket_pos[:, 1] = self.cfg_task.randomize.plug_pos_xy_initial[1]
-        socket_pos[:, 2] = self.cfg_task.randomize.plug_pos_xy_initial[2]
-        socket_pos_noise = np.random.uniform(-self.cfg_task.randomize.socket_pos_xy_noise[0],
-                                             self.cfg_task.randomize.socket_pos_xy_noise[1], 3)
-        socket_pos_noise[2] = np.random.uniform(self.cfg_task.randomize.socket_pos_z_noise_bounds[0],
-                                                self.cfg_task.randomize.socket_pos_z_noise_bounds[1], 1)
-        socket_pos[:, :] += torch.from_numpy(socket_pos_noise)
+        same_socket = False
+        if same_socket:
+            # socket around within x[-1cm, 1cm], y[-1cm, 1cm], z[-2mm, 3mm]
+            socket_pos[:, 0] = self.cfg_task.randomize.socket_pos_xy_initial[0]
+            socket_pos[:, 1] = self.cfg_task.randomize.socket_pos_xy_initial[1]
+            socket_pos[:, 2] = self.cfg_task.randomize.socket_pos_xy_initial[2]
+            socket_pos_noise = np.random.uniform(-self.cfg_task.randomize.socket_pos_xy_noise[0],
+                                                 self.cfg_task.randomize.socket_pos_xy_noise[1], 3)
+            socket_pos_noise[2] = np.random.uniform(self.cfg_task.randomize.socket_pos_z_noise_bounds[0],
+                                                    self.cfg_task.randomize.socket_pos_z_noise_bounds[1], 1)
+            socket_pos[:, :] += torch.from_numpy(socket_pos_noise)
+        else:
+            # won't work with contacts.
+            # Randomize socket pos
+            socket_noise_xy = 2 * (
+                    torch.rand((len(env_ids), 2), dtype=torch.float32, device=self.device)
+                    - 0.5
+            )
+            socket_noise_xy = socket_noise_xy @ torch.diag(
+                torch.tensor(
+                    self.cfg_task.randomize.socket_pos_xy_noise,
+                    dtype=torch.float32,
+                    device=self.device,
+                )
+            )
+
+            socket_noise_z_mag = (
+                    self.cfg_task.randomize.socket_pos_z_noise_bounds[1]
+                    - self.cfg_task.randomize.socket_pos_z_noise_bounds[0]
+            )
+            socket_noise_z = (
+                    socket_noise_z_mag
+                    * torch.rand((len(env_ids)), dtype=torch.float32, device=self.device)
+                    + self.cfg_task.randomize.socket_pos_z_noise_bounds[0]
+            )
+
+            socket_pos[:, 0] = (
+                + self.cfg_task.randomize.socket_pos_xy_initial[0]
+                + socket_noise_xy[:, 0]
+            )
+            socket_pos[:, 1] = (
+                + self.cfg_task.randomize.socket_pos_xy_initial[1]
+                + socket_noise_xy[:, 1]
+            )
+            socket_pos[:, 2] = self.cfg_base.env.table_height + socket_noise_z
 
         socket_euler_w_noise = np.array([0, 0, 0])
         # socket_euler_w_noise[2] = np.random.uniform(-self.cfg_task.randomize.socket_rot_euler_noise,
@@ -896,7 +932,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         plug_pos_noise[:, 2] = ((torch.rand((len(env_ids),)) * (0.007 - 0.003)) + 0.003) + 0.02  # 0.003 to 0.01
         plug_pos[:, :] += plug_pos_noise
         plug_euler_w_noise = np.array([0., 0., 0.])
-        plug_euler_w_noise += np.random.uniform(-0.3, 0.3, plug_euler_w_noise.shape)
+        plug_euler_w_noise += np.random.uniform(-0.07, 0.07, plug_euler_w_noise.shape)
         plug_euler_w_noise[-1] = 0
         plug_quat[:, :] = torch.from_numpy(R.from_euler('xyz', plug_euler_w_noise).as_quat())
         # plug_quat[:, -1] = 1.
