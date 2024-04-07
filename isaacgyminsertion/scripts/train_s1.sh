@@ -2,7 +2,7 @@
 GPUS=${1:-0}
 SEED=${2:-42}
 CACHE=${3:-test}
-NUM_ENVS=${4:-1500}
+NUM_ENVS=${4:-1000}
 HEADLESS=${5:-True}
 
 array=( $@ )
@@ -23,15 +23,16 @@ task.env.numObsHist=1 \
 task.env.numObservations=24 \
 task.env.compute_contact_gt=False \
 train.ppo.only_contact=False \
-task.env.numStates=7 \
+task.env.numStates=13 \
 train.algo=PPO \
 train.ppo.priv_info=True \
 train.ppo.extrin_adapt=False \
 train.ppo.tactile_info=False \
-task.tactile.tacto.width=64 \
-task.tactile.tacto.height=64 \
-task.tactile.decoder.width=64 \
-task.tactile.decoder.height=64 \
+task.tactile.tacto.width=16 \
+task.tactile.tacto.height=16 \
+task.tactile.decoder.width=16 \
+task.tactile.decoder.height=16 \
+task.tactile.decoder.num_channels=1 \
 task.env.tactile_history_len=1 \
 train.ppo.output_name="${CACHE}" \
 ${EXTRA_ARGS}

@@ -319,7 +319,6 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
         self.init_plug_pos = {}
         self.init_plug_quat = {}
         self.init_dof_pos = {}
-
         self._get_env_yaml_params()
 
         super().__init__(cfg, rl_device, sim_device, graphics_device_id, headless, virtual_screen_capture, force_render)
@@ -352,8 +351,27 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
 
         self.cfg_tactile = omegaconf.OmegaConf.create(self.cfg['tactile'])
 
+        self.external_cam = self.cfg['external_cam']['external_cam']
+        self.res = self.cfg['external_cam']['cam_res']
+        self.cam_type = self.cfg['external_cam']['cam_type']
+        self.save_im = self.cfg['external_cam']['save_im']
+
         self.randomize = self.cfg_env.randomize.domain_randomize
         self.randomization_params = self.cfg_env.randomize.randomization_params
+
+    def make_handle_trans(self, width, height, env_idx, trans, rot, hfov=None):
+        camera_props = gymapi.CameraProperties()
+        camera_props.width = width
+        camera_props.height = height
+        camera_props.enable_tensors = True
+        hfov = 80
+        if hfov is not None:
+            camera_props.horizontal_fov = hfov
+        camera_handle = self.gym.create_camera_sensor(self.envs[env_idx], camera_props)
+        local_transform = gymapi.Transform()
+        local_transform.p = gymapi.Vec3(*trans)
+        local_transform.r = gymapi.Quat.from_euler_zyx(*rot)
+        return camera_handle, local_transform
 
     def create_envs(self):
         """Set env options. Import assets. Create actors."""
@@ -493,6 +511,7 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
         self.table_handles = []
         self.shape_ids = []
 
+        self.camera_handles = []
         self.kuka_actor_ids_sim = []  # within-sim indices
         self.plug_actor_ids_sim = []  # within-sim indices
         self.socket_actor_ids_sim = []  # within-sim indices
@@ -684,15 +703,27 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
             if subassembly not in self.all_rendering_camera:
                 self.all_rendering_camera[subassembly] = []
                 self.all_rendering_camera[subassembly].append(i)
+
                 rendering_camera1 = self.gym.create_camera_sensor(env_ptr, self.camera_props)
-                self.gym.set_camera_location(rendering_camera1, env_ptr, gymapi.Vec3(1.5, 1, 3.0),
-                                             gymapi.Vec3(0, 0, 0))
+                self.gym.set_camera_location(rendering_camera1, env_ptr, gymapi.Vec3(1.5, 1, 3.0), gymapi.Vec3(0, 0, 0))
                 self.all_rendering_camera[subassembly].append(rendering_camera1)
 
                 rendering_camera2 = self.gym.create_camera_sensor(env_ptr, self.camera_props)
-                self.gym.set_camera_location(rendering_camera2, env_ptr, gymapi.Vec3(1.5, 1, 3.0),
-                                             gymapi.Vec3(0, 0, 0))
+                self.gym.set_camera_location(rendering_camera2, env_ptr, gymapi.Vec3(1.5, 1, 3.0), gymapi.Vec3(0, 0, 0))
                 self.all_rendering_camera[subassembly].append(rendering_camera2)
+
+            if self.external_cam:
+                # add external cam
+                cam, trans = self.make_handle_trans(self.res[0], self.res[1], i, (0.66, 0.0, 0.2),
+                                                    (np.deg2rad(0), np.deg2rad(40), np.deg2rad(180)))
+                self.camera_handles.append(cam)
+                self.gym.attach_camera_to_body(
+                    cam,
+                    self.envs[i],
+                    kuka_handle,
+                    trans,
+                    gymapi.FOLLOW_TRANSFORM,
+                )
 
             # add Tactile modules for the tips
             # self.envs_asset[i] = {'subassembly': subassembly, 'components': components}
@@ -854,10 +885,7 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
     ### start code for logging videos while training ###
     # record camera (does not matter if headless)
     def _render_headless(self):
-        # if self.record_now:
-        #     # print('should record soon..')
-        #     if self.complete_video_frames is not None:
-        #         print(len(self.complete_video_frames))
+
         if self.record_now and self.complete_video_frames is not None and len(self.complete_video_frames) == 0:
 
             video_frames = []
@@ -872,15 +900,13 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
                 self.gym.set_camera_location(camera_1, self.envs[env_id],
                                              gymapi.Vec3(bx - 0.1, by - 0.1, bz + 0.1),
                                              gymapi.Vec3(bx, by, bz))
-                video_frame1 = self.gym.get_camera_image(self.sim, self.envs[env_id], camera_1,
-                                                         gymapi.IMAGE_COLOR)
+                video_frame1 = self.gym.get_camera_image(self.sim, self.envs[env_id], camera_1, gymapi.IMAGE_COLOR)
                 video_frame1 = video_frame1.reshape((self.camera_props.height, self.camera_props.width, 4))
 
                 self.gym.set_camera_location(camera_2, self.envs[env_id],
                                              gymapi.Vec3(bx - 0.1, by + 0.1, bz + 0.1),
                                              gymapi.Vec3(bx, by, bz))
-                self.video_frame2 = self.gym.get_camera_image(self.sim, self.envs[env_id], camera_2,
-                                                              gymapi.IMAGE_COLOR)
+                self.video_frame2 = self.gym.get_camera_image(self.sim, self.envs[env_id], camera_2, gymapi.IMAGE_COLOR)
                 self.video_frame2 = self.video_frame2.reshape((self.camera_props.height, self.camera_props.width, 4))
 
                 video_frames.append(np.concatenate((video_frame1, self.video_frame2), axis=1))

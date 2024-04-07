@@ -46,7 +46,7 @@ env:
     numEnvs: ${resolve_default:128,${...num_envs}}
     numObservations: 24 #
     numObsStudent: 18 #
-    numStates: 7 #
+    numStates: 13 #
     numActions: 6 # [position, ori]
     numTargets: 6 # [position, ori]
 
@@ -59,7 +59,7 @@ env:
 
     openhand:
         distal_open: 0.1
-        distal_close: 0.2
+        distal_close: 0.3
         proximal_open: 1.0
         proximal_close: 2.4
         base_angle: 0.7
@@ -90,17 +90,24 @@ env:
 sim:
     disable_gravity: True
 
+external_cam:
+  external_cam: False
+  cam_res: [320, 180]
+  cam_type: 'd'
+  save_im: False
+
 randomize:
 
     kuka_arm_initial_dof_pos: [0.0064, 0.2375,  -0.0075,  -1.2022, 0.0015,  1.6900,  -1.5699]
     fingertip_midpoint_rot_initial: [-3.14159265359, 0.0, -1.57079632679]  # initial rotation of fingertips (Euler)
 
+    same_socket: False
     # for grasp generations
     plug_pos_xy_initial: [0.50, 0.0, 0.0]  # z 0.03  initial XY position of plug on table
-    plug_pos_xy_noise: [ 0.0254,  0.0254, 0.00] # noise on plug position
+    plug_pos_xy_noise: [ 0.01,  0.01, 0.00] # noise on plug position
     plug_quat_noise: [0.0, 0.0, 0.0, 0.0]
     socket_pos_xy_initial: [0.5, 0.0, 0.0]  # initial XY position of plug on table # round_hole_2in  width = 0.1016, length = 0.09144
-    socket_pos_xy_noise: [0.01, 0.01]  # noise on socket position
+    socket_pos_xy_noise: [0.0, 0.0]  # noise on socket position
     socket_rot_euler_noise: 0.035  # noise on socket position
     socket_pos_z_noise_bounds: [-0.002, 0.003]  # noise on socket offset from table
     grasp_plug_noise: 0.005 # xyz noise on plug position during grasp
