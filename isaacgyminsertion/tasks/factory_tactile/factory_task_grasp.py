@@ -320,66 +320,7 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
             self._update_tactile(left_finger_poses, right_finger_poses, middle_finger_poses, object_pose)
 
-            # groups = 8 if self.num_envs > 8 else 1
-            # offset = np.ceil(self.num_envs / groups).astype(int)
-            # #
-            # processes = []
-            # results = []
-            # #
-            # with Manager() as manager:
-            #     for g in range(groups):
-            #         env_start = offset * g
-            #         env_end = np.clip(offset * (g + 1), 0, self.num_envs)
 
-            #         left_finger_pose_g = left_finger_pose[env_start:env_end]
-            #         right_finger_pose_g = right_finger_pose[env_start:env_end]
-            #         middle_finger_pose_g = middle_finger_pose[env_start:env_end]
-            #         object_pose_g = object_pose[env_start:env_end]
-
-            #         tactile_handles_g = self.tactile_handles[env_start:env_end]
-            #         print(left_finger_pose_g.shape, right_finger_pose_g.shape, middle_finger_pose_g.shape, object_pose_g.shape, len(tactile_handles_g))
-            #         queue = manager.Queue()
-            #         process = Process(
-            #             target=self._update_tactile,
-            #             args=(
-            #                 tactile_handles_g,
-            #                 left_finger_pose_g,
-            #                 right_finger_pose_g,
-            #                 middle_finger_pose_g,
-            #                 object_pose_g,
-            #                 env_start,
-            #                 queue,
-            #             ),
-            #         )
-            #         process.start()
-            #         processes.append(process)
-            #         results.append(queue)
-
-            #     for process in processes:
-            #         process.join()
-            #     # self.tactile_imgs
-            #     for queue in results:
-            #         left, right, middle, left_depth, left_right, left_middle, offset = queue.get()
-            #         print(offset, offset + len(left))
-            #         self.tactile_imgs[offset: offset + len(left), 0, :] = torch.from_numpy(left).clone().detach().to(self.device)
-            #         self.tactile_imgs[offset: offset + len(right), 1, :] = torch.from_numpy(right).clone().detach().to(self.device)
-            #         self.tactile_imgs[offset: offset + len(middle), 2, :] = torch.from_numpy(middle).clone().detach().to(self.device)
-            #         self.depth_maps[offset: offset + len(left), 0, :] = torch.from_numpy(left_depth).clone().detach().to(self.device)
-            #         self.depth_maps[offset: offset + len(right), 1, :] = torch.from_numpy(left_right).clone().detach().to(self.device)
-            #         self.depth_maps[offset: offset + len(middle), 2, :] = torch.from_numpy(left_middle).clone().detach().to(self.device)
-
-            # self.digit_left_buf[
-            #     offset : offset + len(left), 0, :
-            # ] = torch.tensor(left)
-            # self.digit_right_buf[
-            #     offset : offset + len(right), 0, :
-            # ] = torch.tensor(right)
-
-            # self.tactile_imgs = torch.tensor(tactile_imgs, dtype=torch.float32, device=self.device)
-            # for queue in results:
-            #     imgs, offest = queue.get()
-            #     print(imgs.shape)
-            #     self.tactile_imgs = torch.tensor(imgs, dtype=torch.float32, device=self.device)
 
     def _update_tactile(self, left_finger_pose, right_finger_pose, middle_finger_pose, object_pose,
                         offset=None, queue=None, display_viz=False):
@@ -769,8 +710,8 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             dist = torch.norm(self.socket_tip[:, :2] - self.plug_pos[:, :2], p=2, dim=-1)
 
             # print('dist', dist)
-
-            cond = (abs(roll * 180 / np.pi) < 8) & (abs(pitch * 180 / np.pi) < 8) & (abs(yaw * 180 / np.pi) < 8)
+            Q = 40
+            cond = (abs(roll * 180 / np.pi) < Q) & (abs(pitch * 180 / np.pi) < Q) & (abs(yaw * 180 / np.pi) < Q)
             # Check tactile imprint
             cond &= (torch.sum(torch.sum((self.depth_maps - priv_depth), dim=(2, 3)) >= 0.0, dim=1) >= 2)
 
@@ -1341,7 +1282,7 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         return reward_scale
 
-    def step(self, actions):
+    def step(self, actions, dec=None):
         super().step(actions)
         self.obs_dict['tactile_hist'] = self.tactile_queue.to(self.rl_device)
         self.obs_dict['ft_hist'] = self.ft_queue.to(self.rl_device)

@@ -570,7 +570,7 @@ class PPO(object):
             self.storage.update_data('obses', n, self.obs['obs'])
             self.storage.update_data('priv_info', n, self.obs['priv_info'])
             # self.storage.update_data('tactile_hist', n, self.obs['tactile_hist'])
-            self.storage.update_data('plug_socket_dist', n, self.obs['plug_socket_dist'])
+            # self.storage.update_data('plug_socket_dist', n, self.obs['plug_socket_dist'])
             self.storage.update_data('contacts', n, self.obs['contacts'])
             # self.storage.update_data('socket_pos', n, self.obs['socket_pos'])
 

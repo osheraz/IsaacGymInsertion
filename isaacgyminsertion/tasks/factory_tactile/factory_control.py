@@ -81,6 +81,8 @@ def compute_dof_torque(cfg_ctrl,
                        right_finger_force,
                        jacobian,
                        arm_mass_matrix,
+                       gripper_mass_matrix,
+                       act_torque,
                        ctrl_target_gripper_dof_pos,
                        ctrl_target_fingertip_midpoint_pos,
                        ctrl_target_fingertip_midpoint_quat,
@@ -143,12 +145,10 @@ def compute_dof_torque(cfg_ctrl,
             if cfg_ctrl['do_inertial_comp']:
                 # Set tau = Lambda * tau, where Lambda is the task-space mass matrix
                 jacobian_T = torch.transpose(jacobian, dim0=1, dim1=2)
-                arm_mass_matrix_task = torch.inverse(jacobian @ torch.inverse(
-                    arm_mass_matrix) @ jacobian_T)  # ETH eq. 3.86; geometric Jacobian is assumed
+                arm_mass_matrix_task = torch.inverse(jacobian @ torch.inverse(arm_mass_matrix) @ jacobian_T)  # ETH eq. 3.86; geometric Jacobian is assumed
                 task_wrench_motion = (arm_mass_matrix_task @ task_wrench_motion.unsqueeze(-1)).squeeze(-1)
 
-            task_wrench = task_wrench + torch.tensor(cfg_ctrl['motion_ctrl_axes'], device=device).unsqueeze(
-                0) * task_wrench_motion
+            task_wrench = task_wrench + torch.tensor(cfg_ctrl['motion_ctrl_axes'], device=device).unsqueeze(0) * task_wrench_motion
 
         if cfg_ctrl['do_force_ctrl']:
             # Set tau = tau + F_t, where F_t is the target contact wrench
@@ -174,8 +174,18 @@ def compute_dof_torque(cfg_ctrl,
         jacobian_T = torch.transpose(jacobian, dim0=1, dim1=2)
         dof_torque[:, 0:7] = (jacobian_T @ task_wrench.unsqueeze(-1)).squeeze(-1)
 
-    dof_torque[:, 7:] = cfg_ctrl['gripper_prop_gains'] * (ctrl_target_gripper_dof_pos - dof_pos[:, 7:]) + \
-                        cfg_ctrl['gripper_deriv_gains'] * (0.0 - dof_vel[:, 7:])  # gripper finger joints
+    if act_torque is not None:
+        dof_torque[:, [1 + 7, 2 + 7, 4 + 7, 5 + 7, 6 + 7, 7 + 7]] = act_torque
+    else:
+        dof_torque[:, 7:] = cfg_ctrl['gripper_prop_gains'] * (ctrl_target_gripper_dof_pos - dof_pos[:, 7:]) + \
+                            cfg_ctrl['gripper_deriv_gains'] * (0.0 - dof_vel[:, 7:])  # gripper finger joints
+
+    dof_torque[:, 7:] = torch.clamp(dof_torque[:, 7:], min=-10.0, max=10.0)
+
+    if cfg_ctrl['do_inertial_comp']:
+        # Set tau = M * tau, where M is the joint-space mass matrix
+        gripper_mass_matrix_joint = gripper_mass_matrix
+        dof_torque[:, 7:] = (gripper_mass_matrix_joint @ dof_torque[:, 7:].unsqueeze(-1)).squeeze(-1)
 
     dof_torque = torch.clamp(dof_torque, min=-100.0, max=100.0)
 

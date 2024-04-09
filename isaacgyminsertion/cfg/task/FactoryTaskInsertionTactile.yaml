@@ -8,6 +8,8 @@ defaults:
 name: FactoryTaskInsertionTactile
 physics_engine: ${..physics_engine}
 
+online_grasp: False
+
 grasp_logger:
     total_grasp: 50
 
@@ -44,11 +46,12 @@ tactile: # Pulling from task
 
 env:
     numEnvs: ${resolve_default:128,${...num_envs}}
-    numObservations: 24 #
-    numObsStudent: 18 #
+    numObservations: 27 #
+    numObsStudent: 24 #
     numStates: 13 #
-    numActions: 6 # [position, ori]
-    numTargets: 6 # [position, ori]
+    numActions: 9 # [position, ori]
+    numTargets: 9 # [position, ori]
+    hand_action: True
 
     # Should be the same as in EnvPPO
     numObsHist: 1
@@ -112,13 +115,13 @@ randomize:
     socket_pos_z_noise_bounds: [-0.002, 0.003]  # noise on socket offset from table
     grasp_plug_noise: 0.005 # xyz noise on plug position during grasp
     above_socket_noise: [0.03, 0.03, 0.001]
-    plug_rot_noise: [0.0, 0.0, 0.0]
+    plug_rot_noise: [0.3, 0.3, 0.3] # only grasptask
 
 rl:
 
     pos_action_scale: [0.005, 0.005, 0.004]
     rot_action_scale: [0.04, 0.04, 0.04]
-
+    gripper_action_scale: [5.0, 5.0, 5.0]
     force_action_scale: [1.0, 1.0, 1.0]
     torque_action_scale: [1.0, 1.0, 1.0]
     
@@ -131,7 +134,7 @@ rl:
     num_keypoints: 4  # number of keypoints used in reward
     keypoint_scale: 1.0  # length of line of keypoints
 
-    max_episode_length: 500 # 8192  # terminate episode after this number of timesteps (failure)
+    max_episode_length: 4000 # 8192  # terminate episode after this number of timesteps (failure)
 
     orientation_threshold: 0.1
     far_error_thresh: 0.100  # threshold above which plug is considered too far from bolt
@@ -152,15 +155,15 @@ rl:
 
 
 ctrl:
-    ctrl_type:  gym_default # {gym_default,
+    ctrl_type:  joint_space_id # {gym_default,
                                #  joint_space_ik, joint_space_id, 
                                #  task_space_impedance, operational_space_motion, 
                                #  open_loop_force, closed_loop_force,
                                #  hybrid_force_motion}
     all:
         jacobian_type: geometric
-        gripper_prop_gains: [10, 10, 10, 10, 10, 10, 10, 10]
-        gripper_deriv_gains: [0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2]
+        gripper_prop_gains: [300, 300, 300, 300, 300, 300, 300, 300]
+        gripper_deriv_gains: [10, 10, 10, 10, 10, 10, 10, 10]
     gym_default:
         ik_method: dls
         joint_prop_gains: [290, 208, 145, 145, 232, 204, 176]
