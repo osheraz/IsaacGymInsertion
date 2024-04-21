@@ -69,14 +69,14 @@ class PPO(object):
 
         # ---- Tactile Info ---
         self.tactile_info = self.ppo_config["tactile_info"]
-        self.tactile_seq_length = self.network_config.tactile_decoder.tactile_seq_length
-        self.tactile_input_dim = [self.network_config.tactile_decoder.img_width,
-                                  self.network_config.tactile_decoder.img_height,
-                                  self.network_config.tactile_decoder.num_channels]
+        self.tactile_seq_length = self.network_config.tactile_encoder.tactile_seq_length
+        self.tactile_input_dim = [self.network_config.tactile_encoder.img_width,
+                                  self.network_config.tactile_encoder.img_height,
+                                  self.network_config.tactile_encoder.num_channels]
         if self.task_config.tactile.half_image:
             self.tactile_input_dim[0] = self.tactile_input_dim[0] // 2
         self.mlp_tactile_info_dim = self.network_config.tactile_mlp.units[0]
-        self.tactile_hist_dim = (self.network_config.tactile_decoder.tactile_seq_length, 3, *self.tactile_input_dim)
+        self.tactile_hist_dim = (self.network_config.tactile_encoder.tactile_seq_length, 3, *self.tactile_input_dim)
         # ---- ft Info ---
         self.ft_info = self.ppo_config["ft_info"]
         self.ft_seq_length = self.ppo_config["ft_seq_length"]
@@ -117,7 +117,7 @@ class PPO(object):
             "mlp_tactile_units": self.network_config.tactile_mlp.units,
             'tactile_input_dim': self.tactile_input_dim,
             'tactile_seq_length': self.tactile_seq_length,
-            "tactile_decoder_embed_dim": self.network_config.tactile_mlp.units[0],
+            "tactile_encoder_embed_dim": self.network_config.tactile_mlp.units[0],
             "shared_parameters": self.ppo_config.shared_parameters,
             "merge_units": self.network_config.merge_mlp.units,
             "hand_mlp_units": self.network_config.hand_mlp.units,
@@ -148,7 +148,7 @@ class PPO(object):
         # ---- Optim ----
         self.last_lr = float(self.ppo_config['learning_rate'])
         self.weight_decay = self.ppo_config.get('weight_decay', 0.0)
-        self.decoder_criterion = torch.nn.BCEWithLogitsLoss()
+        self.encoder_criterion = torch.nn.BCEWithLogitsLoss()
         self.optimizer = torch.optim.Adam(self.model.parameters(), self.last_lr, weight_decay=self.weight_decay)
 
         # ---- PPO Train Param ----
@@ -465,6 +465,7 @@ class PPO(object):
 
                 self.optimizer.zero_grad()
                 loss.backward()
+
                 grad_norms.append(torch.norm(
                     torch.cat([p.reshape(-1) for p in self.model.parameters()])))
 
@@ -480,6 +481,9 @@ class PPO(object):
 
                 self.storage.update_mu_sigma(mu.detach(), sigma.detach())
 
+                del loss
+                del res_dict
+
             av_kls = torch.mean(torch.stack(ep_kls))
             # self.last_lr = self.scheduler.update(self.last_lr, av_kls.item())
             for param_group in self.optimizer.param_groups:
@@ -488,6 +492,8 @@ class PPO(object):
 
             if not continue_training:
                 break
+
+        torch.cuda.empty_cache()
 
         self.rl_train_time += (time.time() - _t)
         return a_losses, c_losses, b_losses, entropies, kls, grad_norms, returns_list
@@ -523,6 +529,7 @@ class PPO(object):
         plt.close()
 
     def log_video(self):
+
         if self.it == 0:
             self.env.start_recording()
             self.last_recording_it = self.it

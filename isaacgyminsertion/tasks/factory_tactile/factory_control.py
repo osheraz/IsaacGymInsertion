@@ -94,7 +94,7 @@ def compute_dof_torque(cfg_ctrl,
     # 1) https://ethz.ch/content/dam/ethz/special-interest/mavt/robotics-n-intelligent-systems/rsl-dam/documents/RobotDynamics2018/RD_HS2018script.pdf
     # 2) Modern Robotics
 
-    dof_torque = torch.zeros((cfg_ctrl['num_envs'], 15), device=device)
+    dof_torque = torch.zeros((cfg_ctrl['num_envs'], 13), device=device)
 
     if cfg_ctrl['gain_space'] == 'joint':
 
@@ -175,12 +175,12 @@ def compute_dof_torque(cfg_ctrl,
         dof_torque[:, 0:7] = (jacobian_T @ task_wrench.unsqueeze(-1)).squeeze(-1)
 
     if act_torque is not None:
-        dof_torque[:, [1 + 7, 2 + 7, 4 + 7, 5 + 7, 6 + 7, 7 + 7]] = act_torque
+        dof_torque[:, 7:] = act_torque
     else:
         dof_torque[:, 7:] = cfg_ctrl['gripper_prop_gains'] * (ctrl_target_gripper_dof_pos - dof_pos[:, 7:]) + \
                             cfg_ctrl['gripper_deriv_gains'] * (0.0 - dof_vel[:, 7:])  # gripper finger joints
 
-    dof_torque[:, 7:] = torch.clamp(dof_torque[:, 7:], min=-10.0, max=10.0)
+    dof_torque[:, 7:] = torch.clamp(dof_torque[:, 7:], min=-2.0, max=2.0)
 
     if cfg_ctrl['do_inertial_comp']:
         # Set tau = M * tau, where M is the joint-space mass matrix

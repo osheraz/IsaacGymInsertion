@@ -136,9 +136,9 @@ class FactoryBaseTactile(VecTask, FactoryABCBase):
             kuka_options.max_angular_velocity = 2 * math.pi  # default = 64.0; reduced to prevent CUDA errors
         else:
             kuka_options.linear_damping = 0.0  # default = 0.0
-            kuka_options.max_linear_velocity = 1000.0  # default = 1000.0
+            kuka_options.max_linear_velocity = 1.0  # default = 1000.0
             kuka_options.angular_damping = 0.5  # default = 0.5
-            kuka_options.max_angular_velocity = 64.0  # default = 64.0
+            kuka_options.max_angular_velocity = 2 * math.pi  # default = 64.0
         kuka_options.disable_gravity = True
         kuka_options.enable_gyroscopic_forces = True
         kuka_options.default_dof_drive_mode = gymapi.DOF_MODE_NONE  # DOF_MODE_NONE
@@ -312,7 +312,7 @@ class FactoryBaseTactile(VecTask, FactoryABCBase):
         r_dist = 0.5
         r_act = 2.0
 
-        max_f = 2000.0  # mapping coeff between act_force to tendon tension or somthing like that
+        max_f = 2.0  # mapping coeff between act_force to tendon tension or somthing like that
         k1 = 0.5  # spring coeff (
         k2 = 1.0  # spring coeff (harder to move the distal finger)
         d1 = d2 = 6.0  # damping coeff
@@ -525,7 +525,7 @@ class FactoryBaseTactile(VecTask, FactoryABCBase):
                 kuka_dof_props = self.gym.get_actor_dof_properties(env_ptr, kuka_handle)
                 kuka_dof_props['driveMode'][:] = gymapi.DOF_MODE_EFFORT
                 kuka_dof_props['stiffness'][:] = 0.0  # zero passive stiffness
-                kuka_dof_props['damping'][:] = 0.5  # zero passive damping
+                kuka_dof_props['damping'][:] = 0.0  # zero passive damping
                 self.gym.set_actor_dof_properties(env_ptr, kuka_handle, kuka_dof_props)
 
     def generate_ctrl_signals(self):

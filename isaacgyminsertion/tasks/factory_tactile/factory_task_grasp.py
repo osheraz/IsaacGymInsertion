@@ -142,9 +142,9 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         
 
         # tactile buffers
-        self.num_channels = self.cfg_tactile.decoder.num_channels
-        self.width = self.cfg_tactile.decoder.width // 2 if self.cfg_tactile.half_image else self.cfg_tactile.decoder.width
-        self.height = self.cfg_tactile.decoder.height
+        self.num_channels = self.cfg_tactile.encoder.num_channels
+        self.width = self.cfg_tactile.encoder.width // 2 if self.cfg_tactile.half_image else self.cfg_tactile.encoder.width
+        self.height = self.cfg_tactile.encoder.height
 
         self.tactile_imgs = torch.zeros(
             (self.num_envs, len(self.fingertips),  # left, right, bottom
@@ -369,7 +369,7 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                     tactile_img = tactile_img[:w // 2]
                     height_map = height_map[:w // 2]
 
-                # Resizing to decoder size
+                # Resizing to encoder size
                 resized_img = cv2.resize(tactile_img, (self.height, self.width), interpolation=cv2.INTER_AREA)
 
                 if self.num_channels == 3:
@@ -756,7 +756,7 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         socket_quat = np.zeros((self.total_init_grasp_count, 4))
         plug_pos = np.zeros((self.total_init_grasp_count, 3))
         plug_quat = np.zeros((self.total_init_grasp_count, 4))
-        dof_pos = np.zeros((self.total_init_grasp_count, 15))
+        dof_pos = np.zeros((self.total_init_grasp_count, 13))
         last_ptr = 0
 
         for i in range(self.grasps_save_ctr):
@@ -795,13 +795,6 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         # self.dof_pos[env_ids, :] = torch.tensor([[-0.0047,  0.2375,  0.0203, -1.2496, -0.0070,  1.6475, -1.5514,  0.6907,
         #                                             1.8478,  0.1660, -0.6892,  1.8515,  0.1625,  1.8333,  0.1740]],
         #                                          device=self.device).repeat((len(env_ids), 1))
-
-        # dont play with these joints (no actuation here)#
-        self.dof_pos[
-            env_ids, list(self.dof_dict.values()).index('base_to_finger_1_1')] = self.cfg_task.env.openhand.base_angle
-        self.dof_pos[
-            env_ids, list(self.dof_dict.values()).index('base_to_finger_2_1')] = -self.cfg_task.env.openhand.base_angle
-        # dont play with these joints (no actuation here)#
 
         self.dof_pos[env_ids, list(self.dof_dict.values()).index(
             'finger_1_1_to_finger_1_2')] = self.cfg_task.env.openhand.proximal_open
@@ -909,7 +902,7 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         )
 
         self.root_pos[env_ids, self.socket_actor_id_env, 0] = self.cfg_task.randomize.socket_pos_xy_initial[0] \
-                                                              + socket_noise_xy[env_ids, 0]
+                                                              + socket_noise_xy[env_ids, 0] + 10
         self.root_pos[env_ids, self.socket_actor_id_env, 1] = self.cfg_task.randomize.socket_pos_xy_initial[1] \
                                                               + socket_noise_xy[env_ids, 1]
 
@@ -1072,12 +1065,6 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         """Fully open gripper using controller. Called outside RL loop (i.e., after last step of episode)."""
 
         gripper_dof_pos = 0 * self.gripper_dof_pos.clone()
-        gripper_dof_pos[env_ids,
-                        list(self.dof_dict.values()).index(
-                            'base_to_finger_1_1') - 7] = self.cfg_task.env.openhand.base_angle
-        gripper_dof_pos[env_ids,
-                        list(self.dof_dict.values()).index(
-                            'base_to_finger_2_1') - 7] = -self.cfg_task.env.openhand.base_angle
 
         gripper_dof_pos[env_ids,
                         list(self.dof_dict.values()).index(
@@ -1096,12 +1083,6 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         """Fully close gripper using controller. Called outside RL loop (i.e., after last step of episode)."""
 
         gripper_dof_pos = self.gripper_dof_pos.clone()
-        gripper_dof_pos[env_ids,
-                        list(self.dof_dict.values()).index(
-                            'base_to_finger_1_1') - 7] = self.cfg_task.env.openhand.base_angle
-        gripper_dof_pos[env_ids,
-                        list(self.dof_dict.values()).index(
-                            'base_to_finger_2_1') - 7] = -self.cfg_task.env.openhand.base_angle
 
         gripper_proximal_close_noise = np.random.uniform(0.0, 0.01, 3)
         gripper_dof_pos[env_ids,
