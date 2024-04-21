@@ -62,8 +62,8 @@ torch.set_printoptions(sci_mode=False)
 
 @torch.jit.script
 def randomize_rotation(rand0, rand1, x_unit_tensor, y_unit_tensor):
-    return quat_mul(quat_from_angle_axis(rand0 * np.pi * 0.2, x_unit_tensor),
-                    quat_from_angle_axis(rand1 * np.pi * 0.2, y_unit_tensor))
+    return quat_mul(quat_from_angle_axis(rand0 * np.pi * 0.1, x_unit_tensor),
+                    quat_from_angle_axis(rand1 * np.pi * 0.1, y_unit_tensor))
 
 
 @torch.jit.script
@@ -146,7 +146,8 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.force_prob_range = [0.001, 0.1]
         self.force_decay = 0.99
         self.force_decay_interval = 0.08
-
+        self.total_successes = 0
+        self.total_resets = 0
         self.x_unit_tensor = to_torch([1, 0, 0], dtype=torch.float, device=self.device).repeat((self.num_envs, 1))
         self.y_unit_tensor = to_torch([0, 1, 0], dtype=torch.float, device=self.device).repeat((self.num_envs, 1))
         self.z_unit_tensor = to_torch([0, 0, 1], dtype=torch.float, device=self.device).repeat((self.num_envs, 1))
@@ -687,18 +688,12 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         action_delta_penalty = torch.norm(self.actions - self.prev_actions, p=2, dim=-1)
         action_delta_reward = self.cfg_task.rl.action_delta_scale * action_delta_penalty
 
-        # plug_ori_penalty = torch.norm(self.plug_quat - self.identity_quat, p=2, dim=-1)
         quat_diff = torch_jit_utils.quat_mul(self.plug_quat, torch_jit_utils.quat_conjugate(self.goal_ori))
         rot_dist = 2.0 * torch.asin(torch.clamp(torch.norm(quat_diff[:, 0:3], p=2, dim=-1), max=1.0))
-        ori_reward = 1.0 / (torch.abs(rot_dist) + 0.1) * self.cfg_task.rl.ori_reward_scale * -1
-        # ori_reward = plug_ori_penalty * self.cfg_task.rl.ori_reward_scale
+        ori_reward = self.cfg_task.rl.ori_reward_scale * -1 / (torch.abs(rot_dist) + 0.1)
 
         keypoint_dist = self._get_keypoint_dist()
         keypoint_reward = keypoint_dist * self.cfg_task.rl.keypoint_reward_scale
-
-        is_plug_engaged_w_socket = self._check_plug_engaged_w_socket()
-        engagement = self._get_engagement_reward_scale(is_plug_engaged_w_socket, self.cfg_task.rl.success_height_thresh)
-        engagement_reward = engagement * self.cfg_task.rl.engagement_reward_scale
 
         left_finger_dist = torch.norm(self.left_finger_pos[:, :2] - self.plug_pos[:, :2], p=2, dim=-1)
         right_finger_dist = torch.norm(self.right_finger_pos[:, :2] - self.plug_pos[:, :2], p=2, dim=-1)
@@ -708,29 +703,36 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         self.rew_buf[:] = ori_reward + dist_reward + action_reward + action_delta_reward
 
+        # Penalty for losing the grip
         distance_reset_buf = (self.far_from_goal_buf | self.degrasp_buf)
         early_reset_reward = distance_reset_buf * self.cfg_task.rl.early_reset_reward_scale
-        self.rew_buf[:] += (early_reset_reward)
-
-        # self.rew_buf[:] += (early_reset_reward * self.timeout_reset_buf)
-        # self.rew_buf[:] += (self.timeout_reset_buf * self.success_reset_buf) * self.cfg_task.rl.success_bonus
+        self.rew_buf[:] += early_reset_reward
 
         # Find out which envs hit the goal and update successes count
-        goal_resets = torch.where(torch.abs(rot_dist) <= 0.1, torch.ones_like(self.reset_buf), self.reset_buf)
+        goal_resets = torch.where(torch.abs(rot_dist) <= self.cfg_task.rl.goal_min_rot,
+                                  torch.ones_like(self.success_reset_buf),
+                                  self.success_reset_buf)
+
+        self.success_reset_buf[:] = goal_resets
+
         self.successes = self.successes + goal_resets
+        num_resets = torch.sum(self.reset_buf)
+        finished_cons_successes = torch.sum(self.successes * self.reset_buf.float())
+        av_factor = 0.1
+        self.consecutive_successes = torch.where(num_resets > 0, av_factor * finished_cons_successes / num_resets + (
+                    1.0 - av_factor) * self.consecutive_successes, self.consecutive_successes)
 
         # Success bonus: orientation is within `success_tolerance` of goal orientation
-        self.rew_buf[:] = torch.where(goal_resets == 1, self.rew_buf + 10, self.rew_buf)
+        self.rew_buf[:] = torch.where(goal_resets == 1, self.rew_buf + self.cfg_task.rl.reach_bonus, self.rew_buf)
 
         self.extras['successes'] = ((self.timeout_reset_buf | distance_reset_buf) * self.success_reset_buf) * 1.0
         self.extras['keypoint_reward'] = keypoint_reward
-        self.extras['engagement_reward'] = engagement_reward
         self.extras['ori_reward'] = ori_reward
 
         self.reward_log_buf[:] = self.rew_buf[:]
 
         is_last_step = (self.progress_buf[0] == self.max_episode_length - 1)
-        if is_last_step:
+        if is_last_step and False:
             if not self.cfg_task.data_logger.collect_data:
                 success_dones = self.success_reset_buf.nonzero()
                 failure_dones = (1.0 - self.success_reset_buf).nonzero()
@@ -740,13 +742,22 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                       ' Success Reward:', self.rew_buf[success_dones].mean().item(),
                       ' Failure Reward:', self.rew_buf[failure_dones].mean().item())
 
+        if True:
+            self.total_resets = self.total_resets + self.reset_buf.sum()
+            direct_average_successes = self.total_successes + self.successes.sum()
+            self.total_successes = self.total_successes + (self.successes * self.reset_buf).sum()
+
+            # The direct average shows the overall result more quickly, but slightly undershoots long term
+            # policy performance.
+            print("Direct average consecutive successes = {:.1f}".format(direct_average_successes/(self.total_resets + self.num_envs)))
+            if self.total_resets > 0:
+                print("Post-Reset average consecutive successes = {:.1f}".format(self.total_successes/self.total_resets))
+
+
     def _update_reset_buf(self):
         """Assign environments for reset if successful or failed."""
 
-        # if successfully inserted to a certain threshold
-        self.success_reset_buf[:] = self._check_plug_inserted_in_socket()
-
-        # if we are collecting data, reset at insertion
+        # if we are collecting data, reset at success
         if self.cfg_task.data_logger.collect_data or self.cfg_task.data_logger.collect_test_sim:
             self.reset_buf[:] |= self.success_reset_buf[:]
 
@@ -757,26 +768,23 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         self.reset_buf[:] = self.timeout_reset_buf[:]
 
-        # check is object is grasped and reset if not
+        # Check if object is too far from gripper
+        fingertips_plug_dist = (torch.norm(self.left_finger_pos - self.plug_pos, p=2, dim=-1) > 0.12) | (
+                                torch.norm(self.right_finger_pos - self.plug_pos, p=2, dim=-1) > 0.12) | (
+                                torch.norm(self.middle_finger_pos - self.plug_pos, p=2, dim=-1) > 0.12)
+        self.far_from_goal_buf[:] = fingertips_plug_dist
+
+        # Check is object is grasped and reset if not
         roll, pitch, _ = get_euler_xyz(self.plug_quat.clone())
         roll[roll > np.pi] -= 2 * np.pi
         pitch[pitch > np.pi] -= 2 * np.pi
-        self.degrasp_buf[:] = (torch.abs(roll) > 0.3) | (torch.abs(pitch) > 0.3)
+        self.degrasp_buf[:] = (torch.abs(roll) > 0.7) | (torch.abs(pitch) > 0.7)
 
-        # check if object is too far from gripper
-        # fingertips_plug_dist = (torch.norm(self.left_finger_pos - self.plug_pos, p=2, dim=-1) > 0.12) | (
-        #         torch.norm(self.right_finger_pos - self.plug_pos, p=2, dim=-1) > 0.12) | (
-        #                                torch.norm(self.middle_finger_pos - self.plug_pos, p=2, dim=-1) > 0.12)
-        # self.degrasp_buf[:] |= fingertips_plug_dist
-
-        # TODO: Reset at grasping fails
-        # if self.cfg_task.data_logger.collect_data or self.cfg_task.data_logger.collect_test_sim or True:
-        #     self.reset_buf[:] |= self.degrasp_buf[:]
+        #if self.cfg_task.data_logger.collect_data or self.cfg_task.data_logger.collect_test_sim:
+        self.reset_buf[:] |= self.degrasp_buf[:]
 
         # If plug is too far from socket pos
-        self.dist_plug_socket = torch.norm(self.plug_pos - self.socket_pos, p=2, dim=-1)
-        self.far_from_goal_buf[:] = self.dist_plug_socket > 0.2  # self.cfg_task.rl.far_error_thresh,
-        # self.reset_buf[:] |= self.far_from_goal_buf[:]
+        self.reset_buf[:] |= self.far_from_goal_buf[:]
 
     def _reset_predefined_environment(self, env_ids):
 
@@ -803,6 +811,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self._reset_kuka(env_ids, new_pose=kuka_dof_pos)
 
         for _, v in self.all_rendering_camera.items():
+            # env_id = v[0], camera_1 = v[1], camera_2 = v[2]
             self.init_plug_pos_cam[v[0], :] = plug_pos[v[0], :]
 
         object_pose = {
@@ -1292,8 +1301,6 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                    list(self.dof_dict.values()).index('base_to_finger_3_2') - 7,
                    list(self.dof_dict.values()).index('finger_3_2_to_finger_3_3') - 7]
 
-            # TODO think about a better way.
-            # in isaac, zero torque is no motion
             # (delta) Tendon string constraint r_a * q_a = r_p * q_p + r_d * d_p (constant length)
             # can be loaded from grasping files
             #         dof_torque[:, 0:7] = cfg_ctrl['joint_prop_gains'] * delta_arm_dof_pos + \
@@ -1301,6 +1308,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
             self.act_angles *= 0  # (self.R.T @ self.gripper_dof_pos[:, idx].T) / self.r_act
             self.act_angles += gripper_actions  # add the action
+            self.act_angles = torch.clamp(self.act_angles, 0 * self.act_angles, self.act_angles)
 
             tendon_forces = self.Q @ self.act_angles.unsqueeze(-1)  # linear mapping between act_angle to tension
             self.act_torque = self.R @ tendon_forces - self.K @ self.gripper_dof_pos[:, idx].unsqueeze(-1)
@@ -1446,66 +1454,6 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         return lift_success
 
-    def _check_plug_close_to_socket(self):
-        """Check if plug is close to socket."""
-        return torch.norm(self.plug_pos[:, :2] - self.socket_tip[:, :2], p=2,
-                          dim=-1) < self.cfg_task.rl.close_error_thresh
-
-    def _check_plug_inserted_in_socket(self):
-        """Check if plug is inserted in socket."""
-
-        # Check if plug is within threshold distance of assembled state
-        is_plug_below_insertion_height = (
-                self.plug_pos[:, 2] <= (self.socket_tip[:, 2] - self.cfg_task.rl.success_height_thresh)
-        )
-        # Check if plug is close to socket
-        # NOTE: This check addresses edge case where plug is within threshold distance of
-        # assembled state, but plug is outside socket
-        is_plug_close_to_socket = self._check_plug_close_to_socket()
-
-        # Combine both checks
-        is_plug_inserted_in_socket = torch.logical_and(
-            is_plug_below_insertion_height, is_plug_close_to_socket
-        )
-
-        return is_plug_inserted_in_socket
-
-    def _check_plug_engaged_w_socket(self):
-        """Check if plug is engaged with socket."""
-
-        # Check if base of plug is below top of socket
-        # NOTE: In assembled state, plug origin is coincident with socket origin;
-        # thus plug pos must be offset to compute actual pos of base of plug
-        is_plug_below_engagement_height = (
-                (self.plug_pos[:, 2]) < self.socket_tip[:, 2]
-        )
-
-        # Check if plug is close to socket
-        # NOTE: This check addresses edge case where base of plug is below top of socket,
-        # but plug is outside socket
-        is_plug_close_to_socket = self._check_plug_close_to_socket()  # torch.norm(self.plug_pos[:, :2] - self.socket_tip[:, :2], p=2, dim=-1) < 0.005 # self._check_plug_close_to_socket()
-        # print(is_plug_below_engagement_height[0], is_plug_close_to_socket[0])
-
-        # Combine both checks
-        is_plug_engaged_w_socket = torch.logical_and(
-            is_plug_below_engagement_height, is_plug_close_to_socket
-        )
-
-        return is_plug_engaged_w_socket
-
-    def _get_engagement_reward_scale(self, is_plug_engaged_w_socket, success_height_thresh):
-        """Compute scale on reward. If plug is not engaged with socket, scale is zero.
-        If plug is engaged, scale is proportional to distance between plug and bottom of socket."""
-
-        # Set default value of scale to zero
-        reward_scale = torch.zeros((self.num_envs,), dtype=torch.float32, device=self.device)
-        # For envs in which plug and socket are engaged, compute positive scale
-        engaged_idx = np.argwhere(is_plug_engaged_w_socket.cpu().numpy().copy()).squeeze()
-        height_dist = self.plug_pos[engaged_idx, 2] - self.socket_pos[engaged_idx, 2]
-        # NOTE: Edge case: if success_height_thresh is greater than 0.1,
-        # denominator could be negative
-        reward_scale[engaged_idx] = 1.0 / ((height_dist - success_height_thresh) + 0.1)
-        return reward_scale
 
     def step(self, actions, dec=None):
         super().step(actions)

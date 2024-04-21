@@ -143,11 +143,13 @@ rl:
     keypoint_reward_scale: -0.4 # scale on keypoint-based reward
     action_penalty_scale: -0.002  # scale on action penalty
     action_delta_scale: -0.02
-    ori_reward_scale: -0.5 # scale on ori-based reward
+    ori_reward_scale: -0.1 # scale on ori-based reward
 
     early_reset_reward_scale: -1.0
     engagement_reward_scale: 0.4
 
+    goal_min_rot: 0.05
+    reach_bonus: 1.0
     # Success bonus
     success_bonus: 5.0  # bonus if plug is close enough to base of bolt shank
     # engagement_bonus: 0.01 # bonus if plug is engaged (partially inserted) with socket

@@ -502,7 +502,7 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
         table_pose.p.z = self.cfg_base.env.table_height * 0.5
         table_pose.r = gymapi.Quat(0.0, 0.0, 0.0, 1.0)
 
-        self.goal_displacement = gymapi.Vec3(-0.2, -0.06, 0.12)
+        self.goal_displacement = gymapi.Vec3(-0.0, -0.3, 0.15)
         self.goal_displacement_tensor = torch_jit_utils.to_torch(
             [self.goal_displacement.x, self.goal_displacement.y, self.goal_displacement.z], device=self.device)
         goal_start_pose = gymapi.Transform()
@@ -719,20 +719,38 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
             self.camera_props.width = 1280
             self.camera_props.height = 720
             if subassembly not in self.all_rendering_camera:
+
                 self.all_rendering_camera[subassembly] = []
                 self.all_rendering_camera[subassembly].append(i)
 
-                rendering_camera1 = self.gym.create_camera_sensor(env_ptr, self.camera_props)
-                self.gym.set_camera_location(rendering_camera1, env_ptr, gymapi.Vec3(1.5, 1, 3.0), gymapi.Vec3(0, 0, 0))
-                self.all_rendering_camera[subassembly].append(rendering_camera1)
+                cam1, trans = self.make_handle_trans(1280, 720, i, (0.8, 0., 0.4),
+                                                    (np.deg2rad(0), np.deg2rad(40), np.deg2rad(180)))
+                self.gym.attach_camera_to_body(
+                    cam1,
+                    self.envs[i],
+                    kuka_handle,
+                    trans,
+                    gymapi.FOLLOW_TRANSFORM,
+                )
 
-                rendering_camera2 = self.gym.create_camera_sensor(env_ptr, self.camera_props)
-                self.gym.set_camera_location(rendering_camera2, env_ptr, gymapi.Vec3(1.5, 1, 3.0), gymapi.Vec3(0, 0, 0))
-                self.all_rendering_camera[subassembly].append(rendering_camera2)
+                self.all_rendering_camera[subassembly].append(cam1)
+
+                cam2, trans = self.make_handle_trans(1280, 720, i, (0.8, 0., 0.4),
+                                                     (np.deg2rad(0), np.deg2rad(40), np.deg2rad(180)))
+                self.gym.attach_camera_to_body(
+                    cam1,
+                    self.envs[i],
+                    kuka_handle,
+                    trans,
+                    gymapi.FOLLOW_TRANSFORM,
+                )
+
+                self.all_rendering_camera[subassembly].append(cam1)
+                self.all_rendering_camera[subassembly].append(cam2)
 
             if self.external_cam:
                 # add external cam
-                cam, trans = self.make_handle_trans(self.res[0], self.res[1], i, (0.66, 0.0, 0.2),
+                cam, trans = self.make_handle_trans(self.res[0], self.res[1], i, (0.66, 0., 0.2),
                                                     (np.deg2rad(0), np.deg2rad(40), np.deg2rad(180)))
                 self.camera_handles.append(cam)
                 self.gym.attach_camera_to_body(
@@ -913,23 +931,22 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
 
             video_frames = []
             for _, v in self.all_rendering_camera.items():
-                env_id = v[0]
-                camera_1 = v[1]
-                camera_2 = v[2]
 
-                bx, by, bz = self.init_plug_pos_cam[env_id, 0], self.init_plug_pos_cam[env_id, 1], \
-                self.init_plug_pos_cam[env_id, 2]
+                env_id, camera_1, camera_2 = v[0], v[1], v[2]
 
-                self.gym.set_camera_location(camera_1, self.envs[env_id],
-                                             gymapi.Vec3(bx - 0.2, by - 0.2, bz + 0.4),
-                                             gymapi.Vec3(bx, by, bz))
-                video_frame1 = self.gym.get_camera_image(self.sim, self.envs[env_id], camera_1, gymapi.IMAGE_COLOR)
+                video_frame1 = self.gym.get_camera_image(self.sim,
+                                                         self.envs[env_id],
+                                                         camera_1,
+                                                         gymapi.IMAGE_COLOR)
+
                 video_frame1 = video_frame1.reshape((self.camera_props.height, self.camera_props.width, 4))
 
-                self.gym.set_camera_location(camera_2, self.envs[env_id],
-                                             gymapi.Vec3(bx - 0.2, by + 0.2, bz + 0.4),
-                                             gymapi.Vec3(bx, by, bz))
-                video_frame2 = self.gym.get_camera_image(self.sim, self.envs[env_id], camera_2, gymapi.IMAGE_COLOR)
+
+                video_frame2 = self.gym.get_camera_image(self.sim,
+                                                         self.envs[env_id],
+                                                         camera_2,
+                                                         gymapi.IMAGE_COLOR)
+
                 video_frame2 = video_frame2.reshape((self.camera_props.height, self.camera_props.width, 4))
 
                 video_frames.append(np.concatenate((video_frame1, video_frame2), axis=1))

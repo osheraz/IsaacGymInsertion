@@ -521,12 +521,12 @@ class PPO(object):
         plt.ylabel('force')
         plt.savefig(f'{output_loc}_force.png')
         plt.close()
-        plt.figure(figsize=(8, 6))
-        plt.plot(np.array(data)[:, 3:])
-        plt.xlabel('time')
-        plt.ylabel('torque')
-        plt.savefig(f'{output_loc}_torque.png')
-        plt.close()
+        # plt.figure(figsize=(8, 6))
+        # plt.plot(np.array(data)[:, 3:])
+        # plt.xlabel('time')
+        # plt.ylabel('torque')
+        # plt.savefig(f'{output_loc}_torque.png')
+        # plt.close()
 
     def log_video(self):
 
