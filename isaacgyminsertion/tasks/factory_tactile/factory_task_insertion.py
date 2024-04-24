@@ -695,11 +695,11 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         keypoint_dist = self._get_keypoint_dist()
         keypoint_reward = keypoint_dist * self.cfg_task.rl.keypoint_reward_scale
 
-        left_finger_dist = torch.norm(self.left_finger_pos[:, :2] - self.plug_pos[:, :2], p=2, dim=-1)
-        right_finger_dist = torch.norm(self.right_finger_pos[:, :2] - self.plug_pos[:, :2], p=2, dim=-1)
-        middle_finger_dist = torch.norm(self.middle_finger_pos[:, :2] - self.plug_pos[:, :2], p=2, dim=-1)
-        fingertips_plug_dist = left_finger_dist + right_finger_dist + middle_finger_dist
-        dist_reward = self.cfg_task.rl.keypoint_reward_scale * fingertips_plug_dist
+        left_finger_dist = torch.norm(self.left_finger_pos[:, :2] - self.fingertip_centered_pos[:, :2], p=2, dim=-1)
+        right_finger_dist = torch.norm(self.right_finger_pos[:, :2] - self.fingertip_centered_pos[:, :2], p=2, dim=-1)
+        middle_finger_dist = torch.norm(self.middle_finger_pos[:, :2] - self.fingertip_centered_pos[:, :2], p=2, dim=-1)
+        fingertips_center_dist = left_finger_dist + right_finger_dist + middle_finger_dist
+        dist_reward = self.cfg_task.rl.keypoint_reward_scale * fingertips_center_dist
 
         self.rew_buf[:] = ori_reward + dist_reward + action_reward + action_delta_reward
 
@@ -1302,13 +1302,11 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                    list(self.dof_dict.values()).index('finger_3_2_to_finger_3_3') - 7]
 
             # (delta) Tendon string constraint r_a * q_a = r_p * q_p + r_d * d_p (constant length)
-            # can be loaded from grasping files
-            #         dof_torque[:, 0:7] = cfg_ctrl['joint_prop_gains'] * delta_arm_dof_pos + \
-            #                              cfg_ctrl['joint_deriv_gains'] * (0.0 - dof_vel[:, 0:7])
-
-            self.act_angles *= 0  # (self.R.T @ self.gripper_dof_pos[:, idx].T) / self.r_act
+            # self.act_angles *= 0
+            self.act_angles = (
+                        self.R.permute(0, 2, 1) @ self.gripper_dof_pos[:, idx].unsqueeze(-1) / self.r_act).squeeze(-1)
             self.act_angles += gripper_actions  # add the action
-            self.act_angles = torch.clamp(self.act_angles, 0 * self.act_angles, self.act_angles)
+            # self.act_angles = torch.clamp(self.act_angles, min=0 * self.act_angles)
 
             tendon_forces = self.Q @ self.act_angles.unsqueeze(-1)  # linear mapping between act_angle to tension
             self.act_torque = self.R @ tendon_forces - self.K @ self.gripper_dof_pos[:, idx].unsqueeze(-1)

@@ -517,7 +517,7 @@ class PPO(object):
         plt.figure(figsize=(8, 6))
         plt.plot(np.array(data)[:, :3])
         plt.xlabel('time')
-        plt.ylim([-0.25, 0.25])
+        # plt.ylim([-0.25, 0.25])
         plt.ylabel('force')
         plt.savefig(f'{output_loc}_force.png')
         plt.close()

@@ -310,16 +310,13 @@ class FactoryBaseTactile(VecTask, FactoryABCBase):
 
         r_prox = 1.0
         r_dist = 0.5
-        r_act = 2.0
+        self.r_act = 2.0
 
-        max_f = 2.0  # mapping coeff between act_force to tendon tension or somthing like that
+        max_f = 5.0  # mapping coeff between act_force to tendon tension or somthing like that
         k1 = 0.5  # spring coeff (
         k2 = 1.0  # spring coeff (harder to move the distal finger)
         d1 = d2 = 6.0  # damping coeff
 
-        a1 = 6.0  # init act angles
-        a2 = 6.0  # init act angles
-        a3 = 6.0  # init act angles
 
         self.R = torch.tensor([[r_prox, 0., 0.],
                                [r_dist, 0., 0.],
@@ -334,7 +331,7 @@ class FactoryBaseTactile(VecTask, FactoryABCBase):
 
         self.K = torch.diag(torch.tensor([k1, k2, k1, k2, k1, k2], device=self.device)).repeat((self.num_envs, 1, 1))
         self.D = torch.diag(torch.tensor([d1, d2, d1, d2, d1, d2], device=self.device)).repeat((self.num_envs, 1, 1))
-        self.act_angles = torch.tensor([a1, a2, a3], device=self.device).repeat((self.num_envs, 1))
+        self.act_angles = torch.tensor([0, 0, 0], device=self.device).repeat((self.num_envs, 1))
         self.act_torque = None
 
 

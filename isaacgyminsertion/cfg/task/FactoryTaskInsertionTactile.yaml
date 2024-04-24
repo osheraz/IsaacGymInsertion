@@ -120,7 +120,7 @@ rl:
 
     pos_action_scale: [0.005, 0.005, 0.004]
     rot_action_scale: [0.04, 0.04, 0.04]
-    gripper_action_scale: [5.0, 5.0, 5.0]
+    gripper_action_scale: [1.0, 1.0, 1.0]
     force_action_scale: [1.0, 1.0, 1.0]
     torque_action_scale: [1.0, 1.0, 1.0]
     
