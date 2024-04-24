@@ -58,6 +58,7 @@ env:
     numObsStudentHist: 1
     ft_history_len: 30
     tactile_history_len: 1
+    img_history_len: 1
     smooth_force: True
 
     openhand:
@@ -100,6 +101,7 @@ external_cam:
 
 randomize:
 
+    force_scale: 0.0
     kuka_arm_initial_dof_pos: [0.0064, 0.2375,  -0.0075,  -1.2022, 0.0015,  1.6900,  -1.5699]
     fingertip_midpoint_rot_initial: [-3.14159265359, 0.0, -1.57079632679]  # initial rotation of fingertips (Euler)
 
@@ -142,8 +144,10 @@ rl:
 
     keypoint_reward_scale: -0.4 # scale on keypoint-based reward
     action_penalty_scale: -0.002  # scale on action penalty
+    loose_penalty: -0.1
     action_delta_scale: -0.02
     ori_reward_scale: -0.1 # scale on ori-based reward
+    min_grasp_force: 0.05
 
     early_reset_reward_scale: -1.0
     engagement_reward_scale: 0.4

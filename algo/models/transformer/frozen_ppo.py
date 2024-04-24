@@ -77,11 +77,6 @@ class PPO(object):
             self.tactile_input_dim[0] = self.tactile_input_dim[0] // 2
         self.mlp_tactile_info_dim = self.network_config.tactile_mlp.units[0]
         self.tactile_hist_dim = (self.network_config.tactile_encoder.tactile_seq_length, 3, *self.tactile_input_dim)
-        # ---- ft Info ---
-        self.ft_info = self.ppo_config["ft_info"]
-        self.ft_seq_length = self.ppo_config["ft_seq_length"]
-        self.ft_input_dim = self.ppo_config["ft_input_dim"]
-        self.ft_info_dim = self.ft_input_dim * self.ft_seq_length
         # ---- Priv Info ----
         self.priv_info = self.ppo_config['priv_info']
         self.priv_info_dim = self.ppo_config['priv_info_dim']
@@ -103,9 +98,6 @@ class PPO(object):
             'extrin_adapt': self.extrin_adapt,
             'priv_info_dim': self.priv_info_dim,
             'priv_info': self.priv_info,
-            "ft_input_shape": self.ft_info_dim,
-            "ft_info": self.ft_info,
-            "ft_units": self.network_config.ft_mlp.units,
             "obs_units": self.network_config.obs_mlp.units,
             "obs_info": self.obs_info,
             "gt_contacts_info": self.gt_contacts_info,
@@ -148,7 +140,6 @@ class PPO(object):
         # ---- Optim ----
         self.last_lr = float(self.ppo_config['learning_rate'])
         self.weight_decay = self.ppo_config.get('weight_decay', 0.0)
-        self.encoder_criterion = torch.nn.BCEWithLogitsLoss()
         self.optimizer = torch.optim.Adam(self.model.parameters(), self.last_lr, weight_decay=self.weight_decay)
 
         # ---- PPO Train Param ----
@@ -184,7 +175,6 @@ class PPO(object):
         # ---- Rollout Videos ----
         self.it = 0
         self.log_video_every = self.task_config.env.record_video_every
-        self.log_ft_every = self.task_config.env.record_ft_every
 
         self.last_recording_it = 0
         self.last_recording_it_ft = 0
@@ -419,7 +409,6 @@ class PPO(object):
                 entropy = res_dict['entropy']
                 mu = res_dict['mus']
                 sigma = res_dict['sigmas']
-                dec = res_dict['dec']
 
                 # actor loss
                 ratio = torch.exp(old_action_log_probs - action_log_probs)
@@ -441,10 +430,8 @@ class PPO(object):
                     b_loss = 0
                 a_loss, c_loss, entropy, b_loss = [torch.mean(loss) for loss in [a_loss, c_loss, entropy, b_loss]]
 
-                # decoder_loss = self.decoder_criterion(dec, batch_dict['contacts'])
                 rl_loss = a_loss + 0.5 * c_loss * self.critic_coef - entropy * self.entropy_coef + b_loss * self.bounds_loss_coef
-                # print(decoder_loss.item(), rl_loss.item())
-                loss = rl_loss  # + decoder_loss
+                loss = rl_loss
 
                 with torch.no_grad():
                     kl_dist = policy_kl(mu.detach(), sigma.detach(), old_mu, old_sigma)
@@ -586,7 +573,7 @@ class PPO(object):
 
             # do env step
             actions = torch.clamp(res_dict['actions'], -1.0, 1.0)
-            self.obs, rewards, self.dones, infos = self.env.step(actions, res_dict['dec'])
+            self.obs, rewards, self.dones, infos = self.env.step(actions)
 
             rewards = rewards.unsqueeze(1)
             # update dones and rewards after env step
@@ -642,7 +629,7 @@ class PPO(object):
 
         self.set_eval()
 
-        action, latent, done, dec = None, None, None, None
+        action, latent, done = None, None, None
         object_ori = None
 
         save_trajectory = self.env.cfg_task.data_logger.collect_data
@@ -669,7 +656,7 @@ class PPO(object):
                 self.data_logger.data_logger.reset()
             if not save_trajectory:
                 # record initial data for latent inference (not needed if recording trajectory data, TODO: check why?)
-                self.data_logger.log_trajectory_data(action, latent, done, dec, save_trajectory=save_trajectory)
+                self.data_logger.log_trajectory_data(action, latent, done, save_trajectory=save_trajectory)
 
         self.env_ids = torch.arange(self.env.num_envs).view(-1, 1)
         total_dones, num_success = 0, 0
@@ -700,15 +687,15 @@ class PPO(object):
                 'latent': latent,
                 'object_ori': object_ori,
             }
-            action, latent, dec = self.model.act_inference(obs_dict)
+            action, latent = self.model.act_inference(obs_dict)
             action = torch.clamp(action, -1.0, 1.0)
-            self.obs, r, done, info = self.env.step(action, dec)
+            self.obs, r, done, info = self.env.step(action)
 
             num_success += self.env.success_reset_buf[done.nonzero()].sum()
 
             # logging data
             if save_trajectory or offline_test:
-                self.data_logger.log_trajectory_data(action, None, done, dec, save_trajectory=save_trajectory)
+                self.data_logger.log_trajectory_data(action, None, done, save_trajectory=save_trajectory)
                 total_dones += len(done.nonzero())
                 if total_dones > milestone:
                     print('[Test] success rate:', num_success / total_dones)

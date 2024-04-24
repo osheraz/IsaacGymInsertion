@@ -164,7 +164,10 @@ class TactileDataset(Dataset):
         mask[:padding_length] = 0
 
         diff = True
-        keys = ["tactile", "eef_pos", "action", "latent", "obs_hist", "contacts", "hand_joints", "plug_hand_quat", "plug_hand_pos"]
+        keys = ["tactile", "eef_pos", "action", "latent",
+                "obs_hist", "contacts", "hand_joints",
+                "plug_hand_quat", "plug_hand_pos"]
+
         data_seq = {key: self.extract_sequence(data, key, start_idx) for key in keys}
 
         # Tactile input [T F W H C]

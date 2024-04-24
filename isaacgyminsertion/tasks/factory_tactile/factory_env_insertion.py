@@ -501,8 +501,8 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
         table_pose.p.y = 0.0
         table_pose.p.z = self.cfg_base.env.table_height * 0.5
         table_pose.r = gymapi.Quat(0.0, 0.0, 0.0, 1.0)
-
-        self.goal_displacement = gymapi.Vec3(-0.0, -0.3, 0.15)
+        self.y_disp = -10
+        self.goal_displacement = gymapi.Vec3(-0.0, self.y_disp, 0.15)
         self.goal_displacement_tensor = torch_jit_utils.to_torch(
             [self.goal_displacement.x, self.goal_displacement.y, self.goal_displacement.z], device=self.device)
         goal_start_pose = gymapi.Transform()
@@ -595,7 +595,6 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
 
             subassembly = self.cfg_env.env.desired_subassemblies[j]
             components = list(self.asset_info_insertion[subassembly])
-            # self.assembly_one_hot[i, j] = 1
 
             plug_pose = gymapi.Transform()
             plug_pose.p.x = self.cfg_base.env.kuka_depth
@@ -723,34 +722,33 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
                 self.all_rendering_camera[subassembly] = []
                 self.all_rendering_camera[subassembly].append(i)
 
-                cam1, trans = self.make_handle_trans(1280, 720, i, (0.8, 0., 0.4),
+                cam1, trans1 = self.make_handle_trans(1280, 720, i, (0.8, self.y_disp, 0.4),
                                                     (np.deg2rad(0), np.deg2rad(40), np.deg2rad(180)))
                 self.gym.attach_camera_to_body(
                     cam1,
                     self.envs[i],
                     kuka_handle,
-                    trans,
+                    trans1,
                     gymapi.FOLLOW_TRANSFORM,
                 )
 
                 self.all_rendering_camera[subassembly].append(cam1)
 
-                cam2, trans = self.make_handle_trans(1280, 720, i, (0.8, 0., 0.4),
+                cam2, trans2 = self.make_handle_trans(1280, 720, i, (0.8, 0.0, 0.4),
                                                      (np.deg2rad(0), np.deg2rad(40), np.deg2rad(180)))
                 self.gym.attach_camera_to_body(
-                    cam1,
+                    cam2,
                     self.envs[i],
                     kuka_handle,
-                    trans,
+                    trans2,
                     gymapi.FOLLOW_TRANSFORM,
                 )
 
-                self.all_rendering_camera[subassembly].append(cam1)
                 self.all_rendering_camera[subassembly].append(cam2)
 
             if self.external_cam:
                 # add external cam
-                cam, trans = self.make_handle_trans(self.res[0], self.res[1], i, (0.66, 0., 0.2),
+                cam, trans = self.make_handle_trans(self.res[0], self.res[1], i, (0.8, 0., 0.4),
                                                     (np.deg2rad(0), np.deg2rad(40), np.deg2rad(180)))
                 self.camera_handles.append(cam)
                 self.gym.attach_camera_to_body(
@@ -867,9 +865,8 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
         self.subassembly_to_env_ids = {k: torch.tensor(v, dtype=torch.long, device=self.device) for k, v in
                                        self.subassembly_to_env_ids.items()}
 
-        object_rb_props = self.gym.get_actor_rigid_body_properties(env_ptr, plug_handle)
-        self.object_rb_masses = [prop.mass for prop in object_rb_props]
-
+        self.object_rb_masses = [prop.mass for prop in self.gym.get_actor_rigid_body_properties(env_ptr, plug_handle)]
+        self.object_rb_masses = torch_jit_utils.to_torch(self.object_rb_masses, dtype=torch.float, device=self.device)
     def _acquire_env_tensors(self):
         """Acquire and wrap tensors. Create views."""
 
