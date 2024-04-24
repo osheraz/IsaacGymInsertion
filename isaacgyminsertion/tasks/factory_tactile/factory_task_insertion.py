@@ -520,9 +520,9 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.plug_hand_pos_diff[...] = plug_hand_pos - self.plug_hand_pos_init
         self.plug_hand_quat_diff[...] = plug_hand_quat - self.plug_hand_quat_init
 
-        to_plot = self.finger_normalized_forces.clone().cpu().numpy()[0, :]
+        # to_plot = self.finger_normalized_forces.clone().cpu().numpy()[0, :]
         # to_plot = R.from_quat(to_plot).as_euler('xyz', degrees=True)
-        self.force_hist = np.vstack((self.force_hist, to_plot))
+        # self.force_hist = np.vstack((self.force_hist, to_plot))
         # plt.plot(self.force_hist)
         # plt.pause(0.0001)
         # plt.cla()
@@ -1311,6 +1311,11 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             tendon_forces = self.Q @ self.act_angles.unsqueeze(-1)  # linear mapping between act_angle to tension
             self.act_torque = self.R @ tendon_forces - self.K @ self.gripper_dof_pos[:, idx].unsqueeze(-1)
             self.act_torque = self.act_torque.squeeze(-1)  # sum torque@each joint
+
+            # to_plot = self.act_angles.clone().cpu().numpy()[0, :]
+            # self.force_hist = np.vstack((self.force_hist, to_plot))
+            # plt.plot(self.force_hist[1:, :])
+            # plt.pause(0.0001)
 
         elif init_grasp or not self.cfg_task.env.hand_action:
 
