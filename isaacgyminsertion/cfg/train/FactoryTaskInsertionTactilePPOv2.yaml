@@ -20,11 +20,11 @@ network:
   hand_mlp:
     units: [128, 64, 8]
 
-  tactile_decoder:
-    num_channels: ${....task.tactile.decoder.num_channels}
+  tactile_encoder:
+    num_channels: ${....task.tactile.encoder.num_channels}
     tactile_seq_length: ${....task.env.tactile_history_len}
-    img_width: ${....task.tactile.decoder.width}
-    img_height: ${....task.tactile.decoder.height}
+    img_width: ${....task.tactile.encoder.width}
+    img_height: ${....task.tactile.encoder.height}
 
 ppo:
   output_name: 'debug'

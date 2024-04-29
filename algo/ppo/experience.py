@@ -35,7 +35,7 @@ def transform_op(arr):
 
 
 class ExperienceBuffer(Dataset):
-    def __init__(self, num_envs, horizon_length, batch_size, minibatch_size, obs_dim, act_dim, priv_dim, pts_dim, tact_hist_shape,
+    def __init__(self, num_envs, horizon_length, batch_size, minibatch_size, obs_dim, act_dim, priv_dim, pts_dim,
                  device):
         self.device = device
         self.num_envs = num_envs
@@ -52,14 +52,8 @@ class ExperienceBuffer(Dataset):
                                  device=self.device),
             'priv_info': torch.zeros((self.transitions_per_env, self.num_envs, self.priv_dim), dtype=torch.float32,
                                      device=self.device),
-            # 'tactile_hist': torch.zeros((self.transitions_per_env, self.num_envs, *tact_hist_shape), dtype=torch.float32,
-            #                             device=self.device),
             'contacts': torch.zeros((self.transitions_per_env, self.num_envs, self.pts_dim), dtype=torch.float32,
                                     device=self.device),
-            'socket_pos': torch.zeros((self.transitions_per_env, self.num_envs, 3), dtype=torch.float32,
-                                      device=self.device),
-            'plug_socket_dist': torch.zeros((self.transitions_per_env, self.num_envs, 3), dtype=torch.float32,
-                                            device=self.device),
             'rewards': torch.zeros((self.transitions_per_env, self.num_envs, 1), dtype=torch.float32,
                                    device=self.device),
             'values': torch.zeros((self.transitions_per_env, self.num_envs, 1), dtype=torch.float32,
@@ -99,7 +93,7 @@ class ExperienceBuffer(Dataset):
                 input_dict[k] = v[batch_idx]
         return input_dict['values'], input_dict['neglogpacs'], input_dict['advantages'], input_dict['mus'], \
                input_dict['sigmas'], input_dict['returns'], input_dict['actions'], \
-               input_dict['obses'], input_dict['priv_info'], input_dict['contacts'], input_dict['plug_socket_dist'], None
+               input_dict['obses'], input_dict['priv_info'], input_dict['contacts']
 
     def update_mu_sigma(self, mu, sigma):
         start = self.last_range[0]
@@ -369,7 +363,6 @@ class SimLogger():
     def __init__(self, env):
         self.env = env
         ROT_MAT_SIZE = 9
-        self.split_latent = env.cfg_ppo.ppo.split_latent
         self.gt_contact = env.cfg_task.env.compute_contact_gt
 
         log_items = {
@@ -382,29 +375,20 @@ class SimLogger():
             'action_shape': env.cfg_task.env.numActions,
             'target_shape': env.cfg_task.env.numTargets,
             'tactile_shape': env.tactile_imgs.shape[1:],
+            'img_shape': env.image_buf.shape[1:],
             'rigid_physics_params_shape': env.rigid_physics_params.shape[-1],
             'plug_hand_pos_shape': env.plug_hand_pos.shape[-1],
             'plug_hand_quat_shape': env.plug_hand_quat.shape[-1],
+            'plug_pos_error_shape': env.plug_pos_error.shape[-1],
+            'plug_quat_error_shape': env.plug_quat_error.shape[-1],
             'finger_normalized_forces_shape': env.finger_normalized_forces.shape[-1],
             'plug_heights_shape': env.plug_heights.shape[-1],
             'obs_hist_shape': env.obs_queue.shape[-1],
             'obs_hist_stud_shape': env.obs_student_buf.shape[-1],
             'priv_obs_shape': env.states_buf.shape[-1],
-            'dec_shape': env.gt_extrinsic_contact.shape[-1],
             'hand_joints_shape': env.hand_joints.shape[-1],
+            'latent_shape': env.cfg_ppo.network.priv_mlp.units[-1],
         }
-
-        # In case we want to use different encoders for each latent
-        if self.split_latent and False:
-            log_items.update({
-                'pose_latent_shape': env.cfg_ppo.network.pose_mlp.units[-1],
-                'physics_latent_shape': env.cfg_ppo.network.physics_mlp.units[-1],
-                'forces_latent_shape': 3,
-            })
-        else:
-            log_items.update({
-                'latent_shape': env.cfg_ppo.network.priv_mlp.units[-1],
-            })
 
         if self.gt_contact and False:
             log_items.update({
@@ -412,8 +396,6 @@ class SimLogger():
             })
 
         log_folder = env.cfg_task.data_logger.base_folder
-        if 'oa348' in os.getcwd():
-            log_folder.replace("dm1487", "oa348")
 
         self.data_logger_init = lambda x: DataLogger(env.num_envs,
                                                      env.max_episode_length,
@@ -426,7 +408,7 @@ class SimLogger():
 
         self.data_logger = None
 
-    def log_trajectory_data(self, action, latent, done, dec, save_trajectory=True):
+    def log_trajectory_data(self, action, latent, done, save_trajectory=True):
 
         eef_pos = torch.cat(self.env.pose_world_to_robot_base(self.env.fingertip_centered_pos.clone(),
                                                               self.env.fingertip_centered_quat.clone()), dim=-1)
@@ -435,22 +417,7 @@ class SimLogger():
         socket_pos = torch.cat(self.env.pose_world_to_robot_base(self.env.socket_pos.clone(),
                                                                  self.env.socket_quat.clone()), dim=-1)
         noisy_socket_pos = torch.cat(self.env.pose_world_to_robot_base(self.env.noisy_gripper_goal_pos.clone(),
-                                                                       self.env.noisy_gripper_goal_quat.clone()),
-                                     dim=-1)
-        rigid_physics_params = self.env.rigid_physics_params.clone()
-        plug_hand_pos = self.env.plug_hand_pos.clone()
-        plug_hand_quat = self.env.plug_hand_quat.clone()
-
-        finger_normalized_forces = self.env.finger_normalized_forces.clone()
-        plug_heights = self.env.plug_heights.clone()
-
-        obs_hist = self.env.obs_buf.clone()
-        priv_obs = self.env.states_buf.clone()
-        obs_hist_stud = self.env.obs_student_buf.clone()
-
-        hand_joints = self.env.hand_joints.clone()
-
-        # is_inserted = self.env.success_reset_buf.clone()
+                                                                       self.env.noisy_gripper_goal_quat.clone()), dim=-1)
 
         new_action = None
         if action is not None:
@@ -458,9 +425,6 @@ class SimLogger():
         new_done = None
         if done is not None:
             new_done = done.clone()
-        new_dec = None
-        if dec is not None:
-            new_dec = dec.clone()
 
         log_data = {
             'contacts': self.env.gt_extrinsic_contact.clone(),
@@ -472,34 +436,26 @@ class SimLogger():
             'action': new_action,
             'target': self.env.targets.clone(),
             'tactile': self.env.tactile_imgs.clone(),
-            'rigid_physics_params': rigid_physics_params,
-            'plug_hand_pos': plug_hand_pos,
-            'plug_hand_quat': plug_hand_quat,
-            'finger_normalized_forces': finger_normalized_forces,
-            'plug_heights': plug_heights,
-            'obs_hist': obs_hist,
-            'obs_hist_stud': obs_hist_stud,
-            'priv_obs': priv_obs,
+            'img': self.env.image_buf.clone(),
+            'rigid_physics_params': self.env.rigid_physics_params.clone(),
+            'plug_hand_pos': self.env.plug_hand_pos.clone(),
+            'plug_hand_quat': self.env.plug_hand_quat.clone(),
+            'plug_pos_error': self.env.plug_pos_error.clone(),
+            'plug_quat_error': self.env.plug_quat_error.clone(),
+            'finger_normalized_forces': self.env.finger_normalized_forces.clone(),
+            'plug_heights': self.env.plug_heights.clone(),
+            'obs_hist': self.env.obs_buf.clone(),
+            'obs_hist_stud': self.env.obs_student_buf.clone(),
+            'priv_obs': self.env.states_buf.clone(),
             'done': new_done,
-            'dec': new_dec,
-            'hand_joints': hand_joints,
-            # 'is_inserted': is_inserted,
+            'hand_joints': self.env.hand_joints.clone(),
         }
 
-        new_latent = None
         if latent is not None:
             new_latent = latent.clone()
-            if self.split_latent and False:
-                log_data.update({
-                    'pose_latent': new_latent[:, :4],
-                    'physics_latent': new_latent[:, 4:8],
-                    'forces_latent': new_latent[:, 8:11],
-
-                })
-            else:
-                log_data.update({
-                    'latent': new_latent
-                })
+            log_data.update({
+                'latent': new_latent
+            })
 
             if self.gt_contact and False:
                 log_data.update({

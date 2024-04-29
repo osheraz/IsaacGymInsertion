@@ -10,7 +10,7 @@ import random
 # %%
 import yaml
 
-all_paths = glob('/home/roblab20/tactile_insertion/datastore_42_contact2/*/*.npz')
+all_paths = glob('/home/roblab20/tactile_insertion/datastore_42_gt/*/*.npz')
 print(len(all_paths))
 
 test=False
@@ -445,7 +445,7 @@ if False:
     plt.scatter(data['socket_pos'][1:done_idx, 0], data['socket_pos'][1:done_idx, 1], color='r', s=35)
     plt.show()
 
-if False:
+if True:
     import cv2
     import numpy as np
     from tqdm import tqdm
@@ -459,9 +459,9 @@ if False:
 
 
     def reverse_normalize(image):
-        mean = np.array([0.5])
-        std = np.array([0.5])
-        reversed_image = (image * std) + mean
+        mean = np.array([0.5, 0.5, 0.5])
+        std = np.array([0.5, 0.5, 0.5])
+        reversed_image = (image * std[:, None, None]) + mean[:, None, None]
         return reversed_image
 
 
@@ -472,12 +472,13 @@ if False:
     print(data.files)
 
     tactile_img = data['tactile'][:done_idx, ...]
-
+    depth_img = data['img'][:done_idx, ...]
     for j in tqdm(range(0, done_idx)):
         img1 = tactile_img[j][0]
         img2 = tactile_img[j][1]
         img3 = tactile_img[j][2]
 
+        depth = depth_img[j]
         # img1 = np.transpose(img1, (1, 2, 0))
         # img2 = np.transpose(img2, (1, 2, 0))
         # img3 = np.transpose(img3, (1, 2, 0))
@@ -488,10 +489,13 @@ if False:
         img = np.concatenate((img1, img2, img3), axis=1)
 
         # Update and redraw the tactile image
-        cv2.imshow('test', (img*255).astype(np.uint8))
-        cv2.waitKey(5)
+        cv2.imshow('test', img.transpose(1, 2, 0))
+        depth = np.uint8(depth * 255)
+        cv2.imshow('test2', depth.transpose(1, 2, 0))
 
-if True:
+        cv2.waitKey(100)
+
+if False:
     fig = plt.figure(figsize=(18, 10))
     ax = fig.add_subplot(111)
     a = []

@@ -194,7 +194,7 @@ class ActorCriticSplit(nn.Module):
     def act(self, obs_dict):
         # used specifically to collection samples during training
         # it contains exploration so needs to sample from distribution
-        mu, logstd, value, _, _, dec = self._actor_critic(obs_dict)
+        mu, logstd, value, _, _ = self._actor_critic(obs_dict)
         sigma = torch.exp(logstd)
         distr = torch.distributions.Normal(mu, sigma)
         selected_action = distr.sample()
@@ -204,20 +204,19 @@ class ActorCriticSplit(nn.Module):
             'actions': selected_action,
             'mus': mu,
             'sigmas': sigma,
-            'dec': dec
         }
         return result
 
     @torch.no_grad()
     def act_inference(self, obs_dict):
         # used for testing
-        mu, logstd, value, latent, _, dec = self._actor_critic(obs_dict)
-        return mu, latent, dec
+        mu, logstd, value, latent, _ = self._actor_critic(obs_dict)
+        return mu, latent
 
     def _actor_critic(self, obs_dict, display=False):
 
         obs = obs_dict['obs']
-        extrin, extrin_gt, dec = None, None, None
+        extrin, extrin_gt = None, None
 
         # Transformer student (latent pass is in frozen_ppo)
         if 'latent' in obs_dict and obs_dict['latent'] is not None:
@@ -261,8 +260,6 @@ class ActorCriticSplit(nn.Module):
 
             # predict with the student extrinsic
             obs = torch.cat([obs, extrin_gt], dim=-1)
-            if self.contact_info:
-                dec = self.contact_ae.forward_dec(extrin_gt)
 
         # MLP models
         else:
@@ -319,7 +316,6 @@ class ActorCriticSplit(nn.Module):
 
                     if self.contact_info:
                         enc = self.contact_ae.forward_enc(obs_dict['contacts'])
-                        dec = self.contact_ae.forward_dec(enc)
                         if self.only_contact:
                             extrin = enc
                         else:
@@ -347,11 +343,11 @@ class ActorCriticSplit(nn.Module):
         else:
             value = self.value(x)
 
-        return mu, mu * 0 + sigma, value, extrin, extrin_gt, dec
+        return mu, mu * 0 + sigma, value, extrin, extrin_gt
 
     def forward(self, input_dict):
         prev_actions = input_dict.get('prev_actions', None)
-        mu, logstd, value, extrin, extrin_gt, dec = self._actor_critic(input_dict)
+        mu, logstd, value, extrin, extrin_gt = self._actor_critic(input_dict)
         sigma = torch.exp(logstd)
         distr = torch.distributions.Normal(mu, sigma)
         entropy = distr.entropy().sum(dim=-1)
@@ -364,7 +360,6 @@ class ActorCriticSplit(nn.Module):
             'sigmas': sigma,
             'extrin': extrin,
             'extrin_gt': extrin_gt,
-            'dec': dec
         }
         return result
 

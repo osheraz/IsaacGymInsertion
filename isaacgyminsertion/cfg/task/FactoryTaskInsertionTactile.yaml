@@ -8,13 +8,15 @@ defaults:
 name: FactoryTaskInsertionTactile
 physics_engine: ${..physics_engine}
 
+grasp_at_init: True
+
 grasp_logger:
     total_grasp: 50
 
 data_logger:
     # for data collection
     collect_data: False
-    total_trajectories: 20000
+    total_trajectories: 1000
     base_folder: "/home/roblab20/tactile_insertion"
     sub_folder: "datastore_0_contact2"
 
@@ -23,20 +25,20 @@ data_logger:
 
 tactile: # Pulling from task
   tacto:
-    width: 224 # 224 # 480 | 224
-    height: 224 # 224 # 480 | 224 for the gan
+    width: 64 # 224 # 480 | 224
+    height: 64 # 224 # 480 | 224 for the gan
     visualize_gui: True
 
   with_bg: True # add background reference frame
   show_depth: True # visualize depth
   show_detect: False #
   diff: True
-  half_image: True # --> tacto & decoder width // 2
+  half_image: True # --> tacto & encoder width // 2
   tactile_freq: 2
 
-  decoder:
-    width: 224
-    height: 224
+  encoder:
+    width: 64
+    height: 64
     num_channels: 3 # 1 (Grayscale), 3 (RGB)
 
   sim2real: False
@@ -45,8 +47,8 @@ tactile: # Pulling from task
 env:
     numEnvs: ${resolve_default:128,${...num_envs}}
     numObservations: 24 #
-    numObsStudent: 18 #
-    numStates: 13 #
+    numObsStudent: 9 #
+    numStates: 7 #
     numActions: 6 # [position, ori]
     numTargets: 6 # [position, ori]
 
@@ -55,11 +57,13 @@ env:
     numObsStudentHist: 1
     ft_history_len: 30
     tactile_history_len: 1
+    img_history_len: 1
+
     smooth_force: True
 
     openhand:
         distal_open: 0.1
-        distal_close: 0.3
+        distal_close: 0.4
         proximal_open: 1.0
         proximal_close: 2.4
         base_angle: 0.7
@@ -79,7 +83,7 @@ env:
     tactile_display_viz: False
     tactile_wrt_force: False
 
-    compute_contact_gt: True
+    compute_contact_gt: False
     num_points: 500
 
     record_video: True
@@ -92,9 +96,14 @@ sim:
 
 external_cam:
   external_cam: False
-  cam_res: [320, 180]
+  cam_res:
+    w: 320
+    h: 180
   cam_type: 'd'
   save_im: False
+  far_clip: 1.0
+  near_clip: 0.0
+  dis_noise: 0.001
 
 randomize:
 
@@ -104,15 +113,17 @@ randomize:
     same_socket: False
     # for grasp generations
     plug_pos_xy_initial: [0.50, 0.0, 0.0]  # z 0.03  initial XY position of plug on table
-    plug_pos_xy_noise: [ 0.01,  0.01, 0.00] # noise on plug position
+    plug_pos_xy_noise: [ 0.01,  0.01] # noise on plug position
     plug_quat_noise: [0.0, 0.0, 0.0, 0.0]
     socket_pos_xy_initial: [0.5, 0.0, 0.0]  # initial XY position of plug on table # round_hole_2in  width = 0.1016, length = 0.09144
-    socket_pos_xy_noise: [0.0, 0.0]  # noise on socket position
+    socket_pos_xy_noise: [0.01, 0.01]  # noise on socket position
     socket_rot_euler_noise: 0.035  # noise on socket position
     socket_pos_z_noise_bounds: [-0.002, 0.003]  # noise on socket offset from table
+    plug_pos_z_noise_bounds: [ 0.003, 0.015]  # noise on socket offset from table
+
     grasp_plug_noise: 0.005 # xyz noise on plug position during grasp
     above_socket_noise: [0.03, 0.03, 0.001]
-    plug_rot_noise: [0.0, 0.0, 0.0]
+    plug_rot_noise: [0.05, 0.05, 0.05] # onlygrasptask
 
 rl:
 

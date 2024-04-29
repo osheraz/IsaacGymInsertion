@@ -52,6 +52,8 @@ import open3d as o3d
 from scipy.spatial.transform import Rotation as R
 import omegaconf
 import matplotlib.pyplot as plt
+from isaacgyminsertion.utils import torch_jit_utils
+
 from tqdm import tqdm
 
 
@@ -352,9 +354,12 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
         self.cfg_tactile = omegaconf.OmegaConf.create(self.cfg['tactile'])
 
         self.external_cam = self.cfg['external_cam']['external_cam']
-        self.res = self.cfg['external_cam']['cam_res']
+        self.res = [self.cfg['external_cam']['cam_res']['w'], self.cfg['external_cam']['cam_res']['h']]
         self.cam_type = self.cfg['external_cam']['cam_type']
         self.save_im = self.cfg['external_cam']['save_im']
+        self.near_clip = self.cfg['external_cam']['near_clip']
+        self.far_clip = self.cfg['external_cam']['far_clip']
+        self.dis_noise = self.cfg['external_cam']['dis_noise']
 
         self.randomize = self.cfg_env.randomize.domain_randomize
         self.randomization_params = self.cfg_env.randomize.randomization_params
@@ -484,20 +489,12 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
         """Set initial actor poses. Create actors. Set shape and DOF properties."""
 
         kuka_pose = gymapi.Transform()
-        # kuka_pose.p.x = self.cfg_base.env.kuka_depth
-        # kuka_pose.p.y = 0.0
-        # kuka_pose.p.z = 0.0
-        # kuka_pose.r = gymapi.Quat(0.0, 0.0, 1.0, 0.0)
         kuka_pose.p.x = 0
         kuka_pose.p.y = 0.0
         kuka_pose.p.z = 0.0
         kuka_pose.r = gymapi.Quat(0.0, 0.0, 0.0, 1.0)
 
         table_pose = gymapi.Transform()
-        # table_pose.p.x = 0.0
-        # table_pose.p.y = 0.0
-        # table_pose.p.z = self.cfg_base.env.table_height * 0.5
-        # table_pose.r = gymapi.Quat(0.0, 0.0, 0.0, 1.0)
         table_pose.p.x = self.cfg_base.env.kuka_depth
         table_pose.p.y = 0.0
         table_pose.p.z = self.cfg_base.env.table_height * 0.5
@@ -601,10 +598,6 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
             actor_count += 1
 
             socket_pose = gymapi.Transform()
-            # socket_pose.p.x = 0.0
-            # socket_pose.p.y = 0.0
-            # socket_pose.p.z = self.cfg_base.env.table_height
-            # socket_pose.r = gymapi.Quat(0.0, 0.0, 0.0, 1.0)
             socket_pose.p.x = self.cfg_base.env.kuka_depth
             socket_pose.p.y = 0.0
             socket_pose.p.z = self.cfg_base.env.table_height
@@ -701,16 +694,33 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
             self.camera_props.width = 1280
             self.camera_props.height = 720
             if subassembly not in self.all_rendering_camera:
+
                 self.all_rendering_camera[subassembly] = []
                 self.all_rendering_camera[subassembly].append(i)
 
-                rendering_camera1 = self.gym.create_camera_sensor(env_ptr, self.camera_props)
-                self.gym.set_camera_location(rendering_camera1, env_ptr, gymapi.Vec3(1.5, 1, 3.0), gymapi.Vec3(0, 0, 0))
-                self.all_rendering_camera[subassembly].append(rendering_camera1)
+                cam1, trans1 = self.make_handle_trans(1280, 720, i, (0.8, 0.1, 0.4),
+                                                    (np.deg2rad(0), np.deg2rad(40), np.deg2rad(180)))
+                self.gym.attach_camera_to_body(
+                    cam1,
+                    self.envs[i],
+                    kuka_handle,
+                    trans1,
+                    gymapi.FOLLOW_TRANSFORM,
+                )
 
-                rendering_camera2 = self.gym.create_camera_sensor(env_ptr, self.camera_props)
-                self.gym.set_camera_location(rendering_camera2, env_ptr, gymapi.Vec3(1.5, 1, 3.0), gymapi.Vec3(0, 0, 0))
-                self.all_rendering_camera[subassembly].append(rendering_camera2)
+                self.all_rendering_camera[subassembly].append(cam1)
+
+                cam2, trans2 = self.make_handle_trans(1280, 720, i, (0.8, -0.1, 0.4),
+                                                     (np.deg2rad(0), np.deg2rad(40), np.deg2rad(180)))
+                self.gym.attach_camera_to_body(
+                    cam2,
+                    self.envs[i],
+                    kuka_handle,
+                    trans2,
+                    gymapi.FOLLOW_TRANSFORM,
+                )
+
+                self.all_rendering_camera[subassembly].append(cam2)
 
             if self.external_cam:
                 # add external cam
@@ -890,27 +900,24 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
 
             video_frames = []
             for _, v in self.all_rendering_camera.items():
-                env_id = v[0]
-                camera_1 = v[1]
-                camera_2 = v[2]
+                env_id, camera_1, camera_2 = v[0], v[1], v[2]
 
-                bx, by, bz = self.init_plug_pos_cam[env_id, 0], self.init_plug_pos_cam[env_id, 1], \
-                self.init_plug_pos_cam[env_id, 2]
+                video_frame1 = self.gym.get_camera_image(self.sim,
+                                                         self.envs[env_id],
+                                                         camera_1,
+                                                         gymapi.IMAGE_COLOR)
 
-                self.gym.set_camera_location(camera_1, self.envs[env_id],
-                                             gymapi.Vec3(bx - 0.1, by - 0.1, bz + 0.1),
-                                             gymapi.Vec3(bx, by, bz))
-                video_frame1 = self.gym.get_camera_image(self.sim, self.envs[env_id], camera_1, gymapi.IMAGE_COLOR)
                 video_frame1 = video_frame1.reshape((self.camera_props.height, self.camera_props.width, 4))
 
-                self.gym.set_camera_location(camera_2, self.envs[env_id],
-                                             gymapi.Vec3(bx - 0.1, by + 0.1, bz + 0.1),
-                                             gymapi.Vec3(bx, by, bz))
-                self.video_frame2 = self.gym.get_camera_image(self.sim, self.envs[env_id], camera_2, gymapi.IMAGE_COLOR)
-                self.video_frame2 = self.video_frame2.reshape((self.camera_props.height, self.camera_props.width, 4))
 
-                video_frames.append(np.concatenate((video_frame1, self.video_frame2), axis=1))
-            # print('video frame shape', self.video_frame.shape)
+                video_frame2 = self.gym.get_camera_image(self.sim,
+                                                         self.envs[env_id],
+                                                         camera_2,
+                                                         gymapi.IMAGE_COLOR)
+
+                video_frame2 = video_frame2.reshape((self.camera_props.height, self.camera_props.width, 4))
+                video_frames.append(np.concatenate((video_frame1, video_frame2), axis=1))
+
             self.video_frames.append(np.concatenate(video_frames, axis=0))
 
         if self.record_now_ft and self.complete_ft_frames is not None and len(self.complete_ft_frames) == 0:

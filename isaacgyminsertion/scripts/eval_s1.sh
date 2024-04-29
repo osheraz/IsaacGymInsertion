@@ -1,7 +1,7 @@
 #!/bin/bash
 GPUS=${1:-0}
 SEED=${2:-42}
-CACHE=${3:-contact2}
+CACHE=${3:-gt}
 NUM_ENVS=${4:-100}
 HEADLESS=${5:-True}
 
@@ -19,17 +19,21 @@ test=True \
 task.env.numEnvs=${NUM_ENVS} \
 task.env.numStates=7 \
 task.env.tactile_history_len=1 \
-task.env.compute_contact_gt=True \
-train.ppo.only_contact=True \
+task.env.compute_contact_gt=False \
+train.ppo.only_contact=False \
 task.env.numObsHist=1 \
-task.env.numObservations=18 \
+task.env.numObservations=24 \
 train.algo=PPO \
 task.env.tactile=False \
 task.env.smooth_force=True \
-task.tactile.tacto.width=64 \
-task.tactile.tacto.height=64 \
-task.tactile.decoder.width=64 \
-task.tactile.decoder.height=64 \
+task.tactile.tacto.width=2 \
+task.tactile.tacto.height=2 \
+task.tactile.encoder.width=2 \
+task.tactile.encoder.height=2 \
+task.external_cam.external_cam=False \
+task.external_cam.cam_res.w=320 \
+task.external_cam.cam_res.h=180 \
+task.tactile.encoder.num_channels=1 \
 train.ppo.priv_info=True \
 train.ppo.extrin_adapt=False \
 train.ppo.tactile_info=False \
