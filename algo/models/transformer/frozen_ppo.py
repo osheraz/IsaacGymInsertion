@@ -193,7 +193,6 @@ class PPO(object):
                                         self.actions_num,
                                         self.priv_info_dim,
                                         self.num_contacts_points,
-                                        self.tactile_hist_dim,
                                         self.device, )
 
         # ---- Data Logger ----
@@ -390,7 +389,7 @@ class PPO(object):
 
             for i in range(len(self.storage)):
                 value_preds, old_action_log_probs, advantage, old_mu, old_sigma, \
-                    returns, actions, obs, priv_info, contacts, plug_socket_dist, tactile_hist = self.storage[i]
+                    returns, actions, obs, priv_info, contacts, = self.storage[i]
 
                 obs = self.running_mean_std(obs)
                 priv_info = self.priv_mean_std(priv_info)
@@ -400,9 +399,8 @@ class PPO(object):
                     'obs': obs,
                     'priv_info': priv_info,
                     'contacts': contacts,
-                    'plug_socket_dist': plug_socket_dist,
-                    # 'tactile_hist': tactile_hist
                 }
+
                 res_dict = self.model(batch_dict)
                 action_log_probs = res_dict['prev_neglogp']
                 values = res_dict['values']
@@ -564,9 +562,7 @@ class PPO(object):
             self.storage.update_data('obses', n, self.obs['obs'])
             self.storage.update_data('priv_info', n, self.obs['priv_info'])
             # self.storage.update_data('tactile_hist', n, self.obs['tactile_hist'])
-            # self.storage.update_data('plug_socket_dist', n, self.obs['plug_socket_dist'])
             self.storage.update_data('contacts', n, self.obs['contacts'])
-            # self.storage.update_data('socket_pos', n, self.obs['socket_pos'])
 
             for k in ['actions', 'neglogpacs', 'values', 'mus', 'sigmas']:
                 self.storage.update_data(k, n, res_dict[k])

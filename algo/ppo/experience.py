@@ -35,7 +35,7 @@ def transform_op(arr):
 
 
 class ExperienceBuffer(Dataset):
-    def __init__(self, num_envs, horizon_length, batch_size, minibatch_size, obs_dim, act_dim, priv_dim, pts_dim, tact_hist_shape,
+    def __init__(self, num_envs, horizon_length, batch_size, minibatch_size, obs_dim, act_dim, priv_dim, pts_dim,
                  device):
         self.device = device
         self.num_envs = num_envs
@@ -52,14 +52,8 @@ class ExperienceBuffer(Dataset):
                                  device=self.device),
             'priv_info': torch.zeros((self.transitions_per_env, self.num_envs, self.priv_dim), dtype=torch.float32,
                                      device=self.device),
-            # 'tactile_hist': torch.zeros((self.transitions_per_env, self.num_envs, *tact_hist_shape), dtype=torch.float32,
-            #                             device=self.device),
             'contacts': torch.zeros((self.transitions_per_env, self.num_envs, self.pts_dim), dtype=torch.float32,
                                     device=self.device),
-            'socket_pos': torch.zeros((self.transitions_per_env, self.num_envs, 3), dtype=torch.float32,
-                                      device=self.device),
-            'plug_socket_dist': torch.zeros((self.transitions_per_env, self.num_envs, 3), dtype=torch.float32,
-                                            device=self.device),
             'rewards': torch.zeros((self.transitions_per_env, self.num_envs, 1), dtype=torch.float32,
                                    device=self.device),
             'values': torch.zeros((self.transitions_per_env, self.num_envs, 1), dtype=torch.float32,
@@ -99,7 +93,7 @@ class ExperienceBuffer(Dataset):
                 input_dict[k] = v[batch_idx]
         return input_dict['values'], input_dict['neglogpacs'], input_dict['advantages'], input_dict['mus'], \
                input_dict['sigmas'], input_dict['returns'], input_dict['actions'], \
-               input_dict['obses'], input_dict['priv_info'], input_dict['contacts'], input_dict['plug_socket_dist'], None
+               input_dict['obses'], input_dict['priv_info'], input_dict['contacts']
 
     def update_mu_sigma(self, mu, sigma):
         start = self.last_range[0]
@@ -390,6 +384,13 @@ class SimLogger():
             'goal_ori_shape': env.goal_ori.shape[-1],
             'latent_shape': env.cfg_ppo.network.priv_mlp.units[-1],
         }
+
+        self.gt_contact = env.cfg_task.env.compute_contact_gt
+
+        if self.gt_contact and False:
+            log_items.update({
+                'contact_latent_shape': 4,
+            })
 
         log_folder = env.cfg_task.data_logger.base_folder
         self.data_logger_init = lambda x: DataLogger(env.num_envs,

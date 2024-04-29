@@ -62,8 +62,8 @@ torch.set_printoptions(sci_mode=False)
 
 @torch.jit.script
 def randomize_rotation(rand0, rand1, x_unit_tensor, y_unit_tensor):
-    return quat_mul(quat_from_angle_axis(rand0 * np.pi * 0.2, x_unit_tensor),
-                    quat_from_angle_axis(rand1 * np.pi * 0.2, y_unit_tensor))
+    return quat_mul(quat_from_angle_axis(rand0 * np.pi * 0.12, x_unit_tensor),
+                    quat_from_angle_axis(rand1 * np.pi * 0.12, y_unit_tensor))
 
 
 @torch.jit.script
@@ -693,19 +693,14 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         fingertips_center_dist = left_finger_dist + right_finger_dist + middle_finger_dist
         dist_reward = self.cfg_task.rl.keypoint_reward_scale * fingertips_center_dist
 
-        self.rew_buf[:] = ori_reward + dist_reward + action_reward + action_delta_reward
-
         # Find out which envs hit the goal and update successes count
         loose_contact = torch.where(torch.norm(self.finger_normalized_forces) <= self.cfg_task.rl.min_grasp_force,
                                     torch.ones_like(self.reset_buf),
                                     torch.zeros_like(self.reset_buf))
 
-        self.rew_buf[:] += self.cfg_task.rl.loose_penalty * loose_contact
-
         # Penalty for losing the grip
         distance_reset_buf = (self.far_from_goal_buf | self.degrasp_buf)
         early_reset_reward = distance_reset_buf * self.cfg_task.rl.early_reset_reward_scale
-        self.rew_buf[:] += early_reset_reward
 
         # Find out which envs hit the goal and update successes count
         goal_resets = torch.where(torch.abs(rot_dist) <= self.cfg_task.rl.goal_min_rot,
@@ -721,6 +716,10 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.consecutive_successes = torch.where(num_resets > 0, av_factor * finished_cons_successes / num_resets + (
                     1.0 - av_factor) * self.consecutive_successes, self.consecutive_successes)
 
+        # Compute the reward
+        self.rew_buf[:] = ori_reward + dist_reward + action_reward + action_delta_reward
+        self.rew_buf[:] += self.cfg_task.rl.loose_penalty * loose_contact
+        self.rew_buf[:] += early_reset_reward
         # Success bonus: orientation is within `success_tolerance` of goal orientation
         self.rew_buf[:] = torch.where(goal_resets == 1, self.rew_buf + self.cfg_task.rl.reach_bonus, self.rew_buf)
 
