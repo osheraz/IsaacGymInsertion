@@ -11,7 +11,7 @@ physics_engine: ${..physics_engine}
 grasp_at_init: True
 
 grasp_logger:
-    total_grasp: 50
+    total_grasp: 1000
 
 data_logger:
     # for data collection
@@ -25,8 +25,8 @@ data_logger:
 
 tactile: # Pulling from task
   tacto:
-    width: 64 # 224 # 480 | 224
-    height: 64 # 224 # 480 | 224 for the gan
+    width: 224 # 224 # 480 | 224
+    height: 224 # 224 # 480 | 224 for the gan
     visualize_gui: True
 
   with_bg: True # add background reference frame
@@ -37,8 +37,8 @@ tactile: # Pulling from task
   tactile_freq: 2
 
   encoder:
-    width: 64
-    height: 64
+    width: 224
+    height: 224
     num_channels: 3 # 1 (Grayscale), 3 (RGB)
 
   sim2real: False
@@ -48,7 +48,7 @@ env:
     numEnvs: ${resolve_default:128,${...num_envs}}
     numObservations: 24 #
     numObsStudent: 9 #
-    numStates: 7 #
+    numStates: 14 #
     numActions: 6 # [position, ori]
     numTargets: 6 # [position, ori]
 
@@ -79,8 +79,8 @@ env:
     socket_base_height: 0.003
     plug_grasp_threshold: 0.01
 
-    tactile: False
-    tactile_display_viz: False
+    tactile: True
+    tactile_display_viz: True
     tactile_wrt_force: False
 
     compute_contact_gt: False

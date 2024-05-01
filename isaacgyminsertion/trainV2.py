@@ -87,7 +87,6 @@ def run(cfg: DictConfig):
 
         exit()
 
-
     # for training the transformer with offline data only
     if cfg.offline_training:
         from algo.models.transformer.runner import Runner as TransformerRunner 
@@ -121,12 +120,12 @@ def run(cfg: DictConfig):
     if cfg.test:
         assert cfg.train.load_path
         agent.restore_test(cfg.train.load_path)
-        # Test insertion accuracy in the simulation Student\Teacher (not the transformer)
+        # Test insertion accuracy in the simulation with online Student\Teacher
         if not cfg.offline_training_w_env:
             num_success, total_trials = agent.test()
             print(f"Success rate: {num_success / total_trials}")
         else:
-            # Test transformer
+            # Test transformer (trained offline)
             print("Loading Teacher model from", cfg.train.load_path)
             print("Loading Student model from", cfg.offline_train.train.student_ckpt_path)
 
@@ -136,7 +135,8 @@ def run(cfg: DictConfig):
             agent.restore_test(cfg.train.load_path)
             agent.set_eval()
 
-            runner = TransformerRunner(cfg.offline_train, agent, action_regularization=cfg.offline_train.train.action_regularization)
+            runner = TransformerRunner(cfg.offline_train, agent,
+                                       action_regularization=cfg.offline_train.train.action_regularization)
             runner.run()
 
         # sim_timer = cfg.task.env.sim_timer

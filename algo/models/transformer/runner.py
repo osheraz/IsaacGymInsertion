@@ -38,8 +38,10 @@ class Runner:
                           num_channels=self.cfg.model.cnn.in_channels,
                           num_lin_features=self.cfg.model.linear.input_size,
                           num_outputs=self.cfg.model.transformer.output_size,
-                          obs_encoder="efficientnet-b0",
-                          obs_encoding_size=self.cfg.model.transformer.obs_encoding_size,
+                          tactile_encoder="efficientnet-b0",
+                          img_encoder="efficientnet-b0",
+                          tactile_encoding_size=self.cfg.model.transformer.tactile_encoding_size,
+                          img_encoding_size=self.cfg.model.transformer.img_encoding_size,
                           mha_num_attention_heads=self.cfg.model.transformer.num_heads,
                           mha_num_attention_layers=self.cfg.model.transformer.num_layers,
                           mha_ff_dim_factor=self.cfg.model.transformer.dim_factor, )
@@ -59,18 +61,18 @@ class Runner:
         train_loss, val_loss = [], 0
         latent_loss_list, action_loss_list = [], []
 
-        for i, (tac_input, lin_input, contacts, obs_hist, latent, action, mask) in tqdm(enumerate(dl)):
+        for i, (tac_input, img_input, lin_input, contacts, obs_hist, latent, action, mask) in tqdm(enumerate(dl)):
             self.model.train()
 
             tac_input = tac_input.to(self.device)  # [B T F W H C]
+            img_input = img_input.to(self.device)
             lin_input = lin_input.to(self.device)
             latent = latent.to(self.device)
             action = action.to(self.device)
             contacts = contacts.to(self.device)
             mask = mask.to(self.device).unsqueeze(-1)
 
-            out = self.model(tac_input, lin_input, contacts)
-
+            out = self.model(tac_input, img_input, lin_input)
             loss_action = torch.zeros(1, device=self.device)
             if self.full_sequence:
                 loss_latent = torch.sum(self.loss_fn(out, latent), dim=-1).unsqueeze(-1)
@@ -86,7 +88,9 @@ class Runner:
                     action_loss_list.append(loss_action.item())
 
             else:
+
                 loss_latent = self.loss_fn_mean(out, latent[:, -1, :])
+
                 if self.ppo_step is not None:  # action regularization
                     obs_hist = obs_hist[:, -1, :].to(self.device).view(obs_hist.shape[0], obs_hist.shape[-1])
                     pred_action, _ = self.ppo_step({'obs': obs_hist, 'latent': out[:, -1, :]})
@@ -123,6 +127,7 @@ class Runner:
 
             if (i + 1) % eval_every == 0:
                 self.log_output(tac_input.clone(),
+                                img_input.clone(),
                                 lin_input.clone(),
                                 out.clone(),
                                 latent.clone(),
@@ -150,16 +155,18 @@ class Runner:
         with torch.no_grad():
             val_loss = []
             latent_loss_list, action_loss_list = [], []
-            for i, (tac_input, lin_input, contacts, obs_hist, latent, action, mask) in tqdm(enumerate(dl)):
+            for i, (tac_input, img_input, lin_input, contacts, obs_hist, latent, action, mask) in tqdm(enumerate(dl)):
 
                 tac_input = tac_input.to(self.device)
+                img_input = img_input.to(self.device)
+
                 lin_input = lin_input.to(self.device)
                 latent = latent.to(self.device)
                 action = action.to(self.device)
                 mask = mask.to(self.device).unsqueeze(-1)
-                contacts = contacts.to(self.device)
+                # contacts = contacts.to(self.device)
 
-                out = self.model(tac_input, lin_input, contacts)
+                out = self.model(tac_input, img_input,  lin_input)
 
                 loss_action = torch.zeros(1, device=self.device)
 
@@ -204,6 +211,7 @@ class Runner:
             #     })
 
             self.log_output(tac_input.clone(),
+                            img_input.clone(),
                             lin_input.clone(),
                             out.clone(),
                             latent.clone(),
@@ -211,10 +219,11 @@ class Runner:
 
         return np.mean(val_loss)
 
-    def log_output(self, tac_input, lin_input, out, latent, session='train'):
+    def log_output(self, tac_input,img_input, lin_input, out, latent, session='train'):
         # tac_input [B T F W H C]
         # Selecting the first example from the batch for demonstration
         image_sequence = tac_input[0].cpu().detach().numpy()
+        img_input = img_input[0].cpu().detach().numpy()
         linear_features = lin_input[0].cpu().detach().numpy()  # Shape should be [sequence_length, eef_pos+action]
         predicted_output = out[0].cpu().detach().numpy()
         true_label = latent[0, -1, :].cpu().detach().numpy()
@@ -245,6 +254,11 @@ class Runner:
         ax2.plot(linear_features[:, :], 'ok', label='hand_joints')  # Assuming the rest are actions
         ax2.set_title('Linear input')
         ax2.legend()
+
+        ax3 = fig.add_subplot(2, 2, 3)
+        img_input = np.transpose(img_input, (1, 2, 0))
+        img_input = img_input + 0.5
+        ax3.imshow(img_input)  # Adjust based on image normalization
 
         # # Adding 3D subplot for eef_pos
         # ax3 = fig.add_subplot(2, 2, 3, projection='3d')
@@ -297,15 +311,16 @@ class Runner:
         # self.model.eval()
         self.device = device
 
-    def get_latent(self, tac_input, lin_input):
+    def get_latent(self, tac_input, img_input, lin_input):
         self.model.eval()
-        with torch.inference_mode():
+        with torch.no_grad():
             # [envs, seq_len, ... ] => [envs*seq_len, C, W, H]
 
             tac_input = tac_input.to(self.device)
+            img_input = img_input.to(self.device)
             lin_input = lin_input.to(self.device)
 
-            out = self.model(tac_input, lin_input)
+            out = self.model(tac_input, img_input, lin_input)
         return out
 
     def _run(self, file_list, save_folder, epochs=100, train_test_split=0.9, train_batch_size=32, val_batch_size=32,

@@ -225,7 +225,9 @@ class ActorCriticSplit(nn.Module):
 
             if 'priv_info' in obs_dict:
 
-                extrin_priv = self.env_mlp(obs_dict['priv_info'])
+                # extrin_priv = self.env_mlp(obs_dict['priv_info'])
+                extrin_priv = self.env_mlp(extrin)
+
                 if self.contact_info:
                     extrin_contact = self.contact_ae.forward_enc(obs_dict['contacts'])
                     if self.only_contact:
@@ -236,25 +238,25 @@ class ActorCriticSplit(nn.Module):
                     extrin_gt = extrin_priv
 
                 if display:
-                    plt.ylim(-np.pi,np.pi)
+                    # plt.ylim(-np.pi,np.pi)
 
                     # Convert model output (to_show) back to roll and pitch angles
-                    to_show = obs_dict['object_ori'][:, -1, :]
-                    sin_roll, cos_roll = to_show[:, 0], to_show[:, 1]
-                    sin_pitch, cos_pitch = to_show[:, 2], to_show[:, 3]
-                    to_show_roll = torch.atan2(sin_roll, cos_roll)
-                    to_show_pitch = torch.atan2(sin_pitch, cos_pitch)
-                    to_show = torch.cat((to_show_roll.unsqueeze(1), to_show_pitch.unsqueeze(1)), dim=1)
+                    # to_show = obs_dict['object_ori'][:, -1, :]
+                    # sin_roll, cos_roll = to_show[:, 0], to_show[:, 1]
+                    # sin_pitch, cos_pitch = to_show[:, 2], to_show[:, 3]
+                    # to_show_roll = torch.atan2(sin_roll, cos_roll)
+                    # to_show_pitch = torch.atan2(sin_pitch, cos_pitch)
+                    # to_show = torch.cat((to_show_roll.unsqueeze(1), to_show_pitch.unsqueeze(1)), dim=1)
 
                     # Convert extrin back to roll and pitch angles
-                    sin_roll_e, cos_roll_e = extrin[:, 0], extrin[:, 1]
-                    sin_pitch_e, cos_pitch_e = extrin[:, 2], extrin[:, 3]
-                    extrin_roll = torch.atan2(sin_roll_e, cos_roll_e)
-                    extrin_pitch = torch.atan2(sin_pitch_e, cos_pitch_e)
-                    extrin = torch.cat((extrin_roll.unsqueeze(1), extrin_pitch.unsqueeze(1)), dim=1)
-
+                    # sin_roll_e, cos_roll_e = extrin[:, 0], extrin[:, 1]
+                    # sin_pitch_e, cos_pitch_e = extrin[:, 2], extrin[:, 3]
+                    # extrin_roll = torch.atan2(sin_roll_e, cos_roll_e)
+                    # extrin_pitch = torch.atan2(sin_pitch_e, cos_pitch_e)
+                    # extrin = torch.cat((extrin_roll.unsqueeze(1), extrin_pitch.unsqueeze(1)), dim=1)
+                    plt.ylim(-1.2, 1.2)
                     plt.scatter(list(range(extrin.shape[-1])), extrin.clone().detach().cpu().numpy()[0, :], color='r')
-                    plt.scatter(list(range(to_show.shape[-1])), to_show.clone().cpu().numpy()[0, :], color='b')
+                    plt.scatter(list(range(obs_dict['priv_info'].shape[-1])), obs_dict['priv_info'].clone().cpu().numpy()[0, :], color='b')
                     plt.pause(0.0001)
                     plt.cla()
 
@@ -333,6 +335,7 @@ class ActorCriticSplit(nn.Module):
                         plt.cla()
 
                     obs = torch.cat([obs, extrin], dim=-1)
+
 
         x = self.actor_mlp(obs)
         mu = self.mu(x)

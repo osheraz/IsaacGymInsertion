@@ -74,12 +74,12 @@ class BaseModel(nn.Module):
         return z
 
     def forward(
-            self, obs_img: torch.tensor, obs_lin: torch.tensor, contacts: torch.tensor,
+            self, obs_tactile: torch.tensor, obs_lin: torch.tensor, contacts: torch.tensor,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Forward pass of the model
         Args:
-            obs_img (torch.Tensor): batch of observations
+            obs_tactile (torch.Tensor): batch of observations
             obs_lin (torch.Tensor): batch of lin observations
 
         Returns:
@@ -96,12 +96,15 @@ class TacT(BaseModel):
             num_lin_features: int = 10,
             num_outputs: int = 5,
             share_encoding: Optional[bool] = True,
-            obs_encoder: Optional[str] = "efficientnet-b0",
-            obs_encoding_size: Optional[int] = 128,
+            tactile_encoder: Optional[str] = "efficientnet-b0",
+            img_encoder: Optional[str] = "efficientnet-b0",
+            tactile_encoding_size: Optional[int] = 128,
+            img_encoding_size: Optional[int] = 128,
             lin_encoding_size: Optional[int] = 128,
             mha_num_attention_heads: Optional[int] = 2,
             mha_num_attention_layers: Optional[int] = 2,
             mha_ff_dim_factor: Optional[int] = 4,
+            include_lin: Optional[bool] = False,
     ) -> None:
         """
         Modified ViT class: uses a Transformer-based architecture to encode (current and past) visual observations
@@ -109,36 +112,51 @@ class TacT(BaseModel):
         in an embodiment-agnostic manner
         Args:
             context_size (int): how many previous observations to used for context
-            obs_encoder (str): name of the EfficientNet architecture to use for encoding observations (ex. "efficientnet-b0")
-            obs_encoding_size (int): size of the encoding of the observation images
+            tactile_encoder (str): name of the EfficientNet architecture to use for encoding observations (ex. "efficientnet-b0")
+            tactile_encoding_size (int): size of the encoding of the observation images
         """
         super(TacT, self).__init__(context_size, num_outputs)
 
-        self.obs_encoding_size = obs_encoding_size
+        self.tactile_encoding_size = tactile_encoding_size
+        self.img_encoding_size = img_encoding_size
         self.num_lin_features = num_lin_features
-        self.lin_encoding_size = lin_encoding_size
         self.num_channels = num_channels
         self.share_encoding = share_encoding
 
-        if obs_encoder.split("-")[0] == "efficientnet":
-            self.obs_encoder = EfficientNet.from_name(obs_encoder, in_channels=num_channels)  # context
-            self.num_obs_features = self.obs_encoder._fc.in_features
+        if tactile_encoder.split("-")[0] == "efficientnet":
+            self.tactile_encoder = EfficientNet.from_name(tactile_encoder, in_channels=num_channels)
+            self.tactile_encoder = replace_bn_with_gn(self.tactile_encoder)
+            self.num_tactile_features = self.tactile_encoder._fc.in_features
         else:
             raise NotImplementedError
 
-        self.lin_encoder = nn.Sequential(nn.Linear(num_lin_features, lin_encoding_size // 2),
-                                         nn.ReLU(),
-                                         nn.Linear(lin_encoding_size // 2, lin_encoding_size))
+        if img_encoder.split("-")[0] == "efficientnet":
+            self.img_encoder = EfficientNet.from_name(img_encoder, in_channels=1)  # depth
+            self.img_encoder = replace_bn_with_gn(self.img_encoder)
+            self.num_img_features = self.img_encoder._fc.in_features
+        else:
+            raise NotImplementedError
 
+        if include_lin:
+            self.include_lin = include_lin
+            self.lin_encoding_size = lin_encoding_size
+            self.lin_encoder = nn.Sequential(nn.Linear(num_lin_features, lin_encoding_size // 2),
+                                             nn.ReLU(),
+                                             nn.Linear(lin_encoding_size // 2, lin_encoding_size))
 
-        if self.num_obs_features != self.obs_encoding_size:
-            self.compress_obs_enc = nn.Linear(self.num_obs_features, self.obs_encoding_size)
+        if self.num_tactile_features != self.tactile_encoding_size:
+            self.compress_obs_enc = nn.Linear(self.num_tactile_features, self.tactile_encoding_size)
+        else:
+            self.compress_obs_enc = nn.Identity()
+
+        if self.num_img_features != self.img_encoding_size:
+            self.compress_obs_enc = nn.Linear(self.num_img_features, self.img_encoding_size)
         else:
             self.compress_obs_enc = nn.Identity()
 
         self.decoder = MultiLayerDecoder(
-            embed_dim=self.obs_encoding_size,
-            seq_len=self.context_size * (3),
+            embed_dim=self.tactile_encoding_size,
+            seq_len=self.context_size * 3 + 1,
             output_layers=[256, 128, 64, 32],
             nhead=mha_num_attention_heads,
             num_layers=mha_num_attention_layers,
@@ -149,51 +167,129 @@ class TacT(BaseModel):
         )
 
     def forward(
-            self, obs_img: torch.tensor,
-            lin_input: torch.tensor,
+            self, obs_tactile: torch.tensor,
+            obs_img: torch.tensor,
+            lin_input: torch.tensor = None,
             contacts: torch.tensor = None) -> Tuple[torch.Tensor, torch.Tensor]:
 
         # currently, the size of lin_encoding is [batch_size, num_lin_features]
-        lin_encoding = self.lin_encoder(lin_input)
+        if self.include_lin:
+            lin_encoding = self.lin_encoder(lin_input)
 
-        if len(lin_encoding.shape) == 2:
-            lin_encoding = lin_encoding.unsqueeze(1)
-        # currently, the size of goal_encoding is [batch_size, 1, self.goal_encoding_size]
-        assert lin_encoding.shape[2] == self.lin_encoding_size
+            if len(lin_encoding.shape) == 2:
+                lin_encoding = lin_encoding.unsqueeze(1)
+            # currently, the size of goal_encoding is [batch_size, 1, self.goal_encoding_size]
+            assert lin_encoding.shape[2] == self.lin_encoding_size
 
         # split the observation into context based on the context size
-        B, T, F, C, W, H = obs_img.shape
-        # obs_img = obs_img.reshape(B*T, CF, W, H)
-        fingers = [obs_img[:, :, i, ...].reshape(B*T, C, W, H) for i in range(F)]
+        B, T, F, C, W, H = obs_tactile.shape
+        # obs_tactile = obs_tactile.reshape(B*T, CF, W, H)
+        fingers = [obs_tactile[:, :, i, ...].reshape(B*T, C, W, H) for i in range(F)]
 
         obs_features = []
         if self.share_encoding:
             for finger in fingers:
                 # get the observation encoding
-                obs_encoding = self.obs_encoder.extract_features(finger)
+                tactile_encoding = self.tactile_encoder.extract_features(finger)
                 # currently the size is [batch_size*(self.context_size), 1280, H/32, W/32]
-                obs_encoding = self.obs_encoder._avg_pooling(obs_encoding)
+                tactile_encoding = self.tactile_encoder._avg_pooling(tactile_encoding)
                 # currently the size is [batch_size*(self.context_size), 1280, 1, 1]
-                if self.obs_encoder._global_params.include_top:
-                    obs_encoding = obs_encoding.flatten(start_dim=1)
-                    obs_encoding = self.obs_encoder._dropout(obs_encoding)
-                # currently, the size is [batch_size, self.context_size, self.obs_encoding_size]
-                obs_encoding = self.compress_obs_enc(obs_encoding)
-                # currently, the size is [batch_size*(self.context_size), self.obs_encoding_size]
-                # reshape the obs_encoding to [context + 1, batch, encoding_size], note that the order is flipped
-                obs_encoding = obs_encoding.reshape((self.context_size, -1, self.obs_encoding_size)) #+ 1
-                obs_encoding = torch.transpose(obs_encoding, 0, 1)
-                # currently, the size is [batch_size, self.context_size, self.obs_encoding_size]
-                obs_features.append(obs_encoding)
+                if self.tactile_encoder._global_params.include_top:
+                    tactile_encoding = tactile_encoding.flatten(start_dim=1)
+                    tactile_encoding = self.tactile_encoder._dropout(tactile_encoding)
+                # currently, the size is [batch_size, self.context_size, self.tactile_encoding_size]
+                tactile_encoding = self.compress_obs_enc(tactile_encoding)
+                # currently, the size is [batch_size*(self.context_size), self.tactile_encoding_size]
+                # reshape the tactile_encoding to [context + 1, batch, encoding_size], note that the order is flipped
+                tactile_encoding = tactile_encoding.reshape((self.context_size, -1, self.tactile_encoding_size))
+                tactile_encoding = torch.transpose(tactile_encoding, 0, 1)
+                # currently, the size is [batch_size, self.context_size, self.tactile_encoding_size]
+                obs_features.append(tactile_encoding)
         else:
             raise NotImplementedError
 
         obs_features = torch.cat(obs_features, dim=1)
+
+        # img
+        B, T, C, W, H = obs_img.shape
+        obs_img = obs_img.reshape(B*T, C, W, H)
+        img_encoding = self.img_encoder.extract_features(obs_img)
+        # currently the size is [batch_size*(self.context_size), 1280, H/32, W/32]
+        img_encoding = self.img_encoder._avg_pooling(img_encoding)
+        # currently the size is [batch_size*(self.context_size), 1280, 1, 1]
+        if self.img_encoder._global_params.include_top:
+            img_encoding = img_encoding.flatten(start_dim=1)
+            img_encoding = self.img_encoder._dropout(img_encoding)
+        # currently, the size is [batch_size, self.context_size, self.img_encoding_size]
+        img_encoding = self.compress_obs_enc(img_encoding)
+        # currently, the size is [batch_size*(self.context_size), self.img_encoding_size]
+        # reshape the img_encoding to [context + 1, batch, encoding_size], note that the order is flipped
+        img_encoding = img_encoding.reshape((self.context_size, -1, self.img_encoding_size))
+        img_encoding = torch.transpose(img_encoding, 0, 1)
+
         # concatenate the goal encoding to the observation encoding
-        # tokens = torch.cat((obs_features, lin_encoding), dim=1)
-        tokens = obs_features
+        tokens = torch.cat((obs_features, img_encoding), dim=1)
+
         final_repr = self.decoder(tokens)
         # currently, the size is [batch_size, 32]
         latent_pred = self.latent_predictor(final_repr)
 
         return latent_pred
+
+
+# Utils for Group Norm
+def replace_bn_with_gn(
+    root_module: nn.Module,
+    features_per_group: int=16) -> nn.Module:
+    """
+    Relace all BatchNorm layers with GroupNorm.
+    """
+    replace_submodules(
+        root_module=root_module,
+        predicate=lambda x: isinstance(x, nn.BatchNorm2d),
+        func=lambda x: nn.GroupNorm(
+            num_groups=x.num_features//features_per_group,
+            num_channels=x.num_features)
+    )
+    return root_module
+
+
+from typing import List, Dict, Optional, Tuple, Callable
+
+def replace_submodules(
+        root_module: nn.Module,
+        predicate: Callable[[nn.Module], bool],
+        func: Callable[[nn.Module], nn.Module]) -> nn.Module:
+    """
+    Replace all submodules selected by the predicate with
+    the output of func.
+
+    predicate: Return true if the module is to be replaced.
+    func: Return new module to use.
+    """
+    if predicate(root_module):
+        return func(root_module)
+
+    bn_list = [k.split('.') for k, m
+        in root_module.named_modules(remove_duplicate=True)
+        if predicate(m)]
+    for *parent, k in bn_list:
+        parent_module = root_module
+        if len(parent) > 0:
+            parent_module = root_module.get_submodule('.'.join(parent))
+        if isinstance(parent_module, nn.Sequential):
+            src_module = parent_module[int(k)]
+        else:
+            src_module = getattr(parent_module, k)
+        tgt_module = func(src_module)
+        if isinstance(parent_module, nn.Sequential):
+            parent_module[int(k)] = tgt_module
+        else:
+            setattr(parent_module, k, tgt_module)
+    # verify that all modules are replaced
+    bn_list = [k.split('.') for k, m
+        in root_module.named_modules(remove_duplicate=True)
+        if predicate(m)]
+    assert len(bn_list) == 0
+    return root_module
+

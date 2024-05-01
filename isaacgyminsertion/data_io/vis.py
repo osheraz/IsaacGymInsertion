@@ -10,7 +10,7 @@ import random
 # %%
 import yaml
 
-all_paths = glob('/home/roblab20/tactile_insertion/datastore_42_gt/*/*.npz')
+all_paths = glob('/home/roblab20/tactile_insertion/datastore_42_gt2/*/*.npz')
 print(len(all_paths))
 
 test=False
@@ -490,8 +490,9 @@ if True:
 
         # Update and redraw the tactile image
         cv2.imshow('test', img.transpose(1, 2, 0))
-        depth = np.uint8(depth * 255)
-        cv2.imshow('test2', depth.transpose(1, 2, 0))
+        # depth = np.uint8(depth)
+        cv2.imshow("Depth Image", depth.transpose(1, 2, 0) + 0.5)
+        # cv2.imshow('test2', )
 
         cv2.waitKey(100)
 

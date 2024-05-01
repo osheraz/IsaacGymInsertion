@@ -325,7 +325,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         # fingertip forces
         e = 0.9 if self.cfg_task.env.smooth_force else 0
-        normalize_forces = lambda x: (torch.clamp(torch.norm(x, dim=-1), 0, 50) / 20).view(-1)
+        normalize_forces = lambda x: torch.norm(x, dim=-1) # (torch.clamp(torch.norm(x, dim=-1), 0, 10) / 10).view(-1)
         self.finger_normalized_forces[:, 0] = (1 - e) * normalize_forces(
             self.left_finger_force.clone()) + e * self.finger_normalized_forces[:, 0]
         self.finger_normalized_forces[:, 1] = (1 - e) * normalize_forces(
@@ -622,14 +622,10 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             # self.plug_hand_quat_diff,  # 4
             plug_pos_error,  # 3
             plug_quat_error,  # 4
-            # physics_params,  # 6
-            # self.finger_normalized_forces,  # 3
-            # self.plug_pcd.view(self.num_envs, -1),  # 3 * num_points =  3 * 10 = 30
-
-            # self.assembly_one_hot, # 4
-            # self.socket_contact_force.clone()  # 3
-            # TODO: add object shapes -- bring diameter
-            # self.plug_heights,  # 1?
+            physics_params,  # 6
+            # finger_contacts,  # 3
+            # TODO: add object shapes -- bring diameter encoding where there is multiple objects
+            self.plug_heights,  # 1
             # TODO: add extrinsics contact (point cloud) -> this will encode the shape (check this)
         ]
 
@@ -697,8 +693,10 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
                     if False and i == 0:
                         img = self.process_depth_image(im)
-                        img = np.uint8(img.cpu().numpy() * 255)
-                        cv2.imshow("images2", img)
+                        img = img.cpu().numpy()
+                        # img = np.uint8(img.cpu().numpy() * 255)
+                        # cv2.imshow("images2", img)
+                        cv2.imshow("Depth Image", img.transpose(1, 2, 0) + 0.5)
                         cv2.waitKey(1)
 
             self.gym.end_access_image_tensors(self.sim)

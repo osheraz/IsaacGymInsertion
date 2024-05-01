@@ -65,7 +65,7 @@ ppo:
   ft_info: False
   obs_info: False
   hand_info: False
-  only_contact: True # use only extrinsic for teacher
+  only_contact: False # use only extrinsic for teacher
   split_latent: False
 
   ft_seq_length: ${...task.env.ft_history_len}
