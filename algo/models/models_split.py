@@ -225,8 +225,8 @@ class ActorCriticSplit(nn.Module):
 
             if 'priv_info' in obs_dict:
 
-                # extrin_priv = self.env_mlp(obs_dict['priv_info'])
-                extrin_priv = self.env_mlp(extrin)
+                extrin_priv = self.env_mlp(obs_dict['priv_info'])
+                # extrin_priv = self.env_mlp(extrin)
 
                 if self.contact_info:
                     extrin_contact = self.contact_ae.forward_enc(obs_dict['contacts'])
@@ -261,12 +261,13 @@ class ActorCriticSplit(nn.Module):
                     plt.cla()
 
             # predict with the student extrinsic
-            obs = torch.cat([obs, extrin_gt], dim=-1)
+            obs = torch.cat([obs, extrin], dim=-1)
 
         # MLP models
         else:
             # Contact obs with extrin/gt_extrin and pass to the actor
             if self.priv_info:
+                # Online
                 if self.priv_info_stage2:
 
                     if self.tactile_info:
@@ -335,7 +336,6 @@ class ActorCriticSplit(nn.Module):
                         plt.cla()
 
                     obs = torch.cat([obs, extrin], dim=-1)
-
 
         x = self.actor_mlp(obs)
         mu = self.mu(x)

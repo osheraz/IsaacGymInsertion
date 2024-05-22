@@ -62,7 +62,7 @@ model:
     num_layers: 4
     num_heads: 4
     dim_factor: 4
-    output_size: 7
+    output_size: 8
     tactile_encoding_size: 128
     img_encoding_size: 128
 

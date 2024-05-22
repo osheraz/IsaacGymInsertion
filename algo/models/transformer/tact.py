@@ -137,8 +137,8 @@ class TacT(BaseModel):
         else:
             raise NotImplementedError
 
+        self.include_lin = include_lin
         if include_lin:
-            self.include_lin = include_lin
             self.lin_encoding_size = lin_encoding_size
             self.lin_encoder = nn.Sequential(nn.Linear(num_lin_features, lin_encoding_size // 2),
                                              nn.ReLU(),

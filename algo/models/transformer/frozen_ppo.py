@@ -678,19 +678,21 @@ class PPO(object):
                                  self.env.progress_buf.view(-1, 1), :].squeeze(1)
                     else:
                         latent = get_latent(tactile, img, lin_input)
-            # Adding the latent to the obs_dict (if present test with student, else test with teacher)
-            original_plug_pos_error = (latent[:,:3] * stud_norm_dict["std"]["plug_pos_error"]) + \
-                                       stud_norm_dict["mean"]["plug_pos_error"]
-            original_plug_quat_error = (latent[:, 3:] * stud_norm_dict["std"]["plug_quat_error"]) + \
-                                       stud_norm_dict["mean"]["plug_quat_error"]
 
-            latent = torch.cat((original_plug_pos_error, original_plug_quat_error), dim=1)
+                    # Adding the latent to the obs_dict (if present test with student, else test with teacher)
+                    # If we predict the error directly with the model
+                    # original_plug_pos_error = (latent[:,:3] * stud_norm_dict["std"]["plug_pos_error"]) + \
+                    #                            stud_norm_dict["mean"]["plug_pos_error"]
+                    # original_plug_quat_error = (latent[:, 3:] * stud_norm_dict["std"]["plug_quat_error"]) + \
+                    #                            stud_norm_dict["mean"]["plug_quat_error"]
+                    #
+                    # latent = torch.cat((original_plug_pos_error, original_plug_quat_error), dim=1)
 
             obs_dict = {
                 'obs': self.running_mean_std(self.obs['obs']),
                 'priv_info': self.priv_mean_std(self.obs['priv_info']),
                 'contacts': self.obs['contacts'],
-                'latent': self.priv_mean_std(latent),
+                'latent': latent,  # self.priv_mean_std(latent),
             }
             action, latent = self.model.act_inference(obs_dict)
             action = torch.clamp(action, -1.0, 1.0)

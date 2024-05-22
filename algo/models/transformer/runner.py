@@ -69,7 +69,7 @@ class Runner:
             lin_input = lin_input.to(self.device)
             latent = latent.to(self.device)
             action = action.to(self.device)
-            contacts = contacts.to(self.device)
+            # contacts = contacts.to(self.device)
             mask = mask.to(self.device).unsqueeze(-1)
 
             out = self.model(tac_input, img_input, lin_input)
@@ -219,11 +219,11 @@ class Runner:
 
         return np.mean(val_loss)
 
-    def log_output(self, tac_input,img_input, lin_input, out, latent, session='train'):
+    def log_output(self, tac_input, img_input, lin_input, out, latent, session='train'):
         # tac_input [B T F W H C]
         # Selecting the first example from the batch for demonstration
         image_sequence = tac_input[0].cpu().detach().numpy()
-        img_input = img_input[0].cpu().detach().numpy()
+        img_input = img_input[0].cpu().detach().numpy().squeeze(0)
         linear_features = lin_input[0].cpu().detach().numpy()  # Shape should be [sequence_length, eef_pos+action]
         predicted_output = out[0].cpu().detach().numpy()
         true_label = latent[0, -1, :].cpu().detach().numpy()

@@ -622,10 +622,11 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             # self.plug_hand_quat_diff,  # 4
             plug_pos_error,  # 3
             plug_quat_error,  # 4
-            physics_params,  # 6
+            # physics_params,  # 6
             # finger_contacts,  # 3
+            # self.plug_pcd.view(self.num_envs, -1),  # 3 * num_points
             # TODO: add object shapes -- bring diameter encoding where there is multiple objects
-            self.plug_heights,  # 1
+            # self.plug_heights,  # 1
             # TODO: add extrinsics contact (point cloud) -> this will encode the shape (check this)
         ]
 
