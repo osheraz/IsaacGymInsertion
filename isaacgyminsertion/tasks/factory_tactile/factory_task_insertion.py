@@ -580,7 +580,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                 self.contact_points_hist[:, (self.cfg_task.env.num_points * 0):, ...] = self.gt_extrinsic_contact.clone()
 
         state_tensors = [
-            # self.hand_joints,  # 6
+            self.hand_joints,  # 6
             plug_hand_pos,  # 3
             plug_hand_quat,  # 4
             # self.plug_hand_pos_diff,   # 3
@@ -630,7 +630,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                             "images/im{self.count:05}.png",
                         )
 
-                    if True:
+                    if i == 0 and True:
                         img = cv2.cvtColor(im.cpu().numpy(), cv2.COLOR_RGB2BGR)
                         cv2.imshow("Follow camera", img)
                         cv2.waitKey(1)
@@ -643,7 +643,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                         gymapi.IMAGE_DEPTH,
                     )
                     im = gymtorch.wrap_tensor(im)
-                    self.image_buf[i] = im
+                    self.image_buf[i] = self.process_depth_image(im)
 
                     if self.save_im:
                         trans_im = im.detach().clone()
@@ -654,11 +654,12 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                             f"images/dim/{self.count:05}.png",
                         )
 
-                    if True:
-                        MAX_DEPTH = 1.0
-                        img = 1 - torch.clamp(-im, 0, MAX_DEPTH) / MAX_DEPTH
-                        img = np.uint8(img.cpu().numpy() * 255)
-                        cv2.imshow("images", img)
+                    if False and i == 0:
+                        img = self.process_depth_image(im)
+                        img = img.cpu().numpy()
+                        # img = np.uint8(img.cpu().numpy() * 255)
+                        # cv2.imshow("images2", img)
+                        cv2.imshow("Depth Image", img.transpose(1, 2, 0) + 0.5)
                         cv2.waitKey(1)
 
             self.gym.end_access_image_tensors(self.sim)
@@ -929,12 +930,14 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         # self._simulate_and_refresh()
 
-    def reset_target_pose(self, env_ids, apply_reset=False):
+    def reset_target_pose(self, env_ids, apply_reset=False, random_rot=False):
         rand_floats = torch_rand_float(-1.0, 1.0, (len(env_ids), 4), device=self.device)
 
         new_rot = randomize_rotation(rand_floats[:, 0], rand_floats[:, 1], self.x_unit_tensor[env_ids], self.y_unit_tensor[env_ids])
+        new_rot = new_rot if random_rot else self.identity_quat[env_ids, :]
 
         self.goal_ori[env_ids, :] = new_rot
+
         self.root_quat[env_ids, self.goal_actor_id_env, :] = new_rot.to(device=self.device)
         self.root_linvel[env_ids, self.goal_actor_id_env] = 0.0
         self.root_angvel[env_ids, self.goal_actor_id_env] = 0.0
@@ -1484,3 +1487,25 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.obs_dict['contacts'] = self.contact_points_hist.clone().to(self.rl_device)
 
         return self.obs_dict
+
+    def process_depth_image(self, depth_image):
+        # These operations are replicated on the hardware
+        # self.resize_transform = transforms.Resize((self.cfg.depth.resized[1], self.cfg.depth.resized[0]),
+        #                                                       interpolation=transforms.InterpolationMode.BICUBIC)
+
+        depth_image = self.crop_depth_image(depth_image)
+        depth_image += self.dis_noise * 2 * (torch.rand(1) - 0.5)[0]
+        depth_image = torch.clip(depth_image, -self.far_clip, -self.near_clip)
+        # depth_image = self.resize_transform(depth_image[None, :]).squeeze()
+        depth_image = self.normalize_depth_image(depth_image)
+        return depth_image
+
+    def normalize_depth_image(self, depth_image):
+        depth_image = depth_image * -1
+        depth_image = (depth_image - self.near_clip) / (self.far_clip - self.near_clip) - 0.5
+        return depth_image
+
+    def crop_depth_image(self, depth_image):
+        # crop 30 pixels from the left and right and and 20 pixels from bottom and return croped image
+        return depth_image
+        # return depth_image[:-2, 4:-4]

@@ -2,7 +2,7 @@
 GPUS=${1:-0}
 SEED=${2:-42}
 CACHE=${3:-test}
-NUM_ENVS=${4:-1000}
+NUM_ENVS=${4:-700}
 HEADLESS=${5:-True}
 
 array=( $@ )
@@ -24,7 +24,7 @@ task.env.numObservations=10 \
 task.env.compute_contact_gt=False \
 task.env.num_points=2 \
 train.ppo.only_contact=False \
-task.env.numStates=15 \
+task.env.numStates=21 \
 train.algo=PPO \
 train.ppo.priv_info=True \
 train.ppo.extrin_adapt=False \

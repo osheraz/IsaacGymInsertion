@@ -48,7 +48,7 @@ env:
     numEnvs: ${resolve_default:128,${...num_envs}}
     numObservations: 10 #
     numObsStudent: 9 #
-    numStates: 15 #
+    numStates: 21 #
     numActions: 9 # [position, ori]
     numTargets: 9 # [position, ori]
     hand_action: True
@@ -100,6 +100,9 @@ external_cam:
     h: 180
   cam_type: 'd'
   save_im: False
+  far_clip: 1.0
+  near_clip: 0.0
+  dis_noise: 0.001
 
 randomize:
 

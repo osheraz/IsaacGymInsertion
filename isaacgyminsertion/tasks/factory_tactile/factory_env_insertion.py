@@ -357,6 +357,9 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
         self.res = [self.cfg['external_cam']['cam_res']['w'], self.cfg['external_cam']['cam_res']['h']]
         self.cam_type = self.cfg['external_cam']['cam_type']
         self.save_im = self.cfg['external_cam']['save_im']
+        self.near_clip = self.cfg['external_cam']['near_clip']
+        self.far_clip = self.cfg['external_cam']['far_clip']
+        self.dis_noise = self.cfg['external_cam']['dis_noise']
 
         self.randomize = self.cfg_env.randomize.domain_randomize
         self.randomization_params = self.cfg_env.randomize.randomization_params
