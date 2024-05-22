@@ -95,7 +95,9 @@ sim:
 
 external_cam:
   external_cam: False
-  cam_res: [320, 180]
+  cam_res:
+    w: 320
+    h: 180
   cam_type: 'd'
   save_im: False
 
@@ -142,11 +144,11 @@ rl:
     close_error_thresh: 0.005  # threshold below which plug is considered close enough to bolt
     success_height_thresh: 0.005  # threshold distance below which plug is considered successfully inserted
 
-    keypoint_reward_scale: -0.4 # scale on keypoint-based reward
+    keypoint_reward_scale: -0.1 # scale on keypoint-based reward
     action_penalty_scale: -0.002  # scale on action penalty
-    loose_penalty: -0.1
     action_delta_scale: -0.02
-    ori_reward_scale: -0.1 # scale on ori-based reward
+    ori_reward_scale: -0.5 # scale on ori-based reward
+    loose_penalty: -0.05
     min_grasp_force: 0.05
 
     early_reset_reward_scale: -1.0

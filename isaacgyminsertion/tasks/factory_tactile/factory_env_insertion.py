@@ -354,7 +354,7 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
         self.cfg_tactile = omegaconf.OmegaConf.create(self.cfg['tactile'])
 
         self.external_cam = self.cfg['external_cam']['external_cam']
-        self.res = self.cfg['external_cam']['cam_res']
+        self.res = [self.cfg['external_cam']['cam_res']['w'], self.cfg['external_cam']['cam_res']['h']]
         self.cam_type = self.cfg['external_cam']['cam_type']
         self.save_im = self.cfg['external_cam']['save_im']
 
