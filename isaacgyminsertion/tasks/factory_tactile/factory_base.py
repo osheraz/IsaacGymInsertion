@@ -331,7 +331,9 @@ class FactoryBaseTactile(VecTask, FactoryABCBase):
 
         self.K = torch.diag(torch.tensor([k1, k2, k1, k2, k1, k2], device=self.device)).repeat((self.num_envs, 1, 1))
         self.D = torch.diag(torch.tensor([d1, d2, d1, d2, d1, d2], device=self.device)).repeat((self.num_envs, 1, 1))
-        self.act_angles = torch.tensor([0, 0, 0], device=self.device).repeat((self.num_envs, 1))
+        self.act_angles = torch.tensor([0., 0., 0.], device=self.device).repeat((self.num_envs, 1))
+        self.rel_act_angles = torch.tensor([0.0, 0.0, 0.0], device=self.device).repeat((self.num_envs, 1))
+
         self.act_torque = None
 
 

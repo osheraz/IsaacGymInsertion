@@ -504,7 +504,9 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         actions = self.actions.clone()
 
-        obs = torch.cat([self.hand_joints,  # 6
+        obs = torch.cat([
+                         # self.hand_joints,  # 6
+                         self.rel_act_angles,  # 3
                          self.goal_ori,     # 4
                          actions[:, -3:],   # 3
                          ], dim=-1)
@@ -1229,6 +1231,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         self.prev_targets[env_ids] *= 0
         self.prev_actions[env_ids] *= 0
+        self.rel_act_angles[env_ids] *= 0
 
         self.force_hist = np.zeros(3)
 
@@ -1305,6 +1308,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             self.act_angles = (
                         self.R.permute(0, 2, 1) @ self.gripper_dof_pos[:, idx].unsqueeze(-1) / self.r_act).squeeze(-1)
             self.act_angles += gripper_actions  # add the action
+            self.rel_act_angles += gripper_actions
             # self.act_angles = torch.clamp(self.act_angles, min=0 * self.act_angles)
 
             tendon_forces = self.Q @ self.act_angles.unsqueeze(-1)  # linear mapping between act_angle to tension
