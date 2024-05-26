@@ -185,7 +185,7 @@ class ActorCriticSplit(nn.Module):
     def act(self, obs_dict):
         # used specifically to collection samples during training
         # it contains exploration so needs to sample from distribution
-        mu, logstd, value, _, _, dec = self._actor_critic(obs_dict)
+        mu, logstd, value, _, _ = self._actor_critic(obs_dict)
         sigma = torch.exp(logstd)
         distr = torch.distributions.Normal(mu, sigma)
         selected_action = distr.sample()
@@ -195,20 +195,19 @@ class ActorCriticSplit(nn.Module):
             'actions': selected_action,
             'mus': mu,
             'sigmas': sigma,
-            'dec': dec
         }
         return result
 
     @torch.no_grad()
     def act_inference(self, obs_dict):
         # used for testing
-        mu, logstd, value, latent, _, dec = self._actor_critic(obs_dict)
-        return mu, latent, dec
+        mu, logstd, value, latent, _ = self._actor_critic(obs_dict)
+        return mu, latent
 
-    def _actor_critic(self, obs_dict, display=False):
+    def _actor_critic(self, obs_dict, display=True):
 
         obs = obs_dict['obs']
-        extrin, extrin_gt, dec = None, None, None
+        extrin, extrin_gt = None, None
 
         # Transformer student (latent pass is in frozen_ppo)
         if 'latent' in obs_dict and obs_dict['latent'] is not None:
@@ -218,6 +217,8 @@ class ActorCriticSplit(nn.Module):
             if 'priv_info' in obs_dict:
 
                 extrin_priv = self.env_mlp(obs_dict['priv_info'])
+                # extrin_priv = self.env_mlp(extrin)
+
                 if self.contact_info:
                     extrin_contact = self.contact_ae.forward_enc(obs_dict['contacts'])
                     if self.only_contact:
@@ -228,37 +229,36 @@ class ActorCriticSplit(nn.Module):
                     extrin_gt = extrin_priv
 
                 if display:
-                    plt.ylim(-np.pi,np.pi)
+                    # plt.ylim(-np.pi,np.pi)
 
                     # Convert model output (to_show) back to roll and pitch angles
-                    to_show = obs_dict['object_ori'][:, -1, :]
-                    sin_roll, cos_roll = to_show[:, 0], to_show[:, 1]
-                    sin_pitch, cos_pitch = to_show[:, 2], to_show[:, 3]
-                    to_show_roll = torch.atan2(sin_roll, cos_roll)
-                    to_show_pitch = torch.atan2(sin_pitch, cos_pitch)
-                    to_show = torch.cat((to_show_roll.unsqueeze(1), to_show_pitch.unsqueeze(1)), dim=1)
+                    # to_show = obs_dict['object_ori'][:, -1, :]
+                    # sin_roll, cos_roll = to_show[:, 0], to_show[:, 1]
+                    # sin_pitch, cos_pitch = to_show[:, 2], to_show[:, 3]
+                    # to_show_roll = torch.atan2(sin_roll, cos_roll)
+                    # to_show_pitch = torch.atan2(sin_pitch, cos_pitch)
+                    # to_show = torch.cat((to_show_roll.unsqueeze(1), to_show_pitch.unsqueeze(1)), dim=1)
 
                     # Convert extrin back to roll and pitch angles
-                    sin_roll_e, cos_roll_e = extrin[:, 0], extrin[:, 1]
-                    sin_pitch_e, cos_pitch_e = extrin[:, 2], extrin[:, 3]
-                    extrin_roll = torch.atan2(sin_roll_e, cos_roll_e)
-                    extrin_pitch = torch.atan2(sin_pitch_e, cos_pitch_e)
-                    extrin = torch.cat((extrin_roll.unsqueeze(1), extrin_pitch.unsqueeze(1)), dim=1)
-
+                    # sin_roll_e, cos_roll_e = extrin[:, 0], extrin[:, 1]
+                    # sin_pitch_e, cos_pitch_e = extrin[:, 2], extrin[:, 3]
+                    # extrin_roll = torch.atan2(sin_roll_e, cos_roll_e)
+                    # extrin_pitch = torch.atan2(sin_pitch_e, cos_pitch_e)
+                    # extrin = torch.cat((extrin_roll.unsqueeze(1), extrin_pitch.unsqueeze(1)), dim=1)
+                    plt.ylim(-1.2, 1.2)
                     plt.scatter(list(range(extrin.shape[-1])), extrin.clone().detach().cpu().numpy()[0, :], color='r')
-                    plt.scatter(list(range(to_show.shape[-1])), to_show.clone().cpu().numpy()[0, :], color='b')
+                    plt.scatter(list(range(extrin_gt.shape[-1])), extrin_gt.clone().cpu().numpy()[0, :], color='b')
                     plt.pause(0.0001)
                     plt.cla()
 
             # predict with the student extrinsic
-            obs = torch.cat([obs, extrin_gt], dim=-1)
-            if self.contact_info:
-                dec = self.contact_ae.forward_dec(extrin_gt)
+            obs = torch.cat([obs, extrin], dim=-1)
 
         # MLP models
         else:
             # Contact obs with extrin/gt_extrin and pass to the actor
             if self.priv_info:
+                # Online
                 if self.priv_info_stage2:
 
                     if self.tactile_info:
@@ -310,7 +310,6 @@ class ActorCriticSplit(nn.Module):
 
                     if self.contact_info:
                         enc = self.contact_ae.forward_enc(obs_dict['contacts'])
-                        dec = self.contact_ae.forward_dec(enc)
                         if self.only_contact:
                             extrin = enc
                         else:
@@ -338,11 +337,11 @@ class ActorCriticSplit(nn.Module):
         else:
             value = self.value(x)
 
-        return mu, mu * 0 + sigma, value, extrin, extrin_gt, dec
+        return mu, mu * 0 + sigma, value, extrin, extrin_gt
 
     def forward(self, input_dict):
         prev_actions = input_dict.get('prev_actions', None)
-        mu, logstd, value, extrin, extrin_gt, dec = self._actor_critic(input_dict)
+        mu, logstd, value, extrin, extrin_gt = self._actor_critic(input_dict)
         sigma = torch.exp(logstd)
         distr = torch.distributions.Normal(mu, sigma)
         entropy = distr.entropy().sum(dim=-1)
@@ -355,7 +354,6 @@ class ActorCriticSplit(nn.Module):
             'sigmas': sigma,
             'extrin': extrin,
             'extrin_gt': extrin_gt,
-            'dec': dec
         }
         return result
 

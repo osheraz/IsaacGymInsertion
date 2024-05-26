@@ -363,6 +363,7 @@ class SimLogger():
     def __init__(self, env):
         self.env = env
         ROT_MAT_SIZE = 9
+        self.gt_contact = env.cfg_task.env.compute_contact_gt
 
         log_items = {
             'contacts_shape': env.gt_extrinsic_contact.shape[-1],
@@ -382,17 +383,12 @@ class SimLogger():
             'priv_obs_shape': env.states_buf.shape[-1],
             'hand_joints_shape': env.hand_joints.shape[-1],
             'goal_ori_shape': env.goal_ori.shape[-1],
+            'rel_act_angles_shape': env.rel_act_angles.shape[-1],
             'latent_shape': env.cfg_ppo.network.priv_mlp.units[-1],
         }
 
-        self.gt_contact = env.cfg_task.env.compute_contact_gt
-
-        if self.gt_contact and False:
-            log_items.update({
-                'contact_latent_shape': 4,
-            })
-
         log_folder = env.cfg_task.data_logger.base_folder
+
         self.data_logger_init = lambda x: DataLogger(env.num_envs,
                                                      env.max_episode_length,
                                                      env.device,
@@ -411,14 +407,21 @@ class SimLogger():
         plug_pos = torch.cat(self.env.pose_world_to_robot_base(self.env.plug_pos.clone(),
                                                                self.env.plug_quat.clone()), dim=-1)
 
+        new_action = None
+        if action is not None:
+            new_action = action.clone()
+        new_done = None
+        if done is not None:
+            new_done = done.clone()
         log_data = {
             'contacts': self.env.gt_extrinsic_contact.clone(),
             'arm_joints': self.env.arm_dof_pos.clone(),
             'hand_joints': self.env.hand_joints.clone(),
             'goal_ori': self.env.goal_ori.clone(),
+            'rel_act_angles': self.env.rel_act_angles.clone(),
             'eef_pos': eef_pos,
             'plug_pos': plug_pos,
-            'action': action.clone(),
+            'action': new_action,
             'target': self.env.targets.clone(),
             'tactile': self.env.tactile_imgs.clone(),
             'img': self.env.image_buf.clone(),
@@ -429,9 +432,19 @@ class SimLogger():
             'obs_hist': self.env.obs_buf.clone(),
             'obs_hist_stud': self.env.obs_student_buf.clone(),
             'priv_obs': self.env.states_buf.clone(),
-            'done': done.clone(),
-            'latent': latent.clone(),
+            'done': new_done,
         }
+
+        if latent is not None:
+            new_latent = latent.clone()
+            log_data.update({
+                'latent': new_latent
+            })
+
+            if self.gt_contact and False:
+                log_data.update({
+                    'contact_latent': new_latent[:, 11:15]
+                })
 
         self.data_logger.update(save_trajectory=save_trajectory, **log_data)
 

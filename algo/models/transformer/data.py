@@ -4,6 +4,7 @@ from glob import glob
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
+from torch import nn
 from scipy.spatial.transform import Rotation
 
 import os
@@ -113,6 +114,38 @@ class DataNormalizer:
         self.ensure_directory_exists(self.normalization_path)
         self.load_or_create_normalization_file()
 
+class GaussianNoise(nn.Module):
+    def __init__(self, std=0.1):
+        super().__init__()
+        self.std = std
+
+    def forward(self, x):
+        if self.training:
+            noise = torch.randn_like(x) * self.std
+            return x + noise
+        return x
+
+def mask_img(x, img_patch_size, img_masking_prob):
+    # Divide the image into patches and randomly mask some of them
+    img_patch = x.unfold(2, img_patch_size, img_patch_size).unfold(
+        3, img_patch_size, img_patch_size
+    )
+    mask = (
+        torch.rand(
+            (
+                x.shape[0],
+                x.shape[-2] // img_patch_size,
+                x.shape[-1] // img_patch_size,
+            )
+        )
+        < img_masking_prob
+    )
+    mask = mask.unsqueeze(1).unsqueeze(-1).unsqueeze(-1).expand_as(img_patch)
+    x = x.clone()
+    x.unfold(2, img_patch_size, img_patch_size).unfold(
+        3, img_patch_size, img_patch_size
+    )[mask] = 0
+    return x
 
 class TactileDataset(Dataset):
     def __init__(self, files, sequence_length=500, full_sequence=False, normalize_dict=None, stride=10):
@@ -124,6 +157,34 @@ class TactileDataset(Dataset):
         self.normalize_dict = normalize_dict
 
         self.to_torch = lambda x: torch.from_numpy(x).float()
+
+        # Define transform:
+        # Crop randomization, normalization
+        self.transform = nn.Sequential(
+            transforms.RandomCrop((166, 288)),
+        )
+
+        img_gaussian_noise = 0.0
+        img_patch_size = 16
+        img_masking_prob = 0.0
+
+        # Add gaussian noise to the image
+        if img_gaussian_noise > 0.0:
+            self.transform = nn.Sequential(
+                self.transform,
+                GaussianNoise(img_gaussian_noise),
+            )
+
+        if img_masking_prob > 0.0:
+            self.transform = lambda x: mask_img(
+                transforms.RandomCrop((166, 288))(x),
+                img_patch_size,
+                img_masking_prob
+            )
+        # For evaluation, only center crop and normalize
+        self.eval_transform = nn.Sequential(
+            transforms.CenterCrop((166, 288)),
+        )
 
         # Store indices corresponding to each trajectory
         self.indices_per_trajectory = []
@@ -163,10 +224,10 @@ class TactileDataset(Dataset):
         mask = np.ones(self.sequence_length)
         mask[:padding_length] = 0
 
-        diff = True
-        keys = ["tactile", "eef_pos", "action", "latent",
+        diff = False
+        keys = ["tactile", "img", "eef_pos", "action", "latent",
                 "obs_hist", "contacts", "hand_joints",
-                "plug_hand_quat", "plug_hand_pos"]
+                "plug_hand_quat", "plug_hand_pos", "rel_act_angles"]
 
         data_seq = {key: self.extract_sequence(data, key, start_idx) for key in keys}
 
@@ -176,14 +237,19 @@ class TactileDataset(Dataset):
         # tactile_input = tactile_input.reshape(T, F * C, W, H)
         # left_finger, right_finger, bottom_finger = [data_seq["tactile"][:, i, ...] for i in range(3)]
 
+        img_input = data_seq["img"]
+
         eef_pos = data_seq["eef_pos"]
         hand_joints = data_seq["hand_joints"]
         action = data_seq["action"]
         contacts = data_seq["action"]  # contact
         obs_hist = data_seq["obs_hist"]
+        rel_act_angle = data_seq["rel_act_angles"]
 
-        euler = Rotation.from_quat(data_seq["plug_hand_quat"]).as_euler('xyz')  # data_seq["latent"] #
+        euler = Rotation.from_quat(data_seq["plug_hand_quat"]).as_euler('xyz')
         plug_hand_pos = data_seq["plug_hand_pos"]
+
+        latent = data_seq["latent"]
 
         if diff:
             euler = euler - Rotation.from_quat(data["plug_hand_quat"][start_idx, :]).as_euler('xyz')
@@ -193,6 +259,7 @@ class TactileDataset(Dataset):
         if self.normalize_dict is not None:
             eef_pos = (eef_pos - self.normalize_dict["mean"]["eef_pos"]) / self.normalize_dict["std"]["eef_pos"]
             hand_joints = (hand_joints - self.normalize_dict["mean"]["hand_joints"]) / self.normalize_dict["std"]["hand_joints"]
+            # rel_act_angle = (rel_act_angle - self.normalize_dict["mean"]["rel_act_angle"]) / self.normalize_dict["std"]["rel_act_angle"]
 
             if not diff:
                 euler = (euler - self.normalize_dict["mean"]["plug_hand_euler"]) / self.normalize_dict["std"]["plug_hand_euler"]
@@ -202,24 +269,26 @@ class TactileDataset(Dataset):
                 euler = (euler - self.normalize_dict["mean"]["plug_hand_diff_euler"]) / self.normalize_dict["std"]["plug_hand_diff_euler"]
                 plug_hand_pos = (plug_hand_pos - self.normalize_dict["mean"]["plug_hand_pos_diff"]) / self.normalize_dict["std"]["plug_hand_pos_diff"]
 
-        label = np.hstack((plug_hand_pos, euler))
+        label = latent
 
         # Output
         shift_action_right = np.concatenate([np.zeros((1, action.shape[-1])), action[:-1, :]], axis=0)
         lin_input = np.concatenate([
             # eef_pos,
-            hand_joints,
-            # shift_action_right
+            shift_action_right,
+            rel_act_angle,
         ], axis=-1)
 
         # Convert to torch tensors
         tensors = [self.to_torch(tensor) for tensor in [tactile_input,
+                                                        img_input,
                                                         lin_input,
                                                         contacts,
                                                         obs_hist,
                                                         label,
                                                         action,
                                                         mask]]
+        # tensors[1] = self.transform(tensors[1])
 
         return tuple(tensors)
 
