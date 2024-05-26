@@ -1,13 +1,13 @@
 seed: 42 # not sure if this is used yet.
-data_folder: "/home/roblab20/tactile_insertion/datastore_42_contact2" # where is all your data, can include * for globbing
-output_dir: "/home/roblab20/tactile_insertion/datastore_42_contact2" # where to save checkpoints and logs
+data_folder: "/home/roblab20/tactile_dex/datastore_42_contact2" # where is all your data, can include * for globbing
+output_dir: "/home/roblab20/tactile_dex/datastore_42_contact2" # where to save checkpoints and logs
 
 # supervised learning
 train:
   # basic training hyperparameters
   epochs: 100
-  train_batch_size: 8
-  val_batch_size: 8
+  train_batch_size: 16
+  val_batch_size: 16
   learning_rate: 5e-4
   train_test_split: 0.98
   action_regularization: False # propagate gradients for action loss
@@ -35,8 +35,9 @@ train:
   only_validate: False
 
   # normalize data
-  normalize_keys: ["eef_pos", "action", "obs_hist", "hand_joints", "plug_hand_quat", "plug_hand_pos"]
-  normalize_file: "/home/roblab20/tactile_insertion/datastore_42_contact2/normalization.pkl"
+  normalize_keys: ["eef_pos", "action", "hand_joints", "plug_hand_quat", "plug_hand_pos"]
+
+  normalize_file: "/home/roblab20/tactile_dex/datastore_42_contact2/normalization.pkl"
 
   # load student checkpoint
   load_checkpoint: False
@@ -57,16 +58,15 @@ model:
   # tactile+obs encoder
   transformer:
     full_sequence: False # if True, it makes sequence length 500
-    sequence_length: 5 # ${...task.rl.max_episode_length}
+    sequence_length: 1 # ${...task.rl.max_episode_length}
     num_layers: 4
     num_heads: 4
     dim_factor: 4
-    output_size: 6
-    obs_encoding_size: 128
+    output_size: 8
+    tactile_encoding_size: 128
+    img_encoding_size: 128
 
 # wandb logging
 wandb:
   wandb_enabled: False
   wandb_project_name: "tactile_insertion"
-
-

@@ -751,7 +751,7 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
 
             if self.external_cam:
                 # add external cam
-                cam, trans = self.make_handle_trans(self.res[0], self.res[1], i, (0.8, 0., 0.4),
+                cam, trans = self.make_handle_trans(self.res[0], self.res[1], i, (0.7, 0., 0.4),
                                                     (np.deg2rad(0), np.deg2rad(40), np.deg2rad(180)))
                 self.camera_handles.append(cam)
                 self.gym.attach_camera_to_body(

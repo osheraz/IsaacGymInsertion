@@ -16,8 +16,8 @@ grasp_logger:
 data_logger:
     # for data collection
     collect_data: False
-    total_trajectories: 1000
-    base_folder: "/home/roblab20/tactile_insertion"
+    total_trajectories: 3000
+    base_folder: "/home/roblab20/tactile_dex"
     sub_folder: "datastore_0_contact2"
 
     # for logging (tests) during student training
@@ -124,7 +124,7 @@ randomize:
     plug_rot_noise: [0.3, 0.3, 0.3] # only grasptask
 
 rl:
-
+    reset_at_fails: True
     pos_action_scale: [0.005, 0.005, 0.004]
     rot_action_scale: [0.04, 0.04, 0.04]
     gripper_action_scale: [1.0, 1.0, 1.0]
@@ -152,12 +152,13 @@ rl:
     action_delta_scale: -0.02
     ori_reward_scale: -0.5 # scale on ori-based reward
     loose_penalty: -0.05
+    tension_penalty: -0.01
     min_grasp_force: 0.05
 
     early_reset_reward_scale: -1.0
     engagement_reward_scale: 0.4
 
-    goal_min_rot: 0.05
+    goal_min_rot: 0.1
     reach_bonus: 1.0
     # Success bonus
     success_bonus: 5.0  # bonus if plug is close enough to base of bolt shank

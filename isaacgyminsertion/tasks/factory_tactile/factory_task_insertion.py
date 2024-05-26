@@ -222,7 +222,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             device=self.device,
             dtype=torch.float,
         )
-        self.image_buf = torch.zeros(self.num_envs, 1 if self.cam_type == 'd' else 3, self.res[0], self.res[1]).to(self.device)
+        self.image_buf = torch.zeros(self.num_envs, 1 if self.cam_type == 'd' else 3, self.res[1], self.res[0]).to(self.device)
 
         # reset tensors
         self.timeout_reset_buf = torch.zeros_like(self.reset_buf)
@@ -583,6 +583,9 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             self.hand_joints,  # 6
             plug_hand_pos,  # 3
             plug_hand_quat,  # 4
+            # self.left_finger_pos,  # 3
+            # self.right_finger_pos,  # 3
+            # self.middle_finger_pos,  # 3
             # self.plug_hand_pos_diff,   # 3
             # self.plug_hand_quat_diff,  # 4
             # plug_pos_error,  # 3
@@ -630,7 +633,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                             "images/im{self.count:05}.png",
                         )
 
-                    if i == 0 and True:
+                    if i == 0 and False:
                         img = cv2.cvtColor(im.cpu().numpy(), cv2.COLOR_RGB2BGR)
                         cv2.imshow("Follow camera", img)
                         cv2.waitKey(1)
@@ -655,7 +658,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                         )
 
                     if False and i == 0:
-                        img = self.process_depth_image(im)
+                        img = self.process_depth_image(im).unsqueeze(0)
                         img = img.cpu().numpy()
                         # img = np.uint8(img.cpu().numpy() * 255)
                         # cv2.imshow("images2", img)
@@ -682,6 +685,9 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         action_delta_penalty = torch.norm(self.actions - self.prev_actions, p=2, dim=-1)
         action_delta_reward = self.cfg_task.rl.action_delta_scale * action_delta_penalty
+
+        grip_tension_penalty = torch.norm(self.hand_joints, p=2, dim=-1)
+        grip_tension_reward = self.cfg_task.rl.tension_penalty * grip_tension_penalty
 
         quat_diff = torch_jit_utils.quat_mul(self.plug_quat, torch_jit_utils.quat_conjugate(self.goal_ori))
         rot_dist = 2.0 * torch.asin(torch.clamp(torch.norm(quat_diff[:, 0:3], p=2, dim=-1), max=1.0))
@@ -723,6 +729,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.rew_buf[:] = ori_reward + dist_reward + action_reward + action_delta_reward
         self.rew_buf[:] += self.cfg_task.rl.loose_penalty * loose_contact
         self.rew_buf[:] += early_reset_reward
+        self.rew_buf[:] += grip_tension_reward
         # Success bonus: orientation is within `success_tolerance` of goal orientation
         self.rew_buf[:] = torch.where(goal_resets == 1, self.rew_buf + self.cfg_task.rl.reach_bonus, self.rew_buf)
 
@@ -733,7 +740,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.reward_log_buf[:] = self.rew_buf[:]
 
         is_last_step = (self.progress_buf[0] == self.max_episode_length - 1)
-        if is_last_step and False:
+        if is_last_step and not self.cfg_task.rl.reset_at_fails:
             if not self.cfg_task.data_logger.collect_data:
                 success_dones = self.success_reset_buf.nonzero()
                 failure_dones = (1.0 - self.success_reset_buf).nonzero()
@@ -743,7 +750,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                       ' Success Reward:', self.rew_buf[success_dones].mean().item(),
                       ' Failure Reward:', self.rew_buf[failure_dones].mean().item())
 
-        if True:
+        if self.cfg_task.rl.reset_at_fails and False:
             self.total_resets = self.total_resets + self.reset_buf.sum()
             direct_average_successes = self.total_successes + self.successes.sum()
             self.total_successes = self.total_successes + (self.successes * self.reset_buf).sum()
@@ -753,7 +760,6 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             print("Direct average consecutive successes = {:.1f}".format(direct_average_successes/(self.total_resets + self.num_envs)))
             if self.total_resets > 0:
                 print("Post-Reset average consecutive successes = {:.1f}".format(self.total_successes/self.total_resets))
-
 
     def _update_reset_buf(self):
         """Assign environments for reset if successful or failed."""
@@ -782,10 +788,11 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.degrasp_buf[:] = (torch.abs(roll) > 0.7) | (torch.abs(pitch) > 0.7)
 
         #if self.cfg_task.data_logger.collect_data or self.cfg_task.data_logger.collect_test_sim:
-        self.reset_buf[:] |= self.degrasp_buf[:]
+        if self.cfg_task.rl.reset_at_fails:
+            self.reset_buf[:] |= self.degrasp_buf[:]
 
-        # If plug is too far from socket pos
-        self.reset_buf[:] |= self.far_from_goal_buf[:]
+            # If plug is too far from socket pos
+            self.reset_buf[:] |= self.far_from_goal_buf[:]
 
     def _reset_predefined_environment(self, env_ids):
 

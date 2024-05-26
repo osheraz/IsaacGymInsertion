@@ -35,14 +35,14 @@ import argparse
 from typing import Optional
 from termcolor import cprint
 
-from algo.models.transformer.frozen_ppo import PPO # TODO: we can completely switch to this one for PPO. (added functions for online testing of offline training)
+from algo.models.transformer.frozen_ppo import \
+    PPO  # TODO: we can completely switch to this one for PPO. (added functions for online testing of offline training)
 # from algo.ppo.ppo import PPO
 from algo.ext_adapt.ext_adapt import ExtrinsicAdapt
 
 from isaacgyminsertion.tasks import isaacgym_task_map
 from isaacgyminsertion.utils.reformat import omegaconf_to_dict, print_dict
 from isaacgyminsertion.utils.utils import set_np_formatting, set_seed
-
 
 import warnings
 
@@ -51,13 +51,11 @@ warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 @hydra.main(config_name="config", config_path="./cfg")
 def run(cfg: DictConfig):
-
     if cfg.checkpoint:
         cfg.checkpoint = to_absolute_path(cfg.checkpoint)
 
     # set numpy formatting for printing only
     set_np_formatting()
-
 
     # global rank of the GPU
     if cfg.train.ppo.multi_gpu:
@@ -87,18 +85,17 @@ def run(cfg: DictConfig):
 
         exit()
 
-
     # for training the transformer with offline data only
     if cfg.offline_training:
-        from algo.models.transformer.runner import Runner as TransformerRunner 
+        from algo.models.transformer.runner import Runner as TransformerRunner
         from algo.models.transformer.frozen_ppo import PPO
 
         agent = None
-        
+
         # perform train
         runner = TransformerRunner(cfg.offline_train, agent=agent)
         runner.run()
-        
+
         exit()
 
     cprint("Start Building the Environment", "green", attrs=["bold"])
@@ -120,23 +117,24 @@ def run(cfg: DictConfig):
 
     if cfg.test:
         assert cfg.train.load_path
+        print("Loading Teacher model from", cfg.train.load_path)
         agent.restore_test(cfg.train.load_path)
-        # Test insertion accuracy in the simulation Student\Teacher (not the transformer)
+        # Test insertion accuracy in the simulation with online Student\Teacher
         if not cfg.offline_training_w_env:
             num_success, total_trials = agent.test()
             print(f"Success rate: {num_success / total_trials}")
         else:
-            # Test transformer
-            print("Loading Teacher model from", cfg.train.load_path)
+            # Test transformer (trained offline)
             print("Loading Student model from", cfg.offline_train.train.student_ckpt_path)
 
-            from algo.models.transformer.runner import Runner as TransformerRunner 
+            from algo.models.transformer.runner import Runner as TransformerRunner
             from algo.models.transformer.frozen_ppo import PPO as PPOv3
             agent = PPOv3(envs, output_dif, full_config=cfg)
             agent.restore_test(cfg.train.load_path)
             agent.set_eval()
 
-            runner = TransformerRunner(cfg.offline_train, agent, action_regularization=cfg.offline_train.train.action_regularization)
+            runner = TransformerRunner(cfg.offline_train, agent,
+                                       action_regularization=cfg.offline_train.train.action_regularization)
             runner.run()
 
         # sim_timer = cfg.task.env.sim_timer
