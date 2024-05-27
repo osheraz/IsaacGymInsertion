@@ -223,7 +223,7 @@ if __name__ == "__main__":
     # 4 (-3, 5) bottom
     # 0 (6, 2) right
     # 2 (0, -12)left
-    tactile = Finger(dev_name=device_id, serial='/dev/video', fix=(0, -12))
+    tactile = Finger(dev_name=device_id, serial='/dev/video', fix=(2, 12))
 
     tactile.connect()
 

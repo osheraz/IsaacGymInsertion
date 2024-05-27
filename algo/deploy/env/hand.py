@@ -27,7 +27,7 @@ class Hand():
         if fix is None:
             fix = [(), (), ()]
             fix[0] = (5, 5)
-            fix[1] = (15, 15)
+            fix[1] = (2, 12) # 15 15
             fix[2] = (8, 10)
 
         self.finger_left = Finger(dev_name=dev_names[0], serial='/dev/video', fix=fix[0])

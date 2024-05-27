@@ -475,6 +475,9 @@ class PPO(object):
 
                 self.storage.update_mu_sigma(mu.detach(), sigma.detach())
 
+                del loss
+                del res_dict
+
             av_kls = torch.mean(torch.stack(ep_kls))
             # self.last_lr = self.scheduler.update(self.last_lr, av_kls.item())
             for param_group in self.optimizer.param_groups:
