@@ -243,7 +243,7 @@ yellow_round_peg_2in:
         urdf_path: 'yellow_round_peg_2in'
         diameter: 0.0508
         length: 0.0762
-        density: 1000.0
+        density: 500.0
         friction: 0.5
     round_hole_2in:
         urdf_path: 'green_round_hole_2in'

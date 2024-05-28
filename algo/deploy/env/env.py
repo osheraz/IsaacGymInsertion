@@ -172,11 +172,13 @@ class ExperimentEnv:
 
         for i in range(5):
 
+            rospy.sleep(1.0)
             ee_pose = self.arm.move_manipulator.get_cartesian_pose_moveit()
             ee_pos = [ee_pose.position.x, ee_pose.position.y, ee_pose.position.z]
             ee_quat = [ee_pose.orientation.x, ee_pose.orientation.y, ee_pose.orientation.z, ee_pose.orientation.w]
+            rospy.sleep(1.0)
             obj_pos = self.tracker.get_obj_pos()  # tracker already gives the bottom of the object
-            obj_height = 0  # 0.07
+            obj_height = 0
             init_delta_height = 0.05
 
             if not np.isnan(np.sum(obj_pos)):

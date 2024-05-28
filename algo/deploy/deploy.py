@@ -394,8 +394,8 @@ class HardwarePlayer(object):
         self.fingertip_centered_pos = torch.tensor(ee_pose[:3], device=self.device, dtype=torch.float).unsqueeze(0)
         self.fingertip_centered_quat = torch.tensor(ee_pose[3:], device=self.device, dtype=torch.float).unsqueeze(0)
 
-        eef_pos = torch.cat((self.fingertip_centered_pos.clone(),
-                            quat2R(self.fingertip_centered_quat.clone()).reshape(1, -1)), dim=-1)
+        eef_pos = torch.cat((self.fingertip_centered_pos,
+                            quat2R(self.fingertip_centered_quat).reshape(1, -1)), dim=-1)
 
         # Cutting by half
         if self.cfg_tactile.half_image:
@@ -438,8 +438,8 @@ class HardwarePlayer(object):
 
         obs = torch.cat([eef_pos,
                          self.actions,
-                         self.noisy_gripper_goal_pos.clone(),
-                         noisy_delta_pos
+                         # self.noisy_gripper_goal_pos.clone(),
+                         # noisy_delta_pos
                          ], dim=-1)
 
         self.obs_queue[:, :-self.num_observations] = self.obs_queue[:, self.num_observations:]
@@ -477,7 +477,7 @@ class HardwarePlayer(object):
         plug_socket_xy_distance = torch.norm(self.plug_pos_error[:, :2])
 
         is_very_close_xy = plug_socket_xy_distance < 0.003
-        is_bellow_surface = self.plug_pos_error[:, 2] > -0.005
+        is_bellow_surface = self.plug_pos_error[:, 2] > -0.00
 
         self.inserted = is_very_close_xy & is_bellow_surface
         is_too_far = (plug_socket_xy_distance > 0.08) | (self.fingertip_centered_pos[:, 2] > 0.125)
@@ -496,16 +496,19 @@ class HardwarePlayer(object):
 
         joints_above_socket = self.deploy_config.common_poses.joints_above_socket
         joints_above_plug = self.deploy_config.common_poses.joints_above_plug
+
+        # Move above the socket
         self.env.arm.move_manipulator.scale_vel(scale_vel=0.1, scale_acc=0.1)
         self.env.move_to_joint_values(joints_above_socket, wait=True)
+        # Set random init error
         self.env.set_random_init_error(self.socket_pos)
+        # If not inserted, return plug?
+        if not self.inserted and False:
 
-        if not self.inserted:
-            # fail case
             self.env.arm.move_manipulator.scale_vel(scale_vel=0.5, scale_acc=0.5)
             self.env.move_to_joint_values(joints_above_plug, wait=True)
             self.env.arm.move_manipulator.scale_vel(scale_vel=0.1, scale_acc=0.1)
-            self.env.align_and_release(init_plug_pose=[0.4103839067235552, 0.17531695171951858, 0.001])
+            self.env.align_and_release(init_plug_pose=[0.4103839067235552, 0.17531695171951858, 0.003])
 
             self.grasp_and_init()
 
@@ -518,15 +521,23 @@ class HardwarePlayer(object):
 
         joints_above_socket = self.deploy_config.common_poses.joints_above_socket
         joints_above_plug = self.deploy_config.common_poses.joints_above_plug
+        # Move above plug
         self.env.move_to_joint_values(joints_above_plug, wait=True)
         self.env.arm.move_manipulator.scale_vel(scale_vel=0.1, scale_acc=0.1)
+        # Align and grasp
         self.env.align_and_grasp()
         self.env.arm.move_manipulator.scale_vel(scale_vel=0.5, scale_acc=0.5)
+        # Move up a bit
         self.env.move_to_joint_values(joints_above_plug, wait=True)
+        # Move above the socket
         self.env.move_to_joint_values(joints_above_socket, wait=True)
+
+        # Set random init error
         self.env.arm.move_manipulator.scale_vel(scale_vel=0.1, scale_acc=0.1)
         self.env.set_random_init_error(self.socket_pos)
+
         self.env.arm.move_manipulator.scale_vel(scale_vel=0.02, scale_acc=0.02)
+        print('Starting Insertion')
 
         self.done[...] = False
         self.episode_length[...] = 0.
@@ -612,9 +623,10 @@ class HardwarePlayer(object):
         # Apply the action
         if regulize_force:
             ft = torch.tensor(self.env.get_ft(), device=self.device, dtype=torch.float).unsqueeze(0)
-            condition_mask = torch.abs(ft[:, 2]) > 2.0
+            condition_mask = torch.abs(ft[:, 2]) > 4.0
             actions[:, 2] = torch.where(condition_mask, torch.clamp(actions[:, 2], min=0.0), actions[:, 2])
             # actions = torch.where(torch.abs(ft) > 1.5, torch.clamp(actions, min=0.0), actions)
+            print("Error:", np.round(self.plug_pos_error[0].cpu().numpy(), 4))
             print("Regularized Actions:", np.round(actions[0].cpu().numpy(), 4))
 
         if do_clamp:
@@ -721,7 +733,9 @@ class HardwarePlayer(object):
 
         self.env.arm.move_manipulator.scale_vel(scale_vel=0.5, scale_acc=0.5)
         self.env.move_to_init_state()
+
         self.grasp_and_init()
+        rospy.sleep(2.0)
 
         while True:
 
@@ -731,8 +745,8 @@ class HardwarePlayer(object):
 
             # Bias the ft sensor
             self.env.arm.calib_robotiq()
-            # rospy.sleep(2.0)
-            # self.env.arm.calib_robotiq()
+            rospy.sleep(2.0)
+            self.env.arm.calib_robotiq()
 
             obs, obs_stud, tactile, priv = self.compute_observations(with_priv=True)
             self._update_reset_buf()

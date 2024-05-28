@@ -27,17 +27,17 @@ class Tracker():
         self.extrinsic_contact = numpy.array(msg.data)
 
     def _object_pose_callback(self, msg):
-        self.obj_pos = numpy.array(msg.data) if not numpy.isnan(numpy.sum(numpy.array(msg.data))) else self.obj_pos
+        self.obj_pos = numpy.array(msg.data, dtype=numpy.float) if not numpy.isnan(numpy.sum(numpy.array(msg.data))) else self.obj_pos
 
     def _object_rpy_callback(self, msg):
-        self.obj_rpy = numpy.array(msg.data) if not numpy.isnan(numpy.sum(numpy.array(msg.data))) else self.obj_rpy
+        self.obj_rpy = numpy.array(msg.data, dtype=numpy.float) if not numpy.isnan(numpy.sum(numpy.array(msg.data))) else self.obj_rpy
 
     def _object_relative_pose_callback(self, msg):
-        self.obj_relative_pos = numpy.array(msg.data) if not numpy.isnan(
+        self.obj_relative_pos = numpy.array(msg.data, dtype=numpy.float) if not numpy.isnan(
             numpy.sum(numpy.array(msg.data))) else self.obj_relative_pos
 
     def _object_relative_rpy_callback(self, msg):
-        self.obj_relative_rpy = numpy.array(msg.data) if not numpy.isnan(
+        self.obj_relative_rpy = numpy.array(msg.data, dtype=numpy.float) if not numpy.isnan(
             numpy.sum(numpy.array(msg.data))) else self.obj_relative_rpy
 
     def _object_drop_callback(self, msg):

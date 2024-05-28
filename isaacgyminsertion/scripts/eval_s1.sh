@@ -1,7 +1,7 @@
 #!/bin/bash
 GPUS=${1:-0}
 SEED=${2:-42}
-CACHE=${3:-gt2}
+CACHE=${3:-gt_test}
 NUM_ENVS=${4:-100}
 HEADLESS=${5:-True}
 
@@ -31,8 +31,8 @@ task.tactile.tacto.height=2 \
 task.tactile.encoder.width=2 \
 task.tactile.encoder.height=2 \
 task.external_cam.external_cam=False \
-task.external_cam.cam_res.w=320 \
-task.external_cam.cam_res.h=180 \
+task.external_cam.cam_res.w=2 \
+task.external_cam.cam_res.h=2 \
 task.tactile.encoder.num_channels=1 \
 train.ppo.priv_info=True \
 train.ppo.extrin_adapt=False \

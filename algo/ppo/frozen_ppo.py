@@ -477,6 +477,7 @@ class PPO(object):
 
                 del loss
                 del res_dict
+                torch.cuda.empty_cache()
 
             av_kls = torch.mean(torch.stack(ep_kls))
             # self.last_lr = self.scheduler.update(self.last_lr, av_kls.item())
@@ -568,7 +569,8 @@ class PPO(object):
             self.storage.update_data('obses', n, self.obs['obs'])
             self.storage.update_data('priv_info', n, self.obs['priv_info'])
             # self.storage.update_data('tactile_hist', n, self.obs['tactile_hist'])
-            self.storage.update_data('contacts', n, self.obs['contacts'])
+            if 'contacts' in self.obs:
+                self.storage.update_data('contacts', n, self.obs['contacts'])
 
             for k in ['actions', 'neglogpacs', 'values', 'mus', 'sigmas']:
                 self.storage.update_data(k, n, res_dict[k])
@@ -694,8 +696,8 @@ class PPO(object):
             obs_dict = {
                 'obs': self.running_mean_std(self.obs['obs']),
                 'priv_info': self.priv_mean_std(self.obs['priv_info']),
-                'contacts': self.obs['contacts'],
-                'latent': latent,  # self.priv_mean_std(latent),
+                'contacts': self.obs['contacts'] if 'contacts' in self.obs else None,
+                'latent': latent,
             }
             action, latent = self.model.act_inference(obs_dict)
             action = torch.clamp(action, -1.0, 1.0)

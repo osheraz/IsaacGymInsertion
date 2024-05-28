@@ -29,7 +29,7 @@ import warnings
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 # Enter here the model you want to test (base folder)
-model_to_test = 'gt2'
+model_to_test = 'gt_test'
 
 
 def find_config_folder(base_folder):

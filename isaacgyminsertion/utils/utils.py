@@ -80,7 +80,7 @@ def flatten_dict(d, prefix='', separator='.'):
 def set_np_formatting():
     """ formats numpy print """
     np.set_printoptions(edgeitems=30, infstr='inf',
-                        linewidth=4000, nanstr='nan', precision=2,
+                        linewidth=4000, nanstr='nan', precision=4,
                         suppress=False, threshold=10000, formatter=None)
 
 

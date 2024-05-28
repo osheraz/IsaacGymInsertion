@@ -170,34 +170,42 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                                      dtype=torch.float, device=self.device)
         self.obs_stud_queue = torch.zeros((self.num_envs, self.cfg_task.env.numObsStudentHist * self.num_obs_stud),
                                           dtype=torch.float, device=self.device)
-        self.contact_points_hist = torch.zeros((self.num_envs, self.cfg_task.env.num_points * 1),
-                                               dtype=torch.float, device=self.device)
-        # tactile buffers
-        self.num_channels = self.cfg_tactile.encoder.num_channels
-        self.width = self.cfg_tactile.encoder.width // 2 if self.cfg_tactile.half_image else self.cfg_tactile.encoder.width
-        self.height = self.cfg_tactile.encoder.height
 
-        self.tactile_imgs = torch.zeros(
-            (self.num_envs, len(self.fingertips),  # left, right, bottom
-             self.num_channels, self.width, self.height),
-            device=self.device,
-            dtype=torch.float,
-        )
-        # Way too big tensor.
-        self.tactile_queue = torch.zeros(
-            (self.num_envs, self.tact_hist_len, len(self.fingertips),  # left, right, bottom
-             self.num_channels, self.width, self.height),
-            device=self.device,
-            dtype=torch.float,
-        )
+        if self.cfg_task.env.compute_contact_gt:
+            self.contact_points_hist = torch.zeros((self.num_envs, self.cfg_task.env.num_points * 1),
+                                                   dtype=torch.float, device=self.device)
 
-        self.img_queue = torch.zeros(
-            (self.num_envs, self.img_hist_len, 1 if self.cam_type == 'd' else 3, self.res[1], self.res[0]),
-            device=self.device,
-            dtype=torch.float,
-        )
-        self.image_buf = torch.zeros(self.num_envs, 1 if self.cam_type == 'd' else 3, self.res[1], self.res[0]).to(
-            self.device)
+            self.gt_extrinsic_contact = torch.zeros((self.num_envs, self.cfg_task.env.num_points),
+                                                    device=self.device, dtype=torch.float)
+
+        if self.cfg_task.env.tactile:
+            # tactile buffers
+            self.num_channels = self.cfg_tactile.encoder.num_channels
+            self.width = self.cfg_tactile.encoder.width // 2 if self.cfg_tactile.half_image else self.cfg_tactile.encoder.width
+            self.height = self.cfg_tactile.encoder.height
+
+            self.tactile_imgs = torch.zeros(
+                (self.num_envs, len(self.fingertips),  # left, right, bottom
+                 self.num_channels, self.width, self.height),
+                device=self.device,
+                dtype=torch.float,
+            )
+            # Way too big tensor.
+            self.tactile_queue = torch.zeros(
+                (self.num_envs, self.tact_hist_len, len(self.fingertips),  # left, right, bottom
+                 self.num_channels, self.width, self.height),
+                device=self.device,
+                dtype=torch.float,
+            )
+
+        if self.external_cam:
+            self.img_queue = torch.zeros(
+                (self.num_envs, self.img_hist_len, 1 if self.cam_type == 'd' else 3, self.res[1], self.res[0]),
+                device=self.device,
+                dtype=torch.float,
+            )
+            self.image_buf = torch.zeros(self.num_envs, 1 if self.cam_type == 'd' else 3, self.res[1], self.res[0]).to(
+                self.device)
 
         self.plug_socket_dist = torch.zeros((self.num_envs, 3), device=self.device, dtype=torch.float)
 
@@ -219,9 +227,6 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         self.rigid_physics_params = torch.zeros((self.num_envs, 6), device=self.device, dtype=torch.float)
         self.finger_normalized_forces = torch.zeros((self.num_envs, 3), device=self.device, dtype=torch.float)
-
-        self.gt_extrinsic_contact = torch.zeros((self.num_envs, self.cfg_task.env.num_points),
-                                                device=self.device, dtype=torch.float)
 
         # reward tensor
         self.reward_log_buf = torch.zeros_like(self.rew_buf)
@@ -510,9 +515,9 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
     def compute_observations(self):
         """Compute observations."""
 
-        # Compute tactile
-        self.tactile_queue[:, 1:] = self.tactile_queue[:, :-1].clone().detach()
-        self.tactile_queue[:, 0, ...] = self.tactile_imgs
+        if self.cfg_task.env.tactile:
+            self.tactile_queue[:, 1:] = self.tactile_queue[:, :-1].clone().detach()
+            self.tactile_queue[:, 0, ...] = self.tactile_imgs
 
         # Compute Observation and state at current timestep
         # delta_pos = self.socket_tip - self.fingertip_centered_pos
@@ -525,8 +530,8 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         # obs = torch.cat([eef_pos, actions, targets], dim=-1)
         obs = torch.cat([eef_pos,
                          actions,
-                         self.noisy_gripper_goal_pos.clone(),
-                         noisy_delta_pos
+                         # self.noisy_gripper_goal_pos.clone(),
+                         # noisy_delta_pos
                          ], dim=-1)
 
         self.obs_queue[:, :-self.num_observations] = self.obs_queue[:, self.num_observations:]
@@ -732,7 +737,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         # print(keypoint_reward[0], engagement_reward[0], ori_reward[0])
 
-        self.rew_buf[:] = keypoint_reward + engagement_reward + ori_reward  # + action_reward + action_delta_reward
+        self.rew_buf[:] = keypoint_reward + engagement_reward + ori_reward + action_reward + action_delta_reward
 
         distance_reset_buf = (self.far_from_goal_buf | self.degrasp_buf)
         early_reset_reward = distance_reset_buf * self.cfg_task.rl.early_reset_reward_scale
@@ -1229,16 +1234,17 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.timeout_reset_buf[env_ids] = 0
 
         # Reset history
-        self.tactile_queue[env_ids] = 0
-        self.img_queue[env_ids] = 0
         self.obs_queue[env_ids, ...] = 0.
-
         self.prev_targets[env_ids] *= 0
         self.prev_actions[env_ids] *= 0
 
-        self.tactile_imgs[env_ids, ...] = 0.
         self.plug_socket_dist[env_ids, ...] = 0.
 
+        if self.cfg_task.env.tactile:
+            self.tactile_queue[env_ids,...] = 0
+            self.tactile_imgs[env_ids, ...] = 0.
+        if self.external_cam:
+            self.img_queue[env_ids] = 0
         if self.cfg_task.env.compute_contact_gt:
             self.gt_extrinsic_contact[env_ids] *= 0
 
@@ -1500,12 +1506,16 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
     def step(self, actions):
         super().step(actions)
-        self.obs_dict['hand_joints'] = self.hand_joints.clone().to(self.rl_device)
-        self.obs_dict['tactile_hist'] = self.tactile_queue.clone().to(self.rl_device)
+        # self.obs_dict['hand_joints'] = self.hand_joints.clone().to(self.rl_device)
         self.obs_dict['priv_info'] = self.obs_dict['states'].clone().to(self.rl_device)
         self.obs_dict['student_obs'] = self.obs_student_buf.clone().to(self.rl_device)
-        self.obs_dict['contacts'] = self.contact_points_hist.clone().to(self.rl_device)
-        self.obs_dict['img_hist'] = self.img_queue.clone().to(self.rl_device)
+
+        if self.cfg_task.env.tactile:
+            self.obs_dict['tactile_hist'] = self.tactile_queue.clone().to(self.rl_device)
+        if self.cfg_task.env.compute_contact_gt:
+            self.obs_dict['contacts'] = self.contact_points_hist.clone().to(self.rl_device)
+        if self.external_cam:
+            self.obs_dict['img_hist'] = self.img_queue.clone().to(self.rl_device)
 
         return self.obs_dict, self.rew_buf, self.reset_buf, self.extras
 
@@ -1514,12 +1524,16 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.compute_observations()
         # self._refresh_task_tensors(update_tactile=True)
         super().reset()
-        self.obs_dict['hand_joints'] = self.hand_joints.clone().to(self.rl_device)
+        # self.obs_dict['hand_joints'] = self.hand_joints.clone().to(self.rl_device)
         self.obs_dict['priv_info'] = self.obs_dict['states'].clone().to(self.rl_device)
         self.obs_dict['student_obs'] = self.obs_student_buf.clone().to(self.rl_device)
-        self.obs_dict['tactile_hist'] = self.tactile_queue.clone().to(self.rl_device)
-        self.obs_dict['contacts'] = self.contact_points_hist.clone().to(self.rl_device)
-        self.obs_dict['img_hist'] = self.img_queue.clone().to(self.rl_device)
+
+        if self.cfg_task.env.tactile:
+            self.obs_dict['tactile_hist'] = self.tactile_queue.clone().to(self.rl_device)
+        if self.cfg_task.env.compute_contact_gt:
+            self.obs_dict['contacts'] = self.contact_points_hist.clone().to(self.rl_device)
+        if self.external_cam:
+            self.obs_dict['img_hist'] = self.img_queue.clone().to(self.rl_device)
 
         return self.obs_dict
 

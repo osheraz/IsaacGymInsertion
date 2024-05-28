@@ -472,7 +472,7 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
             components = list(self.asset_info_insertion[subassembly])
             plug_file = self.asset_info_insertion[subassembly][components[0]]['urdf_path'] + '.urdf'
             socket_file = self.asset_info_insertion[subassembly][components[1]]['urdf_path'] + '.urdf'
-            plug_options.density = self.asset_info_insertion[subassembly][components[0]]['density'] / 3
+            plug_options.density = self.asset_info_insertion[subassembly][components[0]]['density']
             socket_options.density = self.asset_info_insertion[subassembly][components[1]]['density']
             plug_asset = self.gym.load_asset(self.sim, urdf_root, plug_file, plug_options)
             socket_asset = self.gym.load_asset(self.sim, urdf_root, socket_file, socket_options)
@@ -537,7 +537,9 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
 
         self.subassembly_extrinsic_contact = {}
         self.subassembly_pcd = {}
-        self.plug_pcd = torch.zeros((self.num_envs, self.cfg['env']['num_points'], 3), device=self.device)
+
+        # self.plug_pcd = torch.zeros((self.num_envs, self.cfg['env']['num_points'], 3), device=self.device)
+
         self.subassembly_to_env_ids = {}
 
         # Create wrist and fingertip force sensors
@@ -750,7 +752,9 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
                 self.tactile_handles.append([allsight_renderer(self.cfg_tactile,
                                                                os.path.join(mesh_root, plug_file), randomize=True,
                                                                finger_idx=i) for i in range(len(self.fingertips))])
+
             if self.cfg['env']['compute_contact_gt']:
+                assert 'check this'
                 socket_pos = [0.5, 0, 0.001]
                 if subassembly not in self.subassembly_extrinsic_contact:
                     self.subassembly_extrinsic_contact[subassembly] = ExtrinsicContact(
@@ -779,7 +783,7 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
                 object_pc = trimesh.points.PointCloud(pointcloud_obj)
                 self.subassembly_pcd[subassembly] = torch.from_numpy(object_pc.vertices).to(self.device).float()
 
-            self.plug_pcd[i, ...] = self.subassembly_pcd[subassembly]
+            # self.plug_pcd[i, ...] = self.subassembly_pcd[subassembly]
 
             if subassembly not in self.subassembly_to_env_ids:
                 self.subassembly_to_env_ids[subassembly] = []
@@ -892,8 +896,7 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
                                                      offset=self.socket_heights,
                                                      device=self.device)
 
-    ### start code for logging videos while training ###
-    # record camera (does not matter if headless)
+
     def _render_headless(self):
 
         if self.record_now and self.complete_video_frames is not None and len(self.complete_video_frames) == 0:

@@ -46,7 +46,7 @@ tactile: # Pulling from task
 
 env:
     numEnvs: ${resolve_default:128,${...num_envs}}
-    numObservations: 24 #
+    numObservations: 18 #
     numObsStudent: 9 #
     numStates: 7 #
     numActions: 6 # [position, ori]
@@ -65,7 +65,7 @@ env:
         distal_open: 0.1
         distal_close: 0.4
         proximal_open: 1.0
-        proximal_close: 2.4
+        proximal_close: 2.3 # 4
         base_angle: 0.7
         tactile_finger: [ 'finger_1_3', 'finger_2_3', 'finger_3_3' ] # left, right, middle
 
@@ -84,7 +84,7 @@ env:
     tactile_wrt_force: False
 
     compute_contact_gt: False
-    num_points: 500
+    num_points: 2 # 500
 
     record_video: True
     record_ft: True
