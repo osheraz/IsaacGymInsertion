@@ -86,7 +86,6 @@ class MLP(nn.Module):
         layers = []
         for output_size in units:
             layers.append(nn.Linear(input_size, output_size))
-            # TODO: is ELU the best?
             layers.append(nn.ELU())
             input_size = output_size
         self.mlp = nn.Sequential(*layers)

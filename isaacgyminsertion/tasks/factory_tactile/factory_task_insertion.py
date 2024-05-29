@@ -130,6 +130,16 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
     def _acquire_task_tensors(self):
         """Acquire tensors."""
+        self.force_scale = self.cfg_task.randomize.force_scale
+        self.force_prob_range = [0.001, 0.1]
+        self.force_decay = 0.99
+        self.force_decay_interval = 0.08
+        # object apply random forces parameters
+        self.force_decay = to_torch(self.force_decay, dtype=torch.float, device=self.device)
+        self.force_prob_range = to_torch(self.force_prob_range, dtype=torch.float, device=self.device)
+        self.random_force_prob = torch.exp((torch.log(self.force_prob_range[0]) - torch.log(self.force_prob_range[1]))
+                                           * torch.rand(self.num_envs, device=self.device) + torch.log(self.force_prob_range[1]))
+        self.rb_forces = torch.zeros((self.num_envs, self.num_bodies, 3), dtype=torch.float, device=self.device)
 
         self.hand_joints = torch.zeros((self.num_envs, 6), device=self.device)
 
@@ -413,13 +423,18 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                     height_map = height_map[:w // 2]
 
                 # Resizing to encoder size
-                resized_img = cv2.resize(tactile_img, (self.height, self.width), interpolation=cv2.INTER_AREA)
+                if tactile_img.shape[:2] != (self.width, self.height):
+                    resized_img = cv2.resize(tactile_img, (self.height, self.width), interpolation=cv2.INTER_AREA)
+                else:
+                    resized_img = tactile_img
 
                 if self.num_channels == 3:
-                    self.tactile_imgs[e, n] = torch_jit_utils.rgb_transform(resized_img).to(self.device)
+                    # self.tactile_imgs[e, n] = torch_jit_utils.rgb_transform(resized_img).to(self.device)
+                    self.tactile_imgs[e, n] = to_torch(resized_img).permute(2, 0, 1).to(self.device)
                 else:
                     resized_img = cv2.cvtColor(resized_img.astype('float32'), cv2.COLOR_BGR2GRAY)
-                    self.tactile_imgs[e, n] = torch_jit_utils.gray_transform(resized_img).to(self.device)
+                    self.tactile_imgs[e, n] = to_torch(resized_img).to(self.device)
+                    # self.tactile_imgs[e, n] = torch_jit_utils.gray_transform(resized_img).to(self.device)
 
                 tactile_imgs_per_env.append(tactile_img)
                 height_maps_per_env.append(height_map)
@@ -465,6 +480,16 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                                             do_scale=True)
 
         self.prev_targets[:] = self.targets.clone()
+
+        if self.force_scale > 0.0:
+            self.rb_forces *= torch.pow(self.force_decay, self.dt / self.force_decay_interval)
+
+            # apply new forces
+            force_indices = (torch.rand(self.num_envs, device=self.device) < self.random_force_prob).nonzero()
+            self.rb_forces[force_indices, self.object_rb_handles, :] = torch.randn(
+                self.rb_forces[force_indices, self.object_rb_handles, :].shape, device=self.device) * self.object_rb_masses * self.force_scale
+
+            self.gym.apply_rigid_body_force_tensors(self.sim, gymtorch.unwrap_tensor(self.rb_forces), None, gymapi.LOCAL_SPACE)
 
     def post_physics_step(self):
         """Step buffers. Refresh tensors. Compute observations and reward."""
@@ -1239,6 +1264,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.prev_actions[env_ids] *= 0
 
         self.plug_socket_dist[env_ids, ...] = 0.
+        self.rb_forces[env_ids, :, :] = 0.0
 
         if self.cfg_task.env.tactile:
             self.tactile_queue[env_ids,...] = 0

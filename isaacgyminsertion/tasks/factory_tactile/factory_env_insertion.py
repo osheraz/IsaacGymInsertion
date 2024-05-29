@@ -569,7 +569,7 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
 
             max_agg_bodies = num_kuka_bodies + num_plug_bodies + num_socket_bodies + num_table_bodies
             max_agg_shapes = num_kuka_shapes + num_plug_shapes + num_socket_shapes + num_table_shapes
-
+            self.object_rb_handles = list(range(num_kuka_bodies, num_kuka_bodies + num_plug_bodies))
             # begin aggregation mode if enabled - this can improve simulation performance
             if self.cfg_env.env.aggregate_mode:
                 self.gym.begin_aggregate(env_ptr, max_agg_bodies, max_agg_shapes, True)
@@ -842,6 +842,9 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
         # for extrinsic contact
         self.subassembly_to_env_ids = {k: torch.tensor(v, dtype=torch.long, device=self.device) for k, v in
                                        self.subassembly_to_env_ids.items()}
+
+        self.object_rb_masses = [prop.mass for prop in self.gym.get_actor_rigid_body_properties(env_ptr, plug_handle)]
+        self.object_rb_masses = torch_jit_utils.to_torch(self.object_rb_masses, dtype=torch.float, device=self.device)
 
     def _acquire_env_tensors(self):
         """Acquire and wrap tensors. Create views."""

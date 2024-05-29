@@ -660,11 +660,14 @@ class FactoryBaseTactile(VecTask, FactoryABCBase):
             dtype=torch.float32,
             device=self.device
         )
-        rotation_quat_x = torch_utils.quat_from_angle_axis(torch_pi, torch.tensor([1, 0, 0], dtype=torch.float32, device=self.device)).repeat((self.num_envs, 1))
-        rotation_quat_z = torch_utils.quat_from_angle_axis(-torch_pi * 0.5, torch.tensor([0, 0, 1], dtype=torch.float32, device=self.device)).repeat((self.num_envs, 1))
+        rotation_quat_x = torch_utils.quat_from_angle_axis(torch_pi,
+                          torch.tensor([1, 0, 0], dtype=torch.float32, device=self.device)).repeat((self.num_envs, 1))
+        rotation_quat_z = torch_utils.quat_from_angle_axis(-torch_pi * 0.5,
+                          torch.tensor([0, 0, 1], dtype=torch.float32, device=self.device)).repeat((self.num_envs, 1))
 
         q_rotated = torch_utils.quat_mul(rotation_quat_x, self.fingertip_centered_quat.clone())
         q_rotated = torch_utils.quat_mul(rotation_quat_z, q_rotated)
+
         robot_base_transform_inv = torch_utils.tf_inverse(
             q_rotated, self.fingertip_centered_pos.clone()
         )

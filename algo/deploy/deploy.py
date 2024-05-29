@@ -158,6 +158,7 @@ class HardwarePlayer(object):
         else:
             print('Adaptation module without observation')
         if 'priv_mean_std' in checkpoint:
+            print('Policy with priv info')
             self.priv_mean_std.load_state_dict(checkpoint['priv_mean_std'])
         else:
             print('Policy without priv info')
@@ -476,8 +477,8 @@ class HardwarePlayer(object):
 
         plug_socket_xy_distance = torch.norm(self.plug_pos_error[:, :2])
 
-        is_very_close_xy = plug_socket_xy_distance < 0.003
-        is_bellow_surface = self.plug_pos_error[:, 2] > -0.00
+        is_very_close_xy = plug_socket_xy_distance < 0.005
+        is_bellow_surface = self.plug_pos_error[:, 2] < 0.004
 
         self.inserted = is_very_close_xy & is_bellow_surface
         is_too_far = (plug_socket_xy_distance > 0.08) | (self.fingertip_centered_pos[:, 2] > 0.125)
@@ -623,7 +624,7 @@ class HardwarePlayer(object):
         # Apply the action
         if regulize_force:
             ft = torch.tensor(self.env.get_ft(), device=self.device, dtype=torch.float).unsqueeze(0)
-            condition_mask = torch.abs(ft[:, 2]) > 4.0
+            condition_mask = torch.abs(ft[:, 2]) > 3.0
             actions[:, 2] = torch.where(condition_mask, torch.clamp(actions[:, 2], min=0.0), actions[:, 2])
             # actions = torch.where(torch.abs(ft) > 1.5, torch.clamp(actions, min=0.0), actions)
             print("Error:", np.round(self.plug_pos_error[0].cpu().numpy(), 4))
@@ -778,7 +779,6 @@ class HardwarePlayer(object):
                 ros_rate.sleep()
                 self._update_reset_buf()
                 self.episode_length += 1
-
                 # if self.episode_length >= max_steps:
                 #     done = torch.tensor([1]).to(self.device)
 

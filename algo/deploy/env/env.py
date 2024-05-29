@@ -183,7 +183,7 @@ class ExperimentEnv:
 
             if not np.isnan(np.sum(obj_pos)):
 
-                rand_add = np.random.uniform(-0.01, 0.01, 2)
+                rand_add = np.random.uniform(-0.02, 0.02, 2)
                 # added delta_x/delta_y to approximately center the object
                 ee_pos[0] = true_socket_pose[0] + (ee_pos[0] - obj_pos[0]) + rand_add[0]
                 ee_pos[1] = true_socket_pose[1] + (ee_pos[1] - obj_pos[1]) + rand_add[1]

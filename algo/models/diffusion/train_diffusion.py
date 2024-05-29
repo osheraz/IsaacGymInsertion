@@ -30,8 +30,8 @@ RIGHT_HAND_IDX = list(range(18, 24))
 HAND_IDX = LEFT_HAND_IDX + RIGHT_HAND_IDX
 
 RT_DIM = {
-    "eef": 12,
-    "action": 24,
+    "eef": 12,  # 3 + 9
+    "action": 24, # 6
 }
 
 TEST_INPUT = {
@@ -50,7 +50,7 @@ class Agent:
         output_sizes={
             "eef": 64,
             "img": 128,
-            "touch": 64,
+            "touch": 128,
         },
         dropout={
             "eef": 0.0,
@@ -100,11 +100,19 @@ class Agent:
         self.cpu = torch.device("cpu")
         image_encoder, touch_encoder, pos_encoder = None, None, None
         eef_dim, image_dim, touch_dim = 0, 0, 0, 0, 0
+
         self.clip_far = clip_far
         self.load_img = load_img
         self.color_jitter = color_jitter
         self.epi_dir = []
         self.compile_train = compile_train
+
+        self.half_image = True
+        width, height = 224, 224
+        self.width = width // 2 if self.half_image else width
+        self.height = height
+
+        self.crop_width, self.crop_height = width - 20, height - 30
 
         # Use color jitter to augment the image
         if self.color_jitter:
@@ -112,7 +120,7 @@ class Agent:
                 # no depth
                 self.downsample = nn.Sequential(
                     transforms.Resize(
-                        (240, 320),
+                        (self.width, self.height),
                         interpolation=transforms.InterpolationMode.BILINEAR,
                         antialias=True,
                     ),
@@ -121,7 +129,7 @@ class Agent:
             else:
                 # with depth, only jitter the rgb part
                 self.downsample = lambda x: transforms.Resize(
-                    (240, 320),
+                    (self.width, self.height),
                     interpolation=transforms.InterpolationMode.BILINEAR,
                     antialias=True,
                 )(
@@ -135,21 +143,14 @@ class Agent:
         else:
             self.downsample = nn.Sequential(
                 transforms.Resize(
-                    (240, 320),
+                    (self.width, self.height),
                     interpolation=transforms.InterpolationMode.BILINEAR,
                 ),
             )
 
-        mean_vec = [128.0] * 3 + [35767.0] * (self.image_channel - 3)
-        std_vec = [128.0] * 3 + [35767.0] * (self.image_channel - 3)
-
         # Crop randomization, normalization
         self.transform = nn.Sequential(
-            transforms.RandomCrop((216, 288)),
-            transforms.Normalize(
-                mean=mean_vec,
-                std=std_vec,
-            ),
+            transforms.RandomCrop((self.crop_width, self.crop_height)),
         )
 
         # Add gaussian noise to the image
@@ -184,24 +185,19 @@ class Agent:
         if img_masking_prob > 0.0:
             self.transform = lambda x: mask_img(
                 nn.Sequential(
-                    transforms.RandomCrop((216, 288)),
-                    transforms.Normalize(mean=mean_vec, std=std_vec),
+                    transforms.RandomCrop((self.crop_width, self.crop_height)),
                 )(x)
             )
         # For evaluation, only center crop and normalize
         self.eval_transform = nn.Sequential(
-            transforms.CenterCrop((216, 288)),
-            transforms.Normalize(
-                mean=mean_vec,
-                std=std_vec,
-            ),
+            transforms.CenterCrop((self.crop_width, self.crop_height)),
         )
 
         self.stats = None
         obs_dim = 0
         encoders = {}
         if "eef" in self.representation_type:
-            eef_dim = RT_DIM["eef"]  # pos, rot (axis-angle) for two arms
+            eef_dim = RT_DIM["eef"]
             if identity_encoder:
                 eef_encoder = nn.Identity(eef_dim)
             else:
@@ -214,56 +210,23 @@ class Agent:
                 eef_dim = output_sizes["eef"]
             encoders["eef"] = eef_encoder
             obs_dim += eef_dim
-        if "hand_pos" in self.representation_type:
-            hand_pos_dim = RT_DIM["hand_pos"]  # 6 on each hand
-            if identity_encoder:
-                hand_pos_encoder = nn.Identity(hand_pos_dim)
-            else:
-                hand_pos_encoder = StateEncoder(
-                    input_size=hand_pos_dim,
-                    output_size=output_sizes["hand_pos"],
-                    hidden_size=128,
-                    dropout=dropout["hand_pos"],
-                )
-                hand_pos_dim = output_sizes["hand_pos"]
-            encoders["hand_pos"] = hand_pos_encoder
-            obs_dim += hand_pos_dim
         if "img" in self.representation_type:
-            image_encoder = ModuleList(
+            image_encoder = ImageEncoder(output_sizes["img"], self.image_channel, dropout["img"])
+            image_dim = output_sizes["img"]
+            encoders["img"] = image_encoder
+            obs_dim += image_dim
+
+        if "touch" in self.representation_type:
+            touch_encoder = ModuleList(
                 [
                     # Use different image encoders for each camera
                     ImageEncoder(
-                        output_sizes["img"], self.image_channel, dropout["img"]
+                        output_sizes["touch"], self.image_channel, dropout["touch"]
                     )
-                    for i in range(self.image_num)
+                    for _ in range(3)
                 ]
             )
-            image_dim = output_sizes["img"] * self.image_num
-            encoders["img"] = image_encoder
-            obs_dim += image_dim
-        if "pos" in self.representation_type:
-            pos_dim = RT_DIM["pos"]
-            if identity_encoder:
-                pos_encoder = nn.Identity(pos_dim)
-            else:
-                pos_encoder = StateEncoder(
-                    pos_dim, output_sizes["pos"], dropout=dropout["pos"]
-                )
-                pos_dim = output_sizes["pos"]
-            encoders["pos"] = pos_encoder
-            obs_dim += pos_dim
-        if "touch" in self.representation_type:
-            touch_dim = RT_DIM["touch"]  # 6 on each finger
-            if identity_encoder:
-                touch_encoder = nn.Identity(touch_dim)
-            else:
-                touch_encoder = StateEncoder(
-                    touch_dim,
-                    output_sizes["touch"],
-                    dropout=dropout["touch"],
-                    binarize_touch=binarize_touch,
-                )
-                touch_dim = output_sizes["touch"]
+            touch_dim = output_sizes["touch"] * 3
             encoders["touch"] = touch_encoder
             obs_dim += touch_dim
 
@@ -300,57 +263,65 @@ class Agent:
     def _get_image_observation(self, data):
         # allocate memory for the image
         img = torch.zeros(
-            (len(data), len(self.camera_indices), self.image_channel, 240, 320),
+            (len(data), self.image_channel, self.width, self.height),
             dtype=torch.float32,
         )
 
-        image_size = data[0]["base_rgb"].shape
+        image_size = data[0]["img"].shape
         H, W = image_size[1], image_size[2]
 
-        if self.image_channel == 4:
-            # Use depth
-            def process_rgbd(d):
-                rgbd = np.concatenate(
-                    [d["base_rgb"], d["base_depth"][..., None]], axis=-1
-                ).reshape(-1, H, W, self.image_channel)  # [camera_num, 480, 640, 4]
-                if self.clip_far:
-                    # Crop image based on depth
-                    clip_back_view = d["base_depth"][0] > (self.threshold / 10)
-                    clip_wrist = d["base_depth"][1:] > (self.threshold)
-                    clip = np.concatenate([clip_back_view, clip_wrist], axis=0)
-                    clip = np.concatenate(
-                        [clip[..., None]] * self.image_channel, axis=-1
-                    )
-                    rgbd = rgbd * clip
-                rgbd = rgbd[:, self.camera_indices].astype(np.float32)
-                rgbd = np.moveaxis(rgbd, -1, 1)  # [camera_num, 4, 480, 640]
-                if H == 480 and W == 640 and self.color_jitter == False:
-                    rgbd = self.downsample(
-                        torch.tensor(rgbd)
-                    )  # [camera_num, 4, 240, 320]
-                else:
-                    rgbd = torch.tensor(rgbd)
-                return rgbd
+        # Only use rgb
+        def process_rgb(d):
+            rgb = d["img"].astype(np.float32)
+            rgb = np.moveaxis(rgb, -1, 1)
+            if H == 320 and W == 180 and self.color_jitter == False:
+                rgb = self.downsample(
+                    torch.tensor(rgb)
+                )  # [camera_num, 3, self.width, self.height]
+            else:
+                rgb = torch.tensor(rgb)
+            return rgb
 
-            fn = process_rgbd
+        fn = process_rgb
 
-        else:
-            # Only use rgb
-            def process_rgb(d):
-                rgb = d["base_rgb"].reshape(
-                    -1, H, W, self.image_channel
-                )  # [camera_num, 480, 640, 3]
-                rgb = rgb[self.camera_indices].astype(np.float32)
-                rgb = np.moveaxis(rgb, -1, 1)  # [camera_num, 3, 480, 640]
-                if H == 480 and W == 640 and self.color_jitter == False:
-                    rgb = self.downsample(
-                        torch.tensor(rgb)
-                    )  # [camera_num, 3, 240, 320]
-                else:
-                    rgb = torch.tensor(rgb)
-                return rgb
+        with concurrent.futures.ThreadPoolExecutor(
+            max_workers=self.num_workers
+        ) as executor:
+            future_to_data = {
+                executor.submit(fn, d): (d, i) for i, d in enumerate(data)
+            }
+            for future in concurrent.futures.as_completed(future_to_data):
+                d, i = future_to_data[future]
+                try:
+                    img[i] = future.result()
+                except Exception as exc:
+                    print(f"loading image failed: {exc}")
 
-            fn = process_rgb
+        return img
+
+    def _get_touch_observation(self, data):
+        # allocate memory for the image
+        img = torch.zeros(
+            (len(data), 3, self.image_channel, self.width, self.height),
+            dtype=torch.float32,
+        )
+
+        image_size = data[0]["tactile"].shape
+        H, W = image_size[1], image_size[2]
+
+        # Only use rgb
+        def process_rgb(d):
+            rgb = d["tactile"].astype(np.float32)
+            rgb = np.moveaxis(rgb, -1, 1)
+            if H == 224 and W == 224 and self.color_jitter == False:
+                rgb = self.downsample(
+                    torch.tensor(rgb)
+                )  # [camera_num, 3, self.width, self.height]
+            else:
+                rgb = torch.tensor(rgb)
+            return rgb
+
+        fn = process_rgb
 
         with concurrent.futures.ThreadPoolExecutor(
             max_workers=self.num_workers
@@ -414,8 +385,8 @@ class Agent:
                                 total_data_points,
                                 self.image_num,
                                 self.image_channel,
-                                240,
-                                320,
+                                self.width,
+                                self.height,
                             ),
                             dtype=np.uint16,
                         )
@@ -440,7 +411,7 @@ class Agent:
         train_data["meta"] = {"episode_ends": []}
 
         cache_memmap = False
-        img_shape = (total_data_points, self.image_num, self.image_channel, 240, 320)
+        img_shape = (total_data_points, self.image_num, self.image_channel, self.width, self.height)
         if memmap_loader_path != "":
             # Use memmap to load imgs
             if os.path.exists(memmap_loader_path):
@@ -469,7 +440,7 @@ class Agent:
 
             data_length = len(data)
 
-            # images - (N, num_cams, self.image_channel, 240, 320)
+            # images - (N, num_cams, self.image_channel, self.width, self.height)
             obs = self.get_observation(data, self.load_img or cache_memmap)
 
             # obs space
