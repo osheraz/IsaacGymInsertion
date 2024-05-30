@@ -13,9 +13,8 @@ def create_sample_indices(
 ):
     indices = list()
     for i in range(len(episode_ends)):
+
         start_idx = 0
-        if i > 0:
-            start_idx = episode_ends[i - 1]
         end_idx = episode_ends[i]
         episode_length = end_idx - start_idx
 
@@ -31,21 +30,25 @@ def create_sample_indices(
             sample_start_idx = 0 + start_offset
             sample_end_idx = sequence_length - end_offset
             indices.append(
-                [buffer_start_idx, buffer_end_idx, sample_start_idx, sample_end_idx]
+                [i, buffer_start_idx, buffer_end_idx, sample_start_idx, sample_end_idx]
             )
     indices = np.array(indices)
     return indices
 
 
 def sample_sequence(
-    train_data,
+    traj_list,
     sequence_length,
+    file_idx,
     buffer_start_idx,
     buffer_end_idx,
     sample_start_idx,
     sample_end_idx,
 ):
     result = dict()
+
+    train_data = np.load(traj_list[file_idx])
+
     for key, input_arr in train_data.items():
         sample = input_arr[buffer_start_idx:buffer_end_idx]
         data = sample
@@ -84,6 +87,88 @@ def unnormalize_data(ndata, stats):
     data = ndata * (stats["max"] - stats["min"] + 1e-8) + stats["min"]
     return data
 
+from pathlib import Path
+from tqdm import tqdm
+import random
+
+class DataNormalizer:
+    def __init__(self, cfg, file_list):
+        self.cfg = cfg
+        self.normalize_keys = self.cfg.train.normalize_keys
+        self.normalization_path = self.cfg.train.normalize_file
+        self.normalize_dict = {"mean": {}, "std": {}}
+        self.file_list = file_list
+        self.remove_failed_trajectories()
+        self.run()
+
+    def ensure_directory_exists(self, path):
+        """Ensure the directory for the given path exists."""
+        directory = Path(path).parent.absolute()
+        directory.mkdir(parents=True, exist_ok=True)
+
+    def remove_failed_trajectories(self):
+        """Remove files corresponding to failed trajectories."""
+        print('Removing failed trajectories')
+        cleaned_file_list = []
+        for file in tqdm(self.file_list, desc="Cleaning files"):
+            try:
+                d = np.load(file)
+                done_idx = d['done'].nonzero()[0]
+                if len(done_idx) > 0:  # Ensure done_idx is not empty
+                    cleaned_file_list.append(file)
+                else:
+                    os.remove(file)
+            except KeyboardInterrupt:
+                exit()
+            except Exception as e:
+                print(f"Error processing {file}: {e}")
+                os.remove(file)
+        self.file_list = cleaned_file_list
+
+    def load_or_create_normalization_file(self):
+        """Load the normalization file if it exists, otherwise create it."""
+        if os.path.exists(self.normalization_path):
+            with open(self.normalization_path, 'rb') as f:
+                self.normalize_dict = pickle.load(f)
+        else:
+            self.create_normalization_file()
+
+    def create_normalization_file(self):
+        """Create a new normalization file."""
+        for norm_key in self.normalize_keys:
+            print(f'Creating new normalization file for {norm_key}')
+            data = self.aggregate_data(norm_key)
+            self.calculate_normalization_values(data, norm_key)
+        self.save_normalization_file()
+
+    def aggregate_data(self, norm_key):
+        """Aggregate data for the given normalization key."""
+        data = []
+        file_list = self.file_list
+        for file in tqdm(random.sample(file_list, len(file_list)), desc=f"Processing {norm_key}"):
+            try:
+                d = np.load(file)
+                done_idx = d['done'].nonzero()[0][-1]
+                data.append(d[norm_key][:done_idx, :])
+            except Exception as e:
+                print(f"{file} could not be processed: {e}")
+        return np.concatenate(data, axis=0)
+
+    def calculate_normalization_values(self, data, norm_key):
+        """Calculate mean and standard deviation for the given data."""
+        self.normalize_dict['mean'][norm_key] = np.mean(data, axis=0)
+        self.normalize_dict['std'][norm_key] = np.std(data, axis=0)
+
+    def save_normalization_file(self):
+        """Save the normalization values to file."""
+        print(f'Saved new normalization file at: {self.normalization_path}')
+        with open(self.normalization_path, 'wb') as f:
+            pickle.dump(self.normalize_dict, f)
+
+    def run(self):
+        """Main method to run the process."""
+        self.ensure_directory_exists(self.normalization_path)
+        self.load_or_create_normalization_file()
 
 class MemmapLoader:
     def __init__(self, path):
@@ -121,40 +206,51 @@ class MemmapLoader:
 class Dataset(torch.utils.data.Dataset):
     def __init__(
         self,
-        data: dict,
+        traj_list: list,
         representation_type: list,
         pred_horizon: int,
         obs_horizon: int,
         action_horizon: int,
         stats: dict = None,
-        transform=None,
+        img_transform=None,
+        tactile_transform=None,
         get_img=None,
         load_img: bool = False,
-        hand_grip_range: int = 110,
-        binarize_touch: bool = False,
+        binarize_tactile: bool = False,
         state_noise: float = 0.0,
+        img_dim: tuple = (180,320),
+        tactile_dim: tuple = (0,0),
     ):
+
         self.state_noise = state_noise
-        self.memmap_loader = None
-        if "memmap_loader_path" in data.keys():
-            self.memmap_loader = MemmapLoader(data["memmap_loader_path"])
+        self.img_dim = img_dim
+        self.tactile_dim = tactile_dim
+
+        # self.memmap_loader = None
+        # if "memmap_loader_path" in data.keys():
+        #     self.memmap_loader = MemmapLoader(data["memmap_loader_path"])
+
         self.representation_type = representation_type
-        self.transform = transform
+        self.img_transform = img_transform
+        self.tactile_transform = tactile_transform
+
         self.get_img = get_img
         self.load_img = load_img
 
-        print("Representation type: ", representation_type)
-        except_img_representation_type = representation_type.copy()
+        episode_ends = []
+        data_index = 0
 
-        if "img" in representation_type:
-            train_image_data = data["data"]["img"][:]
-            except_img_representation_type.remove("img")
-
-        train_data = {
-            rt: data["data"][rt][:, :] for rt in except_img_representation_type
-        }
-        train_data["action"] = data["data"]["action"][:]
-        episode_ends = data["meta"]["episode_ends"][:]
+        for file_idx, file in enumerate(traj_list):
+            data = np.load(file)
+            done = data["done"]
+            data_length = done.nonzero()[0][-1]
+            if len(episode_ends) == 0:
+                episode_ends.append(data_length)
+            else:
+                episode_ends.append(
+                    data_length + episode_ends[-1]
+                )
+            data_index += data_length
 
         # compute start and end of each state-action sequence
         # also handles padding
@@ -165,60 +261,13 @@ class Dataset(torch.utils.data.Dataset):
             pad_after=action_horizon - 1,
         )
 
-        normalized_train_data = dict()
-
-        # compute statistics and normalized data to [-1,1]
-        if stats is None:
-            stats = dict()
-            for key, data in train_data.items():
-                stats[key] = get_data_stats(data)
-
-        # overwrite the min max of hand info
-        left_hand_indices = np.array([6, 7, 8, 9, 10, 11])
-        right_hand_indices = np.array([18, 19, 20, 21, 22, 23])
-
-        # hand joint_position range
-        hand_upper_ranges = np.array(
-            [hand_grip_range] * 4 + [90, 120], dtype=np.float32
-        )
-        hand_lower_ranges = np.array([5, 5, 5, 5, 5, 5], dtype=np.float32)
-
-        if "pos" in representation_type:
-            stats["pos"]["min"][left_hand_indices] = hand_lower_ranges
-            stats["pos"]["min"][right_hand_indices] = hand_lower_ranges
-            stats["pos"]["max"][left_hand_indices] = hand_upper_ranges
-            stats["pos"]["max"][right_hand_indices] = hand_upper_ranges
-        elif "hand_pos" in representation_type:
-            stats["hand_pos"]["min"][range(6)] = hand_lower_ranges
-            stats["hand_pos"]["min"][range(6, 12)] = hand_lower_ranges
-            stats["hand_pos"]["max"][range(6)] = hand_upper_ranges
-            stats["hand_pos"]["max"][range(6, 12)] = hand_upper_ranges
-
-        # hand action is normalized to [0,1]
-        stats["action"]["min"][left_hand_indices] = 0.0
-        stats["action"]["max"][left_hand_indices] = 1.0
-        stats["action"]["min"][right_hand_indices] = 0.0
-        stats["action"]["max"][right_hand_indices] = 1.0
-
-        for key, data in train_data.items():
-            if key == "touch" and binarize_touch:
-                normalized_train_data[key] = (
-                    data  # don't normalize if binarize touch in model
-                )
-            else:
-                normalized_train_data[key] = normalize_data(data, stats[key])
-
-        # images are already normalized
-        if "img" in representation_type:
-            normalized_train_data["img"] = train_image_data
-
+        self.traj_list = traj_list
         self.indices = indices
         self.stats = stats
-        self.normalized_train_data = normalized_train_data
         self.pred_horizon = pred_horizon
         self.action_horizon = action_horizon
         self.obs_horizon = obs_horizon
-        self.binarize_touch = binarize_touch
+        self.binarize_tactile = binarize_tactile
 
     def __len__(self):
         return len(self.indices)
@@ -241,6 +290,7 @@ class Dataset(torch.utils.data.Dataset):
     def __getitem__(self, idx):
         # get the start/end indices for this datapoint
         (
+            file_idx,
             buffer_start_idx,
             buffer_end_idx,
             sample_start_idx,
@@ -249,8 +299,9 @@ class Dataset(torch.utils.data.Dataset):
 
         # get nomralized data using these indices
         nsample = sample_sequence(
-            train_data=self.normalized_train_data,
+            traj_list=self.traj_list,
             sequence_length=self.pred_horizon,
+            file_idx=file_idx,
             buffer_start_idx=buffer_start_idx,
             buffer_end_idx=buffer_end_idx,
             sample_start_idx=sample_start_idx,
@@ -261,24 +312,36 @@ class Dataset(torch.utils.data.Dataset):
             # discard unused observations
             nsample[k] = nsample[k][: self.obs_horizon]
             if k == "img":
-                if not self.load_img:
+                if self.load_img:
                     nsample["img"] = self.read_img(nsample["img"], idx)
                 else:
                     nsample["img"] = torch.tensor(
                         nsample["img"].astype(np.float32), dtype=torch.float32
                     )
                 nsample_shape = nsample["img"].shape
-                # transform the img
-                nsample["img"] = nsample["img"].reshape(
-                    nsample_shape[0] * nsample_shape[1], *nsample_shape[2:]
-                )                                                                           # (Batch * num_cam, Channel, Height, Width)
-                nsample["img"] = self.transform(nsample["img"])
-                nsample["img"] = nsample["img"].reshape(nsample_shape[:3] + (216, 288))     # (Batch, num_cam, Channel, Height, Width)
+                nsample["img"] = self.img_transform(nsample["img"])
+                nsample["img"] = nsample["img"].reshape(nsample_shape[:3] + self.img_dim)     # (Batch, num_cam, Channel, Height, Width)
 
+            elif k == "tactile":
+                if self.load_img:
+                    nsample["tactile"] = self.read_img(nsample["tactile"], idx)
+                else:
+                    nsample["tactile"] = torch.tensor(
+                        nsample["tactile"].astype(np.float32), dtype=torch.float32
+                    )
+                nsample_shape = nsample["tactile"].shape
+                # tactile_transform the tactile
+                # nsample["tactile"] = nsample["tactile"].reshape(
+                #     nsample_shape[0] * nsample_shape[1], *nsample_shape[2:]
+                # )  # (Batch * num_cam, Channel, Height, Width)
+                nsample["tactile"] = self.tactile_transform(nsample["tactile"])
+                nsample["tactile"] = nsample["tactile"].reshape(
+                    nsample_shape[:3] + self.tactile_dim)  # (Batch, num_cam, Channel, Height, Width)
             else:
                 nsample[k] = torch.tensor(nsample[k], dtype=torch.float32)
                 if self.state_noise > 0.0:
                     # add noise to the state
                     nsample[k] = nsample[k] + torch.randn_like(nsample[k]) * self.state_noise
         nsample["action"] = torch.tensor(nsample["action"], dtype=torch.float32)
+
         return nsample

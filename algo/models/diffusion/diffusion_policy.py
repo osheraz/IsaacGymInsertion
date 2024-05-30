@@ -14,19 +14,29 @@ from torch.utils.tensorboard import SummaryWriter
 from tqdm.auto import tqdm
 
 
-def normalize_data(data, stats):
-    # nomalize to [0,1]
-    ndata = (data - stats["min"]) / ((stats["max"] - stats["min"]) + 1e-8)
-    # normalize to [-1, 1]
-    ndata = ndata * 2 - 1
+# def normalize_data(data, stats, key):
+#     # nomalize to [0,1]
+#     ndata = (data - stats["min"]) / ((stats["max"] - stats["min"]) + 1e-8)
+#     # normalize to [-1, 1]
+#     ndata = ndata * 2 - 1
+#     return ndata
+
+def normalize_data(data, stats, key):
+    if key == 'action':
+        return data
+    ndata = (data - stats["mean"][key]) / (stats["std"][key] + 1e-8)
     return ndata
 
+# def unnormalize_data(ndata, stats):
+#     ndata = (ndata + 1) / 2
+#     data = ndata * (stats["max"] - stats["min"] + 1e-8) + stats["min"]
+#     return data
 
-def unnormalize_data(ndata, stats):
-    ndata = (ndata + 1) / 2
-    data = ndata * (stats["max"] - stats["min"] + 1e-8) + stats["min"]
+def unnormalize_data(ndata, stats, key):
+    if key == "action":
+        return ndata
+    data = (ndata * (stats["std"][key] + 1e-8)) + stats["mean"][key]
     return data
-
 
 class DiffusionPolicy:
     def __init__(
@@ -36,13 +46,13 @@ class DiffusionPolicy:
         pred_horizon,
         action_horizon,
         action_dim,
-        representation_type,  # pos, img, touch, eef
+        representation_type,  # pos, img, tactile, eef
         encoders,
         num_diffusion_iters=100,
         without_sampling=False,
         weight_decay=1e-6,
         use_ddim=False,
-        binarize_touch=False,
+        binarize_tactile=False,
         policy_dropout_rate=0.0,
     ):
         for rt in representation_type:
@@ -58,7 +68,7 @@ class DiffusionPolicy:
         self.data_stat = None
         self.writer = None
         self.without_sampling = without_sampling
-        self.binarize_touch = binarize_touch
+        self.binarize_tactile = binarize_tactile
 
         if self.without_sampling:
             bc_actor = SimpleBCModel(
@@ -165,30 +175,40 @@ class DiffusionPolicy:
                         B = naction.shape[0]
                         features = []
 
-                        ### IMPT: make sure input is always in this order
-                        # eef, hand_pos, img, pos, touch
+                        ### TODO IMPT: make sure input is always in this order
+                        # eef, hand_pos, img, pos, tactile
+
                         for data_key in [
                             dk
-                            for dk in ["eef", "hand_pos", "img", "pos", "touch"]
+                            for dk in ["eef_pos", "arm_joints", "hand_joints", "img",  "tactile"]
                             if dk in self.representation_type
                         ]:
                             nsample = nbatch[data_key][:, : self.obs_horizon].to(self.device)
 
                             if data_key == "img":
-                                # [B, obs_horizon, M, C, H, W]
-                                images = [nsample[:, :, i] for i in range(nsample.shape[2])]
-
+                                # [B, obs_horizon, C, H, W]
                                 image_features = [
-                                    nets[f"{data_key}_encoder"][i](
-                                        image.flatten(end_dim=1)
-                                    )
-                                    for i, image in enumerate(images)
+                                    nets[f"{data_key}_encoder"](nsample.flatten(end_dim=1))
                                 ]
-                                image_features = torch.stack(image_features, dim=2)
                                 image_features = image_features.reshape(
                                     *nsample.shape[:2], -1
                                 )
                                 features.append(image_features)
+                            if data_key == "tactile":
+                                # [B, obs_horizon, F, C, H, W]
+                                tactile = [nsample[:, :, i] for i in range(nsample.shape[2])]
+
+                                tactile_features = [
+                                    nets[f"{data_key}_encoder"][i](
+                                        image.flatten(end_dim=1)
+                                    )
+                                    for i, image in enumerate(tactile)
+                                ]
+                                tactile_features = torch.stack(tactile_features, dim=2)
+                                tactile_features = tactile_features.reshape(
+                                    *nsample.shape[:2], -1
+                                )
+                                features.append(tactile_features)
                             else:
                                 nfeat = nets[f"{data_key}_encoder"](
                                     nsample.flatten(end_dim=1)
@@ -262,11 +282,13 @@ class DiffusionPolicy:
 
                                 unnormalized_naction = unnormalize_data(
                                     naction.detach().cpu().numpy(),
-                                    self.data_stat["action"],
+                                    self.data_stat,
+                                    'action'
                                 )
                                 unnormalized_pred_action = unnormalize_data(
                                     pred_action.detach().cpu().numpy(),
-                                    self.data_stat["action"],
+                                    self.data_stat,
+                                    'action'
                                 )
                                 unnormalized_loss = nn.functional.mse_loss(
                                     torch.tensor(unnormalized_naction),
@@ -349,8 +371,8 @@ class DiffusionPolicy:
             torch.tensor(actions_pred), torch.tensor(action[: len(actions_pred)])
         )
 
-        normalized_action = normalize_data(action, self.data_stat["action"])
-        normalized_action_pred = normalize_data(actions_pred, self.data_stat["action"])
+        normalized_action = normalize_data(action, self.data_stat, 'action')
+        normalized_action_pred = normalize_data(actions_pred, self.data_stat, 'action')
 
         normalized_mse = mse_loss(
             torch.tensor(normalized_action_pred),
@@ -365,46 +387,17 @@ class DiffusionPolicy:
         self.ema.copy_to(self.ema_nets.parameters())
 
     def load(self, path):
-        def rename_key(old_key):
-            new_key = old_key.replace("image", "img")
-            unexpected = [
-                "pos_encoder.encoder.mlp.0.weight",
-                "pos_encoder.encoder.mlp.0.bias",
-                "pos_encoder.encoder.mlp.2.weight",
-                "pos_encoder.encoder.mlp.2.bias",
-                "touch_encoder.encoder.mlp.0.weight",
-                "touch_encoder.encoder.mlp.0.bias",
-                "touch_encoder.encoder.mlp.2.weight",
-                "touch_encoder.encoder.mlp.2.bias",
-            ]
-            missing = [
-                "pos_encoder.linear.mlp.0.weight",
-                "pos_encoder.linear.mlp.0.bias",
-                "pos_encoder.linear.mlp.2.weight",
-                "pos_encoder.linear.mlp.2.bias",
-                "touch_encoder.linear.mlp.0.weight",
-                "touch_encoder.linear.mlp.0.bias",
-                "touch_encoder.linear.mlp.2.weight",
-                "touch_encoder.linear.mlp.2.bias",
-            ]
-            for i, u in enumerate(unexpected):
-                new_key = new_key.replace(u, missing[i])
-            return new_key
 
         basename = os.path.basename(path)
         dirname = os.path.dirname(path)
 
         state_dict = torch.load(path, map_location="cuda")
-        # rename model keys for backward compatibility
-        state_dict = {rename_key(k): v for k, v in state_dict.items()}
-
         self.nets.load_state_dict(state_dict)
 
         if os.path.exists(os.path.join(dirname, "ema_" + basename)):
             ema_state_dict = torch.load(
                 os.path.join(dirname, "ema_" + basename), map_location="cuda"
             )
-            ema_state_dict = {rename_key(k): v for k, v in ema_state_dict.items()}
             self.ema_nets.load_state_dict(ema_state_dict)
         else:
             self.ema_nets.load_state_dict(state_dict)
@@ -420,9 +413,10 @@ class DiffusionPolicy:
 
     def _get_data_forward(self, stats, obs_deque, data_key):
         sample = np.stack([x[data_key] for x in obs_deque])
-        if data_key != "img" and (data_key != "touch" or not self.binarize_touch):
-            # image is already normalized
-            sample = normalize_data(sample, stats=stats[data_key])
+        if data_key != "img" and (data_key != "tactile" or not self.binarize_tactile) and data_key != "action":
+            # image & tactile & action is already normalized
+            sample = normalize_data(sample, stats=stats, key=data_key)
+
         sample = (
             torch.from_numpy(sample).to(self.device, dtype=torch.float32).unsqueeze(0)
         )
@@ -438,26 +432,36 @@ class DiffusionPolicy:
             features = []
 
             ### IMPT: make sure input is always in this order
-            # eef, hand_pos, img, pos, touch
+            # eef, hand_pos, img, pos, tactile
             for data_key in [
                 dk
-                for dk in ["eef", "hand_pos", "img", "pos", "touch"]
+                for dk in ["eef_pos", "arm_joints", "hand_joints", "img", "tactile"]
                 if dk in self.representation_type
             ]:
+
                 sample = self._get_data_forward(stats, obs_deque, data_key)
+
                 if data_key == "img":
-                    images = [
+                    # [1, obs_horizon,  C, H, W]
+                    image_features = self.ema_nets[f"{data_key}_encoder"](
+                            sample.flatten(end_dim=1)
+                        )
+
+                    image_features = image_features.reshape(*sample.shape[:2], -1)
+                    features.append(image_features)
+                if data_key == "tactile":
+                    tactile = [
                         sample[:, :, i] for i in range(sample.shape[2])
                     ]  # [1, obs_horizon, M, C, H, W]
-                    image_features = [
+                    tactile_features = [
                         self.ema_nets[f"{data_key}_encoder"][i](
                             image.flatten(end_dim=1)
                         )
-                        for i, image in enumerate(images)
+                        for i, image in enumerate(tactile)
                     ]
-                    image_features = torch.stack(image_features, dim=2)
-                    image_features = image_features.reshape(*sample.shape[:2], -1)
-                    features.append(image_features)
+                    tactile_features = torch.stack(tactile_features, dim=2)
+                    tactile_features = tactile_features.reshape(*sample.shape[:2], -1)
+                    features.append(tactile_features)
                 else:
                     feat = self.ema_nets[f"{data_key}_encoder"](
                         sample.flatten(end_dim=1)
@@ -494,7 +498,7 @@ class DiffusionPolicy:
         naction = naction.detach().to("cpu").numpy()
         # (B, pred_horizon, action_dim)
         naction = naction[0]
-        action_pred = unnormalize_data(naction, stats=stats["action"])
+        action_pred = unnormalize_data(naction, stats=stats, key='action')
 
         # only take action_horizon number of actions
         start = self.obs_horizon - 1

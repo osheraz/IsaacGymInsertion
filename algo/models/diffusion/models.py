@@ -108,6 +108,21 @@ class ImageEncoder(nn.Module):
     def forward(self, x):
         return self.dropout(self.encoder(x))
 
+class TactileEncoder(nn.Module):
+    def __init__(self, output_size, image_channel, dropout=0.0):
+        super(TactileEncoder, self).__init__()
+        self.encoder = get_resnet("resnet18")
+        self.encoder.fc = nn.Linear(512, output_size)
+        self.encoder.conv1 = nn.Conv2d(
+            image_channel * 3, 64, kernel_size=7, stride=2, padding=3, bias=False
+        )
+        self.encoder = replace_bn_with_gn(self.encoder)
+        self.dropout = nn.Dropout(dropout)
+
+    def forward(self, x):
+        x = torch.cat(x, dim=1)
+        return self.dropout(self.encoder(x))
+
 
 class StateEncoder(nn.Module):
     def __init__(

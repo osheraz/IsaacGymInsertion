@@ -55,7 +55,7 @@ def get_latest(path):
     return from_pickle(os.path.join(path, dir[-1]))
 
 # Get all trajectory directories from the given path
-def get_epi_dir(path, traj_type, prefix=None):
+def get_epi_dir(path, traj_type='all', prefix=None):
     dir = natsort.natsorted(os.listdir(path))
     if prefix is not None:
         prefixs = prefix.split("-")
