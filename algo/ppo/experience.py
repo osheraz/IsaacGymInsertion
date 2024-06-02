@@ -471,13 +471,14 @@ class RealLogger():
 
         self.env = env
 
+        NUM_JOINTS = 7
         ROT_MAT_SIZE = 9
         POS_SIZE = 3
         QUAT_SIZE = 4
         ACT_SIZE = 6
 
         log_items = {
-            'arm_joints_shape': 7,
+            'arm_joints_shape': NUM_JOINTS,
             'eef_pos_shape': POS_SIZE + QUAT_SIZE,
             'socket_pos_shape': POS_SIZE + QUAT_SIZE,
             'noisy_socket_pos_shape': POS_SIZE + QUAT_SIZE,
@@ -517,13 +518,16 @@ class RealLogger():
 
         socket_pos = torch.cat((self.env.socket_pos.clone(),
                                 self.env.identity_quat.clone()), dim=-1)
+
         noisy_socket_pos = torch.cat((self.env.noisy_gripper_goal_pos.clone(),
                                       self.env.noisy_gripper_goal_quat.clone()), dim=-1)
 
         plug_pos = torch.cat((self.env.plug_pos.clone(),
                               self.env.plug_quat.clone()), dim=-1)
+
         plug_hand_pos = torch.cat((self.env.plug_hand_pos.clone(),
                                    self.env.plug_hand_quat.clone()), dim=-1)
+
         plug_pos_error = torch.cat((self.env.plug_pos_error.clone(),
                                     self.env.plug_quat_error.clone()), dim=-1)
 

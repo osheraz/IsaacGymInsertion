@@ -30,6 +30,8 @@ from matplotlib import pyplot as plt
 # from tf.transformations import quaternion_matrix, identity_matrix, quaternion_from_matrix
 from tqdm import tqdm
 
+def to_torch(x, dtype=torch.float, device='cuda:0', requires_grad=False):
+    return torch.tensor(x, dtype=dtype, device=device, requires_grad=requires_grad)
 
 class HardwarePlayer(object):
     def __init__(self, output_dir, full_config):
@@ -288,6 +290,7 @@ class HardwarePlayer(object):
         self.image_buf = torch.zeros(1, 1 if self.cam_type == 'd' else 3, self.res[1], self.res[0]).to(
             self.device)
 
+        self.ft_data = torch.zeros((1, 6), device=self.device, dtype=torch.float)
         self.ft_queue = torch.zeros((1, self.ft_seq_length, 6), device=self.device, dtype=torch.float)
 
         self.obs_buf = torch.zeros((1, self.obs_shape[0]), device=self.device, dtype=torch.float)
@@ -382,7 +385,7 @@ class HardwarePlayer(object):
         if self.gt_contacts_info:
             self.contacts[0, :] = torch.tensor(self.env.tracker.extrinsic_contact).to(self.device)
 
-    def compute_observations(self, display_image=False, with_priv=False):
+    def compute_observations(self, display_image=True, with_priv=False):
 
         obses = self.env.get_obs()
 
@@ -391,6 +394,7 @@ class HardwarePlayer(object):
         left, right, bottom = obses['frames']
         ft = obses['ft']
 
+        self.ft_data = torch.tensor(ft, device=self.device).unsqueeze(0)
         self.arm_dof_pos = torch.tensor(arm_joints, device=self.device).unsqueeze(0)
         self.fingertip_centered_pos = torch.tensor(ee_pose[:3], device=self.device, dtype=torch.float).unsqueeze(0)
         self.fingertip_centered_quat = torch.tensor(ee_pose[3:], device=self.device, dtype=torch.float).unsqueeze(0)
@@ -415,22 +419,26 @@ class HardwarePlayer(object):
             cv2.waitKey(1)
 
         if self.num_channels == 3:
-            self.tactile_imgs[0, 0] = torch_jit_utils.rgb_transform(left).to(self.device)
-            self.tactile_imgs[0, 1] = torch_jit_utils.rgb_transform(right).to(self.device)
-            self.tactile_imgs[0, 2] = torch_jit_utils.rgb_transform(bottom).to(self.device)
+            self.tactile_imgs[0, 0] = to_torch(left).permute(2, 0, 1).to(self.device)
+            self.tactile_imgs[0, 1] = to_torch(right).permute(2, 0, 1).to(self.device)
+            self.tactile_imgs[0, 2] = to_torch(bottom).permute(2, 0, 1).to(self.device)
+
+            # self.tactile_imgs[0, 0] = torch_jit_utils.rgb_transform(left).to(self.device)
+            # self.tactile_imgs[0, 1] = torch_jit_utils.rgb_transform(right).to(self.device)
+            # self.tactile_imgs[0, 2] = torch_jit_utils.rgb_transform(bottom).to(self.device)
         else:
-            self.tactile_imgs[0, 0] = torch_jit_utils.gray_transform(
+            self.tactile_imgs[0, 0] = to_torch(
                 cv2.cvtColor(left.astype('float32'), cv2.COLOR_BGR2GRAY)).to(self.device)
-            self.tactile_imgs[0, 1] = torch_jit_utils.gray_transform(
+            self.tactile_imgs[0, 1] = to_torch(
                 cv2.cvtColor(right.astype('float32'), cv2.COLOR_BGR2GRAY)).to(self.device)
-            self.tactile_imgs[0, 2] = torch_jit_utils.gray_transform(
+            self.tactile_imgs[0, 2] = to_torch(
                 cv2.cvtColor(bottom.astype('float32'), cv2.COLOR_BGR2GRAY)).to(self.device)
 
         self.tactile_queue[:, 1:] = self.tactile_queue[:, :-1].clone().detach()
         self.tactile_queue[:, 0, :] = self.tactile_imgs
 
         self.ft_queue[:, 1:] = self.ft_queue[:, :-1].clone().detach()
-        self.ft_queue[:, 0, :] = torch.tensor(ft, device=self.device, dtype=torch.float)
+        self.ft_queue[:, 0, :] = self.ft_data
 
         # some-like taking a new socket pose measurement
         self._update_socket_pose()
@@ -478,7 +486,7 @@ class HardwarePlayer(object):
         plug_socket_xy_distance = torch.norm(self.plug_pos_error[:, :2])
 
         is_very_close_xy = plug_socket_xy_distance < 0.005
-        is_bellow_surface = self.plug_pos_error[:, 2] < 0.004
+        is_bellow_surface = -self.plug_pos_error[:, 2] < 0.004
 
         self.inserted = is_very_close_xy & is_bellow_surface
         is_too_far = (plug_socket_xy_distance > 0.08) | (self.fingertip_centered_pos[:, 2] > 0.125)
@@ -504,12 +512,12 @@ class HardwarePlayer(object):
         # Set random init error
         self.env.set_random_init_error(self.socket_pos)
         # If not inserted, return plug?
-        if not self.inserted and False:
+        if True:# not self.inserted and False:
 
             self.env.arm.move_manipulator.scale_vel(scale_vel=0.5, scale_acc=0.5)
             self.env.move_to_joint_values(joints_above_plug, wait=True)
             self.env.arm.move_manipulator.scale_vel(scale_vel=0.1, scale_acc=0.1)
-            self.env.align_and_release(init_plug_pose=[0.4103839067235552, 0.17531695171951858, 0.003])
+            self.env.align_and_release(init_plug_pose=[0.4103839067235552, 0.17531695171951858, 0.008])
 
             self.grasp_and_init()
 
@@ -624,11 +632,11 @@ class HardwarePlayer(object):
         # Apply the action
         if regulize_force:
             ft = torch.tensor(self.env.get_ft(), device=self.device, dtype=torch.float).unsqueeze(0)
-            condition_mask = torch.abs(ft[:, 2]) > 3.0
+            condition_mask = torch.abs(ft[:, 2]) > 2.0
             actions[:, 2] = torch.where(condition_mask, torch.clamp(actions[:, 2], min=0.0), actions[:, 2])
             # actions = torch.where(torch.abs(ft) > 1.5, torch.clamp(actions, min=0.0), actions)
             print("Error:", np.round(self.plug_pos_error[0].cpu().numpy(), 4))
-            print("Regularized Actions:", np.round(actions[0].cpu().numpy(), 4))
+            print("Regularized Actions:", np.round(actions[0][:3].cpu().numpy(), 4))
 
         if do_clamp:
             actions = torch.clamp(actions, -1.0, 1.0)
@@ -717,7 +725,7 @@ class HardwarePlayer(object):
 
         rospy.logwarn('Finished setting the env, lets play.')
 
-        hz = 40
+        hz = 30
         ros_rate = rospy.Rate(hz)
 
         self._create_asset_info()
@@ -738,7 +746,9 @@ class HardwarePlayer(object):
         self.grasp_and_init()
         rospy.sleep(2.0)
 
-        while True:
+        num_episodes = 5
+        cur_episode = 0
+        while cur_episode < num_episodes:
 
             # TODO add a module that set init interaction with the socket
             # self.env.set_random_init_error(true_socket_pose=true_socket_pose)
@@ -746,8 +756,8 @@ class HardwarePlayer(object):
 
             # Bias the ft sensor
             self.env.arm.calib_robotiq()
-            rospy.sleep(2.0)
-            self.env.arm.calib_robotiq()
+            # rospy.sleep(2.0)
+            # self.env.arm.calib_robotiq()
 
             obs, obs_stud, tactile, priv = self.compute_observations(with_priv=True)
             self._update_reset_buf()
@@ -779,12 +789,14 @@ class HardwarePlayer(object):
                 ros_rate.sleep()
                 self._update_reset_buf()
                 self.episode_length += 1
+
                 # if self.episode_length >= max_steps:
                 #     done = torch.tensor([1]).to(self.device)
+                if self.deploy_config.data_logger.collect_data:
+                    data_logger.log_trajectory_data(action, latent, self.done.clone())
 
                 if self.done[0, 0]:
-                    if self.deploy_config.data_logger.collect_data:
-                        data_logger.log_trajectory_data(action, latent, self.done.clone())
+                    cur_episode += 1
                     break
 
                 # Compute next observation
