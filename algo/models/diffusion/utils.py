@@ -23,8 +23,8 @@ def save_args(args, output_dir):
     args_str = "\n".join(f"{key}: {value}" for key, value in args_dict.items())
     with open(os.path.join(output_dir, "args_log.txt"), "w") as file:
         file.write(args_str)
-    with open(os.path.join(output_dir, "args_log.json"), "w") as json_file:
-        json.dump(args_dict, json_file, indent=4)
+    # with open(os.path.join(output_dir, "args_log.json"), "w") as json_file:
+    #     json.dump(args_dict, json_file, indent=4)
 
 
 def generate_random_string(length=4, characters=string.ascii_letters + string.digits):

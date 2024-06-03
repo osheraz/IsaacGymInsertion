@@ -36,6 +36,7 @@ num_subscenes: 4 # Splits the simulation into N physics scenes and runs each one
 test: False
 
 # offline config arguments
+train_diffusion: True
 offline_training: False # flag for offline latent training (if True, will not train/test RL)
 offline_real_training: False # flag for real offline
 offline_training_w_env: False # flag for offline latent training with environment (if True, will not train/test RL)
@@ -71,7 +72,7 @@ defaults:
   - hydra/job_logging: disabled
   - pbt: no_pbt
   - offline_train: offline_config
-  - diffusion_train: diffusion_train
+  - diffusion_train: diffusion_config
 
 # set the directory where the output files get saved
 hydra:

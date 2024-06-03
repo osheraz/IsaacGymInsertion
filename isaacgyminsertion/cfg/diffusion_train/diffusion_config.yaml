@@ -1,20 +1,32 @@
 
-data_folder: "/home/roblab20/tactile_insertion/datastore_xxx" # where is all your data, can include * for globbing
-output_dir: "/home/roblab20/tactile_insertion/datastore_xxx" # where to save checkpoints and logs
+data_folder: "/home/roblab20/tactile_diffusion/datastore_real" # where is all your data, can include * for globbing
+output_dir: "/home/roblab20/tactile_diffusion/datastore_real" # where to save checkpoints and logs
+
+# Train params for on screen logging
+add_model_save_path_suffix: True
+eval: False
+save_freq: 10
+eval_freq: 10
+print_freq: 100
+use_train_test_split: False
+# load student checkpoint
+load_checkpoint: False
+model_save_path: "/home/roblab20/tactile_diffusion/datastore_real"
+load_path: ''
 
 # basic training hyperparameters
 gpu: 0
 
-epochs: 100
-obs_horizon: 1
-action_horizon: 8
-pred_horizon: 16
+epochs: 20
+obs_horizon: 2
+action_horizon: 6
+pred_horizon: 8
 
-batch_size: 16
+batch_size: 4
 learning_rate: 5e-4
 train_test_split: 0.9
 
-representation_type: "img-depth-eef-hand_joints-tactile"
+representation_type: "eef_pos-tactile"
 
 scheduler: "cosine"
 warmup: False
@@ -23,21 +35,10 @@ cyclic_period: 10
 plateau_patience: 3
 plateau_factor: 0.5
 
-# Train params for on screen logging
-add_model_save_path_suffix: True
-eval: False
-save_freq: 10
-eval_freq: 10
-print_freq: 100
-
 # normalize data
-normalize_keys: ["eef_pos", "action", "hand_joints", "arm_joints"]
-normalize_file: "/home/roblab20/tactile_insertion/datastore_42_contact2/normalization.pkl"
+normalize_keys: ["eef_pos", "action", "arm_joints"]
+normalize_file: "/home/roblab20/tactile_diffusion/datastore_real/normalization.pkl"
 
-# load student checkpoint
-load_checkpoint: False
-model_save_path: ''
-load_path: ''
 
 img_color_jitter: False
 tactile_color_jitter: False
@@ -48,7 +49,7 @@ use_ddim: False
 
 policy_dropout_rate: 0.0
 dropout_rate: 0.0  # For the state encoder of Diffusion Policy
-img_dropout_rate: 0.0)  # For the image encoder of Diffusion Policy
+img_dropout_rate: 0.0  # For the image encoder of Diffusion Policy
 weight_decay: 1e-5
 image_output_size: 32
 tactile_output_size: 32

@@ -22,7 +22,7 @@ from tqdm.auto import tqdm
 #     return ndata
 
 def normalize_data(data, stats, key):
-    if key == 'action':
+    if key == 'action' or 'tactile':
         return data
     ndata = (data - stats["mean"][key]) / (stats["std"][key] + 1e-8)
     return ndata
@@ -33,7 +33,7 @@ def normalize_data(data, stats, key):
 #     return data
 
 def unnormalize_data(ndata, stats, key):
-    if key == "action":
+    if key == "action" or 'tactile':
         return ndata
     data = (ndata * (stats["std"][key] + 1e-8)) + stats["mean"][key]
     return data
@@ -162,12 +162,12 @@ class DiffusionPolicy:
             # get the name from save_path
             name = os.path.basename(save_path)
             self.writer = SummaryWriter(os.path.join("./runs", name))
-        with tqdm(range(num_epochs), desc="Epoch") as tglobal:
+        with tqdm(range(num_epochs), desc="Epoch", position=0, leave=True) as tglobal:
             # epoch loop
             for epoch_idx in tglobal:
                 # batch loop
                 epoch_loss = list()
-                with tqdm(dataloader, desc="Batch", leave=False) as tepoch:
+                with tqdm(dataloader, desc="Batch", position=0, leave=True) as tepoch:
                     for nbatch in tepoch:
                         # data normalized in dataset
                         # device transfer
@@ -175,14 +175,7 @@ class DiffusionPolicy:
                         B = naction.shape[0]
                         features = []
 
-                        ### TODO IMPT: make sure input is always in this order
-                        # eef, hand_pos, img, pos, tactile
-
-                        for data_key in [
-                            dk
-                            for dk in ["eef_pos", "arm_joints", "hand_joints", "img",  "tactile"]
-                            if dk in self.representation_type
-                        ]:
+                        for data_key in self.representation_type:
                             nsample = nbatch[data_key][:, : self.obs_horizon].to(self.device)
 
                             if data_key == "img":
@@ -433,11 +426,7 @@ class DiffusionPolicy:
 
             ### IMPT: make sure input is always in this order
             # eef, hand_pos, img, pos, tactile
-            for data_key in [
-                dk
-                for dk in ["eef_pos", "arm_joints", "hand_joints", "img", "tactile"]
-                if dk in self.representation_type
-            ]:
+            for data_key in self.representation_type:
 
                 sample = self._get_data_forward(stats, obs_deque, data_key)
 

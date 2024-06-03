@@ -15,22 +15,17 @@ sys.path.append(mypath)
 import data_processing
 import numpy as np
 import torch
-from dataset import Dataset, DataNormalizer
-from diffusion_policy import DiffusionPolicy
-from models import GaussianNoise, ImageEncoder, StateEncoder
+from algo.models.diffusion.dataset import Dataset, DataNormalizer
+from algo.models.diffusion.diffusion_policy import DiffusionPolicy
+from algo.models.diffusion.models import GaussianNoise, ImageEncoder, StateEncoder
 from torch import nn
 from torch.nn import ModuleList
 from torchvision import transforms
-from utils import WandBLogger, generate_random_string, get_eef_delta, save_args
+from algo.models.diffusion.utils import WandBLogger, generate_random_string, get_eef_delta, save_args
 
-LEFT_UR_IDX = list(range(0, 6))
-RIGHT_UR_IDX = list(range(12, 18))
-LEFT_HAND_IDX = list(range(6, 12))
-RIGHT_HAND_IDX = list(range(18, 24))
-HAND_IDX = LEFT_HAND_IDX + RIGHT_HAND_IDX
 
 RT_DIM = {
-    "eef_pos": 12,  # 3 + 9
+    "eef_pos": 7,  # 3 + 9
     "arm_joints": 7,
     "hand_joints": 6,
     "action": 6,
@@ -293,7 +288,7 @@ class Agent:
         if "tactile" in self.representation_type:
             tactile_encoder = ModuleList(
                 [
-                    # Use different image encoders for each finger
+                    # Use different tactile encoders for each finger
                     ImageEncoder(
                         output_sizes["tactile"], self.tactile_channel, dropout["tactile"]
                     )
@@ -375,24 +370,27 @@ class Agent:
 
     def _get_tactile_observation(self, data):
         # allocate memory for the image
+        data = data[0]
+        image_size = data["tactile"].shape
+
         img = torch.zeros(
-            (len(data), 3, self.tactile_channel, self.tactile_width, self.tactile_height),
+            (image_size[0], self.num_fingers, self.tactile_channel, self.tactile_width, self.tactile_height),
             dtype=torch.float32,
         )
 
-        image_size = data[0]["tactile"].shape
-        H, W = image_size[1], image_size[2]
+        H, W = image_size[-2], image_size[-1]
 
         # Only use rgb
         def process_rgb(d):
-            rgb = d["tactile"].astype(np.float32)
-            rgb = np.moveaxis(rgb, -1, 1)
+            rgb = d.astype(np.float32)
+            # rgb = np.moveaxis(rgb, -1, 1)
             if H == 224 and W == 224 and self.tactile_color_jitter == False:
                 rgb = self.tactile_downsample(
                     torch.tensor(rgb)
                 )  # [camera_num, 3, self.img_width, self.img_height]
             else:
                 rgb = torch.tensor(rgb)
+
             return rgb
 
         fn = process_rgb
@@ -401,7 +399,7 @@ class Agent:
                 max_workers=self.num_workers
         ) as executor:
             future_to_data = {
-                executor.submit(fn, d): (d, i) for i, d in enumerate(data)
+                executor.submit(fn, d): (d, i) for i, d in enumerate(data['tactile'])
             }
             for future in concurrent.futures.as_completed(future_to_data):
                 d, i = future_to_data[future]
@@ -429,16 +427,9 @@ class Agent:
                 else:
                     # Only keep the file path, and load the image while training
                     input_data[rt] = np.stack([d["file_path"] for d in data])
-            elif rt == "eef_pos":
-                input_data[rt] = np.stack([d["eef_pos"] for d in data])
-            elif rt == "hand_joints":
-                input_data[rt] = np.stack(
-                    [d["hand_joints"] for d in data]
-                )
-            elif rt == "arm_joints":
-                input_data[rt] = np.stack([d["arm_joints"] for d in data])
             else:
-                input_data[rt] = np.stack([d[rt] for d in data])
+                input_data[rt] = np.array([d[rt] for d in data]).squeeze()
+
         return input_data
 
     def predict(self, obs_deque: collections.deque, num_diffusion_iters=15):
@@ -499,155 +490,6 @@ class Agent:
                 init_data[rt] = np.zeros((total_data_points, RT_DIM[rt]), dtype=np.float32)
         return init_data
 
-    def get_train_loader_old(self, batch_size, img_memmap_loader_path="", tactile_memmap_loader_path="", eval=False):
-
-        current_epi_dir = self.epi_dir
-
-        total_data_points = sum([len(os.listdir(epi)) for epi in current_epi_dir])
-        train_data = {"data": {}, "meta": {}}
-
-        # allocate data structs
-        train_data["data"] = self._get_init_train_data(
-            total_data_points, img_memmap_loader_path=img_memmap_loader_path,
-            tactile_memmap_loader_path=tactile_memmap_loader_path
-        )
-
-        cache_memmap = False
-        img_shape = (total_data_points, self.img_channel, self.img_width, self.img_height)
-        tactile_shape = (total_data_points, self.num_fingers, self.tactile_channel, self.tactile_width, self.tactile_height)
-        # todo understand this memmap thing
-        if img_memmap_loader_path != "":
-            # Use memmap to load imgs
-            if os.path.exists(img_memmap_loader_path):
-                # Load the existing memmap file
-                fp_image = np.memmap(
-                    img_memmap_loader_path, dtype=np.uint16, mode="r", shape=img_shape
-                )
-                train_data["data"]["img"] = fp_image
-            else:
-                # Create a new memmap file
-                cache_memmap = True
-                fp_image = np.memmap(
-                    img_memmap_loader_path, dtype=np.uint16, mode="w+", shape=img_shape
-                )
-        else:
-            pass
-
-        if tactile_memmap_loader_path != "":
-            # Use memmap to load tactiles
-            if os.path.exists(tactile_memmap_loader_path):
-                # Load the existing memmap file
-                fp_tactile = np.memmap(
-                    tactile_memmap_loader_path, dtype=np.uint16, mode="r", shape=tactile_shape
-                )
-                train_data["data"]["tactile"] = fp_tactile
-            else:
-                # Create a new memmap file
-                cache_memmap = True
-                fp_tactile = np.memmap(
-                    tactile_memmap_loader_path, dtype=np.uint16, mode="w+", shape=tactile_shape
-                )
-        else:
-            pass
-
-        data_index = 0
-
-        print("Loading training data")
-        for i, epi in enumerate(current_epi_dir):
-            print("loading {}-th data from {}\r".format(i, epi), end="")
-            # data = data_processing.iterate(epi, load_img=self.load_img)
-            data = np.load(epi)
-            done = data["done"]
-            done_idx = done.nonzero()[0][-1]
-
-            if len(data) == 0:
-                continue
-
-            data_length = done_idx
-
-            # images - (N, self.img_channel, self.img_width, self.img_height)
-            # tactile - (N, num_fingers, self.tactile_channel, self.tactile_width, self.tactile_height)
-
-            obs = self.get_observation(data, self.load_img or cache_memmap)
-
-            # obs space
-            for rt in self.representation_type:
-                if rt == "img":
-                    if cache_memmap:
-                        fp_image[data_index: data_index + data_length] = obs[rt]
-                        fp_image.flush()
-                    elif img_memmap_loader_path == "":
-                        train_data["data"][rt][
-                        data_index: data_index + data_length
-                        ] = obs[rt]
-                if rt == "tactile":
-                    if cache_memmap:
-                        fp_tactile[data_index: data_index + data_length] = obs[rt]
-                        fp_tactile.flush()
-                    elif tactile_memmap_loader_path == "":
-                        train_data["data"][rt][
-                        data_index: data_index + data_length
-                        ] = obs[rt]
-                else:
-                    train_data["data"][rt][data_index: data_index + data_length] = obs[
-                        rt
-                    ]
-
-            # action space
-            train_data["data"]["action"][data_index: data_index + data_length] = (
-                self.get_train_action(data)
-            )
-
-            if len(train_data["meta"]["episode_ends"]) == 0:
-                train_data["meta"]["episode_ends"].append(data_length)
-            else:
-                train_data["meta"]["episode_ends"].append(
-                    data_length + train_data["meta"]["episode_ends"][-1]
-                )
-            data_index += data_length
-
-        if cache_memmap:
-            fp_image = np.memmap(
-                img_memmap_loader_path, dtype=np.uint16, mode="r", shape=img_shape
-            )
-
-            train_data["data"]["img"] = fp_image
-
-            fp_tactile = np.memmap(
-                tactile_memmap_loader_path, dtype=np.uint16, mode="r", shape=tactile_shape
-            )
-
-            train_data["data"]["tactile"] = fp_tactile
-
-        print("Train data loaded")
-        for k, v in train_data["data"].items():
-            print(k, v.shape)
-
-        train_dataset = Dataset(
-            data=train_data,
-            representation_type=self.representation_type,
-            pred_horizon=self.pred_horizon,
-            obs_horizon=self.obs_horizon,
-            action_horizon=self.action_horizon,
-            stats=self.stats,
-            load_img=self.load_img or img_memmap_loader_path != "",
-            img_transform=self.img_transform if not eval else self.img_eval_transform,
-            tactile_transform=self.tactile_transform if not eval else self.tactile_eval_transform,
-            get_img=self._get_image_observation,
-            binarize_tactile=self.binarize_tactile,
-            state_noise=self.state_noise if not eval else 0.0,
-        )
-        dataloader = torch.utils.data.DataLoader(
-            train_dataset,
-            batch_size=batch_size,
-            num_workers=self.num_workers,
-            shuffle=not eval,
-            pin_memory=True,
-            persistent_workers=True,
-        )
-        self.policy.data_stat = train_dataset.stats
-        return dataloader
-
     def get_train_loader(self, batch_size, train_test_split=0.9, eval=False):
 
         num_train_envs = int(len(self.epi_dir) * train_test_split)
@@ -697,12 +539,12 @@ class Agent:
             tactile_memmap_loader_path="",
             train_path=None,
             test_path=None,
+            train_test_split=0.9
     ):
         torch.cuda.empty_cache()
 
         if train_path is not None and test_path is not None:
-            print(train_path)
-            print(test_path)
+            # get the paths
             self.epi_dir = data_processing.get_epi_dir(train_path)
             print(self.epi_dir)
             eval_trajs = data_processing.get_epi_dir(test_path)
@@ -710,17 +552,22 @@ class Agent:
             eval_traj = eval_trajs[0]
             print("eval traj:", eval_traj)
         else:
+            # TODO: currently only here
             self.epi_dir = traj_list
             eval_traj = self.epi_dir[-1]
             self.epi_dir.remove(eval_traj)
             print("eval traj:", eval_traj)
+
         eval_data = self.get_eval_data(eval_traj)
 
-        train_loader = self.get_train_loader(batch_size, img_memmap_loader_path, tactile_memmap_loader_path)
+        train_loader = self.get_train_loader(batch_size, train_test_split)
+
         self.policy.set_lr_scheduler(len(train_loader) * epochs)
+
         if self.stats is None:
             self.stats = train_loader.dataset.stats
             self.save_stats(save_path)
+
         if self.compile_train:
             train_loader.dataset.__getitem__ = torch.compile(
                 train_loader.dataset.__getitem__
@@ -745,38 +592,25 @@ class Agent:
 
     def get_eval_action(self, data):
         if self.predict_eef_delta:
-            # TODO: make sure this is only used when "control" is eef pose
-            act = []
-            for d in data:
-                left_arm_act = get_eef_delta(
-                    d["eef_pos"][:6], d["control"][LEFT_UR_IDX]
-                )
-                left_hand_act = d["control"][LEFT_HAND_IDX]
-                right_arm_act = get_eef_delta(
-                    d["eef_pos"][6:], d["control"][RIGHT_UR_IDX]
-                )
-                right_hand_act = d["control"][RIGHT_HAND_IDX]
-                act.append(
-                    np.concatenate(
-                        [left_arm_act, left_hand_act, right_arm_act, right_hand_act],
-                        axis=-1,
-                    )
-                )
-            return act
-        elif self.predict_pos_delta:
-            # TODO: make sure this is only used when "control" is joint pos
-            act = [d["control"] for d in data]
+            act = [d["eef_pos"] for d in data]
             act = np.diff(act, axis=0, append=act[-1:])
-            return act
+        elif self.predict_pos_delta:
+            act = [d["arm_joints"] for d in data]
+            act = np.diff(act, axis=0, append=act[-1:])
         else:
-            return [d["control"] for d in data]
+            act = [d["action"].tolist() for d in data]
+        if len(data) == 1:
+            act = act[0]
+        return act
 
     def get_eval_data(self, data_path):
+
         print("GETTING EVAL DATA", end="\r")
-        data = data_processing.iterate(data_path)
+        data_path = data_path if isinstance(data_path, list) else [data_path]
+        data = data_processing.iterate_npz(data_path)
+        B = len(data[0]['action'])
 
         action = self.get_eval_action(data)
-        B = len(data)
 
         print("GETTING EVAL OBSERVATION", end="\r")
         obs = self.get_observation(data, load_img=True)
@@ -786,6 +620,12 @@ class Agent:
             # transfer image type to float32
             obs["img"] = obs["img"].float()
             obs["img"] = self.img_eval_transform(obs["img"])
+
+        if "tactile" in self.representation_type:
+            # transfer image type to float32
+            obs["tactile"] = obs["tactile"].float()
+            obs["tactile"] = self.tactile_eval_transform(obs["tactile"])
+
         for i in range(B):
             obs_list.append({rt: obs[rt][i] for rt in self.representation_type})
         return obs_list, action
@@ -809,8 +649,8 @@ class Agent:
                 with open(os.path.join(save_path, str(i) + ".pkl"), "wb") as f:
                     pickle.dump(
                         {
-                            "control": action[i],
-                            "joint_positions": eval_data[0][i]["pos"],
+                            "action": action[i],
+                            "eef_pos": eval_data[0][i]["eef_pos"],
                         },
                         f,
                     )
@@ -943,11 +783,11 @@ class Runner:
             compile_train=cfg.compile_train,
         )
 
-        if cfg.load_path is not None:
+        if cfg.load_path:
             agent.load(cfg.load_path)
 
         if not cfg.eval:
-            if cfg.model_save_path is None:
+            if cfg.model_save_path:
                 model_path = os.path.join(cfg.output_dir, "ckpts")
             else:
                 model_path = cfg.model_save_path

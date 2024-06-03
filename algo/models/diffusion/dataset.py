@@ -6,12 +6,13 @@ import torch
 
 
 def create_sample_indices(
-    episode_ends: np.ndarray,
-    sequence_length: int,
-    pad_before: int = 0,
-    pad_after: int = 0,
+        episode_ends: np.ndarray,
+        sequence_length: int,
+        pad_before: int = 0,
+        pad_after: int = 0,
 ):
     indices = list()
+
     for i in range(len(episode_ends)):
 
         start_idx = 0
@@ -36,20 +37,24 @@ def create_sample_indices(
     return indices
 
 
+
 def sample_sequence(
-    traj_list,
-    sequence_length,
-    file_idx,
-    buffer_start_idx,
-    buffer_end_idx,
-    sample_start_idx,
-    sample_end_idx,
+        representation_type,
+        traj_list,
+        sequence_length,
+        file_idx,
+        buffer_start_idx,
+        buffer_end_idx,
+        sample_start_idx,
+        sample_end_idx,
 ):
     result = dict()
 
     train_data = np.load(traj_list[file_idx])
 
     for key, input_arr in train_data.items():
+        if key not in representation_type:
+            continue
         sample = input_arr[buffer_start_idx:buffer_end_idx]
         data = sample
         if (sample_start_idx > 0) or (sample_end_idx < sequence_length):
@@ -87,15 +92,17 @@ def unnormalize_data(ndata, stats):
     data = ndata * (stats["max"] - stats["min"] + 1e-8) + stats["min"]
     return data
 
+
 from pathlib import Path
 from tqdm import tqdm
 import random
 
+
 class DataNormalizer:
     def __init__(self, cfg, file_list):
         self.cfg = cfg
-        self.normalize_keys = self.cfg.train.normalize_keys
-        self.normalization_path = self.cfg.train.normalize_file
+        self.normalize_keys = self.cfg.normalize_keys
+        self.normalization_path = self.cfg.normalize_file
         self.normalize_dict = {"mean": {}, "std": {}}
         self.file_list = file_list
         self.remove_failed_trajectories()
@@ -170,6 +177,7 @@ class DataNormalizer:
         self.ensure_directory_exists(self.normalization_path)
         self.load_or_create_normalization_file()
 
+
 class MemmapLoader:
     def __init__(self, path):
         with open(os.path.join(path, "metadata.pkl"), "rb") as f:
@@ -205,27 +213,27 @@ class MemmapLoader:
 # dataset
 class Dataset(torch.utils.data.Dataset):
     def __init__(
-        self,
-        traj_list: list,
-        representation_type: list,
-        pred_horizon: int,
-        obs_horizon: int,
-        action_horizon: int,
-        stats: dict = None,
-        img_transform=None,
-        tactile_transform=None,
-        get_img=None,
-        load_img: bool = False,
-        binarize_tactile: bool = False,
-        state_noise: float = 0.0,
-        img_dim: tuple = (180,320),
-        tactile_dim: tuple = (0,0),
+            self,
+            traj_list: list,
+            representation_type: list,
+            pred_horizon: int,
+            obs_horizon: int,
+            action_horizon: int,
+            stats: dict = None,
+            img_transform=None,
+            tactile_transform=None,
+            get_img=None,
+            load_img: bool = False,
+            binarize_tactile: bool = False,
+            state_noise: float = 0.0,
+            img_dim: tuple = (180, 320),
+            tactile_dim: tuple = (0, 0),
     ):
 
         self.state_noise = state_noise
         self.img_dim = img_dim
         self.tactile_dim = tactile_dim
-
+        self.count = 0
         # self.memmap_loader = None
         # if "memmap_loader_path" in data.keys():
         #     self.memmap_loader = MemmapLoader(data["memmap_loader_path"])
@@ -238,19 +246,12 @@ class Dataset(torch.utils.data.Dataset):
         self.load_img = load_img
 
         episode_ends = []
-        data_index = 0
 
         for file_idx, file in enumerate(traj_list):
             data = np.load(file)
             done = data["done"]
             data_length = done.nonzero()[0][-1]
-            if len(episode_ends) == 0:
-                episode_ends.append(data_length)
-            else:
-                episode_ends.append(
-                    data_length + episode_ends[-1]
-                )
-            data_index += data_length
+            episode_ends.append(data_length)
 
         # compute start and end of each state-action sequence
         # also handles padding
@@ -285,6 +286,7 @@ class Dataset(torch.utils.data.Dataset):
             # not using memmap loader and loading images while training
             data = [pickle.load(open(image_path, "rb")) for image_path in image_pathes]
         imgs = self.get_img(data)
+
         return imgs
 
     def __getitem__(self, idx):
@@ -299,6 +301,7 @@ class Dataset(torch.utils.data.Dataset):
 
         # get nomralized data using these indices
         nsample = sample_sequence(
+            representation_type=self.representation_type + ['action'],
             traj_list=self.traj_list,
             sequence_length=self.pred_horizon,
             file_idx=file_idx,
@@ -311,37 +314,96 @@ class Dataset(torch.utils.data.Dataset):
         for k in self.representation_type:
             # discard unused observations
             nsample[k] = nsample[k][: self.obs_horizon]
-            if k == "img":
-                if self.load_img:
-                    nsample["img"] = self.read_img(nsample["img"], idx)
-                else:
-                    nsample["img"] = torch.tensor(
-                        nsample["img"].astype(np.float32), dtype=torch.float32
-                    )
-                nsample_shape = nsample["img"].shape
-                nsample["img"] = self.img_transform(nsample["img"])
-                nsample["img"] = nsample["img"].reshape(nsample_shape[:3] + self.img_dim)     # (Batch, num_cam, Channel, Height, Width)
 
-            elif k == "tactile":
-                if self.load_img:
-                    nsample["tactile"] = self.read_img(nsample["tactile"], idx)
-                else:
-                    nsample["tactile"] = torch.tensor(
-                        nsample["tactile"].astype(np.float32), dtype=torch.float32
-                    )
-                nsample_shape = nsample["tactile"].shape
-                # tactile_transform the tactile
-                # nsample["tactile"] = nsample["tactile"].reshape(
-                #     nsample_shape[0] * nsample_shape[1], *nsample_shape[2:]
-                # )  # (Batch * num_cam, Channel, Height, Width)
-                nsample["tactile"] = self.tactile_transform(nsample["tactile"])
-                nsample["tactile"] = nsample["tactile"].reshape(
-                    nsample_shape[:3] + self.tactile_dim)  # (Batch, num_cam, Channel, Height, Width)
-            else:
-                nsample[k] = torch.tensor(nsample[k], dtype=torch.float32)
-                if self.state_noise > 0.0:
-                    # add noise to the state
-                    nsample[k] = nsample[k] + torch.randn_like(nsample[k]) * self.state_noise
+            nsample[k] = torch.tensor(nsample[k], dtype=torch.float32)
+
+            if self.state_noise > 0.0:
+                # add noise to the state
+                nsample[k] = nsample[k] + torch.randn_like(nsample[k]) * self.state_noise
+
         nsample["action"] = torch.tensor(nsample["action"], dtype=torch.float32)
+
+        return nsample
+
+class Dataset2(torch.utils.data.Dataset):
+    def __init__(
+            self,
+            traj_list: list,
+            representation_type: list,
+            pred_horizon: int,
+            obs_horizon: int,
+            action_horizon: int,
+            stats: dict = None,
+            img_transform=None,
+            tactile_transform=None,
+            get_img=None,
+            load_img: bool = False,
+            binarize_tactile: bool = False,
+            state_noise: float = 0.0,
+            img_dim: tuple = (180, 320),
+            tactile_dim: tuple = (0, 0),
+    ):
+
+        self.state_noise = state_noise
+        self.img_dim = img_dim
+        self.tactile_dim = tactile_dim
+        self.count = 0
+        # self.memmap_loader = None
+        # if "memmap_loader_path" in data.keys():
+        #     self.memmap_loader = MemmapLoader(data["memmap_loader_path"])
+        self.to_torch = lambda x: torch.from_numpy(x).float()
+
+        self.representation_type = representation_type
+        self.img_transform = img_transform
+        self.tactile_transform = tactile_transform
+        self.sequence_length = pred_horizon
+        self.stride = pred_horizon
+
+        self.indices_per_trajectory = []
+        for file_idx, file in enumerate(traj_list):
+            data = np.load(file)
+            done = data["done"]
+            done_idx = done.nonzero()[0][-1]
+            total_len = done_idx
+
+            if total_len >= self.sequence_length:
+                num_subsequences = (total_len - self.sequence_length) // self.stride + 1
+                self.indices_per_trajectory.extend([(file_idx, i * self.stride) for i in range(num_subsequences)])
+        print('Total sub trajectories:', len(self.indices_per_trajectory))
+
+
+        self.traj_list = traj_list
+        self.stats = stats
+        self.pred_horizon = pred_horizon
+        self.action_horizon = action_horizon
+        self.obs_horizon = obs_horizon
+        self.binarize_tactile = binarize_tactile
+
+    def __len__(self):
+        return int((len(self.indices_per_trajectory)))
+
+    def extract_sequence(self, data, key, start_idx):
+        # Extract a sequence of specific length from the array
+        return data[key][start_idx:start_idx + self.sequence_length]
+
+    def __getitem__(self, idx):
+        # get the start/end indices for this datapoint
+        file_idx, start_idx = self.indices_per_trajectory[idx]
+        file_path = self.traj_list[file_idx]
+        data = np.load(file_path)
+
+        nsample = {key: self.extract_sequence(data, key, start_idx) for key in self.representation_type}
+
+        for k in self.representation_type:
+            # discard unused observations
+            nsample[k] = nsample[k][: self.obs_horizon]
+
+            nsample[k] = torch.tensor(nsample[k], dtype=torch.float32)
+            if self.state_noise > 0.0:
+                # add noise to the state
+                nsample[k] = nsample[k] + torch.randn_like(nsample[k]) * self.state_noise
+
+        action = self.extract_sequence(data, "action", start_idx)
+        nsample["action"] = torch.tensor(action, dtype=torch.float32)
 
         return nsample

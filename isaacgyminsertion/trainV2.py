@@ -66,6 +66,15 @@ def run(cfg: DictConfig):
 
     # sets seed. if seed is -1 will pick a random one
     # cfg.seed = set_seed(cfg.seed, torch_deterministic=cfg.torch_deterministic, rank=global_rank)
+    if cfg.train_diffusion:
+        # TODO edit
+        from algo.models.diffusion.train_diffusion import Runner
+
+        # perform train
+        runner = Runner(cfg.diffusion_train)
+
+        exit()
+
     if cfg.offline_real_training:
         # TODO edit
         from algo.models.transformer.runner import Runner as TransformerRunner
@@ -128,41 +137,11 @@ def run(cfg: DictConfig):
                                        action_regularization=cfg.offline_train.train.action_regularization)
             runner.run()
 
-        # sim_timer = cfg.task.env.sim_timer
-        # num_trials = 3
-        # cprint(f"Running simulation for {num_trials} trials", "green", attrs=["bold"])
-        # thread_stop = threading.Event()
-        # agent.restore_test(cfg.train.load_path)
-        # sim_thread = threading.Thread(
-        #     name="agent.test()", target=agent.test, args=[thread_stop]
-        # )
-        # threading.Thread(
-        #     name="sim_time", target=agent.play_games, args=[thread_stop, num_trials]
-        # ).start()
-
-        # sim_thread.start()
-        # sim_thread.join()
-        # cprint(f"Simulation terminated", "green", attrs=["bold"])
     else:
         if rank <= 0:
             date = str(datetime.now().strftime("%m%d%H"))
             with open(os.path.join(output_dif, f"config_{date}.yaml"), "w") as f:
                 f.write(OmegaConf.to_yaml(cfg))
-
-        # check whether execute train by mistake:
-        # best_ckpt_path = os.path.join(
-        #     "outputs",
-        #     cfg.train.ppo.output_name,
-        #     "stage1_nn" if cfg.train.algo == "PPO" else "stage2_nn",
-        #     "best.pth",
-        # )
-        # user_input = 'yes'
-        # if os.path.exists(best_ckpt_path):
-        #     user_input = input(
-        #         f"are you intentionally going to overwrite files in {cfg.train.ppo.output_name}, type yes to continue \n"
-        #     )
-        #     if user_input != "yes":
-        #         exit()
 
         agent.restore_train(cfg.train.load_path)
         agent.train()
@@ -176,4 +155,5 @@ if __name__ == "__main__":
     #     "config_path", type=argparse.FileType("r"), help="Path to hydra config."
     # )
     # args = parser.parse_args()
+
     run()

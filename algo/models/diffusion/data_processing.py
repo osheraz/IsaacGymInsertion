@@ -20,6 +20,8 @@ def from_pickle(path, load_img = True, num_cam = 3):
 
     return data
 
+
+
 # Get the trajectory data from the given directory
 def iterate(path, workers=32, load_img=True, num_cam=3):
     dir = os.listdir(path)
@@ -48,6 +50,20 @@ def iterate(path, workers=32, load_img=True, num_cam=3):
                 pass
     return data
 
+
+def iterate_npz(traj_list, workers=32,):
+    data = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
+        futures = {executor.submit(np.load, file): (i, file) for i, file in enumerate(traj_list)}
+        for future in futures:
+            try:
+                i, file = futures[future]
+                d = future.result()
+                data.append(dict(d))
+            except:
+                print(f"Failed to load {file}")
+                pass
+    return data
 
 def get_latest(path):
     dir = os.listdir(path)
