@@ -23,25 +23,15 @@ import isaacgym
 
 import hydra
 
-from isaacgyminsertion.utils.rlgames_utils import multi_gpu_get_rank
-
-from omegaconf import DictConfig, OmegaConf
 from hydra.utils import to_absolute_path
-from isaacgyminsertion.tasks import isaacgym_task_map
 from omegaconf import DictConfig, OmegaConf
-import gym
 
-import argparse
-from typing import Optional
 from termcolor import cprint
 
-from algo.models.transformer.frozen_ppo import \
-    PPO  # TODO: we can completely switch to this one for PPO. (added functions for online testing of offline training)
-# from algo.ppo.ppo import PPO
-from algo.ext_adapt.ext_adapt import ExtrinsicAdapt
+from algo.ppo.frozen_ppo import PPO
 
 from isaacgyminsertion.tasks import isaacgym_task_map
-from isaacgyminsertion.utils.reformat import omegaconf_to_dict, print_dict
+from isaacgyminsertion.utils.reformat import omegaconf_to_dict
 from isaacgyminsertion.utils.utils import set_np_formatting, set_seed
 
 import warnings
@@ -75,7 +65,6 @@ def run(cfg: DictConfig):
     if cfg.offline_real_training:
         # TODO edit
         from algo.models.transformer.runner import Runner as TransformerRunner
-        from algo.models.transformer.frozen_ppo import PPO
 
         agent = None
 
@@ -88,7 +77,6 @@ def run(cfg: DictConfig):
     # for training the transformer with offline data only
     if cfg.offline_training:
         from algo.models.transformer.runner import Runner as TransformerRunner
-        from algo.models.transformer.frozen_ppo import PPO
 
         agent = None
 
@@ -128,7 +116,7 @@ def run(cfg: DictConfig):
             print("Loading Student model from", cfg.offline_train.train.student_ckpt_path)
 
             from algo.models.transformer.runner import Runner as TransformerRunner
-            from algo.models.transformer.frozen_ppo import PPO as PPOv3
+            from algo.ppo.frozen_ppo import PPO as PPOv3
             agent = PPOv3(envs, output_dif, full_config=cfg)
             agent.restore_test(cfg.train.load_path)
             agent.set_eval()

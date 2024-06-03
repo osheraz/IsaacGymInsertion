@@ -148,7 +148,13 @@ def mask_img(x, img_patch_size, img_masking_prob):
     return x
 
 class TactileDataset(Dataset):
-    def __init__(self, files, sequence_length=500, full_sequence=False, normalize_dict=None, stride=10):
+    def __init__(self, files,
+                 sequence_length=500,
+                 full_sequence=False,
+                 normalize_dict=None,
+                 img_transform=None,
+                 tactile_transform=None,
+                 ):
 
         self.all_folders = files
         self.sequence_length = sequence_length
@@ -158,33 +164,8 @@ class TactileDataset(Dataset):
 
         self.to_torch = lambda x: torch.from_numpy(x).float()
 
-        # Define transform:
-        # Crop randomization, normalization
-        self.transform = nn.Sequential(
-            transforms.RandomCrop((166, 288)),
-        )
-
-        img_gaussian_noise = 0.0
-        img_patch_size = 16
-        img_masking_prob = 0.0
-
-        # Add gaussian noise to the image
-        if img_gaussian_noise > 0.0:
-            self.transform = nn.Sequential(
-                self.transform,
-                GaussianNoise(img_gaussian_noise),
-            )
-
-        if img_masking_prob > 0.0:
-            self.transform = lambda x: mask_img(
-                transforms.RandomCrop((166, 288))(x),
-                img_patch_size,
-                img_masking_prob
-            )
-        # For evaluation, only center crop and normalize
-        self.eval_transform = nn.Sequential(
-            transforms.CenterCrop((166, 288)),
-        )
+        self.img_transform = img_transform
+        self.tactile_transform = tactile_transform
 
         # Store indices corresponding to each trajectory
         self.indices_per_trajectory = []
@@ -233,11 +214,15 @@ class TactileDataset(Dataset):
 
         # Tactile input [T F W H C]
         tactile_input = data_seq["tactile"]
+        if self.tactile_transform is not None:
+            tactile_input = self.tactile_transform(tactile_input)
         # T, F, C, W, H = tactile_input.shape
         # tactile_input = tactile_input.reshape(T, F * C, W, H)
         # left_finger, right_finger, bottom_finger = [data_seq["tactile"][:, i, ...] for i in range(3)]
 
         img_input = data_seq["img"]
+        if self.img_transform is not None:
+            img_input = self.img_transform(img_input)
 
         eef_pos = data_seq["eef_pos"]
         hand_joints = data_seq["hand_joints"]
@@ -288,7 +273,6 @@ class TactileDataset(Dataset):
                                                         label,
                                                         action,
                                                         mask]]
-        # tensors[1] = self.transform(tensors[1])
 
         return tuple(tensors)
 
