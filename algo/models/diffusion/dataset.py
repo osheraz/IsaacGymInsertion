@@ -336,17 +336,11 @@ class Dataset2(torch.utils.data.Dataset):
             stats: dict = None,
             img_transform=None,
             tactile_transform=None,
-            get_img=None,
-            load_img: bool = False,
             binarize_tactile: bool = False,
             state_noise: float = 0.0,
-            img_dim: tuple = (180, 320),
-            tactile_dim: tuple = (0, 0),
     ):
 
         self.state_noise = state_noise
-        self.img_dim = img_dim
-        self.tactile_dim = tactile_dim
         self.count = 0
         # self.memmap_loader = None
         # if "memmap_loader_path" in data.keys():
@@ -397,9 +391,13 @@ class Dataset2(torch.utils.data.Dataset):
         for k in self.representation_type:
             # discard unused observations
             nsample[k] = nsample[k][: self.obs_horizon]
-
             nsample[k] = torch.tensor(nsample[k], dtype=torch.float32)
-            if self.state_noise > 0.0:
+
+            if k == 'img':
+                nsample[k] = self.img_transform(nsample[k])
+            elif k == 'tactile':
+                nsample[k] = self.tactile_transform(nsample[k])
+            elif self.state_noise > 0.0:
                 # add noise to the state
                 nsample[k] = nsample[k] + torch.randn_like(nsample[k]) * self.state_noise
 

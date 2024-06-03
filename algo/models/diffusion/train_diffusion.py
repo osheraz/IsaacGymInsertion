@@ -638,7 +638,7 @@ class Agent:
         action, mse, norm_mse = self.policy.eval(obs, action)
         print("ACTION_MSE: {}, NORM_MSE: {}".format(mse, norm_mse))
         if save_path is None:
-            save_path = "./eval/{}".format(
+            save_path = "./outputs/{}".format(
                 data_path.split("/")[-1]
                 + "_"
                 + time.strftime("%m%d_%H%M%S", time.localtime())
