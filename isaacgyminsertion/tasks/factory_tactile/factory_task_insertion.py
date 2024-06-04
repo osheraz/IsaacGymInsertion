@@ -662,7 +662,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                             f"images/dim/{self.count:05}.png",
                         )
 
-                    if False and i == 0:
+                    if True and i == 0:
                         img = self.process_depth_image(im).unsqueeze(0)
                         img = img.cpu().numpy()
                         # img = np.uint8(img.cpu().numpy() * 255)

@@ -5,7 +5,7 @@ import cv2
 import numpy as np
 import pyrealsense2 as rs
 
-from algo.deploy.env.camera.camera import CameraDriver
+from algo.deploy.env.backup.camera.camera import CameraDriver
 
 
 def get_device_ids() -> List[str]:
