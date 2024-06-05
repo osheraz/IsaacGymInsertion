@@ -585,7 +585,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                 self.contact_points_hist[:, (self.cfg_task.env.num_points * 0):, ...] = self.gt_extrinsic_contact.clone()
 
         state_tensors = [
-            self.hand_joints,  # 6
+            # self.hand_joints,  # 6
             plug_hand_pos,  # 3
             plug_hand_quat,  # 4
             # self.left_finger_pos,  # 3
@@ -595,8 +595,8 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             # self.plug_hand_quat_diff,  # 4
             # plug_pos_error,  # 3
             # plug_quat_error,  # 4
-            physics_params,  # 6
-            self.finger_normalized_forces,  # 3
+            # physics_params,  # 6
+            # self.finger_normalized_forces,  # 3
             # self.plug_pcd.view(self.num_envs, -1),  # 3 * num_points
         ]
 
@@ -685,10 +685,13 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
     def _update_rew_buf(self):
         """Compute reward at current timestep."""
 
-        action_penalty = torch.norm(self.actions, p=2, dim=-1)
+        act = self.actions[:, -3:]
+        prv = self.prev_actions[:, -3:]
+
+        action_penalty = torch.norm(act, p=2, dim=-1)
         action_reward = self.cfg_task.rl.action_penalty_scale * action_penalty
 
-        action_delta_penalty = torch.norm(self.actions - self.prev_actions, p=2, dim=-1)
+        action_delta_penalty = torch.norm(act - prv, p=2, dim=-1)
         action_delta_reward = self.cfg_task.rl.action_delta_scale * action_delta_penalty
 
         grip_tension_penalty = torch.norm(self.hand_joints, p=2, dim=-1)

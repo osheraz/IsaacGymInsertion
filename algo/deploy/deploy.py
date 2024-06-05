@@ -98,7 +98,6 @@ class HardwarePlayer(object):
         self.dis_noise = self.full_config.task.external_cam.dis_noise
         self.rel_act_angles = torch.tensor([0.0, 0.0, 0.0], device=self.device).repeat((self.num_envs, 1))
 
-
         net_config = {
             'actor_units': self.full_config.train.network.mlp.units,
             'actions_num': self.num_actions,
@@ -214,8 +213,19 @@ class HardwarePlayer(object):
         self.fingertip_centered_pos = torch.tensor(ee_pose[:3], device=self.device, dtype=torch.float).unsqueeze(0)
         self.fingertip_centered_quat = torch.tensor(ee_pose[3:], device=self.device, dtype=torch.float).unsqueeze(0)
 
+        torch_pi = torch.tensor(
+            np.pi,
+            dtype=torch.float32,
+            device=self.device
+        )
+        rotation_quat_x = torch_jit_utils.quat_from_angle_axis(torch_pi, torch.tensor([1, 0, 0], dtype=torch.float32, device=self.device)).repeat((self.num_envs, 1))
+        rotation_quat_z = torch_jit_utils.quat_from_angle_axis(-torch_pi * 0.5, torch.tensor([0, 0, 1], dtype=torch.float32, device=self.device)).repeat((self.num_envs, 1))
+
+        q_rotated = torch_jit_utils.quat_mul(rotation_quat_x, self.fingertip_centered_quat.clone())
+        q_rotated = torch_jit_utils.quat_mul(rotation_quat_z, q_rotated)
+
         robot_base_transform_inv = torch_jit_utils.tf_inverse(
-            self.fingertip_centered_quat.clone(), self.fingertip_centered_pos.clone()
+            q_rotated, self.fingertip_centered_pos.clone()
         )
         quat_in_robot_base, pos_in_robot_base = torch_jit_utils.tf_combine(
             robot_base_transform_inv[0], robot_base_transform_inv[1], quat, pos
@@ -275,6 +285,7 @@ class HardwarePlayer(object):
             device=self.device,
             dtype=torch.float,
         )
+
         # Way too big tensor.
         self.tactile_queue = torch.zeros(
             (1, self.tactile_seq_length, 3,  # left, right, bottom
@@ -386,65 +397,78 @@ class HardwarePlayer(object):
         if self.gt_contacts_info:
             self.contacts[0, :] = torch.tensor(self.env.tracker.extrinsic_contact).to(self.device)
 
-    def compute_observations(self, display_image=True, with_priv=False):
+    def compute_observations(self, display_image=True, with_priv=False, with_tactile=True, with_img=True):
 
         obses = self.env.get_obs()
 
         arm_joints = obses['joints']
         ee_pose = obses['ee_pose']
-        left, right, bottom = obses['frames']
         ft = obses['ft']
-
         self.ft_data = torch.tensor(ft, device=self.device).unsqueeze(0)
         self.arm_dof_pos = torch.tensor(arm_joints, device=self.device).unsqueeze(0)
         self.fingertip_centered_pos = torch.tensor(ee_pose[:3], device=self.device, dtype=torch.float).unsqueeze(0)
         self.fingertip_centered_quat = torch.tensor(ee_pose[3:], device=self.device, dtype=torch.float).unsqueeze(0)
 
-        eef_pos = torch.cat((self.fingertip_centered_pos,
-                            quat2R(self.fingertip_centered_quat).reshape(1, -1)), dim=-1)
-
-        # Cutting by half
-        if self.cfg_tactile.half_image:
-            w = left.shape[0]
-            left = left[:w // 2, :, :]
-            right = right[:w // 2, :, :]
-            bottom = bottom[:w // 2, :, :]
-
-        # Resizing to encoder size
-        left = cv2.resize(left, (self.height, self.width), interpolation=cv2.INTER_AREA)
-        right = cv2.resize(right, (self.height, self.width), interpolation=cv2.INTER_AREA)
-        bottom = cv2.resize(bottom, (self.height, self.width), interpolation=cv2.INTER_AREA)
-
-        if display_image:
-            cv2.imshow("Hand View\tLeft\tRight\tMiddle", np.concatenate((left, right, bottom), axis=1))
-            cv2.waitKey(1)
-
-        if self.num_channels == 3:
-            self.tactile_imgs[0, 0] = to_torch(left).permute(2, 0, 1).to(self.device)
-            self.tactile_imgs[0, 1] = to_torch(right).permute(2, 0, 1).to(self.device)
-            self.tactile_imgs[0, 2] = to_torch(bottom).permute(2, 0, 1).to(self.device)
-
-            # self.tactile_imgs[0, 0] = torch_jit_utils.rgb_transform(left).to(self.device)
-            # self.tactile_imgs[0, 1] = torch_jit_utils.rgb_transform(right).to(self.device)
-            # self.tactile_imgs[0, 2] = torch_jit_utils.rgb_transform(bottom).to(self.device)
-        else:
-            self.tactile_imgs[0, 0] = to_torch(
-                cv2.cvtColor(left.astype('float32'), cv2.COLOR_BGR2GRAY)).to(self.device)
-            self.tactile_imgs[0, 1] = to_torch(
-                cv2.cvtColor(right.astype('float32'), cv2.COLOR_BGR2GRAY)).to(self.device)
-            self.tactile_imgs[0, 2] = to_torch(
-                cv2.cvtColor(bottom.astype('float32'), cv2.COLOR_BGR2GRAY)).to(self.device)
-
-        self.tactile_queue[:, 1:] = self.tactile_queue[:, :-1].clone().detach()
-        self.tactile_queue[:, 0, :] = self.tactile_imgs
-
         self.ft_queue[:, 1:] = self.ft_queue[:, :-1].clone().detach()
         self.ft_queue[:, 0, :] = self.ft_data
+
+        if with_tactile:
+            left, right, bottom = obses['frames']
+
+            # Cutting by half
+            if self.cfg_tactile.half_image:
+                w = left.shape[0]
+                left = left[:w // 2, :, :]
+                right = right[:w // 2, :, :]
+                bottom = bottom[:w // 2, :, :]
+
+            # Resizing to encoder size
+            left = cv2.resize(left, (self.height, self.width), interpolation=cv2.INTER_AREA)
+            right = cv2.resize(right, (self.height, self.width), interpolation=cv2.INTER_AREA)
+            bottom = cv2.resize(bottom, (self.height, self.width), interpolation=cv2.INTER_AREA)
+
+            if display_image:
+                cv2.imshow("Hand View\tLeft\tRight\tMiddle", np.concatenate((left, right, bottom), axis=1))
+                cv2.waitKey(1)
+
+            if self.num_channels == 3:
+                self.tactile_imgs[0, 0] = to_torch(left).permute(2, 0, 1).to(self.device)
+                self.tactile_imgs[0, 1] = to_torch(right).permute(2, 0, 1).to(self.device)
+                self.tactile_imgs[0, 2] = to_torch(bottom).permute(2, 0, 1).to(self.device)
+
+                # self.tactile_imgs[0, 0] = torch_jit_utils.rgb_transform(left).to(self.device)
+                # self.tactile_imgs[0, 1] = torch_jit_utils.rgb_transform(right).to(self.device)
+                # self.tactile_imgs[0, 2] = torch_jit_utils.rgb_transform(bottom).to(self.device)
+
+            else:
+                self.tactile_imgs[0, 0] = to_torch(
+                    cv2.cvtColor(left.astype('float32'), cv2.COLOR_BGR2GRAY)).to(self.device)
+                self.tactile_imgs[0, 1] = to_torch(
+                    cv2.cvtColor(right.astype('float32'), cv2.COLOR_BGR2GRAY)).to(self.device)
+                self.tactile_imgs[0, 2] = to_torch(
+                    cv2.cvtColor(bottom.astype('float32'), cv2.COLOR_BGR2GRAY)).to(self.device)
+
+            self.tactile_queue[:, 1:] = self.tactile_queue[:, :-1].clone().detach()
+            self.tactile_queue[:, 0, :] = self.tactile_imgs
+
+        if with_img:
+
+            img = obses['img']
+            self.image_buf[0] = to_torch(img).permute(2, 0, 1).to(self.device)
+            self.img_queue[:, 1:] = self.img_queue[:, :-1].clone().detach()
+            self.img_queue[:, 0, ...] = self.image_buf
+
+            if display_image:
+                cv2.imshow("Depth Image", img.transpose(1, 2, 0) + 0.5)
+                cv2.waitKey(1)
 
         # some-like taking a new socket pose measurement
         self._update_socket_pose()
 
-        noisy_delta_pos = self.noisy_gripper_goal_pos - self.fingertip_centered_pos
+        eef_pos = torch.cat((self.fingertip_centered_pos,
+                            quat2R(self.fingertip_centered_quat).reshape(1, -1)), dim=-1)
+
+        # noisy_delta_pos = self.noisy_gripper_goal_pos - self.fingertip_centered_pos
 
         obs = torch.cat([eef_pos,
                          self.actions,
@@ -465,22 +489,27 @@ class HardwarePlayer(object):
         self.obs_buf = self.obs_queue.clone()  # torch.cat(obs_tensors, dim=-1)  # shape = (num_envs, num_observations)
         self.obs_student_buf = self.obs_stud_queue.clone()  # shape = (num_envs, num_observations_student)
 
-        if not with_priv:
-            return self.obs_buf, self.obs_student_buf, self.tactile_queue
-        else:
+        obs_dict = {'obs': self.obs_buf.clone(),
+                    'student_obs': self.obs_student_buf.clone()}
+
+        if with_tactile:
+            obs_dict['tactile'] = self.tactile_queue.clone()
+        if with_img:
+            obs_dict['img'] = self.img_queue.clone()
+
+        if with_priv:
             # Compute privileged info (gt_error + contacts)
             self._update_plug_pose()
-
             state_tensors = [
                 # self.plug_hand_pos,  # 3
                 # self.plug_hand_quat,  # 4
                 self.plug_pos_error,  # 3
                 self.plug_quat_error,  # 4
             ]
-
             self.states_buf = torch.cat(state_tensors, dim=-1)  # shape = (num_envs, num_states)
+            obs_dict['priv_info'] = self.states_buf.clone()
 
-            return self.obs_buf, self.obs_student_buf, self.tactile_queue, self.states_buf
+        return obs_dict
 
     def _update_reset_buf(self):
 
@@ -757,7 +786,9 @@ class HardwarePlayer(object):
             # rospy.sleep(2.0)
             # self.env.arm.calib_robotiq()
 
-            obs, obs_stud, tactile, priv = self.compute_observations(with_priv=True)
+            obses = self.compute_observations(with_priv=True)
+            obs, obs_stud, tactile, priv = obses['obs'], obses['student_obs'], obses['tactile'], obses['priv_info']
+
             self._update_reset_buf()
 
             for i in range(self.full_config.task.env.numObsHist):
@@ -771,25 +802,19 @@ class HardwarePlayer(object):
 
                 input_dict = {
                     'obs': obs,
-                    # 'student_obs': obs_stud,
                     'tactile_hist': tactile,
                     'priv_info': priv,
-                    'contacts': self.contacts.clone()
                 }
 
                 action, latent = self.model.act_inference(input_dict)
                 action = torch.clamp(action, -1.0, 1.0)
 
-                # start_time = time()
                 self.update_and_apply_action(action, wait=False, by_moveit=False, by_vel=True)
-                # print("Actions:", np.round(action[0].cpu().numpy(), 3), "\tFPS: ", 1.0 / (time() - start_time))
 
                 ros_rate.sleep()
                 self._update_reset_buf()
                 self.episode_length += 1
 
-                # if self.episode_length >= max_steps:
-                #     done = torch.tensor([1]).to(self.device)
                 if self.deploy_config.data_logger.collect_data:
                     data_logger.log_trajectory_data(action, latent, self.done.clone())
 
@@ -798,7 +823,8 @@ class HardwarePlayer(object):
                     break
 
                 # Compute next observation
-                obs, obs_stud, tactile, priv = self.compute_observations(with_priv=True)
+                obses = self.compute_observations(with_priv=True)
+                obs, obs_stud, tactile, priv = obses['obs'], obses['student_obs'], obses['tactile'], obses['priv_info']
 
             self.env.arm.move_manipulator.stop_motion()
             self.reset()

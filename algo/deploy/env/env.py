@@ -5,6 +5,8 @@ from algo.deploy.env.hand_ros import HandROSSubscriberFinger
 from algo.deploy.env.openhand_env import OpenhandEnv
 from algo.deploy.env.robots import RobotWithFtEnv
 from algo.deploy.env.apriltag_tracker import Tracker
+from algo.deploy.env.zed_camera import ZedCameraSubscriber
+
 from std_msgs.msg import Bool
 import geometry_msgs.msg
 
@@ -15,22 +17,40 @@ class ExperimentEnv:
     """ Superclass for all Robots environments.
     """
 
-    def __init__(self, with_arm=True, with_hand=True, with_tactile=True, with_ext_cam=True):
+    def __init__(self, with_arm=True, with_hand=True, with_tactile=True, with_ext_cam=True, with_zed=True):
         rospy.logwarn('Setting up the environment')
+
+        self.with_zed = with_zed
+        self.with_hand = with_hand
+        self.with_arm = with_arm
+        self.with_tactile = with_tactile
+        self.with_ext_cam = with_ext_cam
+
+        self.ready = True  # Start with the assumption that everything will be initialized correctly
 
         if with_hand:
             self.hand = OpenhandEnv()
             self.hand.set_gripper_joints_to_init()
+            self.ready = self.ready and self.hand.init_success
+
         if with_tactile:
             self.tactile = HandROSSubscriberFinger()
+            self.ready = self.ready and self.tactile.init_success
+
         if with_arm:
             self.arm = RobotWithFtEnv()
+            self.ready = self.ready and self.arm.init_success
+
         if with_ext_cam:
             self.tracker = Tracker()
             self.tracker.set_object_id(6)
+            self.ready = self.ready and self.tracker.init_success
+
+        if with_zed:
+            self.zed = ZedCameraSubscriber()
+            self.ready = self.ready and self.zed.init_success
+
         rospy.sleep(2)
-        if with_arm and with_tactile:
-            self.ready = self.arm.init_success and self.tactile.init_success
 
         self.pub_regularize = rospy.Publisher('/manipulator/regularize', Bool, queue_size=10)
         rospy.logwarn('Env is ready')
@@ -39,16 +59,28 @@ class ExperimentEnv:
         self.pub_regularize.publish(status)
 
     def get_obs(self):
-        ft = self.arm.robotiq_wrench_filtered_state.tolist()
-        left, right, bottom = self.tactile.get_frames()
-        pos, quat = self.arm.get_ee_pose()
-        joints = self.arm.get_joint_values()
 
-        return {'joints': joints,
+        obs = {}
+        if self.with_arm:
+            ft = self.arm.robotiq_wrench_filtered_state.tolist()
+            pos, quat = self.arm.get_ee_pose()
+            joints = self.arm.get_joint_values()
+
+            obs.update({
+                'joints': joints,
                 'ee_pose': pos + quat,
-                'ft': ft,
-                'frames': (left, right, bottom),
-                }
+                'ft': ft
+            })
+
+        if self.with_tactile:
+            left, right, bottom = self.tactile.get_frames()
+            obs['frames'] = (left, right, bottom)
+
+        if self.with_zed:
+            img = self.zed.get_frame()
+            obs['img'] = img
+
+        return obs
 
     def get_extrinsic(self):
 
@@ -63,6 +95,11 @@ class ExperimentEnv:
                 'ee_pose': pos + quat,
                 'jacob': jacob,
                 }
+
+    def get_img(self):
+
+        img = self.zed.get_frame()
+        return img
 
     def get_frames(self):
         left, right, bottom = self.tactile.get_frames()

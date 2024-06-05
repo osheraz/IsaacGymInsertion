@@ -35,12 +35,12 @@ class OpenhandEnv():
 
         rospy.Subscriber('/gripper/pos', Float32MultiArray, self._gripper_motor_states_callback)
         rospy.Subscriber('/gripper/load', Float32MultiArray, self._gripper_load_states_callback)
+        self.init_success = False
 
         self.start_time = rospy.Time.now()
         # Start Services
         self._setup_tf_listener()
         self._setup_movement_system()
-
         # self.grasped_object = ObjectTracker()
 
         rospy.logdebug("Finished OpenhandEnv INIT...")
@@ -110,7 +110,7 @@ class OpenhandEnv():
         :return:
         """
         self.gripper_control = GripperTendonController()
-
+        self.init_success = True
     ########################################
     ### Gripper ############################
     ########################################
