@@ -119,6 +119,12 @@ class ExperimentEnv:
 
         self.hand.grasp()
 
+    def get_hand_motor_state(self):
+
+        motors = self.hand.get_gripper_motor_state()
+
+        return motors
+
     def align_and_grasp(self, ):
 
         # TODO change align and grasp to dof_relative funcs without moveit

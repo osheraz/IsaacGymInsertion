@@ -44,9 +44,12 @@ class HardwarePlayer(object):
         self.max_episode_length = self.deploy_config.rl.max_episode_length
         self.pos_scale_deploy = self.deploy_config.rl.pos_action_scale
         self.rot_scale_deploy = self.deploy_config.rl.rot_action_scale
+        self.gripper_action_scale_deploy = self.deploy_config.rl.gripper_action_scale
 
         self.pos_scale = self.full_config.task.rl.pos_action_scale
         self.rot_scale = self.full_config.task.rl.rot_action_scale
+        self.gripper_action_scale = self.full_config.task.rl.gripper_action_scale
+        self.hand_action = self.full_config.task.env.hand_action
 
         self.device = self.full_config["rl_device"]
         self.episode_length = torch.zeros((1, 1), device=self.device, dtype=torch.float)
@@ -97,6 +100,7 @@ class HardwarePlayer(object):
         self.far_clip = self.full_config.task.external_cam.far_clip
         self.dis_noise = self.full_config.task.external_cam.dis_noise
         self.rel_act_angles = torch.tensor([0.0, 0.0, 0.0], device=self.device).repeat((self.num_envs, 1))
+        self.act_angles = torch.tensor([0., 0., 0.], device=self.device).repeat((self.num_envs, 1))
 
         net_config = {
             'actor_units': self.full_config.train.network.mlp.units,
@@ -238,6 +242,30 @@ class HardwarePlayer(object):
 
     def _acquire_task_tensors(self):
         """Acquire tensors."""
+
+        r_prox = 1.0
+        r_dist = 0.5
+        self.r_act = 2.0
+
+        max_f = 5.0  # mapping coeff between act_force to tendon tension or somthing like that
+        k1 = 0.5  # spring coeff (
+        k2 = 1.0  # spring coeff (harder to move the distal finger)
+        d1 = d2 = 6.0  # damping coeff
+
+
+        self.R = torch.tensor([[r_prox, 0., 0.],
+                               [r_dist, 0., 0.],
+                               [0., r_prox, 0.],
+                               [0., r_dist, 0.],
+                               [0., 0., r_prox],
+                               [0., 0., r_dist]], device=self.device).repeat((self.num_envs, 1,  1))
+
+        self.Q = torch.tensor([[max_f, 0., 0.],
+                               [0., max_f, 0.],
+                               [0., 0., max_f]], device=self.device).repeat((self.num_envs, 1, 1))
+
+        self.K = torch.diag(torch.tensor([k1, k2, k1, k2, k1, k2], device=self.device)).repeat((self.num_envs, 1, 1))
+        self.D = torch.diag(torch.tensor([d1, d2, d1, d2, d1, d2], device=self.device)).repeat((self.num_envs, 1, 1))
 
         self.done = torch.zeros((1, 1), device=self.device, dtype=torch.bool)
         # Gripper pointing down w.r.t the world frame
@@ -644,10 +672,12 @@ class HardwarePlayer(object):
     def update_and_apply_action(self, actions, wait=True, by_moveit=True, by_vel=False):
 
         self.actions = actions.clone().to(self.device)
+        self.actions[:, :6] = 0.
 
         delta_targets = torch.cat([
             self.actions[:, :3] @ torch.diag(torch.tensor(self.pos_scale, device=self.device)),  # 3
-            self.actions[:, 3:6] @ torch.diag(torch.tensor(self.rot_scale, device=self.device))  # 3
+            self.actions[:, 3:6] @ torch.diag(torch.tensor(self.rot_scale, device=self.device)),  # 3
+            self.actions[:, 6:9] @ torch.diag(torch.tensor(self.gripper_action_scale, device=self.device))  # 3
         ], dim=-1).clone()
 
         # Update targets
@@ -656,7 +686,7 @@ class HardwarePlayer(object):
 
         self.apply_action(self.actions, wait=wait, by_moveit=by_moveit, by_vel=by_vel)
 
-    def apply_action(self, actions, do_scale=True, do_clamp=False, regulize_force=True, wait=True, by_moveit=True,
+    def apply_action(self, actions, do_scale=True, do_clamp=False, regulize_force=False, wait=True, by_moveit=True,
                      by_vel=False):
 
         # Apply the action
@@ -665,7 +695,6 @@ class HardwarePlayer(object):
             condition_mask = torch.abs(ft[:, 2]) > 2.0
             actions[:, 2] = torch.where(condition_mask, torch.clamp(actions[:, 2], min=0.0), actions[:, 2])
             # actions = torch.where(torch.abs(ft) > 1.5, torch.clamp(actions, min=0.0), actions)
-            print("Error:", np.round(self.plug_pos_error[0].cpu().numpy(), 4))
             print("Regularized Actions:", np.round(actions[0][:3].cpu().numpy(), 4))
 
         if do_clamp:
@@ -692,6 +721,22 @@ class HardwarePlayer(object):
 
         self.ctrl_target_fingertip_centered_quat = torch_jit_utils.quat_mul_deploy(rot_actions_quat,
                                                                                    self.fingertip_centered_quat)
+
+        if self.hand_action:
+            gripper_actions = actions[:, 6:9]
+            # gripper_actions[:, :2] = 1.0
+
+            if do_scale:
+                gripper_actions = gripper_actions @ torch.diag(
+                    torch.tensor(self.gripper_action_scale_deploy, device=self.device))
+
+            self.act_angles = self.env.get_hand_motor_state()
+            self.act_angles += gripper_actions  # add the action
+            self.rel_act_angles += gripper_actions
+            self.gripper_actions = gripper_actions
+            tendon_forces = self.Q @ self.act_angles.unsqueeze(-1)  # linear mapping between act_angle to tension
+            self.act_torque = self.R @ tendon_forces # - self.K @ self.gripper_dof_pos[:, idx].unsqueeze(-1)
+            self.act_torque = self.act_torque.squeeze(-1)  # sum torque@each joint
 
         self.generate_ctrl_signals(wait=wait, by_moveit=by_moveit, by_vel=by_vel)
 

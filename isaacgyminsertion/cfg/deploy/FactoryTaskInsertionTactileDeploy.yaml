@@ -29,6 +29,7 @@ rl:
     max_episode_length: 500
     pos_action_scale: [0.005, 0.005, 0.004]
     rot_action_scale: [0.02, 0.02, 0.02]
+    gripper_action_scale: [ 0.01, 0.01, 0.01 ]
     clamp_rot: ${...task.rl.clamp_rot}
     clamp_rot_thresh: ${...task.rl.clamp_rot_thresh}
 
