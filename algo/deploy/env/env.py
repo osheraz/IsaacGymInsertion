@@ -119,9 +119,12 @@ class ExperimentEnv:
 
         self.hand.grasp()
 
-    def get_hand_motor_state(self):
+    def get_hand_motor_state(self, normalized=True):
 
         motors = self.hand.get_gripper_motor_state()
+
+        if not normalized:
+            motors = self.hand.to_radians(motors)
 
         return motors
 
@@ -206,6 +209,20 @@ class ExperimentEnv:
                 rospy.logerr('Object is undetectable, attempt: ' + str(i))
 
         return False
+
+    def randomize_grasp(self,):
+
+        # TODO change align and grasp to dof_relative funcs without moveit
+        try:
+            random_add = np.random.uniform(-0.1, 0.1, 3)
+            self.hand.set_gripper_motors(random_add)
+            self.grasp()
+
+            return True
+
+        except Exception as e:
+            print(e)
+            return False
 
     def set_random_init_error(self, true_socket_pose):
 

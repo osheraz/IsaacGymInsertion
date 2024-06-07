@@ -121,6 +121,16 @@ class OpenhandEnv():
     def get_gripper_load_state(self):
         return self.gripper_load_state
 
+    def to_radians(self, qn):
+
+        # motors returns a normalized angle
+        # convert theta from 0 - 1 to 0 - 2* pi, with interpolating from min/max motor setting
+        # q_to_angle = np.interp(qn, [0, 1.0], [0.002, 0.99]) - dont think this is necceray
+        q_to_angle = np.interp(qn, [0, 1], [0, 2 * np.pi])  # theta_transformed
+
+        return q_to_angle
+
+
     def get_act_joint_limits(self):
 
         up_limits_array = [1.0, 1.0, 1.0]
@@ -148,7 +158,7 @@ class OpenhandEnv():
 
         self.gripper_control.grasp()
 
-    def _explore_hand(self):
+    def explore_hand(self):
         """
         shaky shaky
         """
@@ -181,7 +191,7 @@ class GripperTendonController(object):
 
         # act_pos_array = max(min(act_pos_array, 0.04), 0)
         #                                [ 1, 1 ,1 ]
-        act_pos_array = numpy.hstack((0, act_pos_array)) # add abduction
+        act_pos_array = numpy.hstack((0, act_pos_array))  # add abduction
         suc = self.move_srv(act_pos_array).success
         # rospy.logerr(suc)
         # self.wait_for_joints_to_get_there(act_pos_array, error=error, timeout=time_out)
@@ -251,5 +261,5 @@ if __name__ == "__main__":
     hand = OpenhandEnv()
 
     for i in range(10):
-        hand._explore_hand()
+        hand.explore_hand()
 

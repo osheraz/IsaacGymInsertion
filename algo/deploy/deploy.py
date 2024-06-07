@@ -19,6 +19,7 @@ import isaacgyminsertion.tasks.factory_tactile.factory_control as fc
 from isaacgyminsertion.tasks.factory_tactile.factory_utils import quat2R
 from time import time
 import numpy as np
+import threading
 import omegaconf
 from matplotlib import pyplot as plt
 
@@ -30,8 +31,10 @@ from matplotlib import pyplot as plt
 # from tf.transformations import quaternion_matrix, identity_matrix, quaternion_from_matrix
 from tqdm import tqdm
 
+
 def to_torch(x, dtype=torch.float, device='cuda:0', requires_grad=False):
     return torch.tensor(x, dtype=dtype, device=device, requires_grad=requires_grad)
+
 
 class HardwarePlayer(object):
     def __init__(self, output_dir, full_config):
@@ -152,7 +155,8 @@ class HardwarePlayer(object):
 
         asset_info_path = '../../../assets/factory/yaml/factory_asset_info_insertion.yaml'
         self.asset_info_insertion = hydra.compose(config_name=asset_info_path)
-        self.asset_info_insertion = self.asset_info_insertion['']['']['']['']['']['']['']['']['']['assets']['factory']['yaml']
+        self.asset_info_insertion = self.asset_info_insertion['']['']['']['']['']['']['']['']['']['assets']['factory'][
+            'yaml']
 
         self.extrinsic_contact = None
 
@@ -222,8 +226,13 @@ class HardwarePlayer(object):
             dtype=torch.float32,
             device=self.device
         )
-        rotation_quat_x = torch_jit_utils.quat_from_angle_axis(torch_pi, torch.tensor([1, 0, 0], dtype=torch.float32, device=self.device)).repeat((self.num_envs, 1))
-        rotation_quat_z = torch_jit_utils.quat_from_angle_axis(-torch_pi * 0.5, torch.tensor([0, 0, 1], dtype=torch.float32, device=self.device)).repeat((self.num_envs, 1))
+        rotation_quat_x = torch_jit_utils.quat_from_angle_axis(torch_pi, torch.tensor([1, 0, 0], dtype=torch.float32,
+                                                                                      device=self.device)).repeat(
+            (self.num_envs, 1))
+        rotation_quat_z = torch_jit_utils.quat_from_angle_axis(-torch_pi * 0.5,
+                                                               torch.tensor([0, 0, 1], dtype=torch.float32,
+                                                                            device=self.device)).repeat(
+            (self.num_envs, 1))
 
         q_rotated = torch_jit_utils.quat_mul(rotation_quat_x, self.fingertip_centered_quat.clone())
         q_rotated = torch_jit_utils.quat_mul(rotation_quat_z, q_rotated)
@@ -252,13 +261,12 @@ class HardwarePlayer(object):
         k2 = 1.0  # spring coeff (harder to move the distal finger)
         d1 = d2 = 6.0  # damping coeff
 
-
         self.R = torch.tensor([[r_prox, 0., 0.],
                                [r_dist, 0., 0.],
                                [0., r_prox, 0.],
                                [0., r_dist, 0.],
                                [0., 0., r_prox],
-                               [0., 0., r_dist]], device=self.device).repeat((self.num_envs, 1,  1))
+                               [0., 0., r_dist]], device=self.device).repeat((self.num_envs, 1, 1))
 
         self.Q = torch.tensor([[max_f, 0., 0.],
                                [0., max_f, 0.],
@@ -491,18 +499,22 @@ class HardwarePlayer(object):
                 cv2.waitKey(1)
 
         # some-like taking a new socket pose measurement
-        self._update_socket_pose()
+        # self._update_socket_pose()
 
         eef_pos = torch.cat((self.fingertip_centered_pos,
-                            quat2R(self.fingertip_centered_quat).reshape(1, -1)), dim=-1)
+                             quat2R(self.fingertip_centered_quat).reshape(1, -1)), dim=-1)
 
         # noisy_delta_pos = self.noisy_gripper_goal_pos - self.fingertip_centered_pos
 
-        obs = torch.cat([eef_pos,
-                         self.actions,
-                         # self.noisy_gripper_goal_pos.clone(),
-                         # noisy_delta_pos
-                         ], dim=-1)
+        # obs = torch.cat([eef_pos,
+        #                  self.actions,
+        #                  ], dim=-1)
+
+        obs = torch.cat([
+            self.rel_act_angles,  # 3
+            self.identity_quat,  # 4
+            self.actions[:, -3:],  # 3
+        ], dim=-1)
 
         self.obs_queue[:, :-self.num_observations] = self.obs_queue[:, self.num_observations:]
         self.obs_queue[:, -self.num_observations:] = obs
@@ -528,11 +540,12 @@ class HardwarePlayer(object):
         if with_priv:
             # Compute privileged info (gt_error + contacts)
             self._update_plug_pose()
+
             state_tensors = [
-                # self.plug_hand_pos,  # 3
-                # self.plug_hand_quat,  # 4
-                self.plug_pos_error,  # 3
-                self.plug_quat_error,  # 4
+                self.plug_hand_pos,  # 3
+                self.plug_hand_quat,  # 4
+                # self.plug_pos_error,  # 3
+                # self.plug_quat_error,  # 4
             ]
             self.states_buf = torch.cat(state_tensors, dim=-1)  # shape = (num_envs, num_states)
             obs_dict['priv_info'] = self.states_buf.clone()
@@ -541,73 +554,65 @@ class HardwarePlayer(object):
 
     def _update_reset_buf(self):
 
-        plug_socket_xy_distance = torch.norm(self.plug_pos_error[:, :2])
+        plug_hand_xy_distance = torch.norm(self.plug_hand_pos[:, :2])
 
-        is_very_close_xy = plug_socket_xy_distance < 0.005
-        is_bellow_surface = -self.plug_pos_error[:, 2] < 0.004
+        quat_diff = torch_jit_utils.quat_mul(self.plug_quat, torch_jit_utils.quat_conjugate(self.goal_ori))
+        rot_dist = 2.0 * torch.asin(torch.clamp(torch.norm(quat_diff[:, 0:3], p=2, dim=-1), max=1.0))
+        goal_resets = torch.abs(rot_dist) <= self.deploy_config.rl.goal_min_rot
 
-        self.inserted = is_very_close_xy & is_bellow_surface
-        is_too_far = (plug_socket_xy_distance > 0.08) | (self.fingertip_centered_pos[:, 2] > 0.125)
+        self.inserted = goal_resets
+        is_too_far = (plug_hand_xy_distance > 0.08)
+
+        roll, pitch, yaw = torch_jit_utils.get_euler_xyz(self.plug_quat.clone())
+        roll[roll > np.pi] -= 2 * np.pi
+        pitch[pitch > np.pi] -= 2 * np.pi
+        is_too_rotated = (torch.abs(roll) > 0.7) | (torch.abs(pitch) > 0.7)
 
         timeout = (self.episode_length >= self.max_episode_length)
 
-        self.done = is_too_far | timeout | self.inserted
+        self.done = is_too_far | timeout | self.inserted | is_too_rotated
 
         if self.done[0, 0].item():
-            print('Reset because ',
-                  "far away" if is_too_far[0].item() else "",
-                  "timeoout" if timeout.item() else "",
-                  "inserted" if self.inserted.item() else "", )
+            print('[Reset] ~',
+                  "Far-away" if is_too_far[0].item() else "",
+                  "Timeout" if timeout.item() else "",
+                  "Inserted" if self.inserted.item() else "", )
 
     def reset(self):
 
-        joints_above_socket = self.deploy_config.common_poses.joints_above_socket
-        joints_above_plug = self.deploy_config.common_poses.joints_above_plug
-
-        # Move above the socket
-        self.env.arm.move_manipulator.scale_vel(scale_vel=0.1, scale_acc=0.1)
-        self.env.move_to_joint_values(joints_above_socket, wait=True)
-        # Set random init error
-        self.env.set_random_init_error(self.socket_pos)
-        # If not inserted, return plug?
-        if True:# not self.inserted and False:
-
-            self.env.arm.move_manipulator.scale_vel(scale_vel=0.5, scale_acc=0.5)
-            self.env.move_to_joint_values(joints_above_plug, wait=True)
-            self.env.arm.move_manipulator.scale_vel(scale_vel=0.1, scale_acc=0.1)
-            self.env.align_and_release(init_plug_pose=[0.4103839067235552, 0.17531695171951858, 0.008])
-
-            self.grasp_and_init()
-
-        self.env.arm.move_manipulator.scale_vel(scale_vel=0.02, scale_acc=0.02)
-        self.inserted[...] = False
-        self.done[...] = False
-        self.episode_length[...] = 0.
-
-    def grasp_and_init(self):
-
-        joints_above_socket = self.deploy_config.common_poses.joints_above_socket
-        joints_above_plug = self.deploy_config.common_poses.joints_above_plug
+        start_joint_pos = self.deploy_config.common_poses.start_pos
         # Move above plug
-        self.env.move_to_joint_values(joints_above_plug, wait=True)
+        self.env.move_to_joint_values(start_joint_pos, wait=True)
         self.env.arm.move_manipulator.scale_vel(scale_vel=0.1, scale_acc=0.1)
         # Align and grasp
-        self.env.align_and_grasp()
-        self.env.arm.move_manipulator.scale_vel(scale_vel=0.5, scale_acc=0.5)
-        # Move up a bit
-        self.env.move_to_joint_values(joints_above_plug, wait=True)
-        # Move above the socket
-        self.env.move_to_joint_values(joints_above_socket, wait=True)
+        # input('Hand is about to grasp - please set the object')
+        # Create an event to signal when input has been received
+        input_event = threading.Event()
 
-        # Set random init error
-        self.env.arm.move_manipulator.scale_vel(scale_vel=0.1, scale_acc=0.1)
-        self.env.set_random_init_error(self.socket_pos)
+        def get_user_input(event):
+            input('Hand is about to grasp - please set the object')
+            event.set()  # Signal that input has been received
 
-        self.env.arm.move_manipulator.scale_vel(scale_vel=0.02, scale_acc=0.02)
+        # Start the user input thread
+        input_thread = threading.Thread(target=get_user_input, args=(input_event,))
+        input_thread.start()
+
+        # Wait for the input event
+        while not input_event.is_set():
+            rospy.sleep(0.1)  # Small sleep to avoid busy waiting
+
+        self.env.randomize_grasp()
+
+        # self.env.arm.move_manipulator.scale_vel(scale_vel=0.1, scale_acc=0.1)
+        # self.env.set_random_init_error(self.socket_pos)
+
+        # self.env.arm.move_manipulator.scale_vel(scale_vel=0.02, scale_acc=0.02)
         print('Starting Insertion')
 
         self.done[...] = False
         self.episode_length[...] = 0.
+        self.env.arm.move_manipulator.scale_vel(scale_vel=0.02, scale_acc=0.02)
+        self.inserted[...] = False
 
     def _move_arm_to_desired_pose(self, desired_pos=None, desired_rot=None, by_moveit=True):
         """Move gripper to desired pose."""
@@ -730,17 +735,26 @@ class HardwarePlayer(object):
                 gripper_actions = gripper_actions @ torch.diag(
                     torch.tensor(self.gripper_action_scale_deploy, device=self.device))
 
-            self.act_angles = self.env.get_hand_motor_state()
-            self.act_angles += gripper_actions  # add the action
+            self.act_angles = self.env.get_hand_motor_state() + gripper_actions  # add the action
             self.rel_act_angles += gripper_actions
             self.gripper_actions = gripper_actions
-            tendon_forces = self.Q @ self.act_angles.unsqueeze(-1)  # linear mapping between act_angle to tension
-            self.act_torque = self.R @ tendon_forces # - self.K @ self.gripper_dof_pos[:, idx].unsqueeze(-1)
-            self.act_torque = self.act_torque.squeeze(-1)  # sum torque@each joint
 
-        self.generate_ctrl_signals(wait=wait, by_moveit=by_moveit, by_vel=by_vel)
+            # tendon_forces = self.Q @ self.act_angles.unsqueeze(-1)  # linear mapping between act_angle to tension
+            # self.act_torque = self.R @ tendon_forces - self.K @ self.gripper_dof_pos[:, idx].unsqueeze(-1)
+            # self.act_torque = self.act_torque.squeeze(-1)  # sum torque@each joint
 
-    def generate_ctrl_signals(self, wait=True, by_moveit=True, by_vel=False):
+        # self.generate_arm_ctrl_signals(wait=wait, by_moveit=by_moveit, by_vel=by_vel)
+        self.generate_hand_ctrl_signals(wait=wait)
+
+    def generate_hand_ctrl_signals(self, wait=True):
+
+        target_motor = self.act_angles.clone()
+        try:
+            self.env.hand.set_gripper_motors(target_motor)
+        except Exception as e:
+            print(f'failed to reach {target_motor}')
+
+    def generate_arm_ctrl_signals(self, wait=True, by_moveit=True, by_vel=False):
 
         ctrl_info = self.env.get_info_for_control()
 
@@ -787,7 +801,7 @@ class HardwarePlayer(object):
         target_joints = self.ctrl_target_dof_pos.cpu().detach().numpy().squeeze().tolist()
         try:
             self.env.move_to_joint_values(target_joints, wait=wait, by_moveit=by_moveit, by_vel=by_vel)
-        except:
+        except Exception as e:
             print(f'failed to reach {target_joints}')
 
     def deploy(self):
@@ -818,7 +832,7 @@ class HardwarePlayer(object):
         self.env.arm.move_manipulator.scale_vel(scale_vel=0.5, scale_acc=0.5)
         self.env.move_to_init_state()
 
-        # self.grasp_and_init()
+        self.reset()
         # rospy.sleep(2.0)
 
         num_episodes = 5
