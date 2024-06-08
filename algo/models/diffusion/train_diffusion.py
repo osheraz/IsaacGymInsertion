@@ -5,6 +5,7 @@ import os
 import pickle
 import sys
 import time
+from hydra.utils import to_absolute_path
 
 mypath = os.path.dirname(os.path.realpath(__file__))
 
@@ -411,6 +412,7 @@ class Agent:
         return img
 
     def get_observation(self, data, load_img=False):
+
         input_data = {}
         for rt in self.representation_type:
             if rt == "img":
@@ -721,19 +723,16 @@ class Runner:
             torch.cuda.set_device("cuda:{}".format(cfg.gpu))
             print("Using gpu: {}".format(cfg.gpu))
 
-        # automatic naming
         curr_time = time.strftime("%m%d_%H%M%S", time.localtime())
-        random_tag = generate_random_string()
-        model_id = f"{curr_time}_{random_tag}"
 
         if cfg.use_wandb:
             wandb_config = WandBLogger.get_default_config()
             wandb_config.entity = cfg.wandb_entity_name
             wandb_config.project = cfg.wandb_project_name
             if cfg.wandb_exp_name is not None:
-                wandb_config.exp_name = cfg.wandb_exp_name + "_" + model_id
+                wandb_config.exp_name = cfg.wandb_exp_name + "_" + curr_time
             else:
-                wandb_config.exp_name = model_id
+                wandb_config.exp_name = curr_time
             wandb_logger = WandBLogger(
                 config=wandb_config, variant=vars(cfg), prefix="logging"
             )
@@ -786,41 +785,15 @@ class Runner:
         if cfg.load_path:
             agent.load(cfg.load_path)
 
+        output_dir = f'{to_absolute_path(self.cfg.output_dir)}'
+
         if not cfg.eval:
             if cfg.model_save_path:
-                model_path = os.path.join(cfg.output_dir, "ckpts")
+                model_path = os.path.join(output_dir, "ckpts")
             else:
                 model_path = cfg.model_save_path
 
-            model_path_suffix = f"{model_id}"
-
-            if cfg.add_model_save_path_suffix:
-                cfg_ = [
-                    ("identity", cfg.identity_encoder),
-                    (
-                        "repr",
-                        "".join(
-                            [(x[0]).upper() for x in cfg.representation_type.split("-")]
-                        ),
-                    ),
-                    ("oh", cfg.obs_horizon),
-                    ("ah", cfg.action_horizon),
-                    ("ph", cfg.pred_horizon),
-                    ("do", cfg.dropout_rate),
-                    ("imgos", cfg.image_output_size),
-                    ("tctos", cfg.tactile_output_size),
-                    ("wd", cfg.weight_decay),
-                    ("use_ddim", cfg.use_ddim),
-                    ("binarize_tactile", cfg.binarize_tactile),
-                ]
-                cfg_str = "-".join([f"{k}={v}" for k, v in cfg_])
-                if cfg.without_sampling:
-                    cfg_str += "-ws"
-                if cfg.predict_pos_delta:
-                    cfg_str += "-posdelta"
-                if cfg.predict_eef_delta:
-                    cfg_str += "-eefdelta"
-                model_path_suffix += "-" + cfg_str
+            model_path_suffix = f"{curr_time}"
             model_path = os.path.join(model_path, model_path_suffix)
 
             print(f"Saving to model path {model_path}")

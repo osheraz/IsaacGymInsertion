@@ -6,6 +6,7 @@ from std_msgs.msg import Float32MultiArray, Bool
 from std_srvs.srv import Empty
 import numpy as np
 
+
 class OpenhandEnv():
     """Superclass for all Openhand environments.
     """
@@ -35,12 +36,12 @@ class OpenhandEnv():
 
         rospy.Subscriber('/gripper/pos', Float32MultiArray, self._gripper_motor_states_callback)
         rospy.Subscriber('/gripper/load', Float32MultiArray, self._gripper_load_states_callback)
+        self.init_success = False
 
         self.start_time = rospy.Time.now()
         # Start Services
         self._setup_tf_listener()
         self._setup_movement_system()
-
         # self.grasped_object = ObjectTracker()
 
         rospy.logdebug("Finished OpenhandEnv INIT...")
@@ -53,7 +54,7 @@ class OpenhandEnv():
         import time
         import sys
         for i in range(3):
-            print("OpenhandEnv: WAITING..."+str(i))
+            print("OpenhandEnv: WAITING..." + str(i))
             sys.stdout.flush()
             time.sleep(1.0)
 
@@ -96,7 +97,7 @@ class OpenhandEnv():
 
     def _gripper_load_states_callback(self, msg):
         self.gripper_load_state = numpy.array(msg.data)[1:]  # without abduction
-        
+
     def _setup_tf_listener(self):
         """
         Set ups the TF listener for getting the transforms you ask for.
@@ -110,6 +111,7 @@ class OpenhandEnv():
         :return:
         """
         self.gripper_control = GripperTendonController()
+        self.init_success = True
 
     ########################################
     ### Gripper ############################
@@ -120,6 +122,15 @@ class OpenhandEnv():
 
     def get_gripper_load_state(self):
         return self.gripper_load_state
+
+    def to_radians(self, qn):
+
+        # motors returns a normalized angle
+        # convert theta from 0 - 1 to 0 - 2* pi, with interpolating from min/max motor setting
+        # q_to_angle = np.interp(qn, [0, 1.0], [0.002, 0.99]) - dont think this is necceray
+        q_to_angle = np.interp(qn, [0, 1], [0, 2 * np.pi])  # theta_transformed
+
+        return q_to_angle
 
     def get_act_joint_limits(self):
 
@@ -134,7 +145,8 @@ class OpenhandEnv():
         Moves all the motors to the given position
         :param: joints_positions_array: array that ahas the desired joint positions in radians.
         """
-        to_move = motors_positions_array.tolist() if not isinstance(motors_positions_array, list) else motors_positions_array
+        to_move = motors_positions_array.tolist() if not isinstance(motors_positions_array,
+                                                                    list) else motors_positions_array
         suc = self.gripper_control.move_gripper(to_move)
 
         return suc
@@ -148,7 +160,7 @@ class OpenhandEnv():
 
         self.gripper_control.grasp()
 
-    def _explore_hand(self):
+    def explore_hand(self):
         """
         shaky shaky
         """
@@ -176,12 +188,11 @@ class GripperTendonController(object):
         self.open_srv = rospy.ServiceProxy('/OpenGripper', Empty)
         self.close_srv = rospy.ServiceProxy('/CloseGripper', close)
 
-
     def move_gripper(self, act_pos_array, time_out=3.0, error=0.02):
 
         # act_pos_array = max(min(act_pos_array, 0.04), 0)
         #                                [ 1, 1 ,1 ]
-        act_pos_array = numpy.hstack((0, act_pos_array)) # add abduction
+        act_pos_array = numpy.hstack((0, act_pos_array))  # add abduction
         suc = self.move_srv(act_pos_array).success
         # rospy.logerr(suc)
         # self.wait_for_joints_to_get_there(act_pos_array, error=error, timeout=time_out)
@@ -206,10 +217,10 @@ class GripperTendonController(object):
             current_pos = [self.act_angles]
 
             are_equal = numpy.allclose(a=current_pos,
-                                    b=desired_pos_array,
-                                    atol=error)
+                                       b=desired_pos_array,
+                                       atol=error)
 
-            rospy.logdebug("are_equal="+str(are_equal))
+            rospy.logdebug("are_equal=" + str(are_equal))
             rospy.logdebug(str(desired_pos_array))
             rospy.logdebug(str(current_pos))
             rate = rospy.Rate(10)
@@ -223,7 +234,7 @@ class GripperTendonController(object):
             is_timeout = time_waiting > timeout
 
         rospy.logwarn(
-            "Actuaturs are in the desired position with an erro of "+str(error))
+            "Actuaturs are in the desired position with an erro of " + str(error))
 
     def get_act_angels(self):
         msg = rospy.wait_for_message('/gripper/pos', Float32MultiArray)
@@ -244,6 +255,7 @@ class GripperTendonController(object):
 
         self.move_gripper(new_pos_array)
 
+
 if __name__ == "__main__":
 
     rospy.init_node('example')
@@ -251,5 +263,4 @@ if __name__ == "__main__":
     hand = OpenhandEnv()
 
     for i in range(10):
-        hand._explore_hand()
-
+        hand.explore_hand()

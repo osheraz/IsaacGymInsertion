@@ -5,6 +5,8 @@ from algo.deploy.env.hand_ros import HandROSSubscriberFinger
 from algo.deploy.env.openhand_env import OpenhandEnv
 from algo.deploy.env.robots import RobotWithFtEnv
 from algo.deploy.env.apriltag_tracker import Tracker
+from algo.deploy.env.zed_camera import ZedCameraSubscriber
+
 from std_msgs.msg import Bool
 import geometry_msgs.msg
 
@@ -15,22 +17,40 @@ class ExperimentEnv:
     """ Superclass for all Robots environments.
     """
 
-    def __init__(self, with_arm=True, with_hand=True, with_tactile=True, with_ext_cam=True):
+    def __init__(self, with_arm=True, with_hand=True, with_tactile=True, with_ext_cam=True, with_zed=True):
         rospy.logwarn('Setting up the environment')
+
+        self.with_zed = with_zed
+        self.with_hand = with_hand
+        self.with_arm = with_arm
+        self.with_tactile = with_tactile
+        self.with_ext_cam = with_ext_cam
+
+        self.ready = True  # Start with the assumption that everything will be initialized correctly
 
         if with_hand:
             self.hand = OpenhandEnv()
             self.hand.set_gripper_joints_to_init()
+            self.ready = self.ready and self.hand.init_success
+
         if with_tactile:
             self.tactile = HandROSSubscriberFinger()
+            self.ready = self.ready and self.tactile.init_success
+
         if with_arm:
             self.arm = RobotWithFtEnv()
+            self.ready = self.ready and self.arm.init_success
+
         if with_ext_cam:
             self.tracker = Tracker()
             self.tracker.set_object_id(6)
+            self.ready = self.ready and self.tracker.init_success
+
+        if with_zed:
+            self.zed = ZedCameraSubscriber()
+            self.ready = self.ready and self.zed.init_success
+
         rospy.sleep(2)
-        if with_arm and with_tactile:
-            self.ready = self.arm.init_success and self.tactile.init_success
 
         self.pub_regularize = rospy.Publisher('/manipulator/regularize', Bool, queue_size=10)
         rospy.logwarn('Env is ready')
@@ -39,16 +59,28 @@ class ExperimentEnv:
         self.pub_regularize.publish(status)
 
     def get_obs(self):
-        ft = self.arm.robotiq_wrench_filtered_state.tolist()
-        left, right, bottom = self.tactile.get_frames()
-        pos, quat = self.arm.get_ee_pose()
-        joints = self.arm.get_joint_values()
 
-        return {'joints': joints,
+        obs = {}
+        if self.with_arm:
+            ft = self.arm.robotiq_wrench_filtered_state.tolist()
+            pos, quat = self.arm.get_ee_pose()
+            joints = self.arm.get_joint_values()
+
+            obs.update({
+                'joints': joints,
                 'ee_pose': pos + quat,
-                'ft': ft,
-                'frames': (left, right, bottom),
-                }
+                'ft': ft
+            })
+
+        if self.with_tactile:
+            left, right, bottom = self.tactile.get_frames()
+            obs['frames'] = (left, right, bottom)
+
+        if self.with_zed:
+            img = self.zed.get_frame()
+            obs['img'] = img
+
+        return obs
 
     def get_extrinsic(self):
 
@@ -63,6 +95,11 @@ class ExperimentEnv:
                 'ee_pose': pos + quat,
                 'jacob': jacob,
                 }
+
+    def get_img(self):
+
+        img = self.zed.get_frame()
+        return img
 
     def get_frames(self):
         left, right, bottom = self.tactile.get_frames()
@@ -81,6 +118,15 @@ class ExperimentEnv:
     def grasp(self, ):
 
         self.hand.grasp()
+
+    def get_hand_motor_state(self, normalized=True):
+
+        motors = self.hand.get_gripper_motor_state()
+
+        if not normalized:
+            motors = self.hand.to_radians(motors)
+
+        return motors
 
     def align_and_grasp(self, ):
 
@@ -164,6 +210,20 @@ class ExperimentEnv:
 
         return False
 
+    def randomize_grasp(self,):
+
+        # TODO change align and grasp to dof_relative funcs without moveit
+        try:
+            random_add = np.random.uniform(-0.1, 0.1, 3)
+            self.hand.set_gripper_motors(random_add)
+            self.grasp()
+
+            return True
+
+        except Exception as e:
+            print(e)
+            return False
+
     def set_random_init_error(self, true_socket_pose):
 
         # TODO change motion to be without moveit
@@ -172,18 +232,16 @@ class ExperimentEnv:
 
         for i in range(5):
 
-            # rospy.sleep(1.0)
             ee_pose = self.arm.move_manipulator.get_cartesian_pose_moveit()
             ee_pos = [ee_pose.position.x, ee_pose.position.y, ee_pose.position.z]
             ee_quat = [ee_pose.orientation.x, ee_pose.orientation.y, ee_pose.orientation.z, ee_pose.orientation.w]
-            # rospy.sleep(1.0)
             obj_pos = self.tracker.get_obj_pos()  # tracker already gives the bottom of the object
-            obj_height = 0
+            obj_height = 0  # 0.07
             init_delta_height = 0.05
 
             if not np.isnan(np.sum(obj_pos)):
 
-                rand_add = np.random.uniform(-0.02, 0.02, 2)
+                rand_add = np.random.uniform(-0.01, 0.01, 2)
                 # added delta_x/delta_y to approximately center the object
                 ee_pos[0] = true_socket_pose[0] + (ee_pos[0] - obj_pos[0]) + rand_add[0]
                 ee_pos[1] = true_socket_pose[1] + (ee_pos[1] - obj_pos[1]) + rand_add[1]

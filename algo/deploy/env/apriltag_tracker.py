@@ -22,6 +22,7 @@ class Tracker():
         rospy.Subscriber('/extrinsic_contact', Float64MultiArray, self.extrinsic_contact_callback)
 
         self.pub_obj_id = rospy.Publisher('/object_id', Int16, queue_size=10)
+        self.init_success = True
 
     def extrinsic_contact_callback(self, msg):
         self.extrinsic_contact = numpy.array(msg.data)
