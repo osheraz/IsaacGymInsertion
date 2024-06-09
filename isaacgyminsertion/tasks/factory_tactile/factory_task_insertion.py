@@ -546,7 +546,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         # Compute Observation and state at current timestep
         # delta_pos = self.socket_tip - self.fingertip_centered_pos
-        noisy_delta_pos = self.noisy_gripper_goal_pos - self.fingertip_centered_pos
+        # noisy_delta_pos = self.noisy_gripper_goal_pos - self.fingertip_centered_pos
 
         eef_pos = torch.cat(self.pose_world_to_robot_base(self.fingertip_centered_pos.clone(),
                                                           self.fingertip_centered_quat.clone()), dim=-1)
@@ -727,7 +727,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                         img = img.cpu().numpy()
                         # img = np.uint8(img.cpu().numpy() * 255)
                         # cv2.imshow("images2", img)
-                        cv2.imshow("Depth Image", img.transpose(1, 2, 0) + 0.5)
+                        cv2.imshow("Depth Image", np.expand_dims(img,0).transpose(1, 2, 0) + 0.5)
                         cv2.waitKey(1)
 
             self.gym.end_access_image_tensors(self.sim)

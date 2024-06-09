@@ -1,7 +1,7 @@
 #!/bin/bash
 GPUS=${1:-0}
 SEED=${2:-42}
-CACHE=${3:-gt2}
+CACHE=${3:-gt_test}
 NUM_ENVS=${4:-9}
 HEADLESS=${5:-True}
 
@@ -21,7 +21,7 @@ task.data_logger.collect_data=True \
 task.env.numEnvs=${NUM_ENVS} \
 task.env.tactile=True \
 task.env.numStates=7 \
-task.env.numObservations=24 \
+task.env.numObservations=18 \
 task.tactile.tacto.width=64 \
 task.tactile.tacto.height=64 \
 task.tactile.encoder.width=64 \

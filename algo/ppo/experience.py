@@ -366,7 +366,7 @@ class SimLogger():
         self.gt_contact = env.cfg_task.env.compute_contact_gt
 
         log_items = {
-            'contacts_shape': env.gt_extrinsic_contact.shape[-1],
+            # 'contacts_shape': env.gt_extrinsic_contact.shape[-1],
             'arm_joints_shape': env.arm_dof_pos.shape[-1],
             'eef_pos_shape': env.fingertip_centered_pos.size()[-1] + ROT_MAT_SIZE,
             'socket_pos_shape': env.socket_pos.size()[-1] + ROT_MAT_SIZE,
@@ -427,7 +427,7 @@ class SimLogger():
             new_done = done.clone()
 
         log_data = {
-            'contacts': self.env.gt_extrinsic_contact.clone(),
+            # 'contacts': self.env.gt_extrinsic_contact.clone(),
             'arm_joints': self.env.arm_dof_pos.clone(),
             'eef_pos': eef_pos,
             'socket_pos': socket_pos,

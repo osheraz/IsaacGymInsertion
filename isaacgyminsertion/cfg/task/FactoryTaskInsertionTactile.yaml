@@ -16,7 +16,7 @@ grasp_logger:
 data_logger:
     # for data collection
     collect_data: False
-    total_trajectories: 1000
+    total_trajectories: 2000
     base_folder: "/home/roblab20/tactile_insertion"
     sub_folder: "datastore_0_contact2"
 

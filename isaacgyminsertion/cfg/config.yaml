@@ -5,7 +5,7 @@ task_name: ${task.name}
 experiment: ''
 
 # if set to positive integer, overrides the default number of environments
-num_envs: 12 # ''
+num_envs: 1 # ''
 
 # seed - set to -1 to choose random seed
 seed: 42
@@ -36,7 +36,7 @@ num_subscenes: 4 # Splits the simulation into N physics scenes and runs each one
 test: False
 
 # offline config arguments
-train_diffusion: True
+train_diffusion: False
 offline_training: False # flag for offline latent training (if True, will not train/test RL)
 offline_real_training: False # flag for real offline
 offline_training_w_env: False # flag for offline latent training with environment (if True, will not train/test RL)
