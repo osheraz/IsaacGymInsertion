@@ -1,12 +1,12 @@
 seed: 42 # not sure if this is used yet.
-data_folder: "/home/roblab20/tactile_insertion/datastore_42_contact2" # where is all your data, can include * for globbing
-output_dir: "/home/roblab20/tactile_insertion/datastore_42_contact2" # where to save checkpoints and logs
+data_folder: "/home/roblab20/tactile_insertion/datastore_42_gt_test" # where is all your data, can include * for globbing
+output_dir: "/home/roblab20/tactile_insertion/datastore_42_gt_test" # where to save checkpoints and logs
 
 # todo pull from task cfg
 img_type: "depth"
-img_color_jitter: False
-img_width: 320
-img_height: 180
+img_color_jitter: True
+img_width: 180
+img_height: 320
 img_gaussian_noise: 0.0
 img_masking_prob: 0.0
 img_patch_size: 16
@@ -16,8 +16,8 @@ tactile_gaussian_noise: 0.0
 tactile_masking_prob: 0.0
 tactile_patch_size: 16
 tactile_color_jitter: True
-tactile_width: 224
-tactile_height: 224
+tactile_width: 64
+tactile_height: 64
 
 # supervised learning
 train:
@@ -52,9 +52,9 @@ train:
   only_validate: False
 
   # normalize data
-  normalize_keys: ["eef_pos", "action", "hand_joints", "plug_pos_error", "plug_quat_error", "plug_hand_quat", "plug_hand_pos"]
+  normalize_keys: ["eef_pos", "action", "plug_pos_error", "plug_quat_error", "plug_hand_quat", "plug_hand_pos"]
 
-  normalize_file: "/home/roblab20/tactile_insertion/datastore_42_contact2/normalization.pkl"
+  normalize_file: "/home/roblab20/tactile_insertion/datastore_42_gt_test/normalization.pkl"
 
   # load student checkpoint
   load_checkpoint: False

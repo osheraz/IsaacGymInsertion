@@ -78,11 +78,7 @@ class PPO(object):
             self.tactile_input_dim[0] = self.tactile_input_dim[0] // 2
         self.mlp_tactile_info_dim = self.network_config.tactile_mlp.units[0]
         self.tactile_hist_dim = (self.network_config.tactile_encoder.tactile_seq_length, 3, *self.tactile_input_dim)
-        # ---- ft Info ---
-        self.ft_info = self.ppo_config["ft_info"]
-        self.ft_seq_length = self.ppo_config["ft_seq_length"]
-        self.ft_input_dim = self.ppo_config["ft_input_dim"]
-        self.ft_info_dim = self.ft_input_dim * self.ft_seq_length
+
         # ---- Priv Info ----
         self.priv_info = self.ppo_config['priv_info']
         self.priv_info_dim = self.ppo_config['priv_info_dim']
@@ -104,9 +100,6 @@ class PPO(object):
             'extrin_adapt': self.extrin_adapt,
             'priv_info_dim': self.priv_info_dim,
             'priv_info': self.priv_info,
-            "ft_input_shape": self.ft_info_dim,
-            "ft_info": self.ft_info,
-            "ft_units": self.network_config.ft_mlp.units,
             "obs_units": self.network_config.obs_mlp.units,
             "obs_info": self.obs_info,
             "gt_contacts_info": self.gt_contacts_info,
@@ -184,7 +177,6 @@ class PPO(object):
         # ---- Rollout Videos ----
         self.it = 0
         self.log_video_every = self.task_config.env.record_video_every
-        self.log_ft_every = self.task_config.env.record_ft_every
 
         self.last_recording_it = 0
         self.last_recording_it_ft = 0
@@ -510,16 +502,16 @@ class PPO(object):
         plt.figure(figsize=(8, 6))
         plt.plot(np.array(data)[:, :3])
         plt.xlabel('time')
-        plt.ylim([-0.25, 0.25])
+        # plt.ylim([-0.25, 0.25])
         plt.ylabel('force')
         plt.savefig(f'{output_loc}_force.png')
         plt.close()
-        plt.figure(figsize=(8, 6))
-        plt.plot(np.array(data)[:, 3:])
-        plt.xlabel('time')
-        plt.ylabel('torque')
-        plt.savefig(f'{output_loc}_torque.png')
-        plt.close()
+        # plt.figure(figsize=(8, 6))
+        # plt.plot(np.array(data)[:, 3:])
+        # plt.xlabel('time')
+        # plt.ylabel('torque')
+        # plt.savefig(f'{output_loc}_torque.png')
+        # plt.close()
 
     def log_video(self):
         if self.it == 0:
@@ -634,7 +626,6 @@ class PPO(object):
         self.set_eval()
 
         action, latent, done = None, None, None
-        object_ori = None
 
         save_trajectory = self.env.cfg_task.data_logger.collect_data
         offline_test = self.full_config.offline_training_w_env
@@ -707,7 +698,7 @@ class PPO(object):
 
             # logging data
             if save_trajectory or offline_test:
-                self.data_logger.log_trajectory_data(action, None, done, save_trajectory=save_trajectory)
+                self.data_logger.log_trajectory_data(action, latent, done, save_trajectory=save_trajectory)
                 total_dones += len(done.nonzero())
                 if total_dones > milestone:
                     print('[Test] success rate:', num_success / total_dones)

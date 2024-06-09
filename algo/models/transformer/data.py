@@ -4,6 +4,7 @@ from glob import glob
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
+from torch import nn
 from scipy.spatial.transform import Rotation
 
 import os
@@ -113,9 +114,47 @@ class DataNormalizer:
         self.ensure_directory_exists(self.normalization_path)
         self.load_or_create_normalization_file()
 
+class GaussianNoise(nn.Module):
+    def __init__(self, std=0.1):
+        super().__init__()
+        self.std = std
+
+    def forward(self, x):
+        if self.training:
+            noise = torch.randn_like(x) * self.std
+            return x + noise
+        return x
+
+def mask_img(x, img_patch_size, img_masking_prob):
+    # Divide the image into patches and randomly mask some of them
+    img_patch = x.unfold(2, img_patch_size, img_patch_size).unfold(
+        3, img_patch_size, img_patch_size
+    )
+    mask = (
+        torch.rand(
+            (
+                x.shape[0],
+                x.shape[-2] // img_patch_size,
+                x.shape[-1] // img_patch_size,
+            )
+        )
+        < img_masking_prob
+    )
+    mask = mask.unsqueeze(1).unsqueeze(-1).unsqueeze(-1).expand_as(img_patch)
+    x = x.clone()
+    x.unfold(2, img_patch_size, img_patch_size).unfold(
+        3, img_patch_size, img_patch_size
+    )[mask] = 0
+    return x
 
 class TactileDataset(Dataset):
-    def __init__(self, files, sequence_length=500, full_sequence=False, normalize_dict=None, stride=10):
+    def __init__(self, files, sequence_length=500,
+                 full_sequence=False,
+                 normalize_dict=None,
+                 stride=10,
+                 img_transform=None,
+                 tactile_transform=None,
+                 ):
 
         self.all_folders = files
         self.sequence_length = sequence_length
@@ -124,6 +163,9 @@ class TactileDataset(Dataset):
         self.normalize_dict = normalize_dict
 
         self.to_torch = lambda x: torch.from_numpy(x).float()
+
+        self.img_transform = img_transform
+        self.tactile_transform = tactile_transform
 
         # Store indices corresponding to each trajectory
         self.indices_per_trajectory = []
@@ -164,22 +206,25 @@ class TactileDataset(Dataset):
         mask[:padding_length] = 0
 
         diff = False
-        keys = ["tactile", "img", "eef_pos", "action", "latent", "obs_hist", "contacts",
+        keys = ["tactile", "img", "eef_pos", "action", "latent", "obs_hist",
                 "hand_joints", "plug_hand_quat", "plug_hand_pos", "plug_pos_error", "plug_quat_error"]
 
         data_seq = {key: self.extract_sequence(data, key, start_idx) for key in keys}
 
         # Tactile input [T F W H C]
         tactile_input = data_seq["tactile"]
+        if self.tactile_transform is not None:
+            tactile_input = self.tactile_transform(self.to_torch(tactile_input))
         # T, F, C, W, H = tactile_input.shape
         # tactile_input = tactile_input.reshape(T, F * C, W, H)
         # left_finger, right_finger, bottom_finger = [data_seq["tactile"][:, i, ...] for i in range(3)]
         img_input = data_seq["img"]
+        if self.img_transform is not None:
+            img_input = self.img_transform(self.to_torch(img_input))
 
         eef_pos = data_seq["eef_pos"]
         hand_joints = data_seq["hand_joints"]
         action = data_seq["action"]
-
         contacts = data_seq["action"] # contact
         obs_hist = data_seq["obs_hist"]
 
@@ -214,23 +259,23 @@ class TactileDataset(Dataset):
         label = latent
         # Output
 
-        # shift_action_right = np.concatenate([np.zeros((1, action.shape[-1])), action[:-1, :]], axis=0)
+        shift_action_right = np.concatenate([np.zeros((1, action.shape[-1])), action[:-1, :]], axis=0)
 
         lin_input = np.concatenate([
-            # eef_pos,
-            hand_joints,
-            # shift_action_right
+            eef_pos,
+            shift_action_right
+            # hand_joints,
         ], axis=-1)
 
         # Convert to torch tensors
-        tensors = [self.to_torch(tensor) for tensor in [tactile_input,
-                                                        img_input,
-                                                        lin_input,
-                                                        contacts,
-                                                        obs_hist,
-                                                        label,
-                                                        action,
-                                                        mask]]
+        tensors = [tensor if isinstance(tensor, torch.Tensor) else self.to_torch(tensor) for tensor in [tactile_input,
+                                                                                                        img_input,
+                                                                                                        lin_input,
+                                                                                                        contacts,
+                                                                                                        obs_hist,
+                                                                                                        label,
+                                                                                                        action,
+                                                                                                        mask]]
 
         return tuple(tensors)
 

@@ -292,4 +292,3 @@ def replace_submodules(
         if predicate(m)]
     assert len(bn_list) == 0
     return root_module
-

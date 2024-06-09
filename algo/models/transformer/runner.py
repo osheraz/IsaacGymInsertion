@@ -17,12 +17,105 @@ import time
 from algo.models.transformer.utils import set_seed
 from hydra.utils import to_absolute_path
 from warmup_scheduler import GradualWarmupScheduler
+from torch import nn
+from torch.nn import ModuleList
+from torchvision import transforms
 from matplotlib import pyplot as plt
 from scipy.spatial.transform import Rotation
 
 
+def define_transforms(channel, color_jitter, width, height, crop_width,
+                      crop_height, img_patch_size, img_gaussian_noise=0.0, img_masking_prob=0.0):
+    # Use color jitter to augment the image
+    if color_jitter:
+        if channel == 3:
+            # no depth
+            downsample = nn.Sequential(
+                transforms.Resize(
+                    (width, height),
+                    interpolation=transforms.InterpolationMode.BILINEAR,
+                    antialias=True,
+                ),
+                transforms.ColorJitter(brightness=0.1),
+            )
+        else:
+            # with depth, only jitter the rgb part
+            downsample = lambda x: transforms.Resize(
+                (width, height),
+                interpolation=transforms.InterpolationMode.BILINEAR,
+                antialias=True,
+            )(
+                torch.concat(
+                    [transforms.ColorJitter(brightness=0.1)(x[:, :3]), x[:, 3:]],
+                    axis=1,
+                )
+            )
+
+    # Not using color jitter, only downsample the image
+    else:
+        downsample = nn.Sequential(
+            transforms.Resize(
+                (width, height),
+                interpolation=transforms.InterpolationMode.BILINEAR,
+            ),
+        )
+
+    # Crop randomization, normalization
+    transform = nn.Sequential(
+        transforms.RandomCrop((crop_width, crop_height)),
+    )
+
+    # Add gaussian noise to the image
+    if img_gaussian_noise > 0.0:
+        transform = nn.Sequential(
+            transform,
+            GaussianNoise(img_gaussian_noise),
+        )
+
+    def mask_img(x):
+        # Divide the image into patches and randomly mask some of them
+        img_patch = x.unfold(2, img_patch_size, img_patch_size).unfold(
+            3, img_patch_size, img_patch_size
+        )
+        mask = (
+                torch.rand(
+                    (
+                        x.shape[0],
+                        x.shape[-2] // img_patch_size,
+                        x.shape[-1] // img_patch_size,
+                    )
+                )
+                < img_masking_prob
+        )
+        mask = mask.unsqueeze(1).unsqueeze(-1).unsqueeze(-1).expand_as(img_patch)
+        x = x.clone()
+        x.unfold(2, img_patch_size, img_patch_size).unfold(
+            3, img_patch_size, img_patch_size
+        )[mask] = 0
+        return x
+
+    if img_masking_prob > 0.0:
+        transform = lambda x: mask_img(
+            nn.Sequential(
+                transforms.RandomCrop((crop_width, crop_height)),
+            )(x)
+        )
+    # For evaluation, only center crop and normalize
+    eval_transform = nn.Sequential(
+        transforms.CenterCrop((crop_width, crop_height)),
+    )
+
+    return transform, downsample, eval_transform
+
+
 class Runner:
-    def __init__(self, cfg=None, agent=None, action_regularization=False):
+    def __init__(self,
+                 cfg=None,
+                 agent=None,
+                 action_regularization=False,
+                 num_fingers=3,
+
+                 ):
 
         self.cfg = cfg
         self.agent = agent
@@ -33,6 +126,41 @@ class Runner:
         self.full_sequence = self.cfg.model.transformer.full_sequence
         self.sequence_length = 500 if self.full_sequence else self.cfg.model.transformer.sequence_length
         self.device = 'cuda:0'
+
+        # img
+        self.img_channel = 1 if cfg.img_type == "depth" else 3
+        self.img_color_jitter = cfg.img_color_jitter
+        self.img_width = cfg.img_width
+        self.img_height = cfg.img_height
+        self.crop_img_width, self.crop_img_height = self.img_width - 20, self.img_height - 30
+        self.img_transform, self.img_downsample, self.img_eval_transform = define_transforms(self.img_channel,
+                                                                                             self.img_color_jitter,
+                                                                                             self.img_width,
+                                                                                             self.img_height,
+                                                                                             self.crop_img_width,
+                                                                                             self.crop_img_height,
+                                                                                             cfg.img_patch_size,
+                                                                                             cfg.img_gaussian_noise,
+                                                                                             cfg.img_masking_prob)
+        # tactile
+        self.num_fingers = num_fingers
+        self.tactile_channel = 1 if cfg.tactile_type == "gray" else 3
+        self.half_image = True
+        self.tactile_color_jitter = cfg.tactile_color_jitter
+        self.tactile_width = cfg.tactile_width // 2 if self.half_image else cfg.tactile_width
+        self.tactile_height = cfg.tactile_height
+        self.crop_tactile_width, self.crop_tactile_height = self.tactile_width, self.tactile_height
+        self.tactile_transform, self.tactile_downsample, self.tactile_eval_transform = define_transforms(
+            self.tactile_channel,
+            self.tactile_color_jitter,
+            self.tactile_width,
+            self.tactile_height,
+            self.crop_tactile_width,
+            self.crop_tactile_height,
+            cfg.tactile_patch_size,
+            cfg.tactile_gaussian_noise,
+            cfg.tactile_masking_prob
+        )
 
         self.model = TacT(context_size=self.sequence_length,
                           num_channels=self.cfg.model.cnn.in_channels,
@@ -166,7 +294,7 @@ class Runner:
                 mask = mask.to(self.device).unsqueeze(-1)
                 # contacts = contacts.to(self.device)
 
-                out = self.model(tac_input, img_input,  lin_input)
+                out = self.model(tac_input, img_input, lin_input)
 
                 loss_action = torch.zeros(1, device=self.device)
 
@@ -365,13 +493,36 @@ class Runner:
         val_files = [file_list[i] for i in val_idxs]
 
         # Passing trajectories
-        train_ds = TactileDataset(files=training_files, full_sequence=self.full_sequence,
-                                  sequence_length=self.sequence_length, normalize_dict=self.normalize_dict)
-        train_dl = DataLoader(train_ds, batch_size=train_batch_size, shuffle=True)
+        train_ds = TactileDataset(files=training_files,
+                                  full_sequence=self.full_sequence,
+                                  sequence_length=self.sequence_length,
+                                  normalize_dict=self.normalize_dict,
+                                  img_transform=self.img_transform,
+                                  tactile_transform=self.tactile_transform
+                                  )
+        train_dl = DataLoader(train_ds,
+                              batch_size=train_batch_size,
+                              shuffle=True,
+                              num_workers=4,
+                              pin_memory=True,
+                              persistent_workers=True,
+                              )
 
-        val_ds = TactileDataset(files=val_files, full_sequence=self.full_sequence, sequence_length=self.sequence_length,
-                                normalize_dict=self.normalize_dict)
-        val_dl = DataLoader(val_ds, batch_size=val_batch_size, shuffle=True)
+        val_ds = TactileDataset(files=val_files,
+                                full_sequence=self.full_sequence,
+                                sequence_length=self.sequence_length,
+                                normalize_dict=self.normalize_dict,
+                                img_transform=self.img_eval_transform,
+                                tactile_transform=self.tactile_eval_transform,
+                                )
+
+        val_dl = DataLoader(val_ds,
+                            batch_size=val_batch_size,
+                            shuffle=True,
+                            num_workers=4,
+                            pin_memory=True,
+                            persistent_workers=True,
+                            )
 
         # training
         for epoch in range(epochs):

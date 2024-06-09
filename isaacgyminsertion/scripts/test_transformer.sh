@@ -1,7 +1,7 @@
 #!/bin/bash
 GPUS=${1:-0}
 SEED=${2:-42}
-CACHE=${3:-gt2}
+CACHE=${3:-gt_test}
 NUM_ENVS=${4:-1}
 HEADLESS=${5:-False}
 
@@ -12,13 +12,12 @@ EXTRA_ARGS_SLUG=${EXTRA_ARGS// /_}
 
 echo extra "${EXTRA_ARGS}"
 
-student_name=student
 model_to_load=outputs/${CACHE}/stage1_nn/last.pth
-data=/home/roblab20/tactile_insertion
-data_folder=/home/roblab20/tactile_insertion/datastore_${SEED}_${CACHE}
+data=/home/${USER}/tactile_insertion
+data_folder=/home/${USER}/tactile_insertion/datastore_${SEED}_${CACHE}
 path_norm=/${data_folder}/normalization.pkl
 output_dir=outputs/${CACHE}
-student_ckpt_path=/home/roblab20/osher3_workspace/src/isaacgym/python/IsaacGymInsertion/isaacgyminsertion/outputs/${CACHE}/${student_name}/checkpoints/model_last.pt
+student_ckpt_path=/home/${USER}/osher3_workspace/src/isaacgym/python/IsaacGymInsertion/isaacgyminsertion/outputs/${CACHE}/student/checkpoints/model_last.pt
 
 CUDA_VISIBLE_DEVICES=${GPUS} \
 python trainV2.py task=FactoryTaskInsertionTactile headless=${HEADLESS} seed=${SEED} \

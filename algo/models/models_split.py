@@ -89,7 +89,7 @@ class ActorCriticSplit(nn.Module):
         mlp_input_shape = input_shape[0]
         self.units = kwargs['actor_units']
         out_size = self.units[-1]
-        self.ft_info = kwargs["ft_info"]
+        # self.ft_info = kwargs["ft_info"]
         self.tactile_info = kwargs["tactile_info"]
         self.obs_info = kwargs["obs_info"]
         self.contact_info = kwargs['gt_contacts_info']
@@ -163,13 +163,12 @@ class ActorCriticSplit(nn.Module):
                         units=self.merge_units, input_size=self.tactile_units[-1] + self.obs_units[-1]
                     )
 
-                if self.ft_info:
-                    assert 'ft is not supported yet, force rendering is currently ambiguous'
-                    self.ft_units = kwargs["ft_units"]
-                    ft_input_shape = kwargs["ft_input_shape"]
-                    self.ft_adapt_tconv = FTAdaptTConv(ft_dim=ft_input_shape,
-                                                       ft_out_dim=self.ft_units[-1])
-
+                # if self.ft_info:
+                #     assert 'ft is not supported yet, force rendering is currently ambiguous'
+                #     self.ft_units = kwargs["ft_units"]
+                #     ft_input_shape = kwargs["ft_input_shape"]
+                #     self.ft_adapt_tconv = FTAdaptTConv(ft_dim=ft_input_shape,
+                #                                        ft_out_dim=self.ft_units[-1])
 
         self.actor_mlp = MLP(units=self.units, input_size=mlp_input_shape)
         if not self.shared_parameters:
