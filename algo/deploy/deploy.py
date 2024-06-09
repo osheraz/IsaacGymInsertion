@@ -561,8 +561,9 @@ class HardwarePlayer(object):
         quat_diff = torch_jit_utils.quat_mul(self.plug_quat, torch_jit_utils.quat_conjugate(self.identity_quat))
         rot_dist = 2.0 * torch.asin(torch.clamp(torch.norm(quat_diff[:, 0:3], p=2, dim=-1), max=1.0))
         goal_resets = torch.abs(rot_dist) <= self.deploy_config.rl.goal_min_rot
-
         self.inserted = goal_resets
+        print(rot_dist)
+
         is_too_far = (plug_hand_xy_distance > 0.08)
 
         roll, pitch, yaw = torch_jit_utils.get_euler_xyz(self.plug_quat.clone())
@@ -576,7 +577,7 @@ class HardwarePlayer(object):
 
         if self.done[0, 0].item():
             print('[Reset] ~',
-                  "Far-away" if is_too_far[0].item() else "",
+                  "Far-away" if is_too_far.item() else "",
                   "Timeout" if timeout.item() else "",
                   "Inserted" if self.inserted.item() else "", )
 
@@ -597,12 +598,12 @@ class HardwarePlayer(object):
             event.set()  # Signal that input has been received
 
         # Start the user input thread
-        # input_thread = threading.Thread(target=get_user_input, args=(input_event,))
-        # input_thread.start()
-        #
-        # # Wait for the input event
-        # while not input_event.is_set():
-        #     rospy.sleep(0.1)  # Small sleep to avoid busy waiting
+        input_thread = threading.Thread(target=get_user_input, args=(input_event,))
+        input_thread.start()
+
+        # Wait for the input event
+        while not input_event.is_set():
+            rospy.sleep(0.1)  # Small sleep to avoid busy waiting
 
         self.env.randomize_grasp()
 
