@@ -15,7 +15,7 @@
 # Licence under MIT License
 # https://github.com/Denys88/rl_games/
 # --------------------------------------------------------
-
+import gc
 import os
 import time
 import cv2
@@ -466,6 +466,11 @@ class PPO(object):
                     b_losses.append(b_loss)
 
                 self.storage.update_mu_sigma(mu.detach(), sigma.detach())
+
+                del loss
+                del res_dict
+                gc.collect()
+                torch.cuda.empty_cache()
 
             av_kls = torch.mean(torch.stack(ep_kls))
             # self.last_lr = self.scheduler.update(self.last_lr, av_kls.item())
