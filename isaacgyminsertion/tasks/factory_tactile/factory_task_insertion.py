@@ -406,7 +406,6 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             self.reset_idx(env_ids)
 
         self.actions = actions.clone().to(self.device)  # shape = (num_envs, num_actions); values = [-1, 1]
-
         # test actions for whenever we want to see some axis motion
         self.actions[:, :6] = 0.
         # self.actions[:, 0] = 1.
@@ -431,6 +430,8 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             ], dim=-1).clone()
 
         # Update targets
+        print(self.actions[:, -3:])
+
         self.targets = self.prev_targets + delta_targets
         self._apply_actions_as_ctrl_targets(actions=self.actions,
                                             ctrl_target_gripper_dof_pos=self.ctrl_target_gripper_dof_pos,
@@ -1333,7 +1334,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             self.act_torque = self.R @ tendon_forces - self.K @ self.gripper_dof_pos[:, idx].unsqueeze(-1)
             self.act_torque = self.act_torque.squeeze(-1)  # sum torque@each joint
 
-            # to_plot = self.act_angles.clone().cpu().numpy()[0, :]
+            # to_plot = gripper_actions.clone().cpu().numpy()[0, :]
             # self.force_hist = np.vstack((self.force_hist, to_plot))
             # plt.plot(self.force_hist[1:, :])
             # plt.pause(0.0001)

@@ -29,6 +29,10 @@ catkin_make --cmake-args \
             -DPYTHON_INCLUDE_DIR=/usr/include/python3.6m \
             -DPYTHON_LIBRARY=/usr/lib/x86_64-linux-gnu/libpython3.6m.so
 ```
+with cuda12.0 (ZED)
+```bash
+catkin_make --cmake-args             -DCMAKE_BUILD_TYPE=Release             -DPYTHON_EXECUTABLE=/usr/bin/python3             -DPYTHON_INCLUDE_DIR=/usr/include/python3.6m             -DPYTHON_LIBRARY=/usr/lib/x86_64-linux-gnu/libpython3.6m.so -DCUDA_TOOLKIT_ROOT_DIR=/usr/local/cuda-12.0
+```
 
 ### source the workspace
 ```bash

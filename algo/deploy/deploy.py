@@ -77,10 +77,10 @@ class HardwarePlayer(object):
                                   self.full_config.train.network.tactile_encoder.num_channels)
 
         # ---- ft Info --- currently ft isn't supported
-        self.ft_info = self.full_config.train.ppo.ft_info
-        self.ft_seq_length = self.full_config.train.ppo.ft_seq_length
-        self.ft_input_dim = self.full_config.train.ppo.ft_input_dim
-        self.ft_info_dim = self.ft_input_dim * self.ft_seq_length
+        # self.ft_info = self.full_config.train.ppo.ft_info
+        # self.ft_seq_length = self.full_config.train.ppo.ft_seq_length
+        # self.ft_input_dim = self.full_config.train.ppo.ft_input_dim
+        # self.ft_info_dim = self.ft_input_dim * self.ft_seq_length
 
         # ---- Priv Info ----
         self.priv_info = self.full_config.train.ppo.priv_info
@@ -117,8 +117,8 @@ class HardwarePlayer(object):
             "obs_info": self.obs_info,
             'student_obs_input_shape': self.student_obs_input_shape,
             "mlp_tactile_input_shape": self.mlp_tactile_info_dim,
-            "ft_input_shape": self.ft_info_dim,
-            "ft_info": self.ft_info,
+            # "ft_input_shape": self.ft_info_dim,
+            # "ft_info": self.ft_info,
             "mlp_tactile_units": self.full_config.train.network.tactile_mlp.units,
             "tactile_encoder_embed_dim": self.full_config.train.network.tactile_mlp.units[0],
             "ft_units": self.full_config.train.network.ft_mlp.units,
@@ -276,6 +276,8 @@ class HardwarePlayer(object):
         self.D = torch.diag(torch.tensor([d1, d2, d1, d2, d1, d2], device=self.device)).repeat((self.num_envs, 1, 1))
 
         self.done = torch.zeros((1, 1), device=self.device, dtype=torch.bool)
+        self.inserted = torch.zeros((1, 1), device=self.device, dtype=torch.bool)
+
         # Gripper pointing down w.r.t the world frame
         gripper_goal_euler = torch.tensor(self.full_config.task.randomize.fingertip_midpoint_rot_initial,
                                           device=self.device).unsqueeze(0)
@@ -339,7 +341,7 @@ class HardwarePlayer(object):
             self.device)
 
         self.ft_data = torch.zeros((1, 6), device=self.device, dtype=torch.float)
-        self.ft_queue = torch.zeros((1, self.ft_seq_length, 6), device=self.device, dtype=torch.float)
+        # self.ft_queue = torch.zeros((1, self.ft_seq_length, 6), device=self.device, dtype=torch.float)
 
         self.obs_buf = torch.zeros((1, self.obs_shape[0]), device=self.device, dtype=torch.float)
         self.obs_student_buf = torch.zeros((1, self.obs_stud_shape[0]), device=self.device, dtype=torch.float)
@@ -433,7 +435,7 @@ class HardwarePlayer(object):
         if self.gt_contacts_info:
             self.contacts[0, :] = torch.tensor(self.env.tracker.extrinsic_contact).to(self.device)
 
-    def compute_observations(self, display_image=True, with_priv=False, with_tactile=True, with_img=True):
+    def compute_observations(self, display_image=False, with_priv=False, with_tactile=False, with_img=False):
 
         obses = self.env.get_obs()
 
@@ -445,8 +447,8 @@ class HardwarePlayer(object):
         self.fingertip_centered_pos = torch.tensor(ee_pose[:3], device=self.device, dtype=torch.float).unsqueeze(0)
         self.fingertip_centered_quat = torch.tensor(ee_pose[3:], device=self.device, dtype=torch.float).unsqueeze(0)
 
-        self.ft_queue[:, 1:] = self.ft_queue[:, :-1].clone().detach()
-        self.ft_queue[:, 0, :] = self.ft_data
+        # self.ft_queue[:, 1:] = self.ft_queue[:, :-1].clone().detach()
+        # self.ft_queue[:, 0, :] = self.ft_data
 
         if with_tactile:
             left, right, bottom = obses['frames']
@@ -501,8 +503,8 @@ class HardwarePlayer(object):
         # some-like taking a new socket pose measurement
         # self._update_socket_pose()
 
-        eef_pos = torch.cat((self.fingertip_centered_pos,
-                             quat2R(self.fingertip_centered_quat).reshape(1, -1)), dim=-1)
+        # eef_pos = torch.cat((self.fingertip_centered_pos,
+        #                      quat2R(self.fingertip_centered_quat).reshape(1, -1)), dim=-1)
 
         # noisy_delta_pos = self.noisy_gripper_goal_pos - self.fingertip_centered_pos
 
@@ -520,7 +522,7 @@ class HardwarePlayer(object):
         self.obs_queue[:, -self.num_observations:] = obs
 
         obs_tensors_student = torch.cat([self.actions,  # 6
-                                         self.actions[:, -3:],  # 3
+                                         # self.actions[:, -3:],  # 3
                                          ], dim=-1)
 
         self.obs_stud_queue[:, :-self.num_obs_stud] = self.obs_stud_queue[:, self.num_obs_stud:]
@@ -556,7 +558,7 @@ class HardwarePlayer(object):
 
         plug_hand_xy_distance = torch.norm(self.plug_hand_pos[:, :2])
 
-        quat_diff = torch_jit_utils.quat_mul(self.plug_quat, torch_jit_utils.quat_conjugate(self.goal_ori))
+        quat_diff = torch_jit_utils.quat_mul(self.plug_quat, torch_jit_utils.quat_conjugate(self.identity_quat))
         rot_dist = 2.0 * torch.asin(torch.clamp(torch.norm(quat_diff[:, 0:3], p=2, dim=-1), max=1.0))
         goal_resets = torch.abs(rot_dist) <= self.deploy_config.rl.goal_min_rot
 
@@ -580,9 +582,10 @@ class HardwarePlayer(object):
 
     def reset(self):
 
-        start_joint_pos = self.deploy_config.common_poses.start_pos
+        # start_joint_pos = self.deploy_config.common_poses.start_pos
         # Move above plug
-        self.env.move_to_joint_values(start_joint_pos, wait=True)
+        # self.env.move_to_joint_values(start_joint_pos, wait=True)
+        self.env.release()
         self.env.arm.move_manipulator.scale_vel(scale_vel=0.1, scale_acc=0.1)
         # Align and grasp
         # input('Hand is about to grasp - please set the object')
@@ -594,12 +597,12 @@ class HardwarePlayer(object):
             event.set()  # Signal that input has been received
 
         # Start the user input thread
-        input_thread = threading.Thread(target=get_user_input, args=(input_event,))
-        input_thread.start()
-
-        # Wait for the input event
-        while not input_event.is_set():
-            rospy.sleep(0.1)  # Small sleep to avoid busy waiting
+        # input_thread = threading.Thread(target=get_user_input, args=(input_event,))
+        # input_thread.start()
+        #
+        # # Wait for the input event
+        # while not input_event.is_set():
+        #     rospy.sleep(0.1)  # Small sleep to avoid busy waiting
 
         self.env.randomize_grasp()
 
@@ -735,7 +738,8 @@ class HardwarePlayer(object):
                 gripper_actions = gripper_actions @ torch.diag(
                     torch.tensor(self.gripper_action_scale_deploy, device=self.device))
 
-            self.act_angles = self.env.get_hand_motor_state() + gripper_actions  # add the action
+            act_angles = torch.tensor(self.env.get_hand_motor_state(), device=self.device, dtype=torch.float).unsqueeze(0)
+            self.act_angles = act_angles + gripper_actions  # add the action
             self.rel_act_angles += gripper_actions
             self.gripper_actions = gripper_actions
 
@@ -748,7 +752,7 @@ class HardwarePlayer(object):
 
     def generate_hand_ctrl_signals(self, wait=True):
 
-        target_motor = self.act_angles.clone()
+        target_motor = self.act_angles.cpu().detach().numpy().squeeze().tolist()
         try:
             self.env.hand.set_gripper_motors(target_motor)
         except Exception as e:
@@ -809,7 +813,7 @@ class HardwarePlayer(object):
         # self._initialize_grasp_poses()
         from algo.deploy.env.env import ExperimentEnv
         rospy.init_node('DeployEnv')
-        self.env = ExperimentEnv()
+        self.env = ExperimentEnv(with_tactile=False, with_zed=False)
         self.env.arm.move_manipulator.scale_vel(scale_vel=0.004, scale_acc=0.004)
 
         rospy.logwarn('Finished setting the env, lets play.')
@@ -846,7 +850,13 @@ class HardwarePlayer(object):
             # self.env.arm.calib_robotiq()
 
             obses = self.compute_observations(with_priv=True)
-            obs, obs_stud, tactile, priv = obses['obs'], obses['student_obs'], obses['tactile'], obses['priv_info']
+            filtered_obses = {key: value for key, value in obses.items() if value is not None}
+
+            obs = filtered_obses.get('obs')
+            obs_stud = filtered_obses.get('student_obs')
+            tactile = filtered_obses.get('tactile')
+            priv = filtered_obses.get('priv_info')
+            # obs, obs_stud, tactile, priv = obses['obs'], obses['student_obs'], obses['tactile'], obses['priv_info']
 
             self._update_reset_buf()
 
@@ -883,7 +893,12 @@ class HardwarePlayer(object):
 
                 # Compute next observation
                 obses = self.compute_observations(with_priv=True)
-                obs, obs_stud, tactile, priv = obses['obs'], obses['student_obs'], obses['tactile'], obses['priv_info']
+                filtered_obses = {key: value for key, value in obses.items() if value is not None}
+
+                obs = filtered_obses.get('obs')
+                obs_stud = filtered_obses.get('student_obs')
+                tactile = filtered_obses.get('tactile')
+                priv = filtered_obses.get('priv_info')
 
             self.env.arm.move_manipulator.stop_motion()
             self.reset()

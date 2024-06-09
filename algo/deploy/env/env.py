@@ -214,10 +214,10 @@ class ExperimentEnv:
 
         # TODO change align and grasp to dof_relative funcs without moveit
         try:
-            random_add = np.random.uniform(-0.1, 0.1, 3)
-            self.hand.set_gripper_motors(random_add)
+            # random_add = np.random.uniform(-0.1, 0.1, 3)
+            # self.hand.set_gripper_motors(random_add)
             self.grasp()
-
+            self.hand.jiggle_jiggle()
             return True
 
         except Exception as e:

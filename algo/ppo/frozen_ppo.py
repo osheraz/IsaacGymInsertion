@@ -682,7 +682,7 @@ class PPO(object):
             obs_dict = {
                 'obs': self.running_mean_std(self.obs['obs']),
                 'priv_info': self.priv_mean_std(self.obs['priv_info']),
-                'contacts': self.obs['contacts'],
+                # 'contacts': self.obs['contacts'],
                 'latent': latent,
             }
             action, latent = self.model.act_inference(obs_dict)

@@ -3,7 +3,7 @@ GPUS=${1:-0}
 SEED=${2:-42}
 CACHE=${3:-dex}
 NUM_ENVS=${4:-1}
-HEADLESS=${5:-True}
+HEADLESS=${5:-False}
 
 array=( $@ )
 len=${#array[@]}
@@ -17,7 +17,7 @@ CUDA_VISIBLE_DEVICES=${GPUS} \
 python trainV2.py task=FactoryTaskInsertionTactile headless=${HEADLESS} seed=${SEED} \
 test=True \
 task.env.numEnvs=${NUM_ENVS} \
-task.env.numStates=21 \
+task.env.numStates=7 \
 task.env.tactile_history_len=1 \
 task.env.compute_contact_gt=False \
 train.ppo.only_contact=False \
