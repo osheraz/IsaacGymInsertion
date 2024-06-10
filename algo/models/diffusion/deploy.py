@@ -29,12 +29,12 @@ def to_torch(x, dtype=torch.float, device='cuda:0', requires_grad=False):
 
 
 class HardwarePlayer:
-    def __init__(self, output_dir, full_config):
+    def __init__(self, full_config):
 
         self.num_envs = 1
         self.deploy_config = full_config.deploy
         self.full_config = full_config
-        self.diff_config = full_config.train_diffusion
+        self.diff_config = full_config.diffusion_train
 
         # Overwriting action scales for the controller
         self.max_episode_length = self.deploy_config.rl.max_episode_length
@@ -58,9 +58,17 @@ class HardwarePlayer:
         self.far_clip = self.full_config.task.external_cam.far_clip
         self.dis_noise = self.full_config.task.external_cam.dis_noise
 
+        output_sizes = {
+            "eef_pos": 64,
+            "hand_joints": 64,
+            "arm_joints": 128,
+            "img": self.diff_config.image_output_size,
+            "tactile": self.diff_config.tactile_output_size,
+        }
+
         self.model = DPAgent(
-            output_sizes=self.diff_config.output_sizes,
-            representation_type=self.diff_config.representation_type,
+            output_sizes=output_sizes,
+            representation_type=self.diff_config.representation_type.split("-"),
             identity_encoder=self.diff_config.identity_encoder,
             obs_horizon=self.diff_config.obs_horizon,
             pred_horizon=self.diff_config.pred_horizon,
@@ -71,25 +79,21 @@ class HardwarePlayer:
             use_ddim=self.diff_config.use_ddim,
         )
 
-        # todo MOVE MODEL TO EVAL AND DEVICE
-        self.model.load(self.diff_config.ckpt_path)
+        self.model.load(self.diff_config.load_path)
         self.obsque = collections.deque(maxlen=self.diff_config.obs_horizon)
         self.action_queue = collections.deque(maxlen=self.diff_config.action_horizon)
         self.predict_eef_delta = self.diff_config.predict_eef_delta
         self.predict_pos_delta = self.diff_config.predict_pos_delta
         self.num_diffusion_iters = self.diff_config.num_diffusion_iters
 
-        # ---- Output Dir ----
-        self.output_dir = output_dir
-        self.model_dir = os.path.join(self.output_dir, 'deploy')
-        os.makedirs(self.model_dir, exist_ok=True)
-
         self.cfg_tactile = full_config.task.tactile
 
-        asset_info_path = '../../../assets/factory/yaml/factory_asset_info_insertion.yaml'
-        self.asset_info_insertion = hydra.compose(config_name=asset_info_path)
-        self.asset_info_insertion = self.asset_info_insertion['']['']['']['']['']['']['']['']['']['assets']['factory'][
-            'yaml']
+        import yaml
+        asset_info_path = '/home/roblab20/tactile_diffusion/datastore_real/factory_asset_info_insertion.yaml'
+        with open(asset_info_path, 'r') as file:
+            asset_info_path = yaml.safe_load(file)
+        self.asset_info_insertion = asset_info_path
+
 
     def act(self, obs):
 
@@ -97,7 +101,7 @@ class HardwarePlayer:
             obs["img"] = self.model.img_eval_transform(obs["img"].squeeze(0))
         if "tactile" in obs:
             # self.model.tactile_downsample
-            obs["tactile"] = self.model.tactile_eval_transform(obs["img"].squeeze(0))
+            obs["tactile"] = self.model.tactile_eval_transform(obs["tactile"].squeeze(0))
 
         # if obsque is empty, fill it with the current observation
         if len(self.obsque) == 0:
@@ -310,10 +314,8 @@ class HardwarePlayer:
         self.plug_hand_pos, self.plug_hand_quat = self._pose_world_to_hand_base(self.plug_pos,
                                                                                 self.plug_quat,
                                                                                 as_matrix=False)
-        if self.gt_contacts_info:
-            self.contacts[0, :] = torch.tensor(self.env.tracker.extrinsic_contact).to(self.device)
 
-    def compute_observations(self, display_image=True, with_priv=False, with_tactile=True, with_img=False):
+    def compute_observations(self, with_priv=True, with_tactile=True, with_img=False, display_image=False, ):
 
         obses = self.env.get_obs()
 
@@ -365,18 +367,20 @@ class HardwarePlayer:
 
         # some-like taking a new socket pose measurement
         self._update_socket_pose()
+        # eef_pos = torch.cat((self.fingertip_centered_pos,
+        #                      quat2R(self.fingertip_centered_quat).reshape(1, -1)), dim=-1)
         eef_pos = torch.cat((self.fingertip_centered_pos,
-                             quat2R(self.fingertip_centered_quat).reshape(1, -1)), dim=-1)
+                             self.fingertip_centered_quat), dim=-1)
 
         # noisy_delta_pos = self.noisy_gripper_goal_pos - self.fingertip_centered_pos
 
-        obs = torch.cat([eef_pos,
-                         self.actions,
-                         # self.noisy_gripper_goal_pos.clone(),
-                         # noisy_delta_pos
-                         ], dim=-1)
+        # obs = torch.cat([eef_pos,
+        #                  self.actions,
+        #                  # self.noisy_gripper_goal_pos.clone(),
+        #                  # noisy_delta_pos
+        #                  ], dim=-1)
 
-        obs_dict = {'obs': obs}
+        obs_dict = {'eef_pos': eef_pos}
 
         if with_tactile:
             obs_dict['tactile'] = self.tactile_imgs.clone()
@@ -410,7 +414,7 @@ class HardwarePlayer:
 
         timeout = (self.episode_length >= self.max_episode_length)
 
-        self.done = is_too_far | timeout | self.inserted
+        self.done = timeout | self.inserted #| is_too_far
 
         if self.done[0, 0].item():
             print('Reset because ',
@@ -530,7 +534,7 @@ class HardwarePlayer:
 
     def update_and_apply_action(self, actions, wait=True, by_moveit=True, by_vel=False):
 
-        self.actions = actions.clone().to(self.device)
+        self.actions = torch.tensor(actions, device=self.device).unsqueeze(0)
 
         delta_targets = torch.cat([
             self.actions[:, :3] @ torch.diag(torch.tensor(self.pos_scale, device=self.device)),  # 3
@@ -637,7 +641,9 @@ class HardwarePlayer:
         # self._initialize_grasp_poses()
         from algo.deploy.env.env import ExperimentEnv
         rospy.init_node('DeployEnv')
+
         self.env = ExperimentEnv()
+
         self.env.arm.move_manipulator.scale_vel(scale_vel=0.004, scale_acc=0.004)
 
         rospy.logwarn('Finished setting the env, lets play.')
@@ -672,7 +678,7 @@ class HardwarePlayer:
             rospy.sleep(2.0)
             self.env.arm.calib_robotiq()
 
-            obs = self.compute_observations(with_priv=True)
+            obs = self.compute_observations()
             self._update_reset_buf()
 
             for i in range(self.full_config.task.env.numObsHist):
@@ -700,7 +706,7 @@ class HardwarePlayer:
                     break
 
                 # Compute next observation
-                obs = self.compute_observations(with_priv=True)
+                obs = self.compute_observations()
 
             self.env.arm.move_manipulator.stop_motion()
             self.reset()

@@ -23,6 +23,7 @@ from torch import nn
 from torch.nn import ModuleList
 from torchvision import transforms
 from algo.models.diffusion.utils import WandBLogger, generate_random_string, get_eef_delta, save_args
+from omegaconf import DictConfig, OmegaConf
 
 
 RT_DIM = {
@@ -674,7 +675,7 @@ class Agent:
         return mse, action_mse
 
     def load(self, path):
-        model_path = os.path.join(path)
+        model_path = os.path.join(path, 'last.ckpt')
         dir_path = os.path.dirname(path)
         stat_path = os.path.join(dir_path, "normalization.pkl")
         self.stats = pickle.load(open(stat_path, "rb"))
@@ -713,7 +714,8 @@ class Runner:
 
     def __init__(self, cfg=None):
 
-        self.cfg = cfg
+        self.task_cfg = cfg
+        cfg = cfg.diffusion_train
 
         from matplotlib import pyplot as plt
         self.fig = plt.figure(figsize=(20, 15))
@@ -785,7 +787,7 @@ class Runner:
         if cfg.load_path:
             agent.load(cfg.load_path)
 
-        output_dir = f'{to_absolute_path(self.cfg.output_dir)}'
+        output_dir = f'{to_absolute_path(cfg.output_dir)}'
 
         if not cfg.eval:
             if cfg.model_save_path:
@@ -802,6 +804,10 @@ class Runner:
                 os.makedirs(model_path, exist_ok=True)
 
             save_args(cfg, model_path)
+            with open(os.path.join(model_path, f"task_config.yaml"), "w") as f:
+                f.write(OmegaConf.to_yaml(self.task_cfg))
+            with open(os.path.join(model_path, f"train_config.yaml"), "w") as f:
+                f.write(OmegaConf.to_yaml(cfg))
 
             if cfg.data_folder is not None:
                 data_path = cfg.data_folder

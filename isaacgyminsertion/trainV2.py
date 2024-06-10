@@ -50,7 +50,6 @@ def run(cfg: DictConfig):
     # set numpy formatting for printing only
     set_np_formatting()
 
-
     # global rank of the GPU
     if cfg.train.ppo.multi_gpu:
         rank = int(os.getenv("LOCAL_RANK", "0"))
@@ -71,7 +70,7 @@ def run(cfg: DictConfig):
         from algo.models.diffusion.train_diffusion import Runner
 
         # perform train
-        runner = Runner(cfg.diffusion_train)
+        runner = Runner(cfg)
 
         exit()
 

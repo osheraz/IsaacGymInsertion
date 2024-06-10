@@ -17,7 +17,7 @@ class ExperimentEnv:
     """ Superclass for all Robots environments.
     """
 
-    def __init__(self, with_arm=True, with_hand=True, with_tactile=True, with_ext_cam=True, with_zed=True):
+    def __init__(self, with_arm=True, with_hand=True, with_tactile=True, with_ext_cam=True, with_zed=False):
         rospy.logwarn('Setting up the environment')
 
         self.with_zed = with_zed

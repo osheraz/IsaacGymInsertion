@@ -405,7 +405,13 @@ class DiffusionPolicy:
         torch.save(self.nets.state_dict(), path)
 
     def _get_data_forward(self, stats, obs_deque, data_key):
-        sample = np.stack([x[data_key] for x in obs_deque])
+        # fix
+        def convert_to_numpy(data):
+            if torch.is_tensor(data):
+                return data.cpu().detach().numpy()
+            return data
+
+        sample = np.stack([convert_to_numpy(x[data_key]) for x in obs_deque]).squeeze()
         if data_key != "img" and (data_key != "tactile" or not self.binarize_tactile) and data_key != "action":
             # image & tactile & action is already normalized
             sample = normalize_data(sample, stats=stats, key=data_key)
