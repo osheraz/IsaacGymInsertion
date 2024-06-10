@@ -196,6 +196,8 @@ class TactileDataset(Dataset):
 
         # Load data from the file
         data = np.load(file_path)
+        tactile_folder = file_path[:-7].replace('obs', 'tactile')
+        img_folder = file_path[:-7].replace('obs', 'img')
 
         done = data["done"]
         done_idx = done.nonzero()[0][-1]
@@ -206,24 +208,30 @@ class TactileDataset(Dataset):
         mask[:padding_length] = 0
 
         diff = False
-        keys = ["tactile", "img", "eef_pos", "action", "latent", "obs_hist",
+        keys = ["eef_pos", "action", "latent", "obs_hist",
                 "hand_joints", "plug_hand_quat", "plug_hand_pos", "plug_pos_error", "plug_quat_error"]
 
         data_seq = {key: self.extract_sequence(data, key, start_idx) for key in keys}
 
         # Tactile input [T F W H C]
-        tactile_input = data_seq["tactile"]
+        # tactile_input = data_seq["tactile"]
+        tactile_input = np.stack([np.load(os.path.join(tactile_folder, f'tactile_{i}.npz'))['tactile'] for i in
+                            range(start_idx, start_idx + self.sequence_length)])
+
         if self.tactile_transform is not None:
             tactile_input = self.tactile_transform(self.to_torch(tactile_input))
         # T, F, C, W, H = tactile_input.shape
         # tactile_input = tactile_input.reshape(T, F * C, W, H)
         # left_finger, right_finger, bottom_finger = [data_seq["tactile"][:, i, ...] for i in range(3)]
-        img_input = data_seq["img"]
+        # img_input = data_seq["img"]
+        img_input = np.stack([np.load(os.path.join(img_folder, f'img_{i}.npz'))['img'] for i in
+                            range(start_idx, start_idx + self.sequence_length)])
+
         if self.img_transform is not None:
             img_input = self.img_transform(self.to_torch(img_input))
 
         eef_pos = data_seq["eef_pos"]
-        hand_joints = data_seq["hand_joints"]
+        # hand_joints = data_seq["hand_joints"]
         action = data_seq["action"]
         contacts = data_seq["action"] # contact
         obs_hist = data_seq["obs_hist"]
@@ -242,7 +250,7 @@ class TactileDataset(Dataset):
         # Normalizing
         if self.normalize_dict is not None:
             eef_pos = (eef_pos - self.normalize_dict["mean"]["eef_pos"]) / self.normalize_dict["std"]["eef_pos"]
-            hand_joints = (hand_joints - self.normalize_dict["mean"]["hand_joints"]) / self.normalize_dict["std"]["hand_joints"]
+            # hand_joints = (hand_joints - self.normalize_dict["mean"]["hand_joints"]) / self.normalize_dict["std"]["hand_joints"]
             plug_pos_error = (plug_pos_error - self.normalize_dict["mean"]["plug_pos_error"]) / self.normalize_dict["std"]["plug_pos_error"]
             plug_quat_error = (plug_quat_error - self.normalize_dict["mean"]["plug_quat_error"]) / self.normalize_dict["std"]["plug_quat_error"]
 

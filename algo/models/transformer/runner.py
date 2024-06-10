@@ -553,7 +553,8 @@ class Runner:
         from glob import glob
 
         print('Loading trajectories from', self.cfg.data_folder)
-        file_list = glob(os.path.join(self.cfg.data_folder, '*/*.npz'))
+
+        file_list = glob(os.path.join(self.cfg.data_folder, '*/*/obs/*.npz'))
         ff = 'test'
         save_folder = f'{to_absolute_path(self.cfg.output_dir)}/{ff}_{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}'
         os.makedirs(save_folder, exist_ok=True)
