@@ -45,7 +45,9 @@ def extract_and_save_frames(file_list):
         print(f'{file_path} has been removed')
 
 # Define the path to the data
-data_path = "/home/roblab20/tactile_diffusion/datastore_real"
+# data_path = "/home/roblab20/tactile_diffusion/datastore_real"
+data_path = "/home/roblab20/tactile_insertion/datastore_42_gt_test"
+
 print('Loading trajectories from', data_path)
 
 # Get a list of all .npz files in the data path
