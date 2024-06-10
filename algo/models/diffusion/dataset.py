@@ -37,7 +37,6 @@ def create_sample_indices(
     return indices
 
 
-
 def sample_sequence(
         representation_type,
         traj_list,
@@ -49,14 +48,46 @@ def sample_sequence(
         sample_end_idx,
 ):
     result = dict()
+    tactile_folder = traj_list[file_idx][:-7].replace('obs', 'tactile')
+    img_folder = traj_list[file_idx][:-7].replace('obs', 'img')
 
+    if 'tactile' in representation_type:
+        tactile = np.stack([np.load(os.path.join(tactile_folder, f'tactile_{i}.npz'))['tactile'] for i in
+                            range(buffer_start_idx, buffer_end_idx)])
+
+        # Handle filling for tactile data
+        tactile_filled = np.zeros((sequence_length,) + tactile.shape[1:], dtype=tactile.dtype)
+        if sample_start_idx > 0:
+            tactile_filled[:sample_start_idx] = tactile[0]
+        if sample_end_idx < sequence_length:
+            tactile_filled[sample_end_idx:] = tactile[-1]
+        tactile_filled[sample_start_idx:sample_end_idx] = tactile
+        result['tactile'] = tactile_filled
+
+    if 'img' in representation_type:
+        img = np.stack(
+            [np.load(os.path.join(img_folder, f'img_{i}.npz'))['img'] for i in range(buffer_start_idx, buffer_end_idx)])
+
+        # Handle filling for image data
+        img_filled = np.zeros((sequence_length,) + img.shape[1:], dtype=img.dtype)
+        if sample_start_idx > 0:
+            img_filled[:sample_start_idx] = img[0]
+        if sample_end_idx < sequence_length:
+            img_filled[sample_end_idx:] = img[-1]
+        img_filled[sample_start_idx:sample_end_idx] = img
+        result['img'] = img_filled
+
+    # Load the training data
     train_data = np.load(traj_list[file_idx])
 
     for key, input_arr in train_data.items():
         if key not in representation_type:
             continue
+
         sample = input_arr[buffer_start_idx:buffer_end_idx]
+
         data = sample
+
         if (sample_start_idx > 0) or (sample_end_idx < sequence_length):
             data = np.zeros(
                 shape=(sequence_length,) + input_arr.shape[1:], dtype=input_arr.dtype
@@ -67,6 +98,7 @@ def sample_sequence(
                 data[sample_end_idx:] = sample[-1]
             data[sample_start_idx:sample_end_idx] = sample
         result[key] = data
+
     return result
 
 
@@ -272,22 +304,6 @@ class Dataset(torch.utils.data.Dataset):
 
     def __len__(self):
         return len(self.indices)
-
-    def read_img(self, image_pathes, idx):
-        if self.memmap_loader is not None:
-            # using memmap loader
-            indices = range(idx, idx + self.obs_horizon)
-            data = self.memmap_loader[indices]
-            data = [
-                {"base_rgb": data["base_rgb"][i], "base_depth": data["base_depth"][i]}
-                for i in range(data["base_rgb"].shape[0])
-            ]
-        else:
-            # not using memmap loader and loading images while training
-            data = [pickle.load(open(image_path, "rb")) for image_path in image_pathes]
-        imgs = self.get_img(data)
-
-        return imgs
 
     def __getitem__(self, idx):
         # get the start/end indices for this datapoint

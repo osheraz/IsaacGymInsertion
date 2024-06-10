@@ -370,13 +370,19 @@ class Agent:
 
         return img
 
-    def _get_tactile_observation(self, data):
+    def _get_tactile_observation(self, data_path):
         # allocate memory for the image
-        data = data[0]
-        image_size = data["tactile"].shape
+        data_path = data_path[0]
+        data = np.load(data_path)
+        data_len = data['eef_pos'].shape[0]
+
+        img_folder = data_path[:-7].replace('obs', 'tactile')
+        tactile_files = sorted([os.path.join(img_folder, f) for f in os.listdir(img_folder) if f.endswith('.npz')])
+
+        image_size = np.load(tactile_files[0])["tactile"].shape
 
         img = torch.zeros(
-            (image_size[0], self.num_fingers, self.tactile_channel, self.tactile_width, self.tactile_height),
+            (data_len, self.num_fingers, self.tactile_channel, self.tactile_width, self.tactile_height),
             dtype=torch.float32,
         )
 
@@ -384,7 +390,8 @@ class Agent:
 
         # Only use rgb
         def process_rgb(d):
-            rgb = d.astype(np.float32)
+            rgb = np.load(d)['tactile']
+            # rgb = d.astype(np.float32)
             # rgb = np.moveaxis(rgb, -1, 1)
             if H == 224 and W == 224 and self.tactile_color_jitter == False:
                 rgb = self.tactile_downsample(
@@ -401,7 +408,7 @@ class Agent:
                 max_workers=self.num_workers
         ) as executor:
             future_to_data = {
-                executor.submit(fn, d): (d, i) for i, d in enumerate(data['tactile'])
+                executor.submit(fn, d): (d, i) for i, d in enumerate(tactile_files)
             }
             for future in concurrent.futures.as_completed(future_to_data):
                 d, i = future_to_data[future]
@@ -412,24 +419,14 @@ class Agent:
 
         return img
 
-    def get_observation(self, data, load_img=False):
+    def get_observation(self, data, data_path):
 
         input_data = {}
         for rt in self.representation_type:
             if rt == "img":
-                if load_img:
-                    # Load all the image to the memory
-                    input_data[rt] = self._get_image_observation(data)
-                else:
-                    # Only keep the file path, and load the image while training
-                    input_data[rt] = np.stack([d["file_path"] for d in data])
+                input_data[rt] = self._get_image_observation(data_path)
             if rt == "tactile":
-                if load_img:
-                    # Load all the image to the memory
-                    input_data[rt] = self._get_tactile_observation(data)
-                else:
-                    # Only keep the file path, and load the image while training
-                    input_data[rt] = np.stack([d["file_path"] for d in data])
+                input_data[rt] = self._get_tactile_observation(data_path)
             else:
                 input_data[rt] = np.array([d[rt] for d in data]).squeeze()
 
@@ -546,20 +543,10 @@ class Agent:
     ):
         torch.cuda.empty_cache()
 
-        if train_path is not None and test_path is not None:
-            # get the paths
-            self.epi_dir = data_processing.get_epi_dir(train_path)
-            print(self.epi_dir)
-            eval_trajs = data_processing.get_epi_dir(test_path)
-            assert len(eval_trajs) == 1
-            eval_traj = eval_trajs[0]
-            print("eval traj:", eval_traj)
-        else:
-            # TODO: currently only here
-            self.epi_dir = traj_list
-            eval_traj = self.epi_dir[-1]
-            self.epi_dir.remove(eval_traj)
-            print("eval traj:", eval_traj)
+        self.epi_dir = traj_list
+        eval_traj = self.epi_dir[-1]
+        self.epi_dir.remove(eval_traj)
+        print("eval traj:", eval_traj)
 
         eval_data = self.get_eval_data(eval_traj)
 
@@ -616,7 +603,7 @@ class Agent:
         action = self.get_eval_action(data)
 
         print("GETTING EVAL OBSERVATION", end="\r")
-        obs = self.get_observation(data, load_img=True)
+        obs = self.get_observation(data, data_path)
         obs_list = []
 
         if "img" in self.representation_type:
@@ -819,7 +806,7 @@ class Runner:
             else:
                 from glob import glob
                 print('Loading trajectories from', data_path)
-                traj_list = glob(os.path.join(data_path, '*/*.npz'))
+                traj_list = glob(os.path.join(data_path, '*/*/obs/*.npz'))
                 normalizer = DataNormalizer(cfg, traj_list)
                 agent.stats = normalizer.normalize_dict
                 agent.save_stats(model_path)

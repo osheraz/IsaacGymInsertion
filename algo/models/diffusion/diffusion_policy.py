@@ -161,7 +161,8 @@ class DiffusionPolicy:
         if self.writer is None and save_path is not None:
             # get the name from save_path
             name = os.path.basename(save_path)
-            self.writer = SummaryWriter(os.path.join("./runs", name))
+            self.writer = SummaryWriter(os.path.join("./outputs", name))
+
         with tqdm(range(num_epochs), desc="Epoch", position=0, leave=True) as tglobal:
             # epoch loop
             for epoch_idx in tglobal:
