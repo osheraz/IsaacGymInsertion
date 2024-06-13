@@ -698,7 +698,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                             "images/im{self.count:05}.png",
                         )
 
-                    if i == 0 and True:
+                    if i == 0 and False:
                         img = cv2.cvtColor(im.cpu().numpy(), cv2.COLOR_RGB2BGR)
                         cv2.imshow("Follow camera", img)
                         cv2.waitKey(1)
@@ -722,7 +722,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                             f"images/dim/{self.count:05}.png",
                         )
 
-                    if False and i == 0:
+                    if True and i == 0:
                         img = self.process_depth_image(im)
                         img = img.cpu().numpy()
                         # img = np.uint8(img.cpu().numpy() * 255)
@@ -1043,6 +1043,21 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                 self.complete_ft_frames = self.ft_frames[:]
             self.ft_frames = []
 
+        # Slightly change the external cam pose
+        if self.external_cam and False:
+            for env_id in env_ids:
+                random_pos_error = np.random.normal(0, self.pos_error_std, 3)
+                random_rot_error = np.random.normal(0, self.rot_error_std, 3)
+                perturbed_position = np.array(self.init_camera_pos) + random_pos_error
+                perturbed_rotation = np.array(self.init_camera_rot) + random_rot_error
+
+                self.gym.set_camera_location(self.camera_handles[env_id], self.envs[env_id],
+                                             gymapi.Vec3(perturbed_position[0],
+                                                         perturbed_position[1],
+                                                         perturbed_position[2]),
+                                             gymapi.Vec3(perturbed_rotation[0],
+                                                         perturbed_rotation[1],
+                                                         perturbed_rotation[2]))
         self._reset_buffers(env_ids)
 
     def _reset_kuka(self, env_ids, new_pose=None):

@@ -548,6 +548,14 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
         #     self.gym.create_asset_force_sensor(kuka_asset, ft_handle, sensor_pose)
         wrist_ft_handle = self.gym.find_asset_rigid_body_index(kuka_asset, 'iiwa7_link_7')
         self.gym.create_asset_force_sensor(kuka_asset, wrist_ft_handle, sensor_pose)
+
+        self.init_camera_pos = (self.cfg_env.external_cam.x_init,
+                                self.cfg_env.external_cam.y_init,
+                                self.cfg_env.external_cam.z_init)
+        self.init_camera_rot = (np.deg2rad(self.cfg_env.external_cam.roll_init),
+                                np.deg2rad(self.cfg_env.external_cam.pitch_init),
+                                np.deg2rad(self.cfg_env.external_cam.yaw_init))
+
         from tqdm import tqdm
 
         for i in tqdm(range(self.num_envs)):
@@ -726,8 +734,20 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
 
             if self.external_cam:
                 # add external cam
-                cam, trans = self.make_handle_trans(self.res[0], self.res[1], i, (0.66, 0.0, 0.2),
-                                                    (np.deg2rad(0), np.deg2rad(40), np.deg2rad(180)))
+                # Standard deviations for the errors
+                self.pos_error_std = self.cfg_env.external_cam.pos_noise  # Position error standard deviation
+                self.rot_error_std = np.deg2rad(self.cfg_env.external_cam.rot_noise)  # Rotation error standard deviation
+
+                # Generate random position and rotation errors
+                random_pos_error = np.random.normal(0, self.pos_error_std, 3)
+                random_rot_error = np.random.normal(0, self.rot_error_std, 3)
+
+                # Apply random errors to the initial position and rotation
+                perturbed_position = np.array(self.init_camera_pos) + random_pos_error
+                perturbed_rotation = np.array(self.init_camera_rot) + random_rot_error
+
+                cam, trans = self.make_handle_trans(self.res[0], self.res[1], i,
+                                                    perturbed_position, perturbed_rotation)
                 self.camera_handles.append(cam)
                 self.gym.attach_camera_to_body(
                     cam,

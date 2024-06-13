@@ -11,7 +11,7 @@ import cv2
 
 class ZedCameraSubscriber:
 
-    def __init__(self, topic='/zedm/zed_node/depth/depth_registered', display=False):
+    def __init__(self, topic='/zedm/zed_node/depth/depth_registered', display=True):
         """
         Finger Device class for a single Finger
         :param serial: Finger device serial
@@ -22,7 +22,7 @@ class ZedCameraSubscriber:
         self.cam_type = 'd'
         self.far_clip = 1.0
         self.near_clip = 0.0
-        self.dis_noise = 0.001
+        self.dis_noise = 0.00
         self.display = display
         self.init_success = False
 
@@ -88,7 +88,7 @@ class ZedCameraSubscriber:
 
 if __name__ == "__main__":
 
-    rospy.init_node('Finger')
+    rospy.init_node('Zed')
     tactile = ZedCameraSubscriber()
     rate = rospy.Rate(60)
 
