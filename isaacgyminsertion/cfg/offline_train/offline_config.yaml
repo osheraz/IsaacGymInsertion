@@ -7,12 +7,12 @@ img_type: "depth"
 img_color_jitter: True
 img_width: 180
 img_height: 320
-img_gaussian_noise: 0.0
-img_masking_prob: 0.0
+img_gaussian_noise: 0.001
+img_masking_prob: 0.3
 img_patch_size: 16
 
 tactile_type: 'rgb'
-tactile_gaussian_noise: 0.0
+tactile_gaussian_noise: 0.001
 tactile_masking_prob: 0.0
 tactile_patch_size: 16
 tactile_color_jitter: True
@@ -22,7 +22,7 @@ tactile_height: 64
 # supervised learning
 train:
   # basic training hyperparameters
-  epochs: 100
+  epochs: 40
   train_batch_size: 16
   val_batch_size: 16
   learning_rate: 5e-4
@@ -43,8 +43,8 @@ train:
 
   # Train params for on screen logging
   print_every: 100
-  eval_every: 4000
-  test_every: 10000
+  eval_every: 3000
+  test_every: 3000
   test_episodes: 2 # per epoch batch
 
   # Only val/test ( val- dataset, test - env)

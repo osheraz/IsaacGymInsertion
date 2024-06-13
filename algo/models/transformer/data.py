@@ -158,7 +158,7 @@ class TactileDataset(Dataset):
 
         self.all_folders = files
         self.sequence_length = sequence_length
-        self.stride = sequence_length  # sequence_length
+        self.stride = stride  # sequence_length
         self.full_sequence = full_sequence
         self.normalize_dict = normalize_dict
 

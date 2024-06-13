@@ -93,7 +93,7 @@ def run(cfg: DictConfig):
         agent = None
         
         # perform train
-        runner = TransformerRunner(cfg.offline_train, agent=agent)
+        runner = TransformerRunner(cfg, agent=agent)
         runner.run()
         
         exit()

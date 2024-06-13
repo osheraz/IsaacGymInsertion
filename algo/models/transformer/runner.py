@@ -1,4 +1,4 @@
-from algo.models.transformer.data import TactileDataset, DataNormalizer
+from algo.models.transformer.data import TactileDataset, DataNormalizer, GaussianNoise
 from torch.utils.data import DataLoader
 from torch import optim
 from algo.models.transformer.model import TactileTransformer
@@ -117,7 +117,8 @@ class Runner:
 
                  ):
 
-        self.cfg = cfg
+        self.task_cfg = cfg
+        self.cfg = cfg.offline_train
         self.agent = agent
 
         self.ppo_step = agent.play_latent_step if ((agent is not None) and (action_regularization)) else None
@@ -128,10 +129,10 @@ class Runner:
         self.device = 'cuda:0'
 
         # img
-        self.img_channel = 1 if cfg.img_type == "depth" else 3
-        self.img_color_jitter = cfg.img_color_jitter
-        self.img_width = cfg.img_width
-        self.img_height = cfg.img_height
+        self.img_channel = 1 if self.cfg.img_type == "depth" else 3
+        self.img_color_jitter = self.cfg.img_color_jitter
+        self.img_width = self.cfg.img_width
+        self.img_height = self.cfg.img_height
         self.crop_img_width, self.crop_img_height = self.img_width - 20, self.img_height - 30
         self.img_transform, self.img_downsample, self.img_eval_transform = define_transforms(self.img_channel,
                                                                                              self.img_color_jitter,
@@ -139,16 +140,16 @@ class Runner:
                                                                                              self.img_height,
                                                                                              self.crop_img_width,
                                                                                              self.crop_img_height,
-                                                                                             cfg.img_patch_size,
-                                                                                             cfg.img_gaussian_noise,
-                                                                                             cfg.img_masking_prob)
+                                                                                             self.cfg.img_patch_size,
+                                                                                             self.cfg.img_gaussian_noise,
+                                                                                             self.cfg.img_masking_prob)
         # tactile
         self.num_fingers = num_fingers
-        self.tactile_channel = 1 if cfg.tactile_type == "gray" else 3
+        self.tactile_channel = 1 if self.cfg.tactile_type == "gray" else 3
         self.half_image = True
-        self.tactile_color_jitter = cfg.tactile_color_jitter
-        self.tactile_width = cfg.tactile_width // 2 if self.half_image else cfg.tactile_width
-        self.tactile_height = cfg.tactile_height
+        self.tactile_color_jitter = self.cfg.tactile_color_jitter
+        self.tactile_width = self.cfg.tactile_width // 2 if self.half_image else self.cfg.tactile_width
+        self.tactile_height = self.cfg.tactile_height
         self.crop_tactile_width, self.crop_tactile_height = self.tactile_width, self.tactile_height
         self.tactile_transform, self.tactile_downsample, self.tactile_eval_transform = define_transforms(
             self.tactile_channel,
@@ -157,9 +158,9 @@ class Runner:
             self.tactile_height,
             self.crop_tactile_width,
             self.crop_tactile_height,
-            cfg.tactile_patch_size,
-            cfg.tactile_gaussian_noise,
-            cfg.tactile_masking_prob
+            self.cfg.tactile_patch_size,
+            self.cfg.tactile_gaussian_noise,
+            self.cfg.tactile_masking_prob
         )
 
         self.model = TacT(context_size=self.sequence_length,
@@ -183,13 +184,26 @@ class Runner:
         self.fig = plt.figure(figsize=(20, 15))
         self.train_loss, self.val_loss = [], []
 
-    def train(self, dl, val_dl, ckpt_path, print_every=50, eval_every=250, test_every=500):
 
+    def train(self, dl, val_dl, ckpt_path, print_every=50, eval_every=250, test_every=500):
+        """
+        Train the model using the provided data loader, with periodic validation and testing.
+
+        Args:
+            dl (DataLoader): Training data loader.
+            val_dl (DataLoader): Validation data loader.
+            ckpt_path (str): Path to save checkpoints.
+            print_every (int): Frequency of printing training loss.
+            eval_every (int): Frequency of evaluating the model on validation data.
+            test_every (int): Frequency of testing the model.
+        """
         self.model.train()
-        train_loss, val_loss = [], 0
+        train_loss, val_loss = [], []
         latent_loss_list, action_loss_list = [], []
 
-        for i, (tac_input, img_input, lin_input, contacts, obs_hist, latent, action, mask) in tqdm(enumerate(dl)):
+        progress_bar = tqdm(enumerate(dl), total=len(dl), desc="Training Progress", unit="batch")
+
+        for i, (tac_input, img_input, lin_input, contacts, obs_hist, latent, action, mask) in progress_bar:
             self.model.train()
 
             tac_input = tac_input.to(self.device)  # [B T F W H C]
@@ -197,15 +211,15 @@ class Runner:
             lin_input = lin_input.to(self.device)
             latent = latent.to(self.device)
             action = action.to(self.device)
-            # contacts = contacts.to(self.device)
             mask = mask.to(self.device).unsqueeze(-1)
 
             out = self.model(tac_input, img_input, lin_input)
             loss_action = torch.zeros(1, device=self.device)
+
             if self.full_sequence:
                 loss_latent = torch.sum(self.loss_fn(out, latent), dim=-1).unsqueeze(-1)
                 loss_latent = torch.sum(loss_latent * mask) / torch.sum(mask)
-                # Action regularization
+
                 if self.ppo_step is not None:
                     obs_hist = obs_hist.to(self.device).view(obs_hist.shape[0] * self.sequence_length,
                                                              obs_hist.shape[-1])
@@ -216,10 +230,9 @@ class Runner:
                     action_loss_list.append(loss_action.item())
 
             else:
-
                 loss_latent = self.loss_fn_mean(out, latent[:, -1, :])
 
-                if self.ppo_step is not None:  # action regularization
+                if self.ppo_step is not None:
                     obs_hist = obs_hist[:, -1, :].to(self.device).view(obs_hist.shape[0], obs_hist.shape[-1])
                     pred_action, _ = self.ppo_step({'obs': obs_hist, 'latent': out[:, -1, :]})
                     pred_action = torch.clamp(pred_action, -1, 1)
@@ -236,16 +249,19 @@ class Runner:
             if self.ppo_step is not None:
                 action_loss_list.append(loss_action.item())
 
+            # Update tqdm description
+            progress_bar.set_postfix({
+                'Batch': i + 1,
+                'Loss': np.mean(train_loss)
+            })
+
             if (i + 1) % print_every == 0:
                 print(f'step {i + 1}:', np.mean(train_loss))
-                self._wandb_log({
-                    'train/loss': np.mean(train_loss),
-                    'train/latent_loss': np.mean(latent_loss_list),
-                })
+                self._wandb_log({'train/loss': np.mean(train_loss),
+                                 'train/latent_loss': np.mean(latent_loss_list)})
                 if self.ppo_step is not None:
                     self._wandb_log({'train/action_loss': np.mean(action_loss_list)})
 
-                # Lets log a bit
                 self.fig.clf()
                 self.train_loss.append(np.mean(train_loss))
                 plt.plot(self.train_loss, '-ro', linewidth=3, label='train loss')
@@ -254,11 +270,7 @@ class Runner:
                 action_loss_list = []
 
             if (i + 1) % eval_every == 0:
-                self.log_output(tac_input.clone(),
-                                img_input.clone(),
-                                lin_input.clone(),
-                                out.clone(),
-                                latent.clone(),
+                self.log_output(tac_input.clone(), img_input.clone(), lin_input.clone(), out.clone(), latent.clone(),
                                 'train')
 
                 val_loss = self.validate(val_dl)
@@ -272,8 +284,8 @@ class Runner:
             if (i + 1) % test_every == 0:
                 try:
                     self.test()
-                except:
-                    pass
+                except Exception as e:
+                    print(f'Error during test: {e}')
                 self.model.train()
 
         return val_loss
@@ -348,18 +360,14 @@ class Runner:
         return np.mean(val_loss)
 
     def log_output(self, tac_input, img_input, lin_input, out, latent, session='train'):
-        # tac_input [B T F W H C]
         # Selecting the first example from the batch for demonstration
+        # tac_input [B T F W H C]
+
         image_sequence = tac_input[0].cpu().detach().numpy()
-        img_input = img_input[0].cpu().detach().numpy().squeeze(0)
-        linear_features = lin_input[0].cpu().detach().numpy()  # Shape should be [sequence_length, eef_pos+action]
+        img_input = img_input[0].cpu().detach().numpy()
+        # linear_features = lin_input[0].cpu().detach().numpy()
         predicted_output = out[0].cpu().detach().numpy()
         true_label = latent[0, -1, :].cpu().detach().numpy()
-
-        # Extracting eef_pos for the first example
-        # eef_pos = linear_features[:, :12]  # Assuming the first 12 are eef_pos
-        # eef_pos = eef_pos * self.normalize_dict["std"]["eef_pos"] + self.normalize_dict["mean"]["eef_pos"]
-
         # Plotting
         fig = plt.figure(figsize=(20, 10))
 
@@ -369,40 +377,40 @@ class Runner:
         # image_sequence [T F W H C]
         for finger_idx in range(image_sequence.shape[1]):
             finger_sequence = [np.transpose(img, (1, 2, 0)) for img in image_sequence[:, finger_idx, ...]]
-            finger_sequence = [img / 2 + 0.5 for img in finger_sequence]
             finger_sequence = np.hstack(finger_sequence)
             concat_images.append(finger_sequence)
 
         ax1.imshow(np.vstack(concat_images))  # Adjust based on image normalization
-        ax1.set_title('Input Image Sequence - Example')
+        ax1.set_title('Input Tactile Sequence')
 
         # Adding subplot for linear features (adjust as needed)
-        ax2 = fig.add_subplot(2, 2, 2)
-        # ax2.plot(linear_features[:, -6:], 'ro', label='actions')  # Assuming the rest are actions
-        ax2.plot(linear_features[:, :], 'ok', label='hand_joints')  # Assuming the rest are actions
-        ax2.set_title('Linear input')
-        ax2.legend()
+        # ax2 = fig.add_subplot(2, 2, 2)
+        # ax2.plot(linear_features[:, :], 'ok', label='hand_joints')  # Assuming the rest are actions
+        # ax2.set_title('Linear input')
+        # ax2.legend()
 
+        # Check if img_input has more than one timestep
+        if img_input.ndim == 4 and img_input.shape[0] > 1:
+            concat_img_input = []
+            for t in range(img_input.shape[0]):
+                img = img_input[t]
+                img = np.transpose(img, (1, 2, 0))  # Convert from [W, H, C] to [H, W, C]
+                img = img + 0.5  # Adjust normalization if needed
+                concat_img_input.append(img)
+
+            # Horizontally stack the images for each timestep
+            concat_img_input = np.hstack(concat_img_input)
+        else:
+            # Handle the case where there is only one timestep
+            img = img_input[0] if img_input.ndim == 4 else img_input
+            img = np.transpose(img, (1, 2, 0))  # Convert from [W, H, C] to [H, W, C]
+            img = img + 0.5  # Adjust normalization if needed
+            concat_img_input = img
+
+        # Plot the concatenated image sequence
         ax3 = fig.add_subplot(2, 2, 3)
-        img_input = np.transpose(img_input, (1, 2, 0))
-        img_input = img_input + 0.5
-        ax3.imshow(img_input)  # Adjust based on image normalization
-
-        # # Adding 3D subplot for eef_pos
-        # ax3 = fig.add_subplot(2, 2, 3, projection='3d')
-        # # Plotting the XYZ position
-        # ax3.plot(eef_pos[:, 0], eef_pos[:, 1], eef_pos[:, 2], c='r')
-        # for i in range(eef_pos.shape[0]):
-        #     # Plotting a line for orientation using the first column of the rotation matrix
-        #     # Adjust the scaling factor as needed for visibility
-        #     scale_factor = 0.01
-        #     x, y, z = eef_pos[i, :3]
-        #     u, v, w = eef_pos[i, 3:6] * scale_factor  # Simplified orientation representation
-        #     ax3.quiver(x, y, z, u, v, w, length=0.01)
-        # ax3.set_title('End-Effector Position and Orientation')
-        # ax3.set_xlabel('X')
-        # ax3.set_ylabel('Y')
-        # ax3.set_zlabel('Z')
+        ax3.imshow(concat_img_input)
+        ax3.set_title('Input Image Sequence')
 
         # Adding subplot for Output vs. True Label comparison
         ax4 = fig.add_subplot(2, 2, 4)
@@ -415,10 +423,8 @@ class Runner:
 
         # Adjust layout
         plt.tight_layout()
-
         # Saving the figure
         plt.savefig(f'{self.save_folder}/{session}_example.png')
-
         # Clean up plt to free memory
         plt.close(fig)
 
@@ -526,6 +532,7 @@ class Runner:
 
         # training
         for epoch in range(epochs):
+            self.validate(val_dl)
             if self.cfg.train.only_test:
                 self.test()
             elif self.cfg.train.only_validate:
@@ -555,8 +562,7 @@ class Runner:
         print('Loading trajectories from', self.cfg.data_folder)
 
         file_list = glob(os.path.join(self.cfg.data_folder, '*/*/obs/*.npz'))
-        ff = 'test'
-        save_folder = f'{to_absolute_path(self.cfg.output_dir)}/{ff}_{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}'
+        save_folder = f'{to_absolute_path(self.cfg.output_dir)}/tact_{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}'
         os.makedirs(save_folder, exist_ok=True)
 
         device = 'cuda:0'
@@ -591,4 +597,10 @@ class Runner:
         self.normalize_dict = normalizer.normalize_dict
 
         self.save_folder = save_folder
+
+        with open(os.path.join(save_folder, f"task_config.yaml"), "w") as f:
+            f.write(OmegaConf.to_yaml(self.task_cfg))
+        with open(os.path.join(save_folder, f"train_config.yaml"), "w") as f:
+            f.write(OmegaConf.to_yaml(self.cfg))
+
         self._run(file_list, save_folder, device=device, **train_config)

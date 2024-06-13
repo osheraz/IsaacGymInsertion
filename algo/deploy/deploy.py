@@ -34,7 +34,7 @@ def to_torch(x, dtype=torch.float, device='cuda:0', requires_grad=False):
     return torch.tensor(x, dtype=dtype, device=device, requires_grad=requires_grad)
 
 class HardwarePlayer(object):
-    def __init__(self, output_dir, full_config):
+    def __init__(self, full_config):
 
         self.num_envs = 1
         self.deploy_config = full_config.deploy
@@ -138,11 +138,6 @@ class HardwarePlayer(object):
 
         self.priv_mean_std = RunningMeanStd((self.priv_info_dim,)).to(self.device)
         self.priv_mean_std.eval()
-
-        # ---- Output Dir ----
-        self.output_dir = output_dir
-        self.dp_dir = os.path.join(self.output_dir, 'deploy')
-        os.makedirs(self.dp_dir, exist_ok=True)
 
         self.cfg_tactile = full_config.task.tactile
 

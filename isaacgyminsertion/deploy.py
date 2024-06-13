@@ -59,11 +59,8 @@ def main(config: DictConfig):
     config.seed = set_seed(config.seed)
 
     # TODO change output dir to  teacher folder
-    output_dif = os.path.join(model_to_test + str(datetime.now().strftime("%m-%d-%y")))
-    # output_dif = os.path.join(output_dif, str(datetime.now().strftime("%H-%M-%S")))
 
-    os.makedirs(output_dif, exist_ok=True)
-    agent = HardwarePlayer(output_dif, config)
+    agent = HardwarePlayer(config)
     agent.restore(config.checkpoint)
     agent.deploy()
 

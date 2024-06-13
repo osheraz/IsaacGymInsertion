@@ -156,7 +156,7 @@ class TacT(BaseModel):
 
         self.decoder = MultiLayerDecoder(
             embed_dim=self.tactile_encoding_size,
-            seq_len=self.context_size * 3 + 1,
+            seq_len=self.context_size * (3 + 1),
             output_layers=[256, 128, 64, 32],
             nhead=mha_num_attention_heads,
             num_layers=mha_num_attention_layers,
