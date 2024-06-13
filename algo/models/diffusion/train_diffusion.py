@@ -24,7 +24,56 @@ from torch.nn import ModuleList
 from torchvision import transforms
 from algo.models.diffusion.utils import WandBLogger, generate_random_string, get_eef_delta, save_args
 from omegaconf import DictConfig, OmegaConf
+import imageio
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
+import cv2
+import json
+from mpl_toolkits.mplot3d import Axes3D
 
+
+def init_plot(dpi=100):
+    fig = plt.figure(figsize=(12, 6), dpi=dpi)
+    ax_3d = fig.add_subplot(121, projection='3d')
+    ax_2d = fig.add_subplot(122)
+    canvas = FigureCanvas(fig)
+    return fig, ax_3d, ax_2d, canvas
+
+def update_plot(ax_3d, ax_2d, eef_pos, tactile_imgs):
+    ax_3d.cla()
+    if eef_pos.ndim == 1:
+        ax_3d.plot([eef_pos[0]], [eef_pos[1]], [eef_pos[2]], marker='o', label='End-Effector Position')
+    else:
+        ax_3d.plot(eef_pos[:, 0], eef_pos[:, 1], eef_pos[:, 2], label='End-Effector Path')
+    ax_3d.legend()
+    ax_3d.set_xlabel('X')
+    ax_3d.set_ylabel('Y')
+    ax_3d.set_zlabel('Z')
+    ax_3d.set_title('End-Effector Position in 3D Space')
+
+    ax_2d.cla()
+    num_camera, channel, width, height = tactile_imgs.shape
+    combined_img_list = []
+    for cam in range(num_camera):
+        img = tactile_imgs[cam].transpose(1, 2, 0)  # Assuming channel is in the second dimension
+        img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)  # Convert RGB to BGR for OpenCV
+        img = (img * 255).astype(np.uint8)  # Convert to 8-bit unsigned integer
+        combined_img_list.append(img)
+    combined_img = np.vstack(combined_img_list)
+    ax_2d.imshow(combined_img)
+    ax_2d.axis('off')
+    ax_2d.set_title('Tactile Images')
+
+def render_frame(fig, canvas, ax_3d, ax_2d, eef_pos, tactile_imgs, current_action):
+    update_plot(ax_3d, ax_2d, eef_pos, tactile_imgs)
+    canvas.draw()
+    width, height = fig.get_size_inches() * fig.get_dpi()
+    img = np.frombuffer(canvas.tostring_rgb(), dtype='uint8').reshape(int(height), int(width), 3)
+
+    # Add action text
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    cv2.putText(img, f'Action: {current_action}', (10, img.shape[0] - 10), font, 0.5, (0, 0, 0), 1, cv2.LINE_AA)
+    return img
 
 RT_DIM = {
     "eef_pos": 7,  # 3 + 9
@@ -535,14 +584,11 @@ class Agent:
             save_freq=10,
             eval_freq=10,
             wandb_logger=None,
-            img_memmap_loader_path="",
-            tactile_memmap_loader_path="",
-            train_path=None,
-            test_path=None,
             train_test_split=0.9
     ):
         torch.cuda.empty_cache()
 
+        self.save_path = save_path
         self.epi_dir = traj_list
         eval_traj = self.epi_dir[-1]
         self.epi_dir.remove(eval_traj)
@@ -574,7 +620,8 @@ class Agent:
         )
 
         self.policy.to_ema()
-        self.eval(eval_traj)
+
+        self.eval(eval_traj, save_path=self.save_path)
 
     def get_train_action(self, data):
         act = self.get_eval_action(data)
@@ -627,23 +674,53 @@ class Agent:
         print("EVALUATING")
         action, mse, norm_mse = self.policy.eval(obs, action)
         print("ACTION_MSE: {}, NORM_MSE: {}".format(mse, norm_mse))
+
+        # Convert tensors to floats for JSON serialization
+        mse = mse.item() if hasattr(mse, 'item') else float(mse)
+        norm_mse = norm_mse.item() if hasattr(norm_mse, 'item') else float(norm_mse)
+
+        # Create a directory to save results if not provided
         if save_path is None:
             save_path = "./outputs/{}".format(
                 data_path.split("/")[-1]
                 + "_"
                 + time.strftime("%m%d_%H%M%S", time.localtime())
             )
-        os.makedirs(save_path, exist_ok=True)
+            os.makedirs(save_path, exist_ok=True)
+
+        # Log evaluation metrics to a file
+        metrics_path = os.path.join(save_path, "metrics.json")
+        metrics = {
+            "mse": mse,
+            "norm_mse": norm_mse,
+        }
+        with open(metrics_path, "w") as f:
+            json.dump(metrics, f)
+
+        # Initialize plot with high DPI for better quality
+        fig, ax_3d, ax_2d, canvas = init_plot(dpi=200)
+
+        # Create frames for video
+        frames = []
         for i in range(len(action)):
-            if save_path is not None:
-                with open(os.path.join(save_path, str(i) + ".pkl"), "wb") as f:
-                    pickle.dump(
-                        {
-                            "action": action[i],
-                            "eef_pos": eval_data[0][i]["eef_pos"],
-                        },
-                        f,
-                    )
+            # Convert tactile images to frames for video
+            tactile_imgs = obs[i]["tactile"].cpu().detach().numpy()
+            eef_pos = obs[0]["eef_pos"] if i == 0 else np.stack([obs[j]["eef_pos"] for j in range(i)])
+            current_action = action[i]
+
+            # Render the frame
+            frame = render_frame(fig, canvas, ax_3d, ax_2d, eef_pos.reshape(-1, 7)[:, :3], tactile_imgs, current_action)
+            frames.append(frame)
+
+        # Create a video from the frames using imageio
+        video_path = os.path.join(save_path, "evaluation_video.mp4")
+        writer = imageio.get_writer(video_path, fps=15, codec='libx264', bitrate='5000k')
+
+        for frame in frames:
+            writer.append_data(frame)
+
+        writer.close()
+        print(f"Results saved in {save_path}, including a video of the tactile data.")
 
     def get_eval_loader(
             self, dir_path, traj_type="plain", prefix="0", batch_size=32, num_workers=16
@@ -739,7 +816,7 @@ class Runner:
             output_sizes={
                 "eef_pos": 64,
                 "hand_joints": 64,
-                "arm_joints": 128,
+                "arm_joints": 64,
                 "img": cfg.image_output_size,
                 "tactile": cfg.tactile_output_size,
             },
@@ -774,18 +851,19 @@ class Runner:
         if cfg.load_path:
             agent.load(cfg.load_path)
 
-        output_dir = f'{to_absolute_path(cfg.output_dir)}'
+        output_dir = f'{to_absolute_path("./outputs")}'
+        model_path_suffix = f"{curr_time}"
+        model_path = os.path.join(output_dir, model_path_suffix)
 
         if not cfg.eval:
+
             if cfg.model_save_path:
-                model_path = os.path.join(output_dir, "ckpts")
-            else:
                 model_path = cfg.model_save_path
+            else:
+                cfg.model_save_path = model_path
 
-            model_path_suffix = f"{curr_time}"
-            model_path = os.path.join(model_path, model_path_suffix)
-
-            print(f"Saving to model path {model_path}")
+            self.save_path = model_path
+            print(f"Logging everything to {model_path}")
 
             if not os.path.exists(model_path):
                 os.makedirs(model_path, exist_ok=True)
@@ -831,12 +909,11 @@ class Runner:
                 else:
                     memmap_base_path = train_path if train_path is not None else data_path
                     tactile_memmap_loader_path = os.path.join(memmap_base_path, "tactile-mem.dat")
+                print("using image memmap loader path:", img_memmap_loader_path)
+                print("using tactile memmap loader path:", tactile_memmap_loader_path)
             else:
                 img_memmap_loader_path = ""
                 tactile_memmap_loader_path = ""
-
-            print("using image memmap loader path:", img_memmap_loader_path)
-            print("using tactile memmap loader path:", tactile_memmap_loader_path)
 
             agent.train(
                 traj_list,
@@ -846,11 +923,7 @@ class Runner:
                 save_freq=cfg.save_freq,
                 eval_freq=cfg.eval_freq,
                 wandb_logger=wandb_logger,
-                train_path=train_path,
-                test_path=test_path,
-                img_memmap_loader_path=img_memmap_loader_path,
-                tactile_memmap_loader_path=tactile_memmap_loader_path,
             )
 
         else:
-            agent.eval(cfg.eval_path, save_path=cfg.save_path)
+            agent.eval(cfg.eval_path, save_path=self.save_path)

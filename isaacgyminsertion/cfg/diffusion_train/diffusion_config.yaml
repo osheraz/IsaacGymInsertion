@@ -11,18 +11,18 @@ print_freq: 100
 use_train_test_split: False
 # load student checkpoint
 load_checkpoint: False
-model_save_path: "/home/roblab20/tactile_diffusion/datastore_real"
+model_save_path: ''
 load_path: ''
 
 # basic training hyperparameters
 gpu: 0
 
-epochs: 20
-obs_horizon: 2
+epochs: 100
+obs_horizon: 3
 action_horizon: 6
-pred_horizon: 8
+pred_horizon: 16
 
-batch_size: 4
+batch_size: 16
 learning_rate: 5e-4
 train_test_split: 0.9
 
@@ -51,8 +51,8 @@ policy_dropout_rate: 0.0
 dropout_rate: 0.0  # For the state encoder of Diffusion Policy
 img_dropout_rate: 0.0  # For the image encoder of Diffusion Policy
 weight_decay: 1e-5
-image_output_size: 32
-tactile_output_size: 32
+image_output_size: 128
+tactile_output_size: 128
 state_noise: 0.0
 img_gaussian_noise: 0.0
 img_masking_prob: 0.0

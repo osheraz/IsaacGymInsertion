@@ -352,12 +352,15 @@ class DiffusionPolicy:
         actions_pred = []
 
         i = 0
-        while i < len(obs) - self.action_horizon:
-            action_pred = self.forward(self.data_stat, obs_deque)
-            for j in range(self.action_horizon):
-                actions_pred.append(action_pred[j])
-                obs_deque.append(obs[i + j])
-            i += self.action_horizon
+        total_iterations = len(obs) - self.action_horizon
+        with tqdm(total=total_iterations) as pbar:
+            while i < len(obs) - self.action_horizon:
+                action_pred = self.forward(self.data_stat, obs_deque)
+                for j in range(self.action_horizon):
+                    actions_pred.append(action_pred[j])
+                    obs_deque.append(obs[i + j])
+                i += self.action_horizon
+                pbar.update(self.action_horizon)
 
         actions_pred = np.array(actions_pred)
         action = np.array(action)
