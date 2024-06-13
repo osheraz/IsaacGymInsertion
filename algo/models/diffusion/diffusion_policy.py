@@ -353,7 +353,7 @@ class DiffusionPolicy:
 
         i = 0
         total_iterations = len(obs) - self.action_horizon
-        with tqdm(total=total_iterations) as pbar:
+        with tqdm(total=total_iterations, position=0, leave=True) as pbar:
             while i < len(obs) - self.action_horizon:
                 action_pred = self.forward(self.data_stat, obs_deque)
                 for j in range(self.action_horizon):

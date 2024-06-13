@@ -670,9 +670,9 @@ class Agent:
     def eval(self, data_path, save_path=None):
         print("GETTING EVAL DATA")
         eval_data = self.get_eval_data(data_path)
-        obs, action = eval_data
+        obs, action_gt = eval_data
         print("EVALUATING")
-        action, mse, norm_mse = self.policy.eval(obs, action)
+        action_pred, mse, norm_mse = self.policy.eval(obs, action_gt)
         print("ACTION_MSE: {}, NORM_MSE: {}".format(mse, norm_mse))
 
         # Convert tensors to floats for JSON serialization
@@ -702,18 +702,18 @@ class Agent:
 
         # Create frames for video
         frames = []
-        for i in range(len(action)):
+        for i in range(len(action_pred)):
             # Convert tactile images to frames for video
             tactile_imgs = obs[i]["tactile"].cpu().detach().numpy()
             eef_pos = obs[0]["eef_pos"] if i == 0 else np.stack([obs[j]["eef_pos"] for j in range(i)])
-            current_action = action[i]
+            current_action = action_pred[i]
 
             # Render the frame
             frame = render_frame(fig, canvas, ax_3d, ax_2d, eef_pos.reshape(-1, 7)[:, :3], tactile_imgs, current_action)
             frames.append(frame)
 
         # Create a video from the frames using imageio
-        video_path = os.path.join(save_path, "evaluation_video.mp4")
+        video_path = os.path.join(save_path, "last_eval.mp4")
         writer = imageio.get_writer(video_path, fps=15, codec='libx264', bitrate='5000k')
 
         for frame in frames:
