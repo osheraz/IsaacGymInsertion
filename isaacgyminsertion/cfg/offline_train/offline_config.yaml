@@ -16,8 +16,8 @@ tactile_gaussian_noise: 0.001
 tactile_masking_prob: 0.0
 tactile_patch_size: 16
 tactile_color_jitter: True
-tactile_width: 64
-tactile_height: 64
+tactile_width: 128
+tactile_height: 128
 
 # supervised learning
 train:

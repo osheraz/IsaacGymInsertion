@@ -401,7 +401,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                 if self.cfg_task.env.tactile_wrt_force:
                     force = 100 * finger_normalized_forces[e, n].cpu().detach().numpy()
                 else:
-                    force = 30
+                    force = 40
 
                 tactile_img, height_map = self.tactile_handles[e][n].render(object_pose[e], force)
 

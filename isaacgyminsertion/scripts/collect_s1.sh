@@ -2,7 +2,7 @@
 GPUS=${1:-0}
 SEED=${2:-42}
 CACHE=${3:-gt_test}
-NUM_ENVS=${4:-9}
+NUM_ENVS=${4:-12}
 HEADLESS=${5:-True}
 
 array=( $@ )
@@ -22,10 +22,10 @@ task.env.numEnvs=${NUM_ENVS} \
 task.env.tactile=True \
 task.env.numStates=7 \
 task.env.numObservations=18 \
-task.tactile.tacto.width=64 \
-task.tactile.tacto.height=64 \
-task.tactile.encoder.width=64 \
-task.tactile.encoder.height=64 \
+task.tactile.tacto.width=128 \
+task.tactile.tacto.height=128 \
+task.tactile.encoder.width=128 \
+task.tactile.encoder.height=128 \
 task.external_cam.external_cam=True \
 task.external_cam.cam_res.w=320 \
 task.external_cam.cam_res.h=180 \

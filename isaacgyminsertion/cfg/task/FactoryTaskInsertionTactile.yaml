@@ -18,7 +18,7 @@ data_logger:
     collect_data: False
     total_trajectories: 2000
     base_folder: "/home/roblab20/tactile_insertion"
-    sub_folder: "datastore_0_contact2"
+    sub_folder: ''
 
     # for logging (tests) during student training
     collect_test_sim: ${...offline_training_w_env}
