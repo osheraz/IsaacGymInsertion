@@ -160,13 +160,13 @@ class OpenhandEnv():
 
         self.gripper_control.grasp()
 
-    def explore_hand(self):
+    def jiggle_jiggle(self):
         """
         shaky shaky
         """
 
         n = 4
-        amount = 0.08
+        amount = 0.05
         explore_action = [[-1, -1, 1], [1, 1, -1], [-1, 1, -1], [1, -1, 1], [1, -1, -1], [-1, 1, 1]]
         for act in explore_action:
             for _ in range(n):
@@ -263,4 +263,4 @@ if __name__ == "__main__":
     hand = OpenhandEnv()
 
     for i in range(10):
-        hand.explore_hand()
+        hand.jiggle_jiggle()

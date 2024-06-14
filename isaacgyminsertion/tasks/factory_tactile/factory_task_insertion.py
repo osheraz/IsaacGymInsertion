@@ -263,7 +263,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                 torch.rand((self.num_envs, 3), dtype=torch.float32, device=self.device)
                 - 0.5
         )
-        socket_obs_pos_noise = socket_obs_pos_noise @ torch.diag(
+        self.socket_obs_pos_noise = socket_obs_pos_noise @ torch.diag(
             torch.tensor(
                 self.cfg_task.env.socket_pos_obs_noise,
                 dtype=torch.float32,
@@ -271,9 +271,9 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             )
         )
 
-        self.noisy_socket_pos[:, 0] = self.socket_pos[:, 0] + socket_obs_pos_noise[:, 0]
-        self.noisy_socket_pos[:, 1] = self.socket_pos[:, 1] + socket_obs_pos_noise[:, 1]
-        self.noisy_socket_pos[:, 2] = self.socket_pos[:, 2] + socket_obs_pos_noise[:, 2]
+        self.noisy_socket_pos[:, 0] = self.socket_pos[:, 0] + self.socket_obs_pos_noise[:, 0]
+        self.noisy_socket_pos[:, 1] = self.socket_pos[:, 1] + self.socket_obs_pos_noise[:, 1]
+        self.noisy_socket_pos[:, 2] = self.socket_pos[:, 2] + self.socket_obs_pos_noise[:, 2]
 
         # Add observation noise to socket rot
         socket_rot_euler = torch.zeros(
