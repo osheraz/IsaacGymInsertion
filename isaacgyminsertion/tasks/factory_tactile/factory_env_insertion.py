@@ -757,6 +757,15 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
                     gymapi.FOLLOW_TRANSFORM,
                 )
 
+                #
+                # self.gym.set_camera_location(cam, self.envs[i],
+                #                              gymapi.Vec3(perturbed_position[0],
+                #                                          perturbed_position[1],
+                #                                          perturbed_position[2]),
+                #                              gymapi.Vec3(perturbed_rotation[0],
+                #                                          perturbed_rotation[1],
+                #                                          perturbed_rotation[2]))
+
             # add Tactile modules for the tips
             # self.envs_asset[i] = {'subassembly': subassembly, 'components': components}
             self.envs_asset[i] = subassembly

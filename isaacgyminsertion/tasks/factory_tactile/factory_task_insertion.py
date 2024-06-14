@@ -713,7 +713,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                     im = gymtorch.wrap_tensor(im)
                     self.image_buf[i] = self.process_depth_image(im)
 
-                    if self.save_im:
+                    if self.save_im and False:
                         trans_im = im.detach().clone()
                         trans_im = -1 / trans_im
                         trans_im = trans_im / torch.max(trans_im)
@@ -722,7 +722,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                             f"images/dim/{self.count:05}.png",
                         )
 
-                    if True and i == 0:
+                    if False and i == 0:
                         img = self.process_depth_image(im)
                         img = img.cpu().numpy()
                         # img = np.uint8(img.cpu().numpy() * 255)
@@ -1044,20 +1044,32 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             self.ft_frames = []
 
         # Slightly change the external cam pose
-        if self.external_cam and False:
+        if self.external_cam:
             for env_id in env_ids:
                 random_pos_error = np.random.normal(0, self.pos_error_std, 3)
                 random_rot_error = np.random.normal(0, self.rot_error_std, 3)
                 perturbed_position = np.array(self.init_camera_pos) + random_pos_error
                 perturbed_rotation = np.array(self.init_camera_rot) + random_rot_error
 
-                self.gym.set_camera_location(self.camera_handles[env_id], self.envs[env_id],
-                                             gymapi.Vec3(perturbed_position[0],
-                                                         perturbed_position[1],
-                                                         perturbed_position[2]),
-                                             gymapi.Vec3(perturbed_rotation[0],
-                                                         perturbed_rotation[1],
-                                                         perturbed_rotation[2]))
+                # self.gym.set_camera_location(self.camera_handles[env_id], self.envs[env_id],
+                #                              gymapi.Vec3(perturbed_position[0],
+                #                                          perturbed_position[1],
+                #                                          perturbed_position[2]),
+                #                              gymapi.Vec3(perturbed_rotation[0],
+                #                                          perturbed_rotation[1],
+                #                                          perturbed_rotation[2]))
+
+                cam, trans = self.make_handle_trans(self.res[0], self.res[1], env_id,
+                                                    perturbed_position, perturbed_rotation)
+
+                self.gym.attach_camera_to_body(
+                    self.camera_handles[env_id],
+                    self.envs[env_id],
+                    self.kuka_handles[env_id],
+                    trans,
+                    gymapi.FOLLOW_TRANSFORM,
+                )
+
         self._reset_buffers(env_ids)
 
     def _reset_kuka(self, env_ids, new_pose=None):

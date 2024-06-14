@@ -95,7 +95,7 @@ sim:
     disable_gravity: True
 
 external_cam:
-  external_cam: False
+  external_cam: True
   cam_res:
     w: 320
     h: 180
