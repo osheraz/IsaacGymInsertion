@@ -37,67 +37,70 @@ def create_sample_indices(
     return indices
 
 
+from typing import List, Dict, Any
+
+
+def load_data(folder: str, prefix: str, buffer_start_idx: int, buffer_end_idx: int) -> np.ndarray:
+    return np.stack([np.load(os.path.join(folder, f'{prefix}_{i}.npz'))[prefix] for i in range(buffer_start_idx, buffer_end_idx)])
+
+def fill_sequence(data: np.ndarray, sequence_length: int, sample_start_idx: int, sample_end_idx: int, cond_on_grasp: bool = False, is_action: bool = False) -> np.ndarray:
+    if cond_on_grasp and not is_action:
+        sequence_length += 1
+        filled_data = np.zeros((sequence_length,) + data.shape[1:], dtype=data.dtype)
+        filled_data[1:sample_start_idx+1] = data[0]  # Shifted by one
+        if sample_end_idx < sequence_length - 1:
+            filled_data[sample_end_idx+1:] = data[-1]  # Shifted by one
+        filled_data[sample_start_idx+1:sample_end_idx+1] = data  # Shifted by one
+        filled_data[0] = data[0]  # Adding the first timestep data at the start
+    else:
+        filled_data = np.zeros((sequence_length,) + data.shape[1:], dtype=data.dtype)
+        if sample_start_idx > 0:
+            filled_data[:sample_start_idx] = data[0]
+        if sample_end_idx < sequence_length:
+            filled_data[sample_end_idx:] = data[-1]
+        filled_data[sample_start_idx:sample_end_idx] = data
+    return filled_data
+
 def sample_sequence(
-        representation_type,
-        traj_list,
-        sequence_length,
-        file_idx,
-        buffer_start_idx,
-        buffer_end_idx,
-        sample_start_idx,
-        sample_end_idx,
-):
-    result = dict()
-    tactile_folder = traj_list[file_idx][:-7].replace('obs', 'tactile')
-    img_folder = traj_list[file_idx][:-7].replace('obs', 'img')
+        representation_type: List[str],
+        traj_list: List[str],
+        sequence_length: int,
+        file_idx: int,
+        buffer_start_idx: int,
+        buffer_end_idx: int,
+        sample_start_idx: int,
+        sample_end_idx: int,
+        cond_on_grasp: bool = False,
+) -> Dict[str, Any]:
 
-    if 'tactile' in representation_type:
-        tactile = np.stack([np.load(os.path.join(tactile_folder, f'tactile_{i}.npz'))['tactile'] for i in
-                            range(buffer_start_idx, buffer_end_idx)])
+    result = {}
+    try:
+        tactile_folder = traj_list[file_idx][:-7].replace('obs', 'tactile')
+        img_folder = traj_list[file_idx][:-7].replace('obs', 'img')
 
-        # Handle filling for tactile data
-        tactile_filled = np.zeros((sequence_length,) + tactile.shape[1:], dtype=tactile.dtype)
-        if sample_start_idx > 0:
-            tactile_filled[:sample_start_idx] = tactile[0]
-        if sample_end_idx < sequence_length:
-            tactile_filled[sample_end_idx:] = tactile[-1]
-        tactile_filled[sample_start_idx:sample_end_idx] = tactile
-        result['tactile'] = tactile_filled
+        if 'tactile' in representation_type:
+            tactile = load_data(tactile_folder, 'tactile', buffer_start_idx, buffer_end_idx)
+            result['tactile'] = fill_sequence(tactile, sequence_length, sample_start_idx, sample_end_idx, cond_on_grasp)
 
-    if 'img' in representation_type:
-        img = np.stack(
-            [np.load(os.path.join(img_folder, f'img_{i}.npz'))['img'] for i in range(buffer_start_idx, buffer_end_idx)])
+        if 'img' in representation_type:
+            img = load_data(img_folder, 'img', buffer_start_idx, buffer_end_idx)
+            result['img'] = fill_sequence(img, sequence_length, sample_start_idx, sample_end_idx, cond_on_grasp)
 
-        # Handle filling for image data
-        img_filled = np.zeros((sequence_length,) + img.shape[1:], dtype=img.dtype)
-        if sample_start_idx > 0:
-            img_filled[:sample_start_idx] = img[0]
-        if sample_end_idx < sequence_length:
-            img_filled[sample_end_idx:] = img[-1]
-        img_filled[sample_start_idx:sample_end_idx] = img
-        result['img'] = img_filled
+        train_data = np.load(traj_list[file_idx])
 
-    # Load the training data
-    train_data = np.load(traj_list[file_idx])
+        for key, input_arr in train_data.items():
+            if key not in representation_type:
+                continue
+            sample = input_arr[buffer_start_idx:buffer_end_idx]
+            is_action = key == 'action'
+            result[key] = fill_sequence(sample, sequence_length, sample_start_idx, sample_end_idx, cond_on_grasp, is_action)
 
-    for key, input_arr in train_data.items():
-        if key not in representation_type:
-            continue
-
-        sample = input_arr[buffer_start_idx:buffer_end_idx]
-
-        data = sample
-
-        if (sample_start_idx > 0) or (sample_end_idx < sequence_length):
-            data = np.zeros(
-                shape=(sequence_length,) + input_arr.shape[1:], dtype=input_arr.dtype
-            )
-            if sample_start_idx > 0:
-                data[:sample_start_idx] = sample[0]
-            if sample_end_idx < sequence_length:
-                data[sample_end_idx:] = sample[-1]
-            data[sample_start_idx:sample_end_idx] = sample
-        result[key] = data
+    except FileNotFoundError as e:
+        print(f"Error: {e}")
+    except IndexError as e:
+        print(f"Error: {e}")
+    except Exception as e:
+        print(f"An unexpected error occurred: {e}")
 
     return result
 
@@ -260,6 +263,7 @@ class Dataset(torch.utils.data.Dataset):
             state_noise: float = 0.0,
             img_dim: tuple = (180, 320),
             tactile_dim: tuple = (0, 0),
+            cond_on_grasp: bool = False,
     ):
 
         self.state_noise = state_noise
@@ -273,7 +277,7 @@ class Dataset(torch.utils.data.Dataset):
         self.representation_type = representation_type
         self.img_transform = img_transform
         self.tactile_transform = tactile_transform
-
+        self.cond_on_grasp = cond_on_grasp
         self.get_img = get_img
         self.load_img = load_img
 
@@ -325,6 +329,7 @@ class Dataset(torch.utils.data.Dataset):
             buffer_end_idx=buffer_end_idx,
             sample_start_idx=sample_start_idx,
             sample_end_idx=sample_end_idx,
+            cond_on_grasp=self.cond_on_grasp
         )
 
         for k in self.representation_type:
@@ -340,6 +345,7 @@ class Dataset(torch.utils.data.Dataset):
         nsample["action"] = torch.tensor(nsample["action"], dtype=torch.float32)
 
         return nsample
+
 
 class Dataset2(torch.utils.data.Dataset):
     def __init__(
@@ -380,7 +386,6 @@ class Dataset2(torch.utils.data.Dataset):
                 num_subsequences = (total_len - self.sequence_length) // self.stride + 1
                 self.indices_per_trajectory.extend([(file_idx, i * self.stride) for i in range(num_subsequences)])
         print('Total sub trajectories:', len(self.indices_per_trajectory))
-
 
         self.traj_list = traj_list
         self.stats = stats

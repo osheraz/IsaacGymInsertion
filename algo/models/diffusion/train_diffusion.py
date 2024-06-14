@@ -229,11 +229,14 @@ class Agent:
             img_width=320,
             tactile_height=224,
             tactile_width=224,
+            cond_on_grasp=False
     ):
         self.to_torch = lambda x: torch.from_numpy(x).float()
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.pred_horizon = pred_horizon
+        self.cond_on_grasp = cond_on_grasp
+        obs_horizon = obs_horizon + 1 if cond_on_grasp else obs_horizon
         self.obs_horizon = obs_horizon
         self.action_horizon = action_horizon
         self.num_workers = num_workers
@@ -562,6 +565,7 @@ class Agent:
             state_noise=self.state_noise if not eval else 0.0,
             img_dim=(self.crop_img_width, self.crop_img_height),
             tactile_dim=(self.crop_tactile_width, self.crop_tactile_height),
+            cond_on_grasp=self.cond_on_grasp,
 
         )
         dataloader = torch.utils.data.DataLoader(
@@ -609,6 +613,8 @@ class Agent:
                 train_loader.dataset.__getitem__
             )
 
+        self.eval(eval_traj, save_path=self.save_path)
+
         self.policy.train(
             epochs,
             train_loader,
@@ -621,7 +627,6 @@ class Agent:
 
         self.policy.to_ema()
 
-        self.eval(eval_traj, save_path=self.save_path)
 
     def get_train_action(self, data):
         act = self.get_eval_action(data)
@@ -672,7 +677,7 @@ class Agent:
         eval_data = self.get_eval_data(data_path)
         obs, action_gt = eval_data
         print("EVALUATING")
-        action_pred, mse, norm_mse = self.policy.eval(obs, action_gt)
+        action_pred, mse, norm_mse = self.policy.eval(obs, action_gt, self.cond_on_grasp)
         print("ACTION_MSE: {}, NORM_MSE: {}".format(mse, norm_mse))
 
         # Convert tensors to floats for JSON serialization
@@ -846,6 +851,7 @@ class Runner:
             tactile_masking_prob=cfg.tactile_masking_prob,
             tactile_patch_size=cfg.tactile_patch_size,
             compile_train=cfg.compile_train,
+            cond_on_grasp=cfg.cond_on_grasp
         )
 
         if cfg.load_path:
