@@ -250,7 +250,7 @@ class DataLogger():
             self.total_trajectories = total_trajectories
             self.num_workers = 8
             try:
-                self.q_s = [mp.JoinableQueue(maxsize=500) for _ in range(self.num_workers)]
+                self.q_s = [mp.JoinableQueue(maxsize=episode_length) for _ in range(self.num_workers)]
                 self.workers = [mp.Process(target=self.worker, args=(q, idx)) for idx, q in enumerate(self.q_s)]
                 for worker in self.workers:
                     worker.daemon = True

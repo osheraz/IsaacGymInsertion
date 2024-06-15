@@ -345,7 +345,7 @@ class DiffusionPolicy:
                     print(f"Action_MSE: {mse}, Normalized_MSE: {normalized_mse}")
                     self.ema_nets.train()
 
-    def eval(self, obs, action):
+    def eval(self, obs, action, cond_on_grasp=False):
         obs_deque = collections.deque(
             [obs[0]] * self.obs_horizon, maxlen=self.obs_horizon
         )
@@ -355,6 +355,8 @@ class DiffusionPolicy:
         total_iterations = len(obs) - self.action_horizon
         with tqdm(total=total_iterations, position=0, leave=True) as pbar:
             while i < len(obs) - self.action_horizon:
+                if cond_on_grasp:
+                    obs_deque.appendleft(obs[0])
                 action_pred = self.forward(self.data_stat, obs_deque)
                 for j in range(self.action_horizon):
                     actions_pred.append(action_pred[j])
@@ -415,7 +417,7 @@ class DiffusionPolicy:
                 return data.cpu().detach().numpy()
             return data
 
-        sample = np.stack([convert_to_numpy(x[data_key]) for x in obs_deque]).squeeze()
+        sample = np.stack([convert_to_numpy(x[data_key]) for x in obs_deque]) #.squeeze()
         if data_key != "img" and (data_key != "tactile" or not self.binarize_tactile) and data_key != "action":
             # image & tactile & action is already normalized
             sample = normalize_data(sample, stats=stats, key=data_key)

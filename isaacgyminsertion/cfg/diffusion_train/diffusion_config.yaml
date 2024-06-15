@@ -5,7 +5,7 @@ output_dir: "/home/roblab20/tactile_diffusion/datastore_real" # where to save ch
 # Train params for on screen logging
 add_model_save_path_suffix: True
 eval: False
-save_freq: 10
+save_freq: 100
 eval_freq: 10
 print_freq: 100
 use_train_test_split: False
@@ -16,13 +16,14 @@ load_path: ''
 
 # basic training hyperparameters
 gpu: 0
+cond_on_grasp: False
 
 epochs: 100
-obs_horizon: 3
+obs_horizon: 1
 action_horizon: 6
 pred_horizon: 16
 
-batch_size: 16
+batch_size: 8
 learning_rate: 5e-4
 train_test_split: 0.9
 

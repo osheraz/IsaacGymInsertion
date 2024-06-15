@@ -481,7 +481,7 @@ class HardwarePlayer(object):
         plug_socket_xy_distance = torch.norm(self.plug_pos_error[:, :2])
 
         is_very_close_xy = plug_socket_xy_distance < 0.005
-        is_bellow_surface = -self.plug_pos_error[:, 2] < 0.004
+        is_bellow_surface = -self.plug_pos_error[:, 2] < 0.005
 
         self.inserted = is_very_close_xy & is_bellow_surface
         is_too_far = (plug_socket_xy_distance > 0.08) | (self.fingertip_centered_pos[:, 2] > 0.125)
@@ -515,6 +515,8 @@ class HardwarePlayer(object):
             self.env.align_and_release(init_plug_pose=[0.4103839067235552, 0.17531695171951858, 0.008])
 
             self.grasp_and_init()
+
+        # self.env.randomize_grasp()
 
         self.env.arm.move_manipulator.scale_vel(scale_vel=0.02, scale_acc=0.02)
         self.inserted[...] = False
@@ -720,7 +722,7 @@ class HardwarePlayer(object):
 
         rospy.logwarn('Finished setting the env, lets play.')
 
-        hz = 30
+        hz = 20
         ros_rate = rospy.Rate(hz)
 
         self._create_asset_info()

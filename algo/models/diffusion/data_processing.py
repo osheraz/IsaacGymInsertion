@@ -51,18 +51,24 @@ def iterate(path, workers=32, load_img=True, num_cam=3):
     return data
 
 
-def iterate_npz(traj_list, workers=32,):
+def iterate_npz(traj_list, workers=32):
     data = []
+
+    def load_file(file):
+        d = np.load(file)
+        done_idx = np.where(d['done'])[0][-1] + 1  # Find the index of the last 'done' value
+        sliced_data = {key: value[:done_idx] for key, value in d.items()}  # Slice data up to this index
+        return sliced_data
+
     with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
-        futures = {executor.submit(np.load, file): (i, file) for i, file in enumerate(traj_list)}
-        for future in futures:
+        futures = {executor.submit(load_file, file): (i, file) for i, file in enumerate(traj_list)}
+        for future in concurrent.futures.as_completed(futures):
             try:
                 i, file = futures[future]
                 d = future.result()
-                data.append(dict(d))
-            except:
-                print(f"Failed to load {file}")
-                pass
+                data.append(d)
+            except (FileNotFoundError, OSError, IndexError) as e:
+                print(f"Failed to load {file}: {e}")
     return data
 
 def get_latest(path):

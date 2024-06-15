@@ -144,9 +144,9 @@ class ExperimentEnv:
             if not np.isnan(np.sum(obj_pos)):
 
                 # added delta_x/delta_y to approximately center the object
-                ee_pos[0] = obj_pos[0] - 0.01
-                ee_pos[1] = obj_pos[1] - 0.02
-                ee_pos[2] = obj_pos[2] - 0.01
+                ee_pos[0] = obj_pos[0] - 0.02
+                ee_pos[1] = obj_pos[1] - 0.01
+                ee_pos[2] = obj_pos[2] - 0.015
 
                 # Orientation is different due to moveit orientation, kinova/orientation ( -0.707,0.707,0,0 ~ 0.707,-0.707,0,0)
                 ee_target = geometry_msgs.msg.Pose()
@@ -214,9 +214,7 @@ class ExperimentEnv:
 
         # TODO change align and grasp to dof_relative funcs without moveit
         try:
-            random_add = np.random.uniform(-0.1, 0.1, 3)
-            self.hand.set_gripper_motors(random_add)
-            self.grasp()
+            self.hand.jiggle_jiggle()
 
             return True
 

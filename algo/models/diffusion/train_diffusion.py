@@ -22,58 +22,10 @@ from algo.models.diffusion.models import GaussianNoise, ImageEncoder, StateEncod
 from torch import nn
 from torch.nn import ModuleList
 from torchvision import transforms
-from algo.models.diffusion.utils import WandBLogger, generate_random_string, get_eef_delta, save_args
+from algo.models.diffusion.utils import WandBLogger, save_args, init_plot, render_frame
 from omegaconf import DictConfig, OmegaConf
 import imageio
-import matplotlib.pyplot as plt
-from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
-import cv2
 import json
-from mpl_toolkits.mplot3d import Axes3D
-
-
-def init_plot(dpi=100):
-    fig = plt.figure(figsize=(12, 6), dpi=dpi)
-    ax_3d = fig.add_subplot(121, projection='3d')
-    ax_2d = fig.add_subplot(122)
-    canvas = FigureCanvas(fig)
-    return fig, ax_3d, ax_2d, canvas
-
-def update_plot(ax_3d, ax_2d, eef_pos, tactile_imgs):
-    ax_3d.cla()
-    if eef_pos.ndim == 1:
-        ax_3d.plot([eef_pos[0]], [eef_pos[1]], [eef_pos[2]], marker='o', label='End-Effector Position')
-    else:
-        ax_3d.plot(eef_pos[:, 0], eef_pos[:, 1], eef_pos[:, 2], label='End-Effector Path')
-    ax_3d.legend()
-    ax_3d.set_xlabel('X')
-    ax_3d.set_ylabel('Y')
-    ax_3d.set_zlabel('Z')
-    ax_3d.set_title('End-Effector Position in 3D Space')
-
-    ax_2d.cla()
-    num_camera, channel, width, height = tactile_imgs.shape
-    combined_img_list = []
-    for cam in range(num_camera):
-        img = tactile_imgs[cam].transpose(1, 2, 0)  # Assuming channel is in the second dimension
-        img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)  # Convert RGB to BGR for OpenCV
-        img = (img * 255).astype(np.uint8)  # Convert to 8-bit unsigned integer
-        combined_img_list.append(img)
-    combined_img = np.vstack(combined_img_list)
-    ax_2d.imshow(combined_img)
-    ax_2d.axis('off')
-    ax_2d.set_title('Tactile Images')
-
-def render_frame(fig, canvas, ax_3d, ax_2d, eef_pos, tactile_imgs, current_action):
-    update_plot(ax_3d, ax_2d, eef_pos, tactile_imgs)
-    canvas.draw()
-    width, height = fig.get_size_inches() * fig.get_dpi()
-    img = np.frombuffer(canvas.tostring_rgb(), dtype='uint8').reshape(int(height), int(width), 3)
-
-    # Add action text
-    font = cv2.FONT_HERSHEY_SIMPLEX
-    cv2.putText(img, f'Action: {current_action}', (10, img.shape[0] - 10), font, 0.5, (0, 0, 0), 1, cv2.LINE_AA)
-    return img
 
 RT_DIM = {
     "eef_pos": 7,  # 3 + 9
@@ -229,11 +181,16 @@ class Agent:
             img_width=320,
             tactile_height=224,
             tactile_width=224,
+            cond_on_grasp=False
     ):
+
+        obs_horizon = obs_horizon + 1 if cond_on_grasp else obs_horizon
+
         self.to_torch = lambda x: torch.from_numpy(x).float()
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.pred_horizon = pred_horizon
+        self.cond_on_grasp = cond_on_grasp
         self.obs_horizon = obs_horizon
         self.action_horizon = action_horizon
         self.num_workers = num_workers
@@ -380,7 +337,7 @@ class Agent:
 
         self.predict_eef_delta = predict_eef_delta
 
-    def _get_image_observation(self, data):
+    def _get_image_observation(self, data, done_idx):
         # allocate memory for the image
         img = torch.zeros(
             (len(data), self.img_channel, self.img_width, self.img_height),
@@ -419,14 +376,18 @@ class Agent:
 
         return img
 
-    def _get_tactile_observation(self, data_path):
+    def _get_tactile_observation(self, data_path, done_idx):
         # allocate memory for the image
         data_path = data_path[0]
-        data = np.load(data_path)
-        data_len = data['eef_pos'].shape[0]
+        # data = np.load(data_path)
+        data_len = done_idx # data['eef_pos'].shape[0]
+        import re
+        def natural_sort_key(s):
+            return [int(text) if text.isdigit() else text.lower() for text in re.split('([0-9]+)', s)]
 
         img_folder = data_path[:-7].replace('obs', 'tactile')
-        tactile_files = sorted([os.path.join(img_folder, f) for f in os.listdir(img_folder) if f.endswith('.npz')])
+        tactile_files = sorted([os.path.join(img_folder, f) for f in os.listdir(img_folder) if f.endswith('.npz')], key=natural_sort_key)
+        tactile_files = tactile_files[:done_idx]
 
         image_size = np.load(tactile_files[0])["tactile"].shape
 
@@ -468,14 +429,14 @@ class Agent:
 
         return img
 
-    def get_observation(self, data, data_path):
+    def get_observation(self, data, data_path, done_idx):
 
         input_data = {}
         for rt in self.representation_type:
             if rt == "img":
-                input_data[rt] = self._get_image_observation(data_path)
+                input_data[rt] = self._get_image_observation(data_path, done_idx)
             if rt == "tactile":
-                input_data[rt] = self._get_tactile_observation(data_path)
+                input_data[rt] = self._get_tactile_observation(data_path, done_idx)
             else:
                 input_data[rt] = np.array([d[rt] for d in data]).squeeze()
 
@@ -539,7 +500,7 @@ class Agent:
                 init_data[rt] = np.zeros((total_data_points, RT_DIM[rt]), dtype=np.float32)
         return init_data
 
-    def get_train_loader(self, batch_size, train_test_split=0.9, eval=False):
+    def get_train_loader(self, batch_size, train_test_split=0.99, eval=False):
 
         num_train_envs = int(len(self.epi_dir) * train_test_split)
         train_idxs = np.arange(0, num_train_envs).astype(int).tolist()
@@ -562,6 +523,7 @@ class Agent:
             state_noise=self.state_noise if not eval else 0.0,
             img_dim=(self.crop_img_width, self.crop_img_height),
             tactile_dim=(self.crop_tactile_width, self.crop_tactile_height),
+            cond_on_grasp=self.cond_on_grasp,
 
         )
         dataloader = torch.utils.data.DataLoader(
@@ -609,6 +571,8 @@ class Agent:
                 train_loader.dataset.__getitem__
             )
 
+        self.eval(eval_traj, save_path=self.save_path)
+
         self.policy.train(
             epochs,
             train_loader,
@@ -621,7 +585,6 @@ class Agent:
 
         self.policy.to_ema()
 
-        self.eval(eval_traj, save_path=self.save_path)
 
     def get_train_action(self, data):
         act = self.get_eval_action(data)
@@ -650,7 +613,7 @@ class Agent:
         action = self.get_eval_action(data)
 
         print("GETTING EVAL OBSERVATION", end="\r")
-        obs = self.get_observation(data, data_path)
+        obs = self.get_observation(data, data_path, B)
         obs_list = []
 
         if "img" in self.representation_type:
@@ -665,6 +628,7 @@ class Agent:
 
         for i in range(B):
             obs_list.append({rt: obs[rt][i] for rt in self.representation_type})
+
         return obs_list, action
 
     def eval(self, data_path, save_path=None):
@@ -672,7 +636,7 @@ class Agent:
         eval_data = self.get_eval_data(data_path)
         obs, action_gt = eval_data
         print("EVALUATING")
-        action_pred, mse, norm_mse = self.policy.eval(obs, action_gt)
+        action_pred, mse, norm_mse = self.policy.eval(obs, action_gt, self.cond_on_grasp)
         print("ACTION_MSE: {}, NORM_MSE: {}".format(mse, norm_mse))
 
         # Convert tensors to floats for JSON serialization
@@ -698,7 +662,7 @@ class Agent:
             json.dump(metrics, f)
 
         # Initialize plot with high DPI for better quality
-        fig, ax_3d, ax_2d, canvas = init_plot(dpi=200)
+        fig, ax_3d, ax_2d, ax_action_diff, canvas = init_plot(dpi=200)
 
         # Create frames for video
         frames = []
@@ -707,9 +671,11 @@ class Agent:
             tactile_imgs = obs[i]["tactile"].cpu().detach().numpy()
             eef_pos = obs[0]["eef_pos"] if i == 0 else np.stack([obs[j]["eef_pos"] for j in range(i)])
             current_action = action_pred[i]
+            current_action_gt = action_gt[i]
 
             # Render the frame
-            frame = render_frame(fig, canvas, ax_3d, ax_2d, eef_pos.reshape(-1, 7)[:, :3], tactile_imgs, current_action)
+            frame = render_frame(fig, canvas, ax_3d, ax_2d, ax_action_diff, eef_pos.reshape(-1, 7)[:, :3], tactile_imgs,
+                                 current_action_gt, current_action)
             frames.append(frame)
 
         # Create a video from the frames using imageio
@@ -846,6 +812,7 @@ class Runner:
             tactile_masking_prob=cfg.tactile_masking_prob,
             tactile_patch_size=cfg.tactile_patch_size,
             compile_train=cfg.compile_train,
+            cond_on_grasp=cfg.cond_on_grasp
         )
 
         if cfg.load_path:

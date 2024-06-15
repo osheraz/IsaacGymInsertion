@@ -17,6 +17,65 @@ from ml_collections import ConfigDict
 from ml_collections.config_dict import config_dict
 from ml_collections.config_flags import config_flags
 
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
+import cv2
+from mpl_toolkits.mplot3d import Axes3D
+
+
+def init_plot(dpi=100):
+    fig = plt.figure(figsize=(18, 6), dpi=dpi)
+    ax_3d = fig.add_subplot(131, projection='3d')
+    ax_2d = fig.add_subplot(132)
+    ax_action_diff = fig.add_subplot(133)
+    canvas = FigureCanvas(fig)
+    return fig, ax_3d, ax_2d, ax_action_diff, canvas
+
+
+def update_plot(ax_3d, ax_2d, ax_action_diff, eef_pos, tactile_imgs, action_gt, action_pred):
+    ax_3d.cla()
+    if eef_pos.ndim == 1:
+        ax_3d.plot([eef_pos[0]], [eef_pos[1]], [eef_pos[2]], marker='o', label='End-Effector Position')
+    else:
+        ax_3d.plot(eef_pos[:, 0], eef_pos[:, 1], eef_pos[:, 2], label='End-Effector Path')
+    ax_3d.legend()
+    ax_3d.set_xlabel('X')
+    ax_3d.set_ylabel('Y')
+    ax_3d.set_zlabel('Z')
+    ax_3d.set_title('End-Effector Position in 3D Space')
+
+    ax_2d.cla()
+    num_camera, channel, width, height = tactile_imgs.shape
+    combined_img_list = []
+    for cam in range(num_camera):
+        img = tactile_imgs[cam].transpose(1, 2, 0)  # Assuming channel is in the second dimension
+        img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)  # Convert RGB to BGR for OpenCV
+        img = (img * 255).astype(np.uint8)  # Convert to 8-bit unsigned integer
+        combined_img_list.append(img)
+    combined_img = np.vstack(combined_img_list)
+    ax_2d.imshow(combined_img)
+    ax_2d.axis('off')
+    ax_2d.set_title('Tactile Images')
+
+    ax_action_diff.cla()
+    timesteps = range(len(action_gt))
+    width = 0.3  # Width of the bars
+
+    # Create bar plots
+    ax_action_diff.bar(timesteps, action_gt, width=width, label='Ground Truth Action', align='center')
+    ax_action_diff.bar([t + width for t in timesteps], action_pred, width=width, label='Predicted Action', align='center')
+
+
+def render_frame(fig, canvas, ax_3d, ax_2d, ax_action_diff, eef_pos, tactile_imgs, action_gt, action_pred):
+    update_plot(ax_3d, ax_2d, ax_action_diff, eef_pos, tactile_imgs, action_gt, action_pred)
+    canvas.draw()
+    width, height = fig.get_size_inches() * fig.get_dpi()
+    img = np.frombuffer(canvas.tostring_rgb(), dtype='uint8').reshape(int(height), int(width), 3)
+
+    # Add action text
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    return img
+
 
 def save_args(args, output_dir):
     args_dict = vars(args)
@@ -184,11 +243,11 @@ def _parse(s, variant):
             final_s.append(s)
             break
         final_s.append(s[:indx])
-        s = s[indx + 1 :]
+        s = s[indx + 1:]
         indx = s.find("}")
         assert indx != -1, "can't find the matching right bracket for {}".format(orig_s)
         final_s.append(str(variant[s[:indx]]))
-        s = s[indx + 1 :]
+        s = s[indx + 1:]
 
     return "".join(final_s)
 

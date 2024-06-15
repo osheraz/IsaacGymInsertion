@@ -35,6 +35,7 @@ Only the environment is provided; training a successful RL policy is an open res
 """
 
 import hydra
+import numpy as np
 import omegaconf
 import time
 import os
@@ -263,7 +264,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                 torch.rand((self.num_envs, 3), dtype=torch.float32, device=self.device)
                 - 0.5
         )
-        socket_obs_pos_noise = socket_obs_pos_noise @ torch.diag(
+        self.socket_obs_pos_noise = socket_obs_pos_noise @ torch.diag(
             torch.tensor(
                 self.cfg_task.env.socket_pos_obs_noise,
                 dtype=torch.float32,
@@ -271,9 +272,9 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             )
         )
 
-        self.noisy_socket_pos[:, 0] = self.socket_pos[:, 0] + socket_obs_pos_noise[:, 0]
-        self.noisy_socket_pos[:, 1] = self.socket_pos[:, 1] + socket_obs_pos_noise[:, 1]
-        self.noisy_socket_pos[:, 2] = self.socket_pos[:, 2] + socket_obs_pos_noise[:, 2]
+        self.noisy_socket_pos[:, 0] = self.socket_pos[:, 0] + self.socket_obs_pos_noise[:, 0]
+        self.noisy_socket_pos[:, 1] = self.socket_pos[:, 1] + self.socket_obs_pos_noise[:, 1]
+        self.noisy_socket_pos[:, 2] = self.socket_pos[:, 2] + self.socket_obs_pos_noise[:, 2]
 
         # Add observation noise to socket rot
         socket_rot_euler = torch.zeros(
@@ -356,7 +357,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
             tf = np.eye(4)
             tf[0:3, 0:3] = euler_angles_to_matrix(
-                euler_angles=torch.tensor([[3.14159265359, 0, 0]]), convention="XYZ"
+                euler_angles=torch.tensor([[0, 0, 0]]), convention="XYZ"
             ).numpy()
 
             left_finger_poses = xyzquat_to_tf_numpy(left_allsight_poses.cpu().numpy())
@@ -401,7 +402,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                 if self.cfg_task.env.tactile_wrt_force:
                     force = 100 * finger_normalized_forces[e, n].cpu().detach().numpy()
                 else:
-                    force = 40
+                    force = 70
 
                 tactile_img, height_map = self.tactile_handles[e][n].render(object_pose[e], force)
 
@@ -415,6 +416,9 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                 if self.cfg_tactile.diff:
                     tactile_img = self.tactile_handles[e][n].remove_bg(tactile_img, self.tactile_handles[e][n].bg_img)
                     tactile_img *= self.tactile_handles[e][n].mask
+
+                # Shit happens
+                tactile_img = np.flipud(tactile_img).copy()
 
                 # Cutting by half
                 if self.cfg_tactile.half_image:
@@ -1006,7 +1010,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                                               device=self.device) - 0.5)) * self.cfg_task.randomize.grasp_plug_noise
             first_plug_pose = self.plug_grasp_pos.clone()
 
-            first_plug_pose[env_ids, :2] += plug_pos_noise[:, :2]
+            first_plug_pose[env_ids, :2] += plug_pos_noise[:, :2] * 0
 
             self._move_arm_to_desired_pose(env_ids, first_plug_pose,
                                            sim_steps=self.cfg_task.env.num_gripper_move_sim_steps * 2)
