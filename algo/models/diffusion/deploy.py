@@ -94,7 +94,6 @@ class HardwarePlayer:
             asset_info_path = yaml.safe_load(file)
         self.asset_info_insertion = asset_info_path
 
-
     def act(self, obs):
 
         if "img" in obs:
@@ -367,10 +366,10 @@ class HardwarePlayer:
 
         # some-like taking a new socket pose measurement
         self._update_socket_pose()
-        # eef_pos = torch.cat((self.fingertip_centered_pos,
-        #                      quat2R(self.fingertip_centered_quat).reshape(1, -1)), dim=-1)
         eef_pos = torch.cat((self.fingertip_centered_pos,
-                             self.fingertip_centered_quat), dim=-1)
+                             quat2R(self.fingertip_centered_quat).reshape(1, -1)), dim=-1)
+        # eef_pos = torch.cat((self.fingertip_centered_pos,
+        #                      self.fingertip_centered_quat), dim=-1)
 
         # noisy_delta_pos = self.noisy_gripper_goal_pos - self.fingertip_centered_pos
 
@@ -414,7 +413,7 @@ class HardwarePlayer:
 
         timeout = (self.episode_length >= self.max_episode_length)
 
-        self.done = timeout | self.inserted #| is_too_far
+        self.done = timeout | self.inserted  # | is_too_far
 
         if self.done[0, 0].item():
             print('Reset because ',

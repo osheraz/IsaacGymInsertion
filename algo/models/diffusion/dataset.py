@@ -4,7 +4,7 @@ import pickle
 import numpy as np
 import torch
 from typing import List, Dict, Any
-
+from algo.models.diffusion.utils import convert_trajectory
 
 def create_sample_indices(
         episode_ends: List,
@@ -140,6 +140,9 @@ def sample_sequence(
         grasp_state_value = grasp_state.get(key) if cond_on_grasp else None
         result[key] = fill_sequence(sample, grasp_state_value, sequence_length, sample_start_idx, sample_end_idx,
                                     cond_on_grasp, key == 'action')
+
+        if key == 'eef_pos':
+            result[key] = convert_trajectory(result[key])
 
     return result
 

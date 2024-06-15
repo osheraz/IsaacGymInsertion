@@ -24,11 +24,13 @@ from torch.nn import ModuleList
 from torchvision import transforms
 from algo.models.diffusion.utils import WandBLogger, save_args, init_plot, render_frame
 from omegaconf import DictConfig, OmegaConf
+from algo.models.diffusion.utils import convert_trajectory
+
 import imageio
 import json
 
 RT_DIM = {
-    "eef_pos": 7,  # 3 + 9
+    "eef_pos": 12,  # 3 + 9
     "arm_joints": 7,
     "hand_joints": 6,
     "action": 6,
@@ -439,6 +441,8 @@ class Agent:
                 input_data[rt] = self._get_tactile_observation(data_path, done_idx)
             else:
                 input_data[rt] = np.array([d[rt] for d in data]).squeeze()
+                if rt == 'eef_pos':
+                    input_data[rt] = convert_trajectory(input_data[rt])
 
         return input_data
 
@@ -674,7 +678,7 @@ class Agent:
             current_action_gt = action_gt[i]
 
             # Render the frame
-            frame = render_frame(fig, canvas, ax_3d, ax_2d, ax_action_diff, eef_pos.reshape(-1, 7)[:, :3], tactile_imgs,
+            frame = render_frame(fig, canvas, ax_3d, ax_2d, ax_action_diff, eef_pos.reshape(-1, 12)[:, :3], tactile_imgs,
                                  current_action_gt, current_action)
             frames.append(frame)
 

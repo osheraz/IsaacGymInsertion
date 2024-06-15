@@ -23,6 +23,50 @@ import cv2
 from mpl_toolkits.mplot3d import Axes3D
 
 
+def convert_trajectory(eef_pos):
+    assert eef_pos.shape[1] == 7, f"Invalid shape for eef_pos: {eef_pos.shape}"
+
+    # Extract xyz and quaternions
+    xyz = eef_pos[:, :3]  # (N, 3)
+    quats = eef_pos[:, 3:]  # (N, 4)
+
+    # Convert quaternions to rotation matrices
+    rotation_matrices = quat2R(quats)  # (N, 3, 3)
+
+    # Flatten rotation matrices
+    rotation_matrices_flattened = rotation_matrices.reshape(rotation_matrices.shape[0], -1)  # (N, 9)
+
+    # Concatenate xyz with flattened rotation matrices
+    eef_pos_converted = np.concatenate([xyz, rotation_matrices_flattened], axis=1)  # (N, 12)
+
+    return eef_pos_converted
+
+def unify(quat):
+    # This function should normalize the quaternion or perform any required preprocessing.
+    # Here, I'm assuming it normalizes the quaternion. Adjust according to your actual implementation.
+    norm = np.linalg.norm(quat, axis=-1, keepdims=True)
+    return quat / norm
+
+
+def quat2R(quat):
+    assert quat.ndim in {1, 2} and quat.shape[-1] == 4, f"invalid quaternion shape: {quat.shape}"
+    quat = unify(quat)
+    ndim = quat.ndim
+    if ndim == 1: quat = quat.reshape((1, -1))  # (1, 4)
+
+    q0, q1, q2, q3 = quat[..., -1], quat[..., 0], quat[..., 1], quat[..., 2]  # (N, )
+
+    R = np.stack([
+        np.stack([1 - 2 * q2 ** 2 - 2 * q3 ** 2, 2 * q1 * q2 - 2 * q0 * q3, 2 * q1 * q3 + 2 * q0 * q2], axis=-1),
+        np.stack([2 * q1 * q2 + 2 * q0 * q3, 1 - 2 * q1 ** 2 - 2 * q3 ** 2, 2 * q2 * q3 - 2 * q0 * q1], axis=-1),
+        np.stack([2 * q1 * q3 - 2 * q0 * q2, 2 * q2 * q3 + 2 * q0 * q1, 1 - 2 * q1 ** 2 - 2 * q2 ** 2], axis=-1)
+    ], axis=1)  # (N, 3, 3)
+
+    if ndim == 1: R = R.squeeze()
+
+    return R
+
+
 def init_plot(dpi=100):
     fig = plt.figure(figsize=(18, 6), dpi=dpi)
     ax_3d = fig.add_subplot(131, projection='3d')
