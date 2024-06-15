@@ -3,10 +3,11 @@ import pickle
 
 import numpy as np
 import torch
+from typing import List, Dict, Any
 
 
 def create_sample_indices(
-        episode_ends: np.ndarray,
+        episode_ends: List,
         sequence_length: int,
         pad_before: int = 0,
         pad_after: int = 0,
@@ -22,44 +23,75 @@ def create_sample_indices(
         min_start = -pad_before
         max_start = episode_length - sequence_length + pad_after
 
-        # range stops one idx before end
+        # range stops one idx before end; jump by 1 step - there is overlap
         for idx in range(min_start, max_start + 1):
             buffer_start_idx = max(idx, 0) + start_idx
             buffer_end_idx = min(idx + sequence_length, episode_length) + start_idx
+
             start_offset = buffer_start_idx - (idx + start_idx)
             end_offset = (idx + sequence_length + start_idx) - buffer_end_idx
+
             sample_start_idx = 0 + start_offset
             sample_end_idx = sequence_length - end_offset
+
             indices.append(
                 [i, buffer_start_idx, buffer_end_idx, sample_start_idx, sample_end_idx]
             )
+
     indices = np.array(indices)
     return indices
 
 
-from typing import List, Dict, Any
+def fill_sequence(data: np.ndarray,
+                  grasp_state: np.ndarray,
+                  sequence_length: int,
+                  sample_start_idx: int,
+                  sample_end_idx: int,
+                  cond_on_grasp: bool = False,
+                  is_action: bool = False) -> np.ndarray:
 
-
-def load_data(folder: str, prefix: str, buffer_start_idx: int, buffer_end_idx: int) -> np.ndarray:
-    return np.stack([np.load(os.path.join(folder, f'{prefix}_{i}.npz'))[prefix] for i in range(buffer_start_idx, buffer_end_idx)])
-
-def fill_sequence(data: np.ndarray, sequence_length: int, sample_start_idx: int, sample_end_idx: int, cond_on_grasp: bool = False, is_action: bool = False) -> np.ndarray:
     if cond_on_grasp and not is_action:
         sequence_length += 1
         filled_data = np.zeros((sequence_length,) + data.shape[1:], dtype=data.dtype)
-        filled_data[1:sample_start_idx+1] = data[0]  # Shifted by one
+
+        # Fill the initial portion with the first element, shifted by one index
+        filled_data[1:sample_start_idx + 1] = data[0]
+
+        # Fill the end portion with the last element, if needed, shifted by one index
         if sample_end_idx < sequence_length - 1:
-            filled_data[sample_end_idx+1:] = data[-1]  # Shifted by one
-        filled_data[sample_start_idx+1:sample_end_idx+1] = data  # Shifted by one
-        filled_data[0] = data[0]  # Adding the first timestep data at the start
+            filled_data[sample_end_idx + 1:] = data[-1]
+
+        # Fill the main portion of the data, shifted by one index
+        filled_data[sample_start_idx + 1:sample_end_idx + 1] = data
+
+        # Add the first element of the trajectory at the very start of the sequence
+        filled_data[0] = grasp_state
+
     else:
         filled_data = np.zeros((sequence_length,) + data.shape[1:], dtype=data.dtype)
+
+        # Fill the initial portion if the sample_start_idx is greater than 0
         if sample_start_idx > 0:
             filled_data[:sample_start_idx] = data[0]
+
+        # Fill the end portion if sample_end_idx is less than sequence_length
         if sample_end_idx < sequence_length:
             filled_data[sample_end_idx:] = data[-1]
+
+        # Fill the main portion of the data
         filled_data[sample_start_idx:sample_end_idx] = data
+
     return filled_data
+
+
+def load_grasp_state(folder: str, prefix: str) -> np.ndarray:
+    return np.load(os.path.join(folder, f'{prefix}_0.npz'))[prefix][0]
+
+
+def load_data(folder: str, prefix: str, buffer_start_idx: int, buffer_end_idx: int) -> np.ndarray:
+    return np.stack([np.load(os.path.join(folder, f'{prefix}_{i}.npz'))[prefix] for i in range(buffer_start_idx,
+                                                                                               buffer_end_idx)])
+
 
 def sample_sequence(
         representation_type: List[str],
@@ -71,36 +103,43 @@ def sample_sequence(
         sample_start_idx: int,
         sample_end_idx: int,
         cond_on_grasp: bool = False,
-) -> Dict[str, Any]:
+        ) -> Dict[str, Any]:
 
     result = {}
-    try:
-        tactile_folder = traj_list[file_idx][:-7].replace('obs', 'tactile')
-        img_folder = traj_list[file_idx][:-7].replace('obs', 'img')
 
+    tactile_folder = traj_list[file_idx][:-7].replace('obs', 'tactile')
+    img_folder = traj_list[file_idx][:-7].replace('obs', 'img')
+    train_data = np.load(traj_list[file_idx])
+
+    grasp_state = {}
+    if cond_on_grasp:
         if 'tactile' in representation_type:
-            tactile = load_data(tactile_folder, 'tactile', buffer_start_idx, buffer_end_idx)
-            result['tactile'] = fill_sequence(tactile, sequence_length, sample_start_idx, sample_end_idx, cond_on_grasp)
-
+            grasp_state['tactile'] = load_grasp_state(tactile_folder, 'tactile')
         if 'img' in representation_type:
-            img = load_data(img_folder, 'img', buffer_start_idx, buffer_end_idx)
-            result['img'] = fill_sequence(img, sequence_length, sample_start_idx, sample_end_idx, cond_on_grasp)
-
-        train_data = np.load(traj_list[file_idx])
+            grasp_state['img'] = load_grasp_state(img_folder, 'img')
 
         for key, input_arr in train_data.items():
-            if key not in representation_type:
-                continue
-            sample = input_arr[buffer_start_idx:buffer_end_idx]
-            is_action = key == 'action'
-            result[key] = fill_sequence(sample, sequence_length, sample_start_idx, sample_end_idx, cond_on_grasp, is_action)
+            if key in representation_type:
+                grasp_state[key] = input_arr[0]
 
-    except FileNotFoundError as e:
-        print(f"Error: {e}")
-    except IndexError as e:
-        print(f"Error: {e}")
-    except Exception as e:
-        print(f"An unexpected error occurred: {e}")
+    if 'tactile' in representation_type:
+        tactile = load_data(tactile_folder, 'tactile', buffer_start_idx, buffer_end_idx)
+        result['tactile'] = fill_sequence(tactile, grasp_state.get('tactile'), sequence_length, sample_start_idx,
+                                          sample_end_idx, cond_on_grasp)
+
+    if 'img' in representation_type:
+        img = load_data(img_folder, 'img', buffer_start_idx, buffer_end_idx)
+        result['img'] = fill_sequence(img, grasp_state.get('img'), sequence_length, sample_start_idx, sample_end_idx,
+                                      cond_on_grasp)
+
+    for key, input_arr in train_data.items():
+        if key not in representation_type:
+            continue
+
+        sample = input_arr[buffer_start_idx:buffer_end_idx]
+        grasp_state_value = grasp_state.get(key) if cond_on_grasp else None
+        result[key] = fill_sequence(sample, grasp_state_value, sequence_length, sample_start_idx, sample_end_idx,
+                                    cond_on_grasp, key == 'action')
 
     return result
 

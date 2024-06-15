@@ -417,7 +417,7 @@ class DiffusionPolicy:
                 return data.cpu().detach().numpy()
             return data
 
-        sample = np.stack([convert_to_numpy(x[data_key]) for x in obs_deque]).squeeze()
+        sample = np.stack([convert_to_numpy(x[data_key]) for x in obs_deque]) #.squeeze()
         if data_key != "img" and (data_key != "tactile" or not self.binarize_tactile) and data_key != "action":
             # image & tactile & action is already normalized
             sample = normalize_data(sample, stats=stats, key=data_key)

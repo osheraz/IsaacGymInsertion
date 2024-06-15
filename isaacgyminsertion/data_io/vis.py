@@ -455,7 +455,7 @@ if True:
     fig = plt.figure(figsize=(18, 10))
     ax = fig.add_subplot(111)
     # path = random.sample(all_paths, 1)[0]
-    path = '/home/roblab20/tactile_diffusion/datastore_real/2/2024-06-14_14-37-08/obs/obs.npz'
+    path = '/home/roblab20/tactile_diffusion/datastore_real/1/2024-06-14_12-56-02/obs/obs.npz'
     # path = all_paths[i]
     data = np.load(path)
     done_idx = data['done'].nonzero()[-1][0]
