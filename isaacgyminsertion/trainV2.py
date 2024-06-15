@@ -65,7 +65,7 @@ def run(cfg: DictConfig):
 
     # sets seed. if seed is -1 will pick a random one
     # cfg.seed = set_seed(cfg.seed, torch_deterministic=cfg.torch_deterministic, rank=global_rank)
-    if cfg.train_diffusion or True:
+    if cfg.train_diffusion:
         # TODO edit
         from algo.models.diffusion.train_diffusion import Runner
 
