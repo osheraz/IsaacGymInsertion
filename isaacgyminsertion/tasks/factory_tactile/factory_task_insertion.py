@@ -1059,8 +1059,8 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                 #                                          perturbed_rotation[1],
                 #                                          perturbed_rotation[2]))
 
-                cam, trans = self.make_handle_trans(self.res[0], self.res[1], env_id,
-                                                    perturbed_position, perturbed_rotation)
+                _, trans = self.make_handle_trans(self.res[0], self.res[1], env_id,
+                                                  perturbed_position, perturbed_rotation)
 
                 self.gym.attach_camera_to_body(
                     self.camera_handles[env_id],

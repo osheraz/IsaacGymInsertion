@@ -395,7 +395,9 @@ class SimLogger():
                 'contact_latent_shape': 4,
             })
 
-        log_folder = env.cfg_task.data_logger.base_folder
+        # log_folder = env.cfg_task.data_logger.base_folder
+        log_folder = os.path.expanduser("~")
+        log_folder = os.path.join(log_folder, 'tactile_insertion')
 
         self.data_logger_init = lambda x: DataLogger(env.num_envs,
                                                      env.max_episode_length,

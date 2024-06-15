@@ -151,7 +151,7 @@ class TactileDataset(Dataset):
     def __init__(self, files, sequence_length=500,
                  full_sequence=False,
                  normalize_dict=None,
-                 stride=10,
+                 stride=5,
                  img_transform=None,
                  tactile_transform=None,
                  ):
