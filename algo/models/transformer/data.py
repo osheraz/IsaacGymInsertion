@@ -114,6 +114,7 @@ class DataNormalizer:
         self.ensure_directory_exists(self.normalization_path)
         self.load_or_create_normalization_file()
 
+
 class GaussianNoise(nn.Module):
     def __init__(self, std=0.1):
         super().__init__()
@@ -125,20 +126,21 @@ class GaussianNoise(nn.Module):
             return x + noise
         return x
 
+
 def mask_img(x, img_patch_size, img_masking_prob):
     # Divide the image into patches and randomly mask some of them
     img_patch = x.unfold(2, img_patch_size, img_patch_size).unfold(
         3, img_patch_size, img_patch_size
     )
     mask = (
-        torch.rand(
-            (
-                x.shape[0],
-                x.shape[-2] // img_patch_size,
-                x.shape[-1] // img_patch_size,
+            torch.rand(
+                (
+                    x.shape[0],
+                    x.shape[-2] // img_patch_size,
+                    x.shape[-1] // img_patch_size,
+                )
             )
-        )
-        < img_masking_prob
+            < img_masking_prob
     )
     mask = mask.unsqueeze(1).unsqueeze(-1).unsqueeze(-1).expand_as(img_patch)
     x = x.clone()
@@ -146,6 +148,7 @@ def mask_img(x, img_patch_size, img_masking_prob):
         3, img_patch_size, img_patch_size
     )[mask] = 0
     return x
+
 
 class TactileDataset(Dataset):
     def __init__(self, files, sequence_length=500,
@@ -216,7 +219,7 @@ class TactileDataset(Dataset):
         # Tactile input [T F W H C]
         # tactile_input = data_seq["tactile"]
         tactile_input = np.stack([np.load(os.path.join(tactile_folder, f'tactile_{i}.npz'))['tactile'] for i in
-                            range(start_idx, start_idx + self.sequence_length)])
+                                  range(start_idx, start_idx + self.sequence_length)])
 
         if self.tactile_transform is not None:
             tactile_input = self.tactile_transform(self.to_torch(tactile_input))
@@ -225,7 +228,7 @@ class TactileDataset(Dataset):
         # left_finger, right_finger, bottom_finger = [data_seq["tactile"][:, i, ...] for i in range(3)]
         # img_input = data_seq["img"]
         img_input = np.stack([np.load(os.path.join(img_folder, f'img_{i}.npz'))['img'] for i in
-                            range(start_idx, start_idx + self.sequence_length)])
+                              range(start_idx, start_idx + self.sequence_length)])
 
         if self.img_transform is not None:
             img_input = self.img_transform(self.to_torch(img_input))
@@ -233,7 +236,7 @@ class TactileDataset(Dataset):
         eef_pos = data_seq["eef_pos"]
         # hand_joints = data_seq["hand_joints"]
         action = data_seq["action"]
-        contacts = data_seq["action"] # contact
+        contacts = data_seq["action"]  # contact
         obs_hist = data_seq["obs_hist"]
 
         euler = Rotation.from_quat(data_seq["plug_hand_quat"]).as_euler('xyz')
@@ -251,16 +254,22 @@ class TactileDataset(Dataset):
         if self.normalize_dict is not None:
             eef_pos = (eef_pos - self.normalize_dict["mean"]["eef_pos"]) / self.normalize_dict["std"]["eef_pos"]
             # hand_joints = (hand_joints - self.normalize_dict["mean"]["hand_joints"]) / self.normalize_dict["std"]["hand_joints"]
-            plug_pos_error = (plug_pos_error - self.normalize_dict["mean"]["plug_pos_error"]) / self.normalize_dict["std"]["plug_pos_error"]
-            plug_quat_error = (plug_quat_error - self.normalize_dict["mean"]["plug_quat_error"]) / self.normalize_dict["std"]["plug_quat_error"]
+            plug_pos_error = (plug_pos_error - self.normalize_dict["mean"]["plug_pos_error"]) / \
+                             self.normalize_dict["std"]["plug_pos_error"]
+            plug_quat_error = (plug_quat_error - self.normalize_dict["mean"]["plug_quat_error"]) / \
+                              self.normalize_dict["std"]["plug_quat_error"]
 
             if not diff:
-                euler = (euler - self.normalize_dict["mean"]["plug_hand_euler"]) / self.normalize_dict["std"]["plug_hand_euler"]
-                plug_hand_pos = (plug_hand_pos - self.normalize_dict["mean"]["plug_hand_pos"]) / self.normalize_dict["std"]["plug_hand_pos"]
+                euler = (euler - self.normalize_dict["mean"]["plug_hand_euler"]) / self.normalize_dict["std"][
+                    "plug_hand_euler"]
+                plug_hand_pos = (plug_hand_pos - self.normalize_dict["mean"]["plug_hand_pos"]) / \
+                                self.normalize_dict["std"]["plug_hand_pos"]
 
             else:
-                euler = (euler - self.normalize_dict["mean"]["plug_hand_diff_euler"]) / self.normalize_dict["std"]["plug_hand_diff_euler"]
-                plug_hand_pos = (plug_hand_pos - self.normalize_dict["mean"]["plug_hand_pos_diff"]) / self.normalize_dict["std"]["plug_hand_pos_diff"]
+                euler = (euler - self.normalize_dict["mean"]["plug_hand_diff_euler"]) / self.normalize_dict["std"][
+                    "plug_hand_diff_euler"]
+                plug_hand_pos = (plug_hand_pos - self.normalize_dict["mean"]["plug_hand_pos_diff"]) / \
+                                self.normalize_dict["std"]["plug_hand_pos_diff"]
 
         # label = np.hstack((plug_pos_error, plug_quat_error))
 

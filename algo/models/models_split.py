@@ -89,22 +89,14 @@ class ActorCriticSplit(nn.Module):
         mlp_input_shape = input_shape[0]
         self.units = kwargs['actor_units']
         out_size = self.units[-1]
-        # self.ft_info = kwargs["ft_info"]
-        self.tactile_info = kwargs["tactile_info"]
-        self.obs_info = kwargs["obs_info"]
         self.contact_info = kwargs['gt_contacts_info']
         self.only_contact = kwargs['only_contact']
 
-        # self.body_mlp_units = kwargs['body_mlp_units']
-        # out_size = self.body_mlp_units[-1]
-        self.only_contact = kwargs['only_contact']
         self.priv_mlp_units = kwargs['priv_mlp_units']
         self.priv_info = kwargs['priv_info']
         self.priv_info_stage2 = kwargs['extrin_adapt']
         self.priv_info_dim = kwargs['priv_info_dim']
         self.shared_parameters = kwargs['shared_parameters']
-
-        self.contact_mlp_units = kwargs['contacts_mlp_units']
 
         if self.priv_info:
 
@@ -112,6 +104,7 @@ class ActorCriticSplit(nn.Module):
             self.env_mlp = MLP(units=self.priv_mlp_units, input_size=self.priv_info_dim)
 
             if self.contact_info:
+                self.contact_mlp_units = kwargs['contacts_mlp_units']
 
                 self.contact_ae = ContactAE(input_size=kwargs["num_contact_points"] * 1, embedding_size=self.contact_mlp_units[-1])
                 if not self.only_contact:
@@ -122,6 +115,9 @@ class ActorCriticSplit(nn.Module):
             if self.priv_info_stage2:
                 # ---- tactile Decoder ----
                 # Dims of latent have to be the same |z_t - z'_t|
+                self.tactile_info = kwargs["tactile_info"]
+                self.obs_info = kwargs["obs_info"]
+
                 if self.obs_info:
                     self.obs_units = kwargs["obs_units"]
                     self.obs_mlp = MLP(

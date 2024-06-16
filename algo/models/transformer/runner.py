@@ -120,6 +120,7 @@ class Runner:
         self.task_cfg = cfg
         self.cfg = cfg.offline_train
         self.agent = agent
+        self.to_torch = lambda x: torch.from_numpy(x).float()
 
         self.ppo_step = agent.play_latent_step if ((agent is not None) and (action_regularization)) else None
         self.optimizer = None
@@ -428,6 +429,22 @@ class Runner:
         # Clean up plt to free memory
         plt.close(fig)
 
+    def get_latent(self, tac_input, img_input, lin_input):
+        self.model.eval()
+        with torch.no_grad():
+            # [envs, seq_len, ... ] => [envs*seq_len, C, W, H]
+
+            tac_input = tac_input.to(self.device)
+            if self.tactile_transform is not None:
+                tac_input = self.tactile_transform(self.to_torch(tac_input))
+            img_input = img_input.to(self.device)
+            if self.img_transform is not None:
+                img_input = self.img_transform(self.to_torch(img_input))
+            lin_input = lin_input.to(self.device)
+
+            out = self.model(tac_input, img_input, lin_input)
+        return out
+
     def test(self):
         with torch.inference_mode():
             normalize_dict = self.normalize_dict.copy()
@@ -441,21 +458,10 @@ class Runner:
                 print('something went wrong, there are no test trials')
 
     def load_model(self, model_path, device='cuda:0'):
+        print('Load TacT model')
         self.model.load_state_dict(torch.load(model_path))
         # self.model.eval()
         self.device = device
-
-    def get_latent(self, tac_input, img_input, lin_input):
-        self.model.eval()
-        with torch.no_grad():
-            # [envs, seq_len, ... ] => [envs*seq_len, C, W, H]
-
-            tac_input = tac_input.to(self.device)
-            img_input = img_input.to(self.device)
-            lin_input = lin_input.to(self.device)
-
-            out = self.model(tac_input, img_input, lin_input)
-        return out
 
     def _run(self, file_list, save_folder, epochs=100, train_test_split=0.9, train_batch_size=32, val_batch_size=32,
              learning_rate=1e-4, device='cuda:0', print_every=50, eval_every=250, test_every=500):
