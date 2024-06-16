@@ -22,7 +22,7 @@ from algo.models.diffusion.models import GaussianNoise, ImageEncoder, StateEncod
 from torch import nn
 from torch.nn import ModuleList
 from torchvision import transforms
-from algo.models.diffusion.utils import WandBLogger, save_args, init_plot, render_frame
+from algo.models.diffusion.utils import WandBLogger, save_args, init_plot, render_frame, save_metrics
 from omegaconf import DictConfig, OmegaConf
 from algo.models.diffusion.utils import convert_trajectory
 
@@ -160,11 +160,9 @@ class Agent:
             predict_pos_delta=False,
             clip_far=False,
             num_diffusion_iters=100,
-            load_img=False,
             weight_decay=1e-6,
             num_workers=64,
             use_ddim=False,
-            binarize_tactile=False,
             policy_dropout_rate=0.0,
             state_noise=0.0,
             img_color_jitter=False,
@@ -196,7 +194,6 @@ class Agent:
         self.obs_horizon = obs_horizon
         self.action_horizon = action_horizon
         self.num_workers = num_workers
-        self.binarize_tactile = binarize_tactile
 
         self.representation_type = representation_type
         self.predict_pos_delta = predict_pos_delta
@@ -205,7 +202,6 @@ class Agent:
         # img
         self.img_channel = 1 if img_type == "depth" else 3
         self.clip_far = clip_far
-        self.load_img = load_img
         self.img_color_jitter = img_color_jitter
         self.img_width = img_width
         self.img_height = img_height
@@ -226,7 +222,7 @@ class Agent:
         self.tactile_color_jitter = tactile_color_jitter
         self.tactile_width = tactile_width // 2 if self.half_image else tactile_width
         self.tactile_height = tactile_height
-        self.crop_tactile_width, self.crop_tactile_height = self.tactile_width - 20, self.tactile_height - 30
+        self.crop_tactile_width, self.crop_tactile_height = self.tactile_width - 5, self.tactile_height - 5
         self.tactile_transform, self.tactile_downsample, self.tactile_eval_transform = define_transforms(
             self.tactile_channel,
             self.tactile_color_jitter,
@@ -321,7 +317,6 @@ class Agent:
             without_sampling=without_sampling,
             weight_decay=weight_decay,
             use_ddim=use_ddim,
-            binarize_tactile=self.binarize_tactile,
             policy_dropout_rate=policy_dropout_rate,
         )
 
@@ -334,7 +329,6 @@ class Agent:
         self.policy.to(self.device)
         self.iter = 0
         self.obs_deque = None
-        self.threshold = 8000
         self.state_noise = state_noise
 
         self.predict_eef_delta = predict_eef_delta
@@ -381,8 +375,7 @@ class Agent:
     def _get_tactile_observation(self, data_path, done_idx):
         # allocate memory for the image
         data_path = data_path[0]
-        # data = np.load(data_path)
-        data_len = done_idx # data['eef_pos'].shape[0]
+        data_len = done_idx
         import re
         def natural_sort_key(s):
             return [int(text) if text.isdigit() else text.lower() for text in re.split('([0-9]+)', s)]
@@ -458,52 +451,6 @@ class Agent:
         )
         return pred
 
-    def _get_init_train_data(self, total_data_points, img_memmap_loader_path="", tactile_memmap_loader_path=""):
-
-        init_data = {}
-        for rt in self.representation_type + ["action"]:
-            if rt == "img":
-                if img_memmap_loader_path == "":
-                    # Not using memmap
-                    if self.load_img:
-                        # Declear the memory to store the image
-                        init_data[rt] = np.empty(
-                            (
-                                total_data_points,
-                                self.img_channel,
-                                self.img_width,
-                                self.img_height,
-                            ),
-                            dtype=np.uint16,
-                        )
-                    else:
-                        # Only store the file path
-                        assert '?'
-                        init_data[rt] = np.empty((total_data_points,), dtype=object)
-
-            if rt == "tactile":
-                if tactile_memmap_loader_path == "":
-                    # Not using memmap
-                    if self.load_img:
-                        # Declear the memory to store the image
-                        init_data[rt] = np.empty(
-                            (
-                                total_data_points,
-                                self.tactile_channel,
-                                self.tactile_width,
-                                self.tactile_height,
-                            ),
-                            dtype=np.uint16,
-                        )
-                    else:
-                        # Only store the file path
-                        assert '?'
-                        init_data[rt] = np.empty((total_data_points,), dtype=object)
-            else:
-                # Other representation types
-                init_data[rt] = np.zeros((total_data_points, RT_DIM[rt]), dtype=np.float32)
-        return init_data
-
     def get_train_loader(self, batch_size, train_test_split=0.99, eval=False):
 
         num_train_envs = int(len(self.epi_dir) * train_test_split)
@@ -519,11 +466,9 @@ class Agent:
             obs_horizon=self.obs_horizon,
             action_horizon=self.action_horizon,
             stats=self.stats,
-            load_img=self.load_img,
             img_transform=self.img_transform if not eval else self.img_eval_transform,
             tactile_transform=self.tactile_transform if not eval else self.tactile_eval_transform,
             get_img=self._get_image_observation,
-            binarize_tactile=self.binarize_tactile,
             state_noise=self.state_noise if not eval else 0.0,
             img_dim=(self.crop_img_width, self.crop_img_height),
             tactile_dim=(self.crop_tactile_width, self.crop_tactile_height),
@@ -575,8 +520,6 @@ class Agent:
                 train_loader.dataset.__getitem__
             )
 
-        self.eval(eval_traj, save_path=self.save_path)
-
         self.policy.train(
             epochs,
             train_loader,
@@ -588,6 +531,7 @@ class Agent:
         )
 
         self.policy.to_ema()
+        self.eval(eval_traj, save_path=self.save_path)
 
 
     def get_train_action(self, data):
@@ -635,12 +579,12 @@ class Agent:
 
         return obs_list, action
 
-    def eval(self, data_path, save_path=None):
+    def eval(self, data_path, save_path=None, num_eval_diff_iter=15):
         print("GETTING EVAL DATA")
         eval_data = self.get_eval_data(data_path)
         obs, action_gt = eval_data
         print("EVALUATING")
-        action_pred, mse, norm_mse = self.policy.eval(obs, action_gt, self.cond_on_grasp)
+        action_pred, mse, norm_mse = self.policy.eval(obs, action_gt, self.cond_on_grasp, num_eval_diff_iter)
         print("ACTION_MSE: {}, NORM_MSE: {}".format(mse, norm_mse))
 
         # Convert tensors to floats for JSON serialization
@@ -656,15 +600,7 @@ class Agent:
             )
             os.makedirs(save_path, exist_ok=True)
 
-        # Log evaluation metrics to a file
-        metrics_path = os.path.join(save_path, "metrics.json")
-        metrics = {
-            "mse": mse,
-            "norm_mse": norm_mse,
-        }
-        with open(metrics_path, "w") as f:
-            json.dump(metrics, f)
-
+        save_metrics(save_path, mse, norm_mse)
         # Initialize plot with high DPI for better quality
         fig, ax_3d, ax_2d, ax_action_diff, canvas = init_plot(dpi=200)
 
@@ -781,12 +717,12 @@ class Runner:
                 "hand_joints": cfg.dropout_rate,
                 "arm_joints": cfg.dropout_rate,
                 "img": cfg.img_dropout_rate,
-                "tactile": cfg.dropout_rate,
+                "tactile": cfg.tactile_dropout_rate,
             },
             output_sizes={
-                "eef_pos": 64,
-                "hand_joints": 64,
-                "arm_joints": 64,
+                "eef_pos": cfg.eef_pos_output_size,
+                "hand_joints": cfg.hand_joints_output_size,
+                "arm_joints": cfg.arm_joints_output_size,
                 "img": cfg.image_output_size,
                 "tactile": cfg.tactile_output_size,
             },
@@ -802,11 +738,9 @@ class Runner:
             img_color_jitter=cfg.img_color_jitter,
             tactile_color_jitter=cfg.tactile_color_jitter,
             num_diffusion_iters=cfg.num_diffusion_iters,
-            load_img=cfg.load_img,
             num_workers=cfg.num_workers,
             weight_decay=cfg.weight_decay,
             use_ddim=cfg.use_ddim,
-            binarize_tactile=cfg.binarize_tactile,
             policy_dropout_rate=cfg.policy_dropout_rate,
             state_noise=cfg.state_noise,
             img_gaussian_noise=cfg.img_gaussian_noise,
@@ -860,31 +794,7 @@ class Runner:
                 agent.stats = normalizer.normalize_dict
                 agent.save_stats(model_path)
 
-            if cfg.use_train_test_split:
-                train_path = data_path + "_train"
-                test_path = data_path + "_test"
-            else:
-                train_path = test_path = None
-
             print(f"using data path {data_path}")
-            if cfg.use_memmap_cache:
-                # image
-                if cfg.img_memmap_loader_path is not None:
-                    img_memmap_loader_path = cfg.img_memmap_loader_path
-                else:
-                    memmap_base_path = train_path if train_path is not None else data_path
-                    img_memmap_loader_path = os.path.join(memmap_base_path, "image-mem.dat")
-                # tactile
-                if cfg.tactile_memmap_loader_path is not None:
-                    tactile_memmap_loader_path = cfg.tactile_memmap_loader_path
-                else:
-                    memmap_base_path = train_path if train_path is not None else data_path
-                    tactile_memmap_loader_path = os.path.join(memmap_base_path, "tactile-mem.dat")
-                print("using image memmap loader path:", img_memmap_loader_path)
-                print("using tactile memmap loader path:", tactile_memmap_loader_path)
-            else:
-                img_memmap_loader_path = ""
-                tactile_memmap_loader_path = ""
 
             agent.train(
                 traj_list,

@@ -345,7 +345,7 @@ class DiffusionPolicy:
                     print(f"Action_MSE: {mse}, Normalized_MSE: {normalized_mse}")
                     self.ema_nets.train()
 
-    def eval(self, obs, action, cond_on_grasp=False):
+    def eval(self, obs, action, cond_on_grasp=False, num_eval_diff_iter=15):
         obs_deque = collections.deque(
             [obs[0]] * self.obs_horizon, maxlen=self.obs_horizon
         )
@@ -357,7 +357,7 @@ class DiffusionPolicy:
             while i < len(obs) - self.action_horizon:
                 if cond_on_grasp:
                     obs_deque.appendleft(obs[0])
-                action_pred = self.forward(self.data_stat, obs_deque)
+                action_pred = self.forward(self.data_stat, obs_deque, num_diffusion_iters=num_eval_diff_iter)
                 for j in range(self.action_horizon):
                     actions_pred.append(action_pred[j])
                     obs_deque.append(obs[i + j])

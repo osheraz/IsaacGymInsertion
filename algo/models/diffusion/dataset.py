@@ -300,8 +300,6 @@ class Dataset(torch.utils.data.Dataset):
             img_transform=None,
             tactile_transform=None,
             get_img=None,
-            load_img: bool = False,
-            binarize_tactile: bool = False,
             state_noise: float = 0.0,
             img_dim: tuple = (180, 320),
             tactile_dim: tuple = (0, 0),
@@ -312,16 +310,12 @@ class Dataset(torch.utils.data.Dataset):
         self.img_dim = img_dim
         self.tactile_dim = tactile_dim
         self.count = 0
-        # self.memmap_loader = None
-        # if "memmap_loader_path" in data.keys():
-        #     self.memmap_loader = MemmapLoader(data["memmap_loader_path"])
 
         self.representation_type = representation_type
         self.img_transform = img_transform
         self.tactile_transform = tactile_transform
         self.cond_on_grasp = cond_on_grasp
         self.get_img = get_img
-        self.load_img = load_img
 
         episode_ends = []
 
@@ -346,7 +340,6 @@ class Dataset(torch.utils.data.Dataset):
         self.pred_horizon = pred_horizon
         self.action_horizon = action_horizon
         self.obs_horizon = obs_horizon
-        self.binarize_tactile = binarize_tactile
 
     def __len__(self):
         return len(self.indices)
@@ -400,7 +393,6 @@ class Dataset2(torch.utils.data.Dataset):
             stats: dict = None,
             img_transform=None,
             tactile_transform=None,
-            binarize_tactile: bool = False,
             state_noise: float = 0.0,
     ):
 
@@ -434,7 +426,6 @@ class Dataset2(torch.utils.data.Dataset):
         self.pred_horizon = pred_horizon
         self.action_horizon = action_horizon
         self.obs_horizon = obs_horizon
-        self.binarize_tactile = binarize_tactile
 
     def __len__(self):
         return int((len(self.indices_per_trajectory)))

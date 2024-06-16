@@ -1,27 +1,26 @@
 
 data_folder: "/home/roblab20/tactile_diffusion/datastore_real" # where is all your data, can include * for globbing
 output_dir: "/home/roblab20/tactile_diffusion/datastore_real" # where to save checkpoints and logs
+gpu: 0
 
 # Train params for on screen logging
-add_model_save_path_suffix: True
 eval: False
 save_freq: 100
 eval_freq: 10
 print_freq: 100
-use_train_test_split: False
+
 # load student checkpoint
-load_checkpoint: False
 model_save_path: ''
 load_path: ''
 
 # basic training hyperparameters
-gpu: 0
 cond_on_grasp: False
 
 epochs: 100
 obs_horizon: 1
 action_horizon: 6
 pred_horizon: 16
+num_diffusion_iters: 100
 
 batch_size: 8
 learning_rate: 5e-4
@@ -29,20 +28,23 @@ train_test_split: 0.9
 
 representation_type: "eef_pos-tactile"
 
-scheduler: "cosine"
-warmup: False
-warmup_epochs: 4
-cyclic_period: 10
-plateau_patience: 3
-plateau_factor: 0.5
-
 # normalize data
 normalize_keys: ["eef_pos", "action", "arm_joints"]
 normalize_file: "/home/roblab20/tactile_diffusion/datastore_real/normalization.pkl"
 
 
 img_color_jitter: False
+img_gaussian_noise: 0.0
+img_masking_prob: 0.0
+img_patch_size: 16
+img_dropout_rate: 0.0  # For the image encoder of Diffusion Policy
+
 tactile_color_jitter: False
+tactile_gaussian_noise: 0.0
+tactile_masking_prob: 0.0
+tactile_patch_size: 16
+tactile_dropout_rate: 0.0  # For the image encoder of Diffusion Policy
+
 predict_eef_delta: False
 clip_far: False
 predict_pos_delta: False
@@ -50,69 +52,29 @@ use_ddim: False
 
 policy_dropout_rate: 0.0
 dropout_rate: 0.0  # For the state encoder of Diffusion Policy
-img_dropout_rate: 0.0  # For the image encoder of Diffusion Policy
 weight_decay: 1e-5
-image_output_size: 128
-tactile_output_size: 128
+
 state_noise: 0.0
-img_gaussian_noise: 0.0
-img_masking_prob: 0.0
-img_patch_size: 16
-tactile_gaussian_noise: 0.0
-tactile_masking_prob: 0.0
-tactile_patch_size: 16
+
 num_workers: 8
 
+eef_pos_output_size: 64
+hand_joints_output_size: 64
+arm_joints_output_size: 64
+image_output_size: 64
+tactile_output_size: 64
 
 without_sampling: False
-binarize_tactile: False
 
-use_memmap_cache: False
-img_memmap_loader_path: None
-tactile_memmap_loader_path: None
 compile_train: False
 
-
-# linear embedding
-num_diffusion_iters: 100
 identity_encoder: False
-load_img: False
-linear_input_size: 6
-
-full_sequence: False # if True, it makes sequence length 500
-sequence_length: 1 # ${...task.rl.max_episode_length}
-num_layers: 4
-num_heads: 4
-dim_factor: 4
-output_size: 8
-tactile_encoding_size: 128
-img_encoding_size: 128
 
 # wandb logging
 wandb_entity_name: None
 wandb_exp_name: None
 use_wandb: False
-wandb_project_name: "tactile_insertion"
-
-tactile: # Pulling from task
-  tacto:
-    width: 224 # 224 # 480 | 224
-    height: 224 # 224 # 480 | 224 for the gan
-    visualize_gui: True
-
-  with_bg: True # add background reference frame
-  show_depth: True # visualize depth
-  diff: True
-  half_image: True # --> tacto & encoder width // 2
-  tactile_freq: 2
-
-  encoder:
-    width: 224
-    height: 224
-    num_channels: 3 # 1 (Grayscale), 3 (RGB)
-
-  sim2real: False
-  model_G: latest_net_G_B.pth # path for the generator
+wandb_project_name: "tactile_diffusion"
 
 external_cam:
   external_cam: False

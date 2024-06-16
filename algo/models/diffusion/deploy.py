@@ -59,9 +59,9 @@ class HardwarePlayer:
         self.dis_noise = self.full_config.task.external_cam.dis_noise
 
         output_sizes = {
-            "eef_pos": 64,
-            "hand_joints": 64,
-            "arm_joints": 128,
+            "eef_pos": self.diff_config.eef_pos_output_size,
+            "hand_joints": self.diff_config.hand_joints_output_size,
+            "arm_joints": self.diff_config.arm_joints_output_size,
             "img": self.diff_config.image_output_size,
             "tactile": self.diff_config.tactile_output_size,
         }
@@ -673,8 +673,8 @@ class HardwarePlayer:
         while cur_episode < num_episodes:
 
             # Bias the ft sensor
-            self.env.arm.calib_robotiq()
-            rospy.sleep(2.0)
+            # self.env.arm.calib_robotiq()
+            # rospy.sleep(2.0)
             self.env.arm.calib_robotiq()
 
             obs = self.compute_observations()

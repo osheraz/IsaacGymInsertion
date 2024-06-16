@@ -28,7 +28,7 @@ import warnings
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
-cfg_path = '/home/roblab20/tactile_diffusion/datastore_real/ckpts/diff/'
+cfg_path = '/home/roblab20/osher3_workspace/src/isaacgym/python/IsaacGymInsertion/isaacgyminsertion/outputs/diff/'
 
 
 @hydra.main(config_name="task_config", config_path=f"{cfg_path}")
@@ -37,7 +37,6 @@ def main(config: DictConfig):
     set_np_formatting()
     config.seed = set_seed(config.seed)
     config.diffusion_train.load_path = cfg_path
-    # TODO change output dir to  teacher folder
 
     agent = HardwarePlayer(config)
     agent.deploy()

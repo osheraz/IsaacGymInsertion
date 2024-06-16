@@ -22,6 +22,28 @@ from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 import cv2
 from mpl_toolkits.mplot3d import Axes3D
 
+def save_metrics(save_path, mse, norm_mse):
+    metrics_path = os.path.join(save_path, "metrics.json")
+    new_metrics = {
+        "mse": mse,
+        "norm_mse": norm_mse,
+    }
+
+    if os.path.exists(metrics_path):
+        with open(metrics_path, "r") as f:
+            try:
+                metrics_list = json.load(f)
+            except json.JSONDecodeError:
+                metrics_list = []
+        if not isinstance(metrics_list, list):
+            metrics_list = [metrics_list]
+        metrics_list.append(new_metrics)
+    else:
+        metrics_list = [new_metrics]
+
+    with open(metrics_path, "w") as f:
+        json.dump(metrics_list, f, indent=4)
+
 
 def convert_trajectory(eef_pos):
     assert eef_pos.shape[1] == 7, f"Invalid shape for eef_pos: {eef_pos.shape}"
@@ -41,10 +63,9 @@ def convert_trajectory(eef_pos):
 
     return eef_pos_converted
 
-def unify(quat):
-    # This function should normalize the quaternion or perform any required preprocessing.
-    # Here, I'm assuming it normalizes the quaternion. Adjust according to your actual implementation.
+def unify(quat, eps: float = 1e-9):
     norm = np.linalg.norm(quat, axis=-1, keepdims=True)
+    norm = np.maximum(norm, eps)  # Clamping to avoid division by zero
     return quat / norm
 
 
