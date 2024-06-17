@@ -132,7 +132,7 @@ def run(cfg: DictConfig):
             agent.restore_test(cfg.train.load_path)
             agent.set_eval()
 
-            runner = TransformerRunner(cfg.offline_train, agent,
+            runner = TransformerRunner(cfg, agent,
                                        action_regularization=cfg.offline_train.train.action_regularization)
             runner.run()
 
