@@ -666,8 +666,8 @@ class PPO(object):
                 if get_latent is not None:
                     # Making data for the latent prediction from student model
                     tactile, img, lin_input = self.get_last_student_obs(self.data_logger.data_logger.get_data(),
-                                                                               stud_norm_dict)
-                    self.display_tactile_images(tactile.clone())
+                                                                        stud_norm_dict)
+                    self.display_obs(tactile, img)
                     # getting the latent data from the student model
                     if self.full_config.offline_train.model.transformer.full_sequence:
                         latent = get_latent(tactile, img, lin_input)[self.env_ids,
@@ -707,7 +707,7 @@ class PPO(object):
         print('[LastTest] success rate:', num_success / total_dones)
         return num_success, total_dones
 
-    def display_tactile_images(self, tactile):
+    def display_obs(self, tactile, depth):
         for t in range(tactile.shape[1]):  # Iterate through the sequence of images
             # Extract the images for all fingers at time step 't' and adjust dimensions for display.
             fingers_images = tactile[0, t]  # This selects all fingers at time 't', shape is [F, C, W, H]
@@ -719,8 +719,8 @@ class PPO(object):
                 img = img.cpu().detach()
                 # Move tensor to CPU and detach from its computation history
                 # Inverse normalize the image
-                img = transforms.functional.normalize(
-                    img, [-0.5 / 0.5] * img.shape[0], [1 / 0.5] * img.shape[0], inplace=False)
+                # img = transforms.functional.normalize(
+                #     img, [-0.5 / 0.5] * img.shape[0], [1 / 0.5] * img.shape[0], inplace=False)
                 img = img.numpy()  # Convert to numpy
                 img = np.transpose(img, (1, 2, 0))  # Reorder dimensions to [W, H, C]
                 # Scale the image data to [0, 255] and convert to uint8
@@ -730,7 +730,13 @@ class PPO(object):
                 imgs.append(img)
 
             concatenated_img = np.concatenate(imgs, axis=1)  # Concatenate images horizontally
+
+            d = depth[0, t] .cpu().detach().numpy()
+            d = np.transpose(d, (1, 2, 0))
+            cv2.imshow('Depth Sequence', d + 0.5)  # Display the concatenated image
+
             cv2.imshow('Tactile Sequence', concatenated_img)  # Display the concatenated image
+
             cv2.waitKey(1)
 
     def get_last_student_obs(self, data, normalize_dict):
@@ -758,7 +764,7 @@ class PPO(object):
 
         if normalize_dict is not None:
             eef_pos = (eef_pos - normalize_dict["mean"]["eef_pos"]) / normalize_dict["std"]["eef_pos"]
-            hand_joints = (hand_joints - normalize_dict["mean"]["hand_joints"]) / normalize_dict["std"]["hand_joints"]
+            # hand_joints = (hand_joints - normalize_dict["mean"]["hand_joints"]) / normalize_dict["std"]["hand_joints"]
             plug_pos_error = (plug_pos_error - normalize_dict["mean"]["plug_pos_error"]) / normalize_dict["std"][
                 "plug_pos_error"]
             plug_quat_error = (plug_quat_error - normalize_dict["mean"]["plug_quat_error"]) / normalize_dict["std"][

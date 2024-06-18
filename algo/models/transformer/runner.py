@@ -24,6 +24,42 @@ from matplotlib import pyplot as plt
 from scipy.spatial.transform import Rotation
 
 
+class ImageTransform:
+    def __init__(self, image_transform=None):
+        self.image_transform = image_transform
+
+    def __call__(self, img_input):
+        # img_input shape: [B, T, C, H, W]
+        B, T, C, H, W = img_input.shape
+        img_input = img_input.view(-1, C, H, W)  # Shape: [B * T, C, H, W]
+        if self.image_transform is not None:
+            img_input = self.image_transform(img_input)
+
+        img_input = img_input.view(B, T, C, *img_input.shape[2:])  # Reshape back to [B, T, C, new_H, new_W]
+        return img_input
+
+
+class TactileTransform:
+    def __init__(self, tactile_transform=None):
+        self.tactile_transform = tactile_transform
+
+    def __call__(self, tac_input):
+        # tac_input shape: [B, T, Num_cam, C, H, W]
+        B, T, Num_cam, C, H, W = tac_input.shape
+        tac_input = tac_input.view(-1, C, H, W)  # Shape: [B * T * Num_cam, C, H, W]
+
+        if self.tactile_transform is not None:
+            transformed_list = []
+            for i in range(tac_input.shape[0]):
+                transformed_image = self.tactile_transform(tac_input[i])
+                transformed_list.append(transformed_image)
+            tac_input = torch.stack(transformed_list)
+
+        tac_input = tac_input.view(B, T, Num_cam, C,
+                                   *tac_input.shape[2:])  # Reshape back to [B, T, Num_cam, C, new_H, new_W]
+        return tac_input
+
+
 def define_transforms(channel, color_jitter, width, height, crop_width,
                       crop_height, img_patch_size, img_gaussian_noise=0.0, img_masking_prob=0.0):
     # Use color jitter to augment the image
@@ -134,7 +170,8 @@ class Runner:
         self.img_color_jitter = self.cfg.img_color_jitter
         self.img_width = self.cfg.img_width
         self.img_height = self.cfg.img_height
-        self.crop_img_width, self.crop_img_height = self.img_width - 20, self.img_height - 30
+        self.crop_img_width = self.img_width - self.cfg.img_crop_w
+        self.crop_img_height = self.img_height - self.cfg.img_crop_h
         self.img_transform, self.img_downsample, self.img_eval_transform = define_transforms(self.img_channel,
                                                                                              self.img_color_jitter,
                                                                                              self.img_width,
@@ -151,7 +188,8 @@ class Runner:
         self.tactile_color_jitter = self.cfg.tactile_color_jitter
         self.tactile_width = self.cfg.tactile_width // 2 if self.half_image else self.cfg.tactile_width
         self.tactile_height = self.cfg.tactile_height
-        self.crop_tactile_width, self.crop_tactile_height = self.tactile_width, self.tactile_height
+        self.crop_tactile_width = self.tactile_width - self.cfg.tactile_crop_w
+        self.crop_tactile_height = self.tactile_height - self.cfg.tactile_crop_h
         self.tactile_transform, self.tactile_downsample, self.tactile_eval_transform = define_transforms(
             self.tactile_channel,
             self.tactile_color_jitter,
@@ -184,7 +222,6 @@ class Runner:
 
         self.fig = plt.figure(figsize=(20, 15))
         self.train_loss, self.val_loss = [], []
-
 
     def train(self, dl, val_dl, ckpt_path, print_every=50, eval_every=250, test_every=500):
         """
@@ -436,10 +473,10 @@ class Runner:
 
             tac_input = tac_input.to(self.device)
             if self.tactile_transform is not None:
-                tac_input = self.tactile_transform(self.to_torch(tac_input))
+                tac_input = TactileTransform(self.tactile_transform)(tac_input)
             img_input = img_input.to(self.device)
             if self.img_transform is not None:
-                img_input = self.img_transform(self.to_torch(img_input))
+                img_input = ImageTransform(self.img_transform)(img_input)
             lin_input = lin_input.to(self.device)
 
             out = self.model(tac_input, img_input, lin_input)
@@ -538,7 +575,7 @@ class Runner:
 
         # training
         for epoch in range(epochs):
-            self.validate(val_dl)
+
             if self.cfg.train.only_test:
                 self.test()
             elif self.cfg.train.only_validate:
