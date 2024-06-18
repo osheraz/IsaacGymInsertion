@@ -22,7 +22,7 @@ from tqdm.auto import tqdm
 #     return ndata
 
 def normalize_data(data, stats, key):
-    if key == 'action' or 'tactile':
+    if key == 'action' or  key == 'tactile':
         return data
     ndata = (data - stats["mean"][key]) / (stats["std"][key] + 1e-8)
     return ndata
@@ -33,7 +33,7 @@ def normalize_data(data, stats, key):
 #     return data
 
 def unnormalize_data(ndata, stats, key):
-    if key == "action" or 'tactile':
+    if key == "action" or key == 'tactile':
         return ndata
     data = (ndata * (stats["std"][key] + 1e-8)) + stats["mean"][key]
     return data
@@ -149,6 +149,7 @@ class DiffusionPolicy:
         eval_freq=10,
         wandb_logger=None,
         eval=False,
+        use_same_encoder=True,
     ):
         if eval:
             nets = self.ema_nets
@@ -192,12 +193,21 @@ class DiffusionPolicy:
                                 # [B, obs_horizon, F, C, H, W]
                                 tactile = [nsample[:, :, i] for i in range(nsample.shape[2])]
 
-                                tactile_features = [
-                                    nets[f"{data_key}_encoder"][i](
-                                        image.flatten(end_dim=1)
-                                    )
-                                    for i, image in enumerate(tactile)
-                                ]
+                                if use_same_encoder:
+                                    tactile_features = [
+                                        nets[f"{data_key}_encoder"](
+                                            image.flatten(end_dim=1)
+                                        )
+                                        for i, image in enumerate(tactile)
+                                    ]
+                                else:
+                                    tactile_features = [
+                                        nets[f"{data_key}_encoder"][i](
+                                            image.flatten(end_dim=1)
+                                        )
+                                        for i, image in enumerate(tactile)
+                                    ]
+
                                 tactile_features = torch.stack(tactile_features, dim=2)
                                 tactile_features = tactile_features.reshape(
                                     *nsample.shape[:2], -1
@@ -346,6 +356,8 @@ class DiffusionPolicy:
                     self.ema_nets.train()
 
     def eval(self, obs, action, cond_on_grasp=False, num_eval_diff_iter=15):
+        print(f'Evaluating model on single trajectory with {num_eval_diff_iter}')
+
         obs_deque = collections.deque(
             [obs[0]] * self.obs_horizon, maxlen=self.obs_horizon
         )
@@ -427,7 +439,7 @@ class DiffusionPolicy:
         )
         return sample
 
-    def forward(self, stats, obs_deque, num_diffusion_iters=None):
+    def forward(self, stats, obs_deque, num_diffusion_iters=None, use_same_encoder=True):
         self.ema_nets.eval()
 
         if not num_diffusion_iters:
@@ -451,15 +463,24 @@ class DiffusionPolicy:
                     image_features = image_features.reshape(*sample.shape[:2], -1)
                     features.append(image_features)
                 if data_key == "tactile":
+
                     tactile = [
                         sample[:, :, i] for i in range(sample.shape[2])
                     ]  # [1, obs_horizon, M, C, H, W]
-                    tactile_features = [
-                        self.ema_nets[f"{data_key}_encoder"][i](
-                            image.flatten(end_dim=1)
-                        )
-                        for i, image in enumerate(tactile)
-                    ]
+                    if use_same_encoder:
+                        tactile_features = [
+                            self.ema_nets[f"{data_key}_encoder"](
+                                image.flatten(end_dim=1)
+                            )
+                            for i, image in enumerate(tactile)
+                        ]
+                    else:
+                        tactile_features = [
+                            self.ema_nets[f"{data_key}_encoder"][i](
+                                image.flatten(end_dim=1)
+                            )
+                            for i, image in enumerate(tactile)
+                        ]
                     tactile_features = torch.stack(tactile_features, dim=2)
                     tactile_features = tactile_features.reshape(*sample.shape[:2], -1)
                     features.append(tactile_features)

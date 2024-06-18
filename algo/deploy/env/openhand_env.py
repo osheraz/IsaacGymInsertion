@@ -164,10 +164,41 @@ class OpenhandEnv():
         """
         shaky shaky
         """
+        import random
+        def generate_explore_actions(num_actions=3, sequence_length=6):
+            explore_action = []
+            possible_values = [-1, 1]
+
+            for i in range(sequence_length):
+                if i == 0:
+                    # Start with a random action ensuring at least one 1
+                    action = [random.choice(possible_values) for _ in range(num_actions)]
+                    while 1 not in action:
+                        action = [random.choice(possible_values) for _ in range(num_actions)]
+                else:
+                    action = []
+                    for j in range(num_actions):
+                        if explore_action[-1][j] == -1:
+                            # If the previous action had -1, set +1
+                            action.append(1)
+                        else:
+                            # Otherwise, randomly choose between -1 and 1
+                            action.append(random.choice(possible_values))
+
+                    # Ensure at least one 1 in the current action
+                    if 1 not in action:
+                        action[random.randint(0, num_actions - 1)] = 1
+
+                explore_action.append(action)
+
+            return explore_action
 
         n = 4
         amount = 0.05
-        explore_action = [[-1, -1, 1], [1, 1, -1], [-1, 1, -1], [1, -1, 1], [1, -1, -1], [-1, 1, 1]]
+
+        # Generate the exploration action sequence
+        explore_action = generate_explore_actions(num_actions=3, sequence_length=6)
+
         for act in explore_action:
             for _ in range(n):
                 if not self.set_gripper_motors(amount * np.array(act)):

@@ -240,6 +240,9 @@ class DataNormalizer:
 
     def calculate_normalization_values(self, data, norm_key):
         """Calculate mean and standard deviation for the given data."""
+        if norm_key == 'eef_pos':
+            from algo.models.diffusion.utils import convert_trajectory
+            data = convert_trajectory(data)
         self.normalize_dict['mean'][norm_key] = np.mean(data, axis=0)
         self.normalize_dict['std'][norm_key] = np.std(data, axis=0)
 

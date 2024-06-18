@@ -80,11 +80,12 @@ class HardwarePlayer:
         )
 
         self.model.load(self.diff_config.load_path)
+        # self.compile_inference()
         self.obsque = collections.deque(maxlen=self.diff_config.obs_horizon)
         self.action_queue = collections.deque(maxlen=self.diff_config.action_horizon)
         self.predict_eef_delta = self.diff_config.predict_eef_delta
         self.predict_pos_delta = self.diff_config.predict_pos_delta
-        self.num_diffusion_iters = self.diff_config.num_diffusion_iters
+        self.num_diffusion_iters = 10 # self.diff_config.num_diffusion_iters
 
         self.cfg_tactile = full_config.task.tactile
 
@@ -139,13 +140,9 @@ class HardwarePlayer:
         for i in tqdm(range(self.total_init_poses)):
             self.init_dof_pos[i] = torch.from_numpy(dof_pos[i])
 
-    def compile_inference(self, example_obs, precision="high", num_inference_iters=5):
+    def compile_inference(self, precision="high"):
         torch.set_float32_matmul_precision(precision)
-        self.model.policy.forward = torch.compile(torch.no_grad(self.model.policy.forward))
-        self.num_diffusion_iters = num_inference_iters
-
-        for i in range(25):  # burn in
-            self.act(example_obs)
+        self.model.policy.forward = torch.compile(self.model.policy.forward)
 
     def _create_asset_info(self):
 

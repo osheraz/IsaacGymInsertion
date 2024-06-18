@@ -4,25 +4,25 @@ output_dir: "/home/roblab20/tactile_diffusion/datastore_real" # where to save ch
 gpu: 0
 
 # Train params for on screen logging
-eval: False
 save_freq: 100
 eval_freq: 10
 print_freq: 100
 
 # load student checkpoint
-model_save_path: ''
-load_path: ''
-
+eval: False
+load_path: '' #/home/roblab20/osher3_workspace/src/isaacgym/python/IsaacGymInsertion/isaacgyminsertion/outputs/diff/'
+eval_path: '' #/home/roblab20/tactile_diffusion/datastore_real/2/2024-06-14_14-56-47/obs/obs.npz'
 # basic training hyperparameters
-cond_on_grasp: False
+cond_on_grasp: True
+model_save_path: ''
 
-epochs: 100
-obs_horizon: 1
-action_horizon: 6
+epochs: 50
+obs_horizon: 4
+action_horizon: 8
 pred_horizon: 16
 num_diffusion_iters: 100
 
-batch_size: 8
+batch_size: 16
 learning_rate: 5e-4
 train_test_split: 0.9
 
@@ -39,6 +39,8 @@ img_masking_prob: 0.0
 img_patch_size: 16
 img_dropout_rate: 0.0  # For the image encoder of Diffusion Policy
 
+tactile_width: 64
+tactile_height: 64
 tactile_color_jitter: False
 tactile_gaussian_noise: 0.0
 tactile_masking_prob: 0.0
@@ -56,7 +58,7 @@ weight_decay: 1e-5
 
 state_noise: 0.0
 
-num_workers: 8
+num_workers: 12
 
 eef_pos_output_size: 64
 hand_joints_output_size: 64
@@ -75,14 +77,3 @@ wandb_entity_name: None
 wandb_exp_name: None
 use_wandb: False
 wandb_project_name: "tactile_diffusion"
-
-external_cam:
-  external_cam: False
-  cam_res:
-    w: 320
-    h: 180
-  cam_type: 'depth'
-  save_im: False
-  far_clip: 1.0
-  near_clip: 0.0
-  dis_noise: 0.001

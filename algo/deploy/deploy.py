@@ -307,7 +307,7 @@ class HardwarePlayer(object):
                 torch.rand((1, 3), dtype=torch.float32, device=self.device)
                 - 0.5
         )
-        socket_obs_pos_noise = socket_obs_pos_noise @ torch.diag(
+        self.socket_obs_pos_noise = socket_obs_pos_noise @ torch.diag(
             torch.tensor(
                 self.full_config.task.env.socket_pos_obs_noise,
                 dtype=torch.float32,
@@ -319,9 +319,9 @@ class HardwarePlayer(object):
             self.socket_pos, dtype=torch.float32, device=self.device
         )
 
-        self.noisy_socket_pos[:, 0] = self.socket_pos[:, 0] + socket_obs_pos_noise[:, 0]
-        self.noisy_socket_pos[:, 1] = self.socket_pos[:, 1] + socket_obs_pos_noise[:, 1]
-        self.noisy_socket_pos[:, 2] = self.socket_pos[:, 2] + socket_obs_pos_noise[:, 2]
+        self.noisy_socket_pos[:, 0] = self.socket_pos[:, 0] + self.socket_obs_pos_noise[:, 0]
+        self.noisy_socket_pos[:, 1] = self.socket_pos[:, 1] + self.socket_obs_pos_noise[:, 1]
+        self.noisy_socket_pos[:, 2] = self.socket_pos[:, 2] + self.socket_obs_pos_noise[:, 2]
 
         # Add observation noise to socket rot
         socket_rot_euler = torch.zeros(
@@ -383,6 +383,8 @@ class HardwarePlayer(object):
     def compute_observations(self, display_image=True, with_priv=False):
 
         obses = self.env.get_obs()
+        # some-like taking a new socket pose measurement
+        self._update_socket_pose()
 
         arm_joints = obses['joints']
         ee_pose = obses['ee_pose']
@@ -394,6 +396,7 @@ class HardwarePlayer(object):
         self.fingertip_centered_pos = torch.tensor(ee_pose[:3], device=self.device, dtype=torch.float).unsqueeze(0)
         self.fingertip_centered_quat = torch.tensor(ee_pose[3:], device=self.device, dtype=torch.float).unsqueeze(0)
 
+        #TODO added noise
         eef_pos = torch.cat((self.fingertip_centered_pos,
                             quat2R(self.fingertip_centered_quat).reshape(1, -1)), dim=-1)
 
@@ -435,9 +438,6 @@ class HardwarePlayer(object):
         self.ft_queue[:, 1:] = self.ft_queue[:, :-1].clone().detach()
         self.ft_queue[:, 0, :] = self.ft_data
 
-        # some-like taking a new socket pose measurement
-        self._update_socket_pose()
-
         noisy_delta_pos = self.noisy_gripper_goal_pos - self.fingertip_centered_pos
 
         obs = torch.cat([eef_pos,
@@ -468,7 +468,7 @@ class HardwarePlayer(object):
             state_tensors = [
                 # self.plug_hand_pos,  # 3
                 # self.plug_hand_quat,  # 4
-                self.plug_pos_error,  # 3
+                self.plug_pos_error + self.socket_obs_pos_noise,  # 3
                 self.plug_quat_error,  # 4
             ]
 
@@ -507,8 +507,7 @@ class HardwarePlayer(object):
         # Set random init error
         self.env.set_random_init_error(self.socket_pos)
         # If not inserted, return plug?
-        if True:# not self.inserted and False:
-
+        if not self.inserted:
             self.env.arm.move_manipulator.scale_vel(scale_vel=0.5, scale_acc=0.5)
             self.env.move_to_joint_values(joints_above_plug, wait=True)
             self.env.arm.move_manipulator.scale_vel(scale_vel=0.1, scale_acc=0.1)
@@ -516,7 +515,7 @@ class HardwarePlayer(object):
 
             self.grasp_and_init()
 
-        # self.env.randomize_grasp()
+        self.env.randomize_grasp()
 
         self.env.arm.move_manipulator.scale_vel(scale_vel=0.02, scale_acc=0.02)
         self.inserted[...] = False
@@ -743,8 +742,9 @@ class HardwarePlayer(object):
         self.grasp_and_init()
         rospy.sleep(2.0)
 
-        num_episodes = 5
+        num_episodes = 10
         cur_episode = 0
+
         while cur_episode < num_episodes:
 
             # TODO add a module that set init interaction with the socket
@@ -765,15 +765,15 @@ class HardwarePlayer(object):
             while not self.done[0, 0]:
 
                 obs = self.running_mean_std(obs.clone())
-                # obs_stud = self.running_mean_std_stud(obs_stud.clone())
                 priv = self.priv_mean_std(priv.clone())
+                # obs_stud = self.running_mean_std_stud(obs_stud.clone())
 
                 input_dict = {
                     'obs': obs,
                     # 'student_obs': obs_stud,
-                    'tactile_hist': tactile,
+                    # 'tactile_hist': tactile,
                     'priv_info': priv,
-                    'contacts': self.contacts.clone()
+                    # 'contacts': self.contacts.clone()
                 }
 
                 action, latent = self.model.act_inference(input_dict)

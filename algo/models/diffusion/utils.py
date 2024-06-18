@@ -22,6 +22,7 @@ from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 import cv2
 from mpl_toolkits.mplot3d import Axes3D
 
+
 def save_metrics(save_path, mse, norm_mse):
     metrics_path = os.path.join(save_path, "metrics.json")
     new_metrics = {
@@ -63,6 +64,7 @@ def convert_trajectory(eef_pos):
 
     return eef_pos_converted
 
+
 def unify(quat, eps: float = 1e-9):
     norm = np.linalg.norm(quat, axis=-1, keepdims=True)
     norm = np.maximum(norm, eps)  # Clamping to avoid division by zero
@@ -102,7 +104,14 @@ def update_plot(ax_3d, ax_2d, ax_action_diff, eef_pos, tactile_imgs, action_gt, 
     if eef_pos.ndim == 1:
         ax_3d.plot([eef_pos[0]], [eef_pos[1]], [eef_pos[2]], marker='o', label='End-Effector Position')
     else:
-        ax_3d.plot(eef_pos[:, 0], eef_pos[:, 1], eef_pos[:, 2], label='End-Effector Path')
+        ax_3d.plot(eef_pos[:, 0], eef_pos[:, 1], eef_pos[:, 2], color='b', label='GT End-Effector Path')
+        pred_path = eef_pos
+        pred_path[-1, 0] += action_pred[0] * 0.004
+        pred_path[-1, 1] += action_pred[1] * 0.004
+        pred_path[-1, 2] += action_pred[2] * 0.005
+
+        ax_3d.plot(pred_path[:, 0], pred_path[:, 1],  pred_path[:, 2], color='r', label='Pred End-Effector Path')
+
     ax_3d.legend()
     ax_3d.set_xlabel('X')
     ax_3d.set_ylabel('Y')
@@ -128,7 +137,8 @@ def update_plot(ax_3d, ax_2d, ax_action_diff, eef_pos, tactile_imgs, action_gt, 
 
     # Create bar plots
     ax_action_diff.bar(timesteps, action_gt, width=width, label='Ground Truth Action', align='center')
-    ax_action_diff.bar([t + width for t in timesteps], action_pred, width=width, label='Predicted Action', align='center')
+    ax_action_diff.bar([t + width for t in timesteps], action_pred, width=width, label='Predicted Action',
+                       align='center')
 
 
 def render_frame(fig, canvas, ax_3d, ax_2d, ax_action_diff, eef_pos, tactile_imgs, action_gt, action_pred):

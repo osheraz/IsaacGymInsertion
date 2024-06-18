@@ -35,7 +35,7 @@ RT_DIM = {
     "hand_joints": 6,
     "action": 6,
     "img": (180, 320),
-    "tactile": (224, 224),
+    "tactile": (64, 64),
 }
 
 TEST_INPUT = {
@@ -43,7 +43,7 @@ TEST_INPUT = {
     "arm_joints": torch.zeros(7),
     "hand_joints": torch.zeros(12),
     "img": torch.zeros(3, 180, 320),
-    "tactile": torch.zeros(3, 224, 224),
+    "tactile": torch.zeros(3, 64, 64),
     "control": torch.zeros(6),
 }
 
@@ -81,6 +81,7 @@ def define_transforms(channel, color_jitter, width, height, crop_width,
             transforms.Resize(
                 (width, height),
                 interpolation=transforms.InterpolationMode.BILINEAR,
+                antialias=True,
             ),
         )
 
@@ -179,9 +180,10 @@ class Agent:
             tactile_type='rgb',
             img_height=180,
             img_width=320,
-            tactile_height=224,
-            tactile_width=224,
-            cond_on_grasp=False
+            tactile_height=64,
+            tactile_width=64,
+            cond_on_grasp=False,
+            use_same_encoder=True
     ):
 
         obs_horizon = obs_horizon + 1 if cond_on_grasp else obs_horizon
@@ -292,16 +294,22 @@ class Agent:
             obs_dim += image_dim
 
         if "tactile" in self.representation_type:
-            tactile_encoder = ModuleList(
-                [
-                    # Use different tactile encoders for each finger
-                    ImageEncoder(
-                        output_sizes["tactile"], self.tactile_channel, dropout["tactile"]
-                    )
-                    for _ in range(num_fingers)
-                ]
-            )
+            if use_same_encoder:
+                # Use the same tactile encoder for all fingers
+                tactile_encoder = ImageEncoder(output_sizes["tactile"], self.tactile_channel, dropout["tactile"])
+            else:
+                tactile_encoder = ModuleList(
+                    [
+                        # Use different tactile encoders for each finger
+                        ImageEncoder(
+                            output_sizes["tactile"], self.tactile_channel, dropout["tactile"]
+                        )
+                        for _ in range(num_fingers)
+                    ]
+                )
+
             tactile_dim = output_sizes["tactile"] * num_fingers
+
             encoders["tactile"] = tactile_encoder
             obs_dim += tactile_dim
 
@@ -398,7 +406,7 @@ class Agent:
             rgb = np.load(d)['tactile']
             # rgb = d.astype(np.float32)
             # rgb = np.moveaxis(rgb, -1, 1)
-            if H == 224 and W == 224 and self.tactile_color_jitter == False:
+            if H == 112 and W == 224 and self.tactile_color_jitter == False:
                 rgb = self.tactile_downsample(
                     torch.tensor(rgb)
                 )  # [camera_num, 3, self.img_width, self.img_height]
@@ -619,7 +627,7 @@ class Agent:
             frames.append(frame)
 
         # Create a video from the frames using imageio
-        video_path = os.path.join(save_path, "last_eval.mp4")
+        video_path = os.path.join(save_path, f"{data_path}_last_eval.mp4")
         writer = imageio.get_writer(video_path, fps=15, codec='libx264', bitrate='5000k')
 
         for frame in frames:
@@ -651,7 +659,8 @@ class Agent:
         self.stats = pickle.load(open(stat_path, "rb"))
         self.policy.data_stat = self.stats
         self.policy.load(model_path)
-        print("model loaded")
+        print("model loaded: ", model_path)
+        print("stats loaded: ", stat_path)
 
     def save_stats(self, path):
         os.makedirs(path, exist_ok=True)
@@ -750,7 +759,9 @@ class Runner:
             tactile_masking_prob=cfg.tactile_masking_prob,
             tactile_patch_size=cfg.tactile_patch_size,
             compile_train=cfg.compile_train,
-            cond_on_grasp=cfg.cond_on_grasp
+            cond_on_grasp=cfg.cond_on_grasp,
+            tactile_width=cfg.tactile_width,
+            tactile_height=cfg.tactile_height
         )
 
         if cfg.load_path:
@@ -807,4 +818,4 @@ class Runner:
             )
 
         else:
-            agent.eval(cfg.eval_path, save_path=self.save_path)
+            agent.eval(cfg.eval_path, save_path=cfg.load_path)
