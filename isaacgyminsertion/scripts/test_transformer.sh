@@ -31,7 +31,6 @@ offline_train.model.transformer.sequence_length=1 \
 offline_train.train.load_checkpoint=True \
 offline_train.train.student_ckpt_path="${student_ckpt_path}" \
 offline_train.train.only_test=True \
-offline_train.train.only_validate=False \
 task.env.tactile=True \
 task.env.numStates=7 \
 task.env.numObservations=18 \

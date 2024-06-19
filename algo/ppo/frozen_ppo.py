@@ -35,8 +35,6 @@ from isaacgyminsertion.utils.misc import add_to_fifo, multi_gpu_aggregate_stats
 from tqdm import tqdm
 from tensorboardX import SummaryWriter
 # import wandb
-from torchvision import transforms
-
 from scipy.spatial.transform import Rotation
 
 

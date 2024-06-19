@@ -251,7 +251,7 @@ class ActorCriticSplit(nn.Module):
                     # extrin = torch.cat((extrin_roll.unsqueeze(1), extrin_pitch.unsqueeze(1)), dim=1)
                     plt.ylim(-1.2, 1.2)
                     plt.scatter(list(range(extrin.shape[-1])), extrin.clone().detach().cpu().numpy()[0, :], color='r')
-                    plt.scatter(list(range(obs_dict['priv_info'].shape[-1])), obs_dict['priv_info'].clone().cpu().numpy()[0, :], color='b')
+                    plt.scatter(list(range(extrin_gt.shape[-1])), extrin_gt.clone().cpu().numpy()[0, :], color='b')
                     plt.pause(0.0001)
                     plt.cla()
 

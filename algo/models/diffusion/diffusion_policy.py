@@ -356,7 +356,7 @@ class DiffusionPolicy:
                     self.ema_nets.train()
 
     def eval(self, obs, action, cond_on_grasp=False, num_eval_diff_iter=15):
-        print(f'Evaluating model on single trajectory with {num_eval_diff_iter}')
+        print(f'Evaluating model on single trajectory with {num_eval_diff_iter} diff steps')
 
         obs_deque = collections.deque(
             [obs[0]] * self.obs_horizon, maxlen=self.obs_horizon

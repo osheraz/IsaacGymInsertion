@@ -50,9 +50,13 @@ class DataNormalizer:
 
     def load_or_create_normalization_file(self):
         """Load the normalization file if it exists, otherwise create it."""
-        if os.path.exists(self.normalization_path):
-            with open(self.normalization_path, 'rb') as f:
-                self.normalize_dict = pickle.load(f)
+        if self.cfg.train.load_stats:
+            if os.path.exists(self.normalization_path):
+                with open(self.normalization_path, 'rb') as f:
+                    self.normalize_dict = pickle.load(f)
+                    print('Loaded stats file from: ', self.normalization_path)
+            else:
+                assert 'Failed to load stats file'
         else:
             self.create_normalization_file()
 

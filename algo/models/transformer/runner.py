@@ -319,12 +319,12 @@ class Runner:
                 self.fig.savefig(f'{self.save_folder}/train_val_comp.png', dpi=200, bbox_inches='tight')
                 self.model.train()
 
-            if (i + 1) % test_every == 0:
-                try:
-                    self.test()
-                except Exception as e:
-                    print(f'Error during test: {e}')
-                self.model.train()
+            # if (i + 1) % test_every == 0:
+                # try:
+                #     self.test()
+                # except Exception as e:
+                #     print(f'Error during test: {e}')
+                # self.model.train()
 
         return val_loss
 
@@ -480,12 +480,13 @@ class Runner:
             lin_input = lin_input.to(self.device)
 
             out = self.model(tac_input, img_input, lin_input)
+
         return out
 
     def test(self):
         with torch.inference_mode():
-            normalize_dict = self.normalize_dict.copy()
-            num_success, total_trials = self.agent.test(self.get_latent, normalize_dict)
+            # normalize_dict = self.normalize_dict.copy()
+            num_success, total_trials = self.agent.test(self.get_latent, self.normalize_dict)
             if total_trials > 0:
                 print(f'{num_success}/{total_trials}, success rate on :', num_success / total_trials)
                 self._wandb_log({
@@ -499,8 +500,9 @@ class Runner:
         self.model.load_state_dict(torch.load(model_path))
         # self.model.eval()
         self.device = device
+        self.model.to(device)
 
-    def _run(self, file_list, save_folder, epochs=100, train_test_split=0.9, train_batch_size=32, val_batch_size=32,
+    def run_train(self, file_list, save_folder, epochs=100, train_test_split=0.9, train_batch_size=32, val_batch_size=32,
              learning_rate=1e-4, device='cuda:0', print_every=50, eval_every=250, test_every=500):
 
         random.shuffle(file_list)
@@ -576,9 +578,7 @@ class Runner:
         # training
         for epoch in range(epochs):
 
-            if self.cfg.train.only_test:
-                self.test()
-            elif self.cfg.train.only_validate:
+            if self.cfg.train.only_validate:
                 self.validate(val_dl)
             else:
                 val_loss = self.train(train_dl, val_dl, ckpt_path,
@@ -599,14 +599,6 @@ class Runner:
             wandb.log(data)
 
     def run(self):
-        from datetime import datetime
-        from glob import glob
-
-        print('Loading trajectories from', self.cfg.data_folder)
-
-        file_list = glob(os.path.join(self.cfg.data_folder, '*/*/obs/*.npz'))
-        save_folder = f'{to_absolute_path(self.cfg.output_dir)}/tact_{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}'
-        os.makedirs(save_folder, exist_ok=True)
 
         device = 'cuda:0'
 
@@ -626,6 +618,25 @@ class Runner:
             "test_every": self.cfg.train.test_every
         }
 
+        from datetime import datetime
+        from glob import glob
+
+        print('Loading trajectories from', self.cfg.data_folder)
+
+        file_list = glob(os.path.join(self.cfg.data_folder, '*/*/obs/*.npz'))
+        save_folder = f'{to_absolute_path(self.cfg.output_dir)}/tact_{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}'
+        os.makedirs(save_folder, exist_ok=True)
+        self.save_folder = save_folder
+
+        # Either create new norm or load existing
+        normalizer = DataNormalizer(self.cfg, file_list)
+        normalizer.run()
+        self.normalize_dict = normalizer.normalize_dict
+
+        if self.cfg.train.only_test:
+            print('Only testing')
+            self.test()
+
         if self.cfg.wandb.wandb_enabled:
             wandb.init(
                 # Set the project where this run will be logged
@@ -635,15 +646,9 @@ class Runner:
                 dir=save_folder,
             )
 
-        normalizer = DataNormalizer(self.cfg, file_list)
-        normalizer.run()
-        self.normalize_dict = normalizer.normalize_dict
-
-        self.save_folder = save_folder
-
         with open(os.path.join(save_folder, f"task_config.yaml"), "w") as f:
             f.write(OmegaConf.to_yaml(self.task_cfg))
         with open(os.path.join(save_folder, f"train_config.yaml"), "w") as f:
             f.write(OmegaConf.to_yaml(self.cfg))
 
-        self._run(file_list, save_folder, device=device, **train_config)
+        self.run_train(file_list, save_folder, device=device, **train_config)
