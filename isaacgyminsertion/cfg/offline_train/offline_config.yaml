@@ -4,11 +4,11 @@ output_dir: "/home/roblab20/tactile_insertion/datastore_42_gt_test" # where to s
 
 # todo pull from task cfg
 img_type: "depth"
-img_color_jitter: True
+img_color_jitter: False
 img_width: 180
 img_height: 320
 img_gaussian_noise: 0.001
-img_masking_prob: 0.3
+img_masking_prob: 0.0
 img_patch_size: 16
 img_crop_w: 20
 img_crop_h: 40
@@ -18,10 +18,10 @@ tactile_gaussian_noise: 0.001
 tactile_masking_prob: 0.0
 tactile_patch_size: 16
 tactile_color_jitter: True
-tactile_width: 128
-tactile_height: 128
-tactile_crop_w: 5
-tactile_crop_h: 5
+tactile_width: 64
+tactile_height: 64
+tactile_crop_w: 0
+tactile_crop_h: 0
 
 # supervised learning
 train:

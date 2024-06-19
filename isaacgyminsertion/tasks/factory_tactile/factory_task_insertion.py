@@ -592,7 +592,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         plug_pos_error, plug_quat_error = fc.get_pose_error(
             fingertip_midpoint_pos=self.plug_pos.clone(),
             fingertip_midpoint_quat=self.plug_quat.clone(),
-            ctrl_target_fingertip_midpoint_pos=self.socket_pos.clone(),
+            ctrl_target_fingertip_midpoint_pos=self.socket_pos.clone() + self.socket_obs_pos_noise,
             ctrl_target_fingertip_midpoint_quat=self.identity_quat.clone(),
             jacobian_type='geometric',
             rot_error_type='quat')
