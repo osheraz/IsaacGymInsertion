@@ -10,8 +10,8 @@ import random
 # %%
 import yaml
 
-# all_paths = glob('/home/roblab20/tactile_insertion/datastore_42_gt_test/*/*/obs/*.npz')
-all_paths = glob('/home/roblab20/tactile_diffusion/datastore_real/*/*/obs/*.npz')
+all_paths = glob('/home/osher/tactile_insertion/datastore_42_gt_test/*/*/obs/*.npz')
+# all_paths = glob('/home/roblab20/tactile_diffusion/datastore_real/*/*/obs/*.npz')
 
 print(len(all_paths))
 
@@ -504,12 +504,13 @@ if True:
         img = np.concatenate((img1, img2, img3), axis=1)
 
         # Update and redraw the tactile image
-        cv2.imshow('test', img.transpose(1, 2, 0))
         # depth = np.uint8(depth)
         cv2.imshow("Depth Image", depth.transpose(1, 2, 0) + 0.5)
+        cv2.imshow('test', img.transpose(1, 2, 0))
+
         # cv2.imshow('test2', )
 
-        cv2.waitKey(0)
+        cv2.waitKey(200)
 
 if False:
     fig = plt.figure(figsize=(18, 10))

@@ -141,6 +141,10 @@ def define_transforms(channel, color_jitter, width, height, crop_width,
         transforms.CenterCrop((crop_width, crop_height)),
     )
 
+    print('transform {}'.format(transform))
+    print('eval_transform {}'.format(eval_transform))
+    print('downsample {}'.format(downsample))
+
     return transform, downsample, eval_transform
 
 
@@ -269,7 +273,6 @@ class Runner:
 
             else:
                 loss_latent = self.loss_fn_mean(out, latent[:, -1, :])
-
                 if self.ppo_step is not None:
                     obs_hist = obs_hist[:, -1, :].to(self.device).view(obs_hist.shape[0], obs_hist.shape[-1])
                     pred_action, _ = self.ppo_step({'obs': obs_hist, 'latent': out[:, -1, :]})
@@ -474,9 +477,11 @@ class Runner:
             tac_input = tac_input.to(self.device)
             if self.tactile_transform is not None:
                 tac_input = TactileTransform(self.tactile_transform)(tac_input)
+
             img_input = img_input.to(self.device)
             if self.img_transform is not None:
                 img_input = ImageTransform(self.img_transform)(img_input)
+
             lin_input = lin_input.to(self.device)
 
             out = self.model(tac_input, img_input, lin_input)
@@ -485,8 +490,8 @@ class Runner:
 
     def test(self):
         with torch.inference_mode():
-            # normalize_dict = self.normalize_dict.copy()
-            num_success, total_trials = self.agent.test(self.get_latent, self.normalize_dict)
+            normalize_dict = self.normalize_dict.copy()
+            num_success, total_trials = self.agent.test(self.get_latent, normalize_dict)
             if total_trials > 0:
                 print(f'{num_success}/{total_trials}, success rate on :', num_success / total_trials)
                 self._wandb_log({

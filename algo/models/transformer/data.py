@@ -227,6 +227,7 @@ class TactileDataset(Dataset):
 
         if self.tactile_transform is not None:
             tactile_input = self.tactile_transform(self.to_torch(tactile_input))
+
         # T, F, C, W, H = tactile_input.shape
         # tactile_input = tactile_input.reshape(T, F * C, W, H)
         # left_finger, right_finger, bottom_finger = [data_seq["tactile"][:, i, ...] for i in range(3)]
@@ -243,37 +244,36 @@ class TactileDataset(Dataset):
         contacts = data_seq["action"]  # contact
         obs_hist = data_seq["obs_hist"]
 
-        euler = Rotation.from_quat(data_seq["plug_hand_quat"]).as_euler('xyz')
-        plug_hand_pos = data_seq["plug_hand_pos"]
-        plug_pos_error = data_seq["plug_pos_error"]
-        plug_quat_error = data_seq["plug_quat_error"]
+        # euler = Rotation.from_quat(data_seq["plug_hand_quat"]).as_euler('xyz')
+        # plug_hand_pos = data_seq["plug_hand_pos"]
+        # plug_pos_error = data_seq["plug_pos_error"]
+        # plug_quat_error = data_seq["plug_quat_error"]
 
         latent = data_seq["latent"]
 
-        if diff:
-            euler = euler - Rotation.from_quat(data["plug_hand_quat"][start_idx, :]).as_euler('xyz')
-            plug_hand_pos = plug_hand_pos - data["plug_hand_pos"][start_idx, :]
+        # if diff:
+        #     euler = euler - Rotation.from_quat(data["plug_hand_quat"][start_idx, :]).as_euler('xyz')
+        #     plug_hand_pos = plug_hand_pos - data["plug_hand_pos"][start_idx, :]
 
         # Normalizing
         if self.normalize_dict is not None:
             eef_pos = (eef_pos - self.normalize_dict["mean"]["eef_pos"]) / self.normalize_dict["std"]["eef_pos"]
             # hand_joints = (hand_joints - self.normalize_dict["mean"]["hand_joints"]) / self.normalize_dict["std"]["hand_joints"]
-            plug_pos_error = (plug_pos_error - self.normalize_dict["mean"]["plug_pos_error"]) / \
-                             self.normalize_dict["std"]["plug_pos_error"]
-            plug_quat_error = (plug_quat_error - self.normalize_dict["mean"]["plug_quat_error"]) / \
-                              self.normalize_dict["std"]["plug_quat_error"]
-
-            if not diff:
-                euler = (euler - self.normalize_dict["mean"]["plug_hand_euler"]) / self.normalize_dict["std"][
-                    "plug_hand_euler"]
-                plug_hand_pos = (plug_hand_pos - self.normalize_dict["mean"]["plug_hand_pos"]) / \
-                                self.normalize_dict["std"]["plug_hand_pos"]
-
-            else:
-                euler = (euler - self.normalize_dict["mean"]["plug_hand_diff_euler"]) / self.normalize_dict["std"][
-                    "plug_hand_diff_euler"]
-                plug_hand_pos = (plug_hand_pos - self.normalize_dict["mean"]["plug_hand_pos_diff"]) / \
-                                self.normalize_dict["std"]["plug_hand_pos_diff"]
+            # plug_pos_error = (plug_pos_error - self.normalize_dict["mean"]["plug_pos_error"]) / \
+            #                  self.normalize_dict["std"]["plug_pos_error"]
+            # plug_quat_error = (plug_quat_error - self.normalize_dict["mean"]["plug_quat_error"]) / \
+            #                   self.normalize_dict["std"]["plug_quat_error"]
+            # if not diff:
+            #     euler = (euler - self.normalize_dict["mean"]["plug_hand_euler"]) / self.normalize_dict["std"][
+            #         "plug_hand_euler"]
+            #     plug_hand_pos = (plug_hand_pos - self.normalize_dict["mean"]["plug_hand_pos"]) / \
+            #                     self.normalize_dict["std"]["plug_hand_pos"]
+            #
+            # else:
+            #     euler = (euler - self.normalize_dict["mean"]["plug_hand_diff_euler"]) / self.normalize_dict["std"][
+            #         "plug_hand_diff_euler"]
+            #     plug_hand_pos = (plug_hand_pos - self.normalize_dict["mean"]["plug_hand_pos_diff"]) / \
+            #                     self.normalize_dict["std"]["plug_hand_pos_diff"]
 
         # label = np.hstack((plug_pos_error, plug_quat_error))
 
@@ -284,7 +284,7 @@ class TactileDataset(Dataset):
 
         lin_input = np.concatenate([
             eef_pos,
-            shift_action_right
+            # shift_action_right
             # hand_joints,
         ], axis=-1)
 

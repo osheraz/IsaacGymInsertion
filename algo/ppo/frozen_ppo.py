@@ -746,11 +746,11 @@ class PPO(object):
         tactile = data["tactile"]
         img = data["img"]
 
-        plug_pos_error = data["plug_pos_error"]
-        plug_quat_error = data["plug_quat_error"]
+        # plug_pos_error = data["plug_pos_error"]
+        # plug_quat_error = data["plug_quat_error"]
 
         eef_pos = data['eef_pos']
-        hand_joints = data['hand_joints']
+        # hand_joints = data['hand_joints']
 
         # ori = data["plug_hand_quat"].cpu().numpy().squeeze(0) + 1e-8
         # object_ori = Rotation.from_quat(ori).as_euler('xyz')
@@ -763,14 +763,14 @@ class PPO(object):
         if normalize_dict is not None:
             eef_pos = (eef_pos - normalize_dict["mean"]["eef_pos"]) / normalize_dict["std"]["eef_pos"]
             # hand_joints = (hand_joints - normalize_dict["mean"]["hand_joints"]) / normalize_dict["std"]["hand_joints"]
-            plug_pos_error = (plug_pos_error - normalize_dict["mean"]["plug_pos_error"]) / normalize_dict["std"][
-                "plug_pos_error"]
-            plug_quat_error = (plug_quat_error - normalize_dict["mean"]["plug_quat_error"]) / normalize_dict["std"][
-                "plug_quat_error"]
+            # plug_pos_error = (plug_pos_error - normalize_dict["mean"]["plug_pos_error"]) / normalize_dict["std"][
+            #     "plug_pos_error"]
+            # plug_quat_error = (plug_quat_error - normalize_dict["mean"]["plug_quat_error"]) / normalize_dict["std"][
+            #     "plug_quat_error"]
 
         lin_input = torch.cat([
-            # eef_pos,
-            hand_joints,
+            eef_pos,
+            # hand_joints,
             # action
         ], dim=-1)
 

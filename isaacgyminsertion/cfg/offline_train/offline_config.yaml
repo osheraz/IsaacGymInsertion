@@ -5,23 +5,23 @@ output_dir: "/home/roblab20/tactile_insertion/datastore_42_gt_test" # where to s
 # todo pull from task cfg
 img_type: "depth"
 img_color_jitter: False
-img_width: 96
-img_height: 96
-img_gaussian_noise: 0.0
+img_width: 180
+img_height: 220
+img_gaussian_noise: 0.00
 img_masking_prob: 0.0
 img_patch_size: 16
-img_crop_w: 4
-img_crop_h: 4
+img_crop_w: 12
+img_crop_h: 24
 
 tactile_type: 'rgb'
-tactile_gaussian_noise: 0.00
+tactile_gaussian_noise: 0.001
 tactile_masking_prob: 0.0
 tactile_patch_size: 16
 tactile_color_jitter: False
 tactile_width: 64
 tactile_height: 64
-tactile_crop_w: 2
-tactile_crop_h: 2
+tactile_crop_w: 0
+tactile_crop_h: 0
 
 # supervised learning
 train:
@@ -57,7 +57,7 @@ train:
 
   # normalize data
   normalize_keys: ["eef_pos", "action", "plug_pos_error", "plug_quat_error", "plug_hand_quat", "plug_hand_pos"]
-  load_stats: True
+  load_stats: False
   normalize_file: "/home/roblab20/osher3_workspace/src/isaacgym/python/IsaacGymInsertion/isaacgyminsertion/outputs/gt_test/student/normalization.pkl"
 
   # load student checkpoint
@@ -68,7 +68,7 @@ train:
 model:
   # linear embedding
   linear:
-    input_size: 6
+    input_size: 12
     # TODO: add model layers here
 
   # tactile embedding

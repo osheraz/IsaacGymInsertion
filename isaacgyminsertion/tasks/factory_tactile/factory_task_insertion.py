@@ -1013,7 +1013,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             first_plug_pose[env_ids, :2] += plug_pos_noise[:, :2] * 0
 
             self._move_arm_to_desired_pose(env_ids, first_plug_pose,
-                                           sim_steps=self.cfg_task.env.num_gripper_move_sim_steps * 2)
+                                           sim_steps=self.cfg_task.env.num_gripper_move_sim_steps)
             self._refresh_task_tensors(update_tactile=False)
             self._close_gripper(env_ids)  # torch.arange(self.num_envs)
             self.enable_gravity(-9.81)

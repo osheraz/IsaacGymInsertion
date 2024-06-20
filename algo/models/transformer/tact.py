@@ -104,7 +104,7 @@ class TacT(BaseModel):
             mha_num_attention_heads: Optional[int] = 2,
             mha_num_attention_layers: Optional[int] = 2,
             mha_ff_dim_factor: Optional[int] = 4,
-            include_lin: Optional[bool] = False,
+            include_lin: Optional[bool] = True,
     ) -> None:
         """
         Modified ViT class: uses a Transformer-based architecture to encode (current and past) visual observations
@@ -156,7 +156,7 @@ class TacT(BaseModel):
 
         self.decoder = MultiLayerDecoder(
             embed_dim=self.tactile_encoding_size,
-            seq_len=self.context_size * (3 + 1),
+            seq_len=self.context_size * (3 + 1 + 1),
             output_layers=[256, 128, 64, 32],
             nhead=mha_num_attention_heads,
             num_layers=mha_num_attention_layers,
@@ -228,7 +228,7 @@ class TacT(BaseModel):
         img_encoding = torch.transpose(img_encoding, 0, 1)
 
         # concatenate the goal encoding to the observation encoding
-        tokens = torch.cat((obs_features, img_encoding), dim=1)
+        tokens = torch.cat((obs_features, img_encoding, lin_encoding), dim=1)
 
         final_repr = self.decoder(tokens)
         # currently, the size is [batch_size, 32]
