@@ -275,11 +275,11 @@ class Runner:
                 loss_latent = self.loss_fn_mean(out, latent[:, -1, :])
                 if self.ppo_step is not None:
                     obs_hist = obs_hist[:, -1, :].to(self.device).view(obs_hist.shape[0], obs_hist.shape[-1])
-                    pred_action, _ = self.ppo_step({'obs': obs_hist, 'latent': out[:, -1, :]})
+                    pred_action, _ = self.ppo_step({'obs': obs_hist, 'latent': out})
                     pred_action = torch.clamp(pred_action, -1, 1)
-                    loss_action = self.loss_fn_mean(pred_action, action[:, -1, :].squeeze(1))
+                    loss_action = self.loss_fn_mean(pred_action, action[:, -1, :])
 
-            loss = (self.cfg.train.latent_scale * loss_latent) + (self.cfg.train.action_scale * loss_action[0])
+            loss = (self.cfg.train.latent_scale * loss_latent) + (self.cfg.train.action_scale * loss_action)
 
             self.optimizer.zero_grad()
             loss.backward()
@@ -369,9 +369,9 @@ class Runner:
                     # loss = loss_latent
                     if self.ppo_step is not None:
                         obs_hist = obs_hist[:, -1, :].to(self.device).view(obs_hist.shape[0], obs_hist.shape[-1])
-                        pred_action, _ = self.ppo_step({'obs': obs_hist, 'latent': out[:, -1, :]})
+                        pred_action, _ = self.ppo_step({'obs': obs_hist, 'latent': out})
                         pred_action = torch.clamp(pred_action, -1, 1)
-                        loss_action = self.loss_fn_mean(pred_action, action[:, -1, :].squeeze(1))
+                        loss_action = self.loss_fn_mean(pred_action, action[:, -1, :])
 
                 # TODO: add scaling loss coefficients
                 loss = (self.cfg.train.latent_scale * loss_latent) + (self.cfg.train.action_scale * loss_action)
