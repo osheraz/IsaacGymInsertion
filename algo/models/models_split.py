@@ -15,8 +15,9 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from matplotlib import pyplot as plt
-
+import matplotlib
+matplotlib.use('TkAgg')
+import matplotlib.pyplot as plt
 
 def layer_init(layer, std=np.sqrt(2), bias_const=0.0):
     torch.nn.init.orthogonal_(layer.weight, std)
@@ -208,7 +209,7 @@ class ActorCriticSplit(nn.Module):
         mu, logstd, value, latent, _ = self._actor_critic(obs_dict)
         return mu, latent
 
-    def _actor_critic(self, obs_dict, display=False):
+    def _actor_critic(self, obs_dict, display=True):
 
         obs = obs_dict['obs']
         extrin, extrin_gt = None, None
