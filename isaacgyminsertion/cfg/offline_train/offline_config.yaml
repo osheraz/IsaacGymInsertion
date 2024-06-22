@@ -7,13 +7,13 @@ img_type: "depth"
 img_color_jitter: False
 img_width: 180
 img_height: 220
-img_gaussian_noise: 0.00
+img_gaussian_noise: 0.001
 img_masking_prob: 0.0
 img_patch_size: 16
 img_crop_w: 12
 img_crop_h: 24
 
-tactile_type: 'rgb'
+tactile_type: 'gray' # rgb
 tactile_gaussian_noise: 0.001
 tactile_masking_prob: 0.0
 tactile_patch_size: 16
@@ -56,7 +56,7 @@ train:
   only_validate: False
 
   # normalize data
-  normalize_keys: ["eef_pos", "action", "plug_pos_error", "plug_quat_error", "plug_hand_quat", "plug_hand_pos"]
+  normalize_keys: ["eef_pos", "noisy_socket_pos", "action", "plug_pos_error", "plug_quat_error", "plug_hand_quat", "plug_hand_pos"]
   load_stats: False
   normalize_file: "/home/roblab20/osher3_workspace/src/isaacgym/python/IsaacGymInsertion/isaacgyminsertion/outputs/gt_test/student/normalization.pkl"
 
@@ -68,12 +68,12 @@ train:
 model:
   # linear embedding
   linear:
-    input_size: 12
+    input_size: 15
     # TODO: add model layers here
 
   # tactile embedding
   cnn:
-    in_channels: 3
+    in_channels: 1
     # TODO: add model layers here
 
   # tactile+obs encoder

@@ -42,21 +42,33 @@ class ImageTransform:
 class TactileTransform:
     def __init__(self, tactile_transform=None):
         self.tactile_transform = tactile_transform
+        self.out_channel = 1
+        self.to_gray = transforms.Compose([
+            transforms.ToPILImage(),
+            transforms.Grayscale(num_output_channels=1),
+            transforms.ToTensor()  # Convert PIL Image back to tensor
+        ])
 
     def __call__(self, tac_input):
         # tac_input shape: [B, T, Num_cam, C, H, W]
         B, T, Num_cam, C, H, W = tac_input.shape
         tac_input = tac_input.view(-1, C, H, W)  # Shape: [B * T * Num_cam, C, H, W]
 
-        if self.tactile_transform is not None:
-            transformed_list = []
-            for i in range(tac_input.shape[0]):
-                transformed_image = self.tactile_transform(tac_input[i])
-                transformed_list.append(transformed_image)
-            tac_input = torch.stack(transformed_list)
+        transformed_list = []
 
-        tac_input = tac_input.view(B, T, Num_cam, C,
+        for i in range(tac_input.shape[0]):
+            if self.out_channel == 1:
+                tactile_input_reshaped = self.to_gray(tac_input[i])
+                transformed_image = self.tactile_transform(tactile_input_reshaped)
+            else:
+                transformed_image = self.tactile_transform(tac_input[i])
+
+            transformed_list.append(transformed_image)
+        tac_input = torch.stack(transformed_list)
+
+        tac_input = tac_input.view(B, T, Num_cam, self.out_channel,
                                    *tac_input.shape[2:])  # Reshape back to [B, T, Num_cam, C, new_H, new_W]
+
         return tac_input
 
 
@@ -207,7 +219,7 @@ class Runner:
         )
 
         self.model = TacT(context_size=self.sequence_length,
-                          num_channels=self.cfg.model.cnn.in_channels,
+                          num_channels=self.tactile_channel,
                           num_lin_features=self.cfg.model.linear.input_size,
                           num_outputs=self.cfg.model.transformer.output_size,
                           tactile_encoder="efficientnet-b0",
@@ -476,11 +488,11 @@ class Runner:
 
             tac_input = tac_input.to(self.device)
             if self.tactile_transform is not None:
-                tac_input = TactileTransform(self.tactile_transform)(tac_input)
+                tac_input = TactileTransform(self.tactile_transform)(tac_input).to(self.device)
 
             img_input = img_input.to(self.device)
             if self.img_transform is not None:
-                img_input = ImageTransform(self.img_transform)(img_input)
+                img_input = ImageTransform(self.img_transform)(img_input).to(self.device)
 
             lin_input = lin_input.to(self.device)
 
@@ -554,7 +566,8 @@ class Runner:
                                   sequence_length=self.sequence_length,
                                   normalize_dict=self.normalize_dict,
                                   img_transform=self.img_transform,
-                                  tactile_transform=self.tactile_transform
+                                  tactile_transform=self.tactile_transform,
+                                  tactile_channel=self.tactile_channel
                                   )
         train_dl = DataLoader(train_ds,
                               batch_size=train_batch_size,
@@ -570,6 +583,7 @@ class Runner:
                                 normalize_dict=self.normalize_dict,
                                 img_transform=self.img_eval_transform,
                                 tactile_transform=self.tactile_eval_transform,
+                                tactile_channel=self.tactile_channel
                                 )
 
         val_dl = DataLoader(val_ds,

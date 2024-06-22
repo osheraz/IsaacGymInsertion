@@ -6,6 +6,7 @@ import numpy as np
 import torch
 from torch import nn
 from scipy.spatial.transform import Rotation
+import torchvision.transforms.functional as F
 
 import os
 import pickle
@@ -13,7 +14,7 @@ from scipy.spatial.transform import Rotation
 from pathlib import Path
 from tqdm import tqdm
 import random
-
+import cv2
 
 class DataNormalizer:
     def __init__(self, cfg, file_list):
@@ -50,7 +51,7 @@ class DataNormalizer:
 
     def load_or_create_normalization_file(self):
         """Load the normalization file if it exists, otherwise create it."""
-        if self.cfg.train.load_stats:
+        if self.cfg.train.load_stats or os.path.exists(self.normalization_path):
             if os.path.exists(self.normalization_path):
                 with open(self.normalization_path, 'rb') as f:
                     self.normalize_dict = pickle.load(f)
@@ -161,6 +162,7 @@ class TactileDataset(Dataset):
                  stride=5,
                  img_transform=None,
                  tactile_transform=None,
+                 tactile_channel=3,
                  ):
 
         self.all_folders = files
@@ -168,6 +170,14 @@ class TactileDataset(Dataset):
         self.stride = stride  # sequence_length
         self.full_sequence = full_sequence
         self.normalize_dict = normalize_dict
+
+        self.tactile_channel = tactile_channel
+        if self.tactile_channel == 1:
+            self.to_gray = transforms.Compose([
+                transforms.ToPILImage(),
+                transforms.Grayscale(num_output_channels=1),
+                transforms.ToTensor()  # Convert PIL Image back to tensor
+            ])
 
         self.to_torch = lambda x: torch.from_numpy(x).float()
 
@@ -215,18 +225,24 @@ class TactileDataset(Dataset):
         mask[:padding_length] = 0
 
         diff = False
-        keys = ["eef_pos", "action", "latent", "obs_hist",
+        keys = ["eef_pos", "action", "latent", "obs_hist", "noisy_socket_pos",
                 "hand_joints", "plug_hand_quat", "plug_hand_pos", "plug_pos_error", "plug_quat_error"]
 
         data_seq = {key: self.extract_sequence(data, key, start_idx) for key in keys}
 
         # Tactile input [T F W H C]
         # tactile_input = data_seq["tactile"]
-        tactile_input = np.stack([np.load(os.path.join(tactile_folder, f'tactile_{i}.npz'))['tactile'] for i in
-                                  range(start_idx, start_idx + self.sequence_length)])
+        tactile_input = [np.load(os.path.join(tactile_folder, f'tactile_{i}.npz'))['tactile'] for i in
+                                  range(start_idx, start_idx + self.sequence_length)]
+        tactile_input = self.to_torch(np.stack(tactile_input))
 
         if self.tactile_transform is not None:
-            tactile_input = self.tactile_transform(self.to_torch(tactile_input))
+            tactile_input_reshaped = tactile_input.view(-1, 3, *tactile_input.shape[-2:])
+            if self.tactile_channel == 1:
+                tactile_input_reshaped = torch.stack([self.to_gray(image) for image in tactile_input_reshaped])
+
+            tactile_input = self.tactile_transform(tactile_input_reshaped)
+            tactile_input = tactile_input.view(1, 3, self.tactile_channel, *tactile_input.shape[-2:])
 
         # T, F, C, W, H = tactile_input.shape
         # tactile_input = tactile_input.reshape(T, F * C, W, H)
@@ -243,7 +259,7 @@ class TactileDataset(Dataset):
         action = data_seq["action"]
         contacts = data_seq["action"]  # contact
         obs_hist = data_seq["obs_hist"]
-
+        noisy_socket_pos = data_seq["noisy_socket_pos"][:, :3]
         # euler = Rotation.from_quat(data_seq["plug_hand_quat"]).as_euler('xyz')
         # plug_hand_pos = data_seq["plug_hand_pos"]
         # plug_pos_error = data_seq["plug_pos_error"]
@@ -258,7 +274,7 @@ class TactileDataset(Dataset):
         # Normalizing
         if self.normalize_dict is not None:
             eef_pos = (eef_pos - self.normalize_dict["mean"]["eef_pos"]) / self.normalize_dict["std"]["eef_pos"]
-            # hand_joints = (hand_joints - self.normalize_dict["mean"]["hand_joints"]) / self.normalize_dict["std"]["hand_joints"]
+            noisy_socket_pos = (noisy_socket_pos - self.normalize_dict["mean"]["noisy_socket_pos"][:3]) / self.normalize_dict["std"]["noisy_socket_pos"][:3]
             # plug_pos_error = (plug_pos_error - self.normalize_dict["mean"]["plug_pos_error"]) / \
             #                  self.normalize_dict["std"]["plug_pos_error"]
             # plug_quat_error = (plug_quat_error - self.normalize_dict["mean"]["plug_quat_error"]) / \
@@ -284,7 +300,7 @@ class TactileDataset(Dataset):
 
         lin_input = np.concatenate([
             eef_pos,
-            # shift_action_right
+            noisy_socket_pos,
             # hand_joints,
         ], axis=-1)
 

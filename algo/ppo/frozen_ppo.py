@@ -759,10 +759,11 @@ class PPO(object):
         # object_ori = self.to_torch(object_ori).unsqueeze(0)
 
         action = data["action"]
+        noisy_socket_pos = data["noisy_socket_pos"][:, :, :3]
 
         if normalize_dict is not None:
             eef_pos = (eef_pos - normalize_dict["mean"]["eef_pos"]) / normalize_dict["std"]["eef_pos"]
-            # hand_joints = (hand_joints - normalize_dict["mean"]["hand_joints"]) / normalize_dict["std"]["hand_joints"]
+            noisy_socket_pos = (noisy_socket_pos - normalize_dict["mean"]["noisy_socket_pos"][:3]) / normalize_dict["std"]["noisy_socket_pos"][:3]
             # plug_pos_error = (plug_pos_error - normalize_dict["mean"]["plug_pos_error"]) / normalize_dict["std"][
             #     "plug_pos_error"]
             # plug_quat_error = (plug_quat_error - normalize_dict["mean"]["plug_quat_error"]) / normalize_dict["std"][
@@ -770,7 +771,7 @@ class PPO(object):
 
         lin_input = torch.cat([
             eef_pos,
-            # hand_joints,
+            noisy_socket_pos,
             # action
         ], dim=-1)
 
