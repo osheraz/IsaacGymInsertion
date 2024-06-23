@@ -66,7 +66,7 @@ def run(cfg: DictConfig):
     # sets seed. if seed is -1 will pick a random one
     # cfg.seed = set_seed(cfg.seed, torch_deterministic=cfg.torch_deterministic, rank=global_rank)
     if cfg.train_diffusion:
-        # TODO edit
+
         from algo.models.diffusion.train_diffusion import Runner
 
         # perform train
@@ -74,14 +74,13 @@ def run(cfg: DictConfig):
 
         exit()
 
-    if cfg.offline_real_training:
-        # TODO edit
-        from algo.models.transformer.runner import Runner as TransformerRunner
+    if cfg.train_tactile:
+        from algo.models.transformer.tactile_runner import Runner
 
         agent = None
 
         # perform train
-        runner = TransformerRunner(cfg.offline_train, agent=agent)
+        runner = Runner(cfg, agent=agent)
         runner.run()
 
         exit()

@@ -1,4 +1,6 @@
-from algo.models.transformer.data import TactileDataset, DataNormalizer
+from algo.models.transformer.data import TactileTestDataset as TactileDataset
+from algo.models.transformer.data import DataNormalizer
+
 from torch.utils.data import DataLoader
 from torch import optim
 from algo.models.transformer.tact import TacT
@@ -17,12 +19,9 @@ import time
 from algo.models.transformer.utils import set_seed
 from hydra.utils import to_absolute_path
 from warmup_scheduler import GradualWarmupScheduler
-from torch import nn
 from torch.nn import ModuleList
-from torchvision import transforms
 from matplotlib import pyplot as plt
 from scipy.spatial.transform import Rotation
-
 
 
 class Runner:
@@ -39,11 +38,10 @@ class Runner:
         self.agent = agent
         self.to_torch = lambda x: torch.from_numpy(x).float()
 
-        self.ppo_step = agent.play_latent_step if ((agent is not None) and (action_regularization)) else None
         self.optimizer = None
         self.scheduler = None
         self.full_sequence = self.cfg.model.transformer.full_sequence
-        self.sequence_length = 500 if self.full_sequence else self.cfg.model.transformer.sequence_length
+        self.sequence_length = self.cfg.model.transformer.sequence_length
         self.device = 'cuda:0'
 
         # img
@@ -93,10 +91,8 @@ class Runner:
                           img_encoding_size=self.cfg.model.transformer.img_encoding_size,
                           mha_num_attention_heads=self.cfg.model.transformer.num_heads,
                           mha_num_attention_layers=self.cfg.model.transformer.num_layers,
-                          mha_ff_dim_factor=self.cfg.model.transformer.dim_factor, )
-
-        self.src_mask = torch.triu(torch.ones(self.sequence_length, self.sequence_length), diagonal=1).bool().to(
-            self.device)
+                          mha_ff_dim_factor=self.cfg.model.transformer.dim_factor,
+                          include_img=False, include_lin=False, include_tactile=True)
 
         self.loss_fn_mean = torch.nn.MSELoss(reduction='mean')
         self.loss_fn = torch.nn.MSELoss(reduction='none')
@@ -118,54 +114,27 @@ class Runner:
         """
         self.model.train()
         train_loss, val_loss = [], []
-        latent_loss_list, action_loss_list = [], []
 
         progress_bar = tqdm(enumerate(dl), total=len(dl), desc="Training Progress", unit="batch")
 
-        for i, (tac_input, img_input, lin_input, contacts, obs_hist, latent, action, mask) in progress_bar:
+        for i, (tac_input, img_input, lin_input, label) in progress_bar:
+
             self.model.train()
 
-            tac_input = tac_input.to(self.device)  # [B T F W H C]
+            tac_input = tac_input.to(self.device)
             img_input = img_input.to(self.device)
             lin_input = lin_input.to(self.device)
-            latent = latent.to(self.device)
-            action = action.to(self.device)
-            mask = mask.to(self.device).unsqueeze(-1)
+            label = label.to(self.device)
 
             out = self.model(tac_input, img_input, lin_input)
-            loss_action = torch.zeros(1, device=self.device)
 
-            if self.full_sequence:
-                loss_latent = torch.sum(self.loss_fn(out, latent), dim=-1).unsqueeze(-1)
-                loss_latent = torch.sum(loss_latent * mask) / torch.sum(mask)
-
-                if self.ppo_step is not None:
-                    obs_hist = obs_hist.to(self.device).view(obs_hist.shape[0] * self.sequence_length,
-                                                             obs_hist.shape[-1])
-                    pred_action, _ = self.ppo_step(
-                        {'obs': obs_hist, 'latent': out.view(out.shape[0] * out.shape[1], out.shape[-1])})
-                    loss_action = torch.sum(self.loss_fn(pred_action.view(*action.shape), action), dim=-1).unsqueeze(-1)
-                    loss_action = torch.sum(loss_action * mask) / torch.sum(mask)
-                    action_loss_list.append(loss_action.item())
-
-            else:
-                loss_latent = self.loss_fn_mean(out, latent[:, -1, :])
-                if self.ppo_step is not None:
-                    obs_hist = obs_hist[:, -1, :].to(self.device).view(obs_hist.shape[0], obs_hist.shape[-1])
-                    pred_action, _ = self.ppo_step({'obs': obs_hist, 'latent': out})
-                    pred_action = torch.clamp(pred_action, -1, 1)
-                    loss_action = self.loss_fn_mean(pred_action, action[:, -1, :])
-
-            loss = (self.cfg.train.latent_scale * loss_latent) + (self.cfg.train.action_scale * loss_action)
+            loss = self.loss_fn_mean(out, label[:, -1, :])
 
             self.optimizer.zero_grad()
             loss.backward()
             self.optimizer.step()
 
             train_loss.append(loss.item())
-            latent_loss_list.append(loss_latent.item())
-            if self.ppo_step is not None:
-                action_loss_list.append(loss_action.item())
 
             # Update tqdm description
             progress_bar.set_postfix({
@@ -175,21 +144,14 @@ class Runner:
 
             if (i + 1) % print_every == 0:
                 print(f'step {i + 1}:', np.mean(train_loss))
-                self._wandb_log({'train/loss': np.mean(train_loss),
-                                 'train/latent_loss': np.mean(latent_loss_list)})
-                if self.ppo_step is not None:
-                    self._wandb_log({'train/action_loss': np.mean(action_loss_list)})
-
+                self._wandb_log({'train/loss': np.mean(train_loss)})
                 self.fig.clf()
                 self.train_loss.append(np.mean(train_loss))
                 plt.plot(self.train_loss, '-ro', linewidth=3, label='train loss')
                 train_loss = []
-                latent_loss_list = []
-                action_loss_list = []
 
             if (i + 1) % eval_every == 0:
-                self.log_output(tac_input.clone(), img_input.clone(), lin_input.clone(), out.clone(), latent.clone(),
-                                'train')
+                self.log_output(tac_input, img_input, lin_input, out, label, 'train')
 
                 val_loss = self.validate(val_dl)
                 print(f'validation loss: {val_loss}')
@@ -199,13 +161,6 @@ class Runner:
                 self.fig.savefig(f'{self.save_folder}/train_val_comp.png', dpi=200, bbox_inches='tight')
                 self.model.train()
 
-            # if (i + 1) % test_every == 0:
-                # try:
-                #     self.test()
-                # except Exception as e:
-                #     print(f'Error during test: {e}')
-                # self.model.train()
-
         return val_loss
 
     def validate(self, dl):
@@ -213,50 +168,22 @@ class Runner:
         with torch.no_grad():
             val_loss = []
             latent_loss_list, action_loss_list = [], []
-            for i, (tac_input, img_input, lin_input, contacts, obs_hist, latent, action, mask) in tqdm(enumerate(dl)):
+            for i, (tac_input, img_input, lin_input, label) in tqdm(enumerate(dl)):
 
                 tac_input = tac_input.to(self.device)
                 img_input = img_input.to(self.device)
-
                 lin_input = lin_input.to(self.device)
-                latent = latent.to(self.device)
-                action = action.to(self.device)
-                mask = mask.to(self.device).unsqueeze(-1)
-                # contacts = contacts.to(self.device)
+
+                label = label.to(self.device)
 
                 out = self.model(tac_input, img_input, lin_input)
 
-                loss_action = torch.zeros(1, device=self.device)
 
-                if self.full_sequence:
-                    loss_latent = torch.sum(self.loss_fn(out, latent), dim=-1).unsqueeze(-1)
-                    loss_latent = torch.sum(loss_latent * mask) / torch.sum(mask)
-                    # loss = loss_latent
-                    if self.ppo_step is not None:
-                        obs_hist = obs_hist.to(self.device).view(obs_hist.shape[0] * self.sequence_length,
-                                                                 obs_hist.shape[-1])
-                        pred_action, _ = self.ppo_step(
-                            {'obs': obs_hist, 'latent': out.view(out.shape[0] * out.shape[1], out.shape[-1])})
-                        loss_action = torch.sum(self.loss_fn(pred_action.view(*action.shape), action),
-                                                dim=-1).unsqueeze(-1)
-                        loss_action = torch.sum(loss_action * mask) / torch.sum(mask)
-                else:
-                    loss_latent = self.loss_fn_mean(out[:, :], latent[:, -1, :])
 
-                    # loss = loss_latent
-                    if self.ppo_step is not None:
-                        obs_hist = obs_hist[:, -1, :].to(self.device).view(obs_hist.shape[0], obs_hist.shape[-1])
-                        pred_action, _ = self.ppo_step({'obs': obs_hist, 'latent': out})
-                        pred_action = torch.clamp(pred_action, -1, 1)
-                        loss_action = self.loss_fn_mean(pred_action, action[:, -1, :])
-
-                # TODO: add scaling loss coefficients
-                loss = (self.cfg.train.latent_scale * loss_latent) + (self.cfg.train.action_scale * loss_action)
+                loss = self.loss_fn_mean(out[:, :], label[:, -1, :])
 
                 val_loss.append(loss.item())
-                latent_loss_list.append(loss_latent.item())
-                if self.ppo_step is not None:
-                    action_loss_list.append(loss_action.item())
+
 
             # self._wandb_log({
             #     'val/loss': np.mean(val_loss),
@@ -268,12 +195,7 @@ class Runner:
             #         'val/action_loss': np.mean(action_loss_list)
             #     })
 
-            self.log_output(tac_input.clone(),
-                            img_input.clone(),
-                            lin_input.clone(),
-                            out.clone(),
-                            latent.clone(),
-                            'valid')
+            self.log_output(tac_input, img_input, lin_input, out, label, 'valid')
 
         return np.mean(val_loss)
 
@@ -283,7 +205,7 @@ class Runner:
 
         image_sequence = tac_input[0].cpu().detach().numpy()
         img_input = img_input[0].cpu().detach().numpy()
-        # linear_features = lin_input[0].cpu().detach().numpy()
+        linear_features = lin_input[0].cpu().detach().numpy()
         predicted_output = out[0].cpu().detach().numpy()
         true_label = latent[0, -1, :].cpu().detach().numpy()
         # Plotting
@@ -302,10 +224,10 @@ class Runner:
         ax1.set_title('Input Tactile Sequence')
 
         # Adding subplot for linear features (adjust as needed)
-        # ax2 = fig.add_subplot(2, 2, 2)
-        # ax2.plot(linear_features[:, :], 'ok', label='hand_joints')  # Assuming the rest are actions
-        # ax2.set_title('Linear input')
-        # ax2.legend()
+        ax2 = fig.add_subplot(2, 2, 2)
+        ax2.plot(linear_features[:, :], 'ok', label='hand_joints')  # Assuming the rest are actions
+        ax2.set_title('Linear input')
+        ax2.legend()
 
         # Check if img_input has more than one timestep
         if img_input.ndim == 4 and img_input.shape[0] > 1:
@@ -345,6 +267,7 @@ class Runner:
         plt.savefig(f'{self.save_folder}/{session}_example.png')
         # Clean up plt to free memory
         plt.close(fig)
+
 
     def get_latent(self, tac_input, img_input, lin_input):
         self.model.eval()
@@ -396,7 +319,6 @@ class Runner:
 
         self.device = device
         self.model = self.model.to(self.device)
-        self.src_mask = self.src_mask.to(self.device)
 
         self.optimizer = optim.AdamW(self.model.parameters(), lr=learning_rate)
 
@@ -427,7 +349,6 @@ class Runner:
 
         # Passing trajectories
         train_ds = TactileDataset(files=training_files,
-                                  full_sequence=self.full_sequence,
                                   sequence_length=self.sequence_length,
                                   normalize_dict=self.normalize_dict,
                                   img_transform=self.img_transform,
@@ -443,7 +364,6 @@ class Runner:
                               )
 
         val_ds = TactileDataset(files=val_files,
-                                full_sequence=self.full_sequence,
                                 sequence_length=self.sequence_length,
                                 normalize_dict=self.normalize_dict,
                                 img_transform=self.img_eval_transform,

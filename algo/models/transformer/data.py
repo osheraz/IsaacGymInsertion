@@ -16,6 +16,7 @@ from tqdm import tqdm
 import random
 import cv2
 
+
 class DataNormalizer:
     def __init__(self, cfg, file_list):
         self.cfg = cfg
@@ -120,41 +121,6 @@ class DataNormalizer:
         self.load_or_create_normalization_file()
 
 
-class GaussianNoise(nn.Module):
-    def __init__(self, std=0.1):
-        super().__init__()
-        self.std = std
-
-    def forward(self, x):
-        if self.training:
-            noise = torch.randn_like(x) * self.std
-            return x + noise
-        return x
-
-
-def mask_img(x, img_patch_size, img_masking_prob):
-    # Divide the image into patches and randomly mask some of them
-    img_patch = x.unfold(2, img_patch_size, img_patch_size).unfold(
-        3, img_patch_size, img_patch_size
-    )
-    mask = (
-            torch.rand(
-                (
-                    x.shape[0],
-                    x.shape[-2] // img_patch_size,
-                    x.shape[-1] // img_patch_size,
-                )
-            )
-            < img_masking_prob
-    )
-    mask = mask.unsqueeze(1).unsqueeze(-1).unsqueeze(-1).expand_as(img_patch)
-    x = x.clone()
-    x.unfold(2, img_patch_size, img_patch_size).unfold(
-        3, img_patch_size, img_patch_size
-    )[mask] = 0
-    return x
-
-
 class TactileDataset(Dataset):
     def __init__(self, files, sequence_length=500,
                  full_sequence=False,
@@ -233,7 +199,7 @@ class TactileDataset(Dataset):
         # Tactile input [T F W H C]
         # tactile_input = data_seq["tactile"]
         tactile_input = [np.load(os.path.join(tactile_folder, f'tactile_{i}.npz'))['tactile'] for i in
-                                  range(start_idx, start_idx + self.sequence_length)]
+                         range(start_idx, start_idx + self.sequence_length)]
         tactile_input = self.to_torch(np.stack(tactile_input))
 
         if self.tactile_transform is not None:
@@ -274,7 +240,8 @@ class TactileDataset(Dataset):
         # Normalizing
         if self.normalize_dict is not None:
             eef_pos = (eef_pos - self.normalize_dict["mean"]["eef_pos"]) / self.normalize_dict["std"]["eef_pos"]
-            noisy_socket_pos = (noisy_socket_pos - self.normalize_dict["mean"]["noisy_socket_pos"][:3]) / self.normalize_dict["std"]["noisy_socket_pos"][:3]
+            noisy_socket_pos = (noisy_socket_pos - self.normalize_dict["mean"]["noisy_socket_pos"][:3]) / \
+                               self.normalize_dict["std"]["noisy_socket_pos"][:3]
             # plug_pos_error = (plug_pos_error - self.normalize_dict["mean"]["plug_pos_error"]) / \
             #                  self.normalize_dict["std"]["plug_pos_error"]
             # plug_quat_error = (plug_quat_error - self.normalize_dict["mean"]["plug_quat_error"]) / \
@@ -313,6 +280,129 @@ class TactileDataset(Dataset):
                                                                                                         label,
                                                                                                         action,
                                                                                                         mask]]
+
+        return tuple(tensors)
+
+
+class TactileTestDataset(Dataset):
+    def __init__(self, files, sequence_length=500,
+                 normalize_dict=None,
+                 stride=5,
+                 img_transform=None,
+                 tactile_transform=None,
+                 tactile_channel=3,
+                 ):
+
+        self.all_folders = files
+        self.sequence_length = sequence_length
+        self.stride = stride  # sequence_length
+        self.normalize_dict = normalize_dict
+
+        self.tactile_channel = tactile_channel
+        if self.tactile_channel == 1:
+            self.to_gray = transforms.Compose([
+                transforms.ToPILImage(),
+                transforms.Grayscale(num_output_channels=1),
+                transforms.ToTensor()  # Convert PIL Image back to tensor
+            ])
+
+        self.to_torch = lambda x: torch.from_numpy(x).float()
+
+        self.img_transform = img_transform
+        self.tactile_transform = tactile_transform
+
+        # Store indices corresponding to each trajectory
+        self.indices_per_trajectory = []
+        for file_idx, file in enumerate(self.all_folders):
+            data = np.load(file)
+            done = data["done"]
+            done_idx = done.nonzero()[0][-1]
+            total_len = done_idx
+            if total_len >= self.sequence_length:
+                num_subsequences = (total_len - self.sequence_length) // self.stride + 1
+                self.indices_per_trajectory.extend([(file_idx, i * self.stride) for i in range(num_subsequences)])
+        print('Total sub trajectories:', len(self.indices_per_trajectory))
+
+    def __len__(self):
+        return int((len(self.indices_per_trajectory)))
+
+    def extract_sequence(self, data, key, start_idx):
+        # Extract a sequence of specific length from the array
+        return data[key][start_idx:start_idx + self.sequence_length]
+
+    def __getitem__(self, idx, diff_tac=True, diff_pos=True):
+        file_idx, start_idx = self.indices_per_trajectory[idx]
+        file_path = self.all_folders[file_idx]
+
+        # Load data from the file
+        data = np.load(file_path)
+        tactile_folder = file_path[:-7].replace('obs', 'tactile')
+        img_folder = file_path[:-7].replace('obs', 'img')
+
+        keys = ["eef_pos", "action", "latent", "plug_hand_quat", "plug_hand_pos"]
+        data_seq = {key: self.extract_sequence(data, key, start_idx) for key in keys}
+
+        # T, F, C, W, H = tactile_input.shape
+        tactile_input = [np.load(os.path.join(tactile_folder, f'tactile_{i}.npz'))['tactile'] for i in
+                         range(start_idx, start_idx + self.sequence_length)]
+        if diff_tac:
+            first_tactile = np.load(os.path.join(tactile_folder, f'tactile_0.npz'))['tactile']
+            tactile_input = [tac - first_tactile for tac in tactile_input]
+        tactile_input = self.to_torch(np.stack(tactile_input))
+
+        if self.tactile_transform is not None:
+            tactile_input_reshaped = tactile_input.view(-1, 3, *tactile_input.shape[-2:])
+            if self.tactile_channel == 1:
+                tactile_input_reshaped = torch.stack([self.to_gray(image) for image in tactile_input_reshaped])
+
+            tactile_input = self.tactile_transform(tactile_input_reshaped)
+            tactile_input = tactile_input.view(1, 3, self.tactile_channel, *tactile_input.shape[-2:])
+
+        img_input = np.stack([np.load(os.path.join(img_folder, f'img_{i}.npz'))['img'] for i in
+                              range(start_idx, start_idx + self.sequence_length)])
+
+        if self.img_transform is not None:
+            img_input = self.img_transform(self.to_torch(img_input))
+
+        eef_pos = data_seq["eef_pos"]
+        euler = Rotation.from_quat(data_seq["plug_hand_quat"]).as_euler('xyz')
+        plug_hand_pos = data_seq["plug_hand_pos"]
+
+        if diff_pos:
+            euler = euler - Rotation.from_quat(data["plug_hand_quat"][start_idx, :]).as_euler('xyz')
+            plug_hand_pos = plug_hand_pos - data["plug_hand_pos"][start_idx, :]
+
+        # Normalizing
+        if self.normalize_dict is not None:
+            eef_pos = (eef_pos - self.normalize_dict["mean"]["eef_pos"]) / self.normalize_dict["std"]["eef_pos"]
+            if not diff_pos:
+                euler = (euler - self.normalize_dict["mean"]["plug_hand_euler"]) / self.normalize_dict["std"][
+                    "plug_hand_euler"]
+                plug_hand_pos = (plug_hand_pos - self.normalize_dict["mean"]["plug_hand_pos"]) / \
+                                self.normalize_dict["std"]["plug_hand_pos"]
+
+            else:
+                euler = (euler - self.normalize_dict["mean"]["plug_hand_diff_euler"]) / self.normalize_dict["std"][
+                    "plug_hand_diff_euler"]
+                plug_hand_pos = (plug_hand_pos - self.normalize_dict["mean"]["plug_hand_pos_diff"]) / \
+                                self.normalize_dict["std"]["plug_hand_pos_diff"]
+
+        label = np.hstack((plug_hand_pos, euler))
+
+        # Output
+        # shift_action_right = np.concatenate([np.zeros((1, action.shape[-1])), action[:-1, :]], axis=0)
+
+        lin_input = np.concatenate([
+            eef_pos,
+            # noisy_socket_pos,
+            # hand_joints,
+        ], axis=-1)
+
+        # Convert to torch tensors
+        tensors = [tensor if isinstance(tensor, torch.Tensor) else self.to_torch(tensor) for tensor in [tactile_input,
+                                                                                                        img_input,
+                                                                                                        lin_input,
+                                                                                                        label]]
 
         return tuple(tensors)
 

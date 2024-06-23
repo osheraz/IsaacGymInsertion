@@ -2,7 +2,6 @@ seed: 42 # not sure if this is used yet.
 data_folder: "/home/roblab20/tactile_insertion/datastore_42_gt_test" # where is all your data, can include * for globbing
 output_dir: "/home/roblab20/tactile_insertion/datastore_42_gt_test" # where to save checkpoints and logs
 
-# todo pull from task cfg
 img_type: "depth"
 img_color_jitter: False
 img_width: 180

@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import math
+from typing import List, Dict, Optional, Tuple, Callable
 
 
 class PositionalEncoding(nn.Module):
@@ -105,6 +106,9 @@ class TacT(BaseModel):
             mha_num_attention_layers: Optional[int] = 2,
             mha_ff_dim_factor: Optional[int] = 4,
             include_lin: Optional[bool] = True,
+            include_img: Optional[bool] = True,
+            include_tactile: Optional[bool] = True,
+
     ) -> None:
         """
         Modified ViT class: uses a Transformer-based architecture to encode (current and past) visual observations
@@ -123,40 +127,52 @@ class TacT(BaseModel):
         self.num_channels = num_channels
         self.share_encoding = share_encoding
 
-        if tactile_encoder.split("-")[0] == "efficientnet":
-            self.tactile_encoder = EfficientNet.from_name(tactile_encoder, in_channels=num_channels)
-            self.tactile_encoder = replace_bn_with_gn(self.tactile_encoder)
-            self.num_tactile_features = self.tactile_encoder._fc.in_features
-        else:
-            raise NotImplementedError
-
-        if img_encoder.split("-")[0] == "efficientnet":
-            self.img_encoder = EfficientNet.from_name(img_encoder, in_channels=1)  # depth
-            self.img_encoder = replace_bn_with_gn(self.img_encoder)
-            self.num_img_features = self.img_encoder._fc.in_features
-        else:
-            raise NotImplementedError
-
         self.include_lin = include_lin
+        self.include_tactile = include_tactile
+        self.include_img = include_img
+        num_features = 0
+
+        if include_tactile:
+            if tactile_encoder.split("-")[0] == "efficientnet":
+                self.tactile_encoder = EfficientNet.from_name(tactile_encoder, in_channels=num_channels)
+                self.tactile_encoder = replace_bn_with_gn(self.tactile_encoder)
+                self.num_tactile_features = self.tactile_encoder._fc.in_features
+            else:
+                raise NotImplementedError
+
+            if self.num_tactile_features != self.tactile_encoding_size:
+                self.compress_obs_enc = nn.Linear(self.num_tactile_features, self.tactile_encoding_size)
+            else:
+                self.compress_obs_enc = nn.Identity()
+
+            num_features += 3
+
+        if include_img:
+            if img_encoder.split("-")[0] == "efficientnet":
+                self.img_encoder = EfficientNet.from_name(img_encoder, in_channels=1)  # depth
+                self.img_encoder = replace_bn_with_gn(self.img_encoder)
+                self.num_img_features = self.img_encoder._fc.in_features
+            else:
+                raise NotImplementedError
+
+            if self.num_img_features != self.img_encoding_size:
+                self.compress_obs_enc = nn.Linear(self.num_img_features, self.img_encoding_size)
+            else:
+                self.compress_obs_enc = nn.Identity()
+
+            num_features += 1
+
         if include_lin:
             self.lin_encoding_size = lin_encoding_size
             self.lin_encoder = nn.Sequential(nn.Linear(num_lin_features, lin_encoding_size // 2),
                                              nn.ReLU(),
                                              nn.Linear(lin_encoding_size // 2, lin_encoding_size))
 
-        if self.num_tactile_features != self.tactile_encoding_size:
-            self.compress_obs_enc = nn.Linear(self.num_tactile_features, self.tactile_encoding_size)
-        else:
-            self.compress_obs_enc = nn.Identity()
-
-        if self.num_img_features != self.img_encoding_size:
-            self.compress_obs_enc = nn.Linear(self.num_img_features, self.img_encoding_size)
-        else:
-            self.compress_obs_enc = nn.Identity()
+            num_features += 1
 
         self.decoder = MultiLayerDecoder(
             embed_dim=self.tactile_encoding_size,
-            seq_len=self.context_size * (3 + 1 + 1),
+            seq_len=self.context_size * num_features,
             output_layers=[256, 128, 64, 32],
             nhead=mha_num_attention_heads,
             num_layers=mha_num_attention_layers,
@@ -172,6 +188,58 @@ class TacT(BaseModel):
             lin_input: torch.tensor = None,
             contacts: torch.tensor = None) -> Tuple[torch.Tensor, torch.Tensor]:
 
+        tokens_list = []
+
+        if self.include_tactile:
+            # split the observation into context based on the context size
+            B, T, F, C, W, H = obs_tactile.shape
+            # obs_tactile = obs_tactile.reshape(B*T, CF, W, H)
+            fingers = [obs_tactile[:, :, i, ...].reshape(B*T, C, W, H) for i in range(F)]
+
+            obs_features = []
+            if self.share_encoding:
+                for finger in fingers:
+                    # get the observation encoding
+                    tactile_encoding = self.tactile_encoder.extract_features(finger)
+                    # currently the size is [batch_size*(self.context_size), 1280, H/32, W/32]
+                    tactile_encoding = self.tactile_encoder._avg_pooling(tactile_encoding)
+                    # currently the size is [batch_size*(self.context_size), 1280, 1, 1]
+                    if self.tactile_encoder._global_params.include_top:
+                        tactile_encoding = tactile_encoding.flatten(start_dim=1)
+                        tactile_encoding = self.tactile_encoder._dropout(tactile_encoding)
+                    # currently, the size is [batch_size, self.context_size, self.tactile_encoding_size]
+                    tactile_encoding = self.compress_obs_enc(tactile_encoding)
+                    # currently, the size is [batch_size*(self.context_size), self.tactile_encoding_size]
+                    # reshape the tactile_encoding to [context + 1, batch, encoding_size], note that the order is flipped
+                    tactile_encoding = tactile_encoding.reshape((self.context_size, -1, self.tactile_encoding_size))
+                    tactile_encoding = torch.transpose(tactile_encoding, 0, 1)
+                    # currently, the size is [batch_size, self.context_size, self.tactile_encoding_size]
+                    obs_features.append(tactile_encoding)
+            else:
+                raise NotImplementedError
+
+            obs_features = torch.cat(obs_features, dim=1)
+            tokens_list.append(obs_features)
+
+        if self.include_img:
+            # img
+            B, T, C, W, H = obs_img.shape
+            obs_img = obs_img.reshape(B*T, C, W, H)
+            img_encoding = self.img_encoder.extract_features(obs_img)
+            # currently the size is [batch_size*(self.context_size), 1280, H/32, W/32]
+            img_encoding = self.img_encoder._avg_pooling(img_encoding)
+            # currently the size is [batch_size*(self.context_size), 1280, 1, 1]
+            if self.img_encoder._global_params.include_top:
+                img_encoding = img_encoding.flatten(start_dim=1)
+                img_encoding = self.img_encoder._dropout(img_encoding)
+            # currently, the size is [batch_size, self.context_size, self.img_encoding_size]
+            img_encoding = self.compress_obs_enc(img_encoding)
+            # currently, the size is [batch_size*(self.context_size), self.img_encoding_size]
+            # reshape the img_encoding to [context + 1, batch, encoding_size], note that the order is flipped
+            img_encoding = img_encoding.reshape((self.context_size, -1, self.img_encoding_size))
+            img_encoding = torch.transpose(img_encoding, 0, 1)
+            tokens_list.append(img_encoding)
+
         # currently, the size of lin_encoding is [batch_size, num_lin_features]
         if self.include_lin:
             lin_encoding = self.lin_encoder(lin_input)
@@ -180,62 +248,16 @@ class TacT(BaseModel):
                 lin_encoding = lin_encoding.unsqueeze(1)
             # currently, the size of goal_encoding is [batch_size, 1, self.goal_encoding_size]
             assert lin_encoding.shape[2] == self.lin_encoding_size
-
-        # split the observation into context based on the context size
-        B, T, F, C, W, H = obs_tactile.shape
-        # obs_tactile = obs_tactile.reshape(B*T, CF, W, H)
-        fingers = [obs_tactile[:, :, i, ...].reshape(B*T, C, W, H) for i in range(F)]
-
-        obs_features = []
-        if self.share_encoding:
-            for finger in fingers:
-                # get the observation encoding
-                tactile_encoding = self.tactile_encoder.extract_features(finger)
-                # currently the size is [batch_size*(self.context_size), 1280, H/32, W/32]
-                tactile_encoding = self.tactile_encoder._avg_pooling(tactile_encoding)
-                # currently the size is [batch_size*(self.context_size), 1280, 1, 1]
-                if self.tactile_encoder._global_params.include_top:
-                    tactile_encoding = tactile_encoding.flatten(start_dim=1)
-                    tactile_encoding = self.tactile_encoder._dropout(tactile_encoding)
-                # currently, the size is [batch_size, self.context_size, self.tactile_encoding_size]
-                tactile_encoding = self.compress_obs_enc(tactile_encoding)
-                # currently, the size is [batch_size*(self.context_size), self.tactile_encoding_size]
-                # reshape the tactile_encoding to [context + 1, batch, encoding_size], note that the order is flipped
-                tactile_encoding = tactile_encoding.reshape((self.context_size, -1, self.tactile_encoding_size))
-                tactile_encoding = torch.transpose(tactile_encoding, 0, 1)
-                # currently, the size is [batch_size, self.context_size, self.tactile_encoding_size]
-                obs_features.append(tactile_encoding)
-        else:
-            raise NotImplementedError
-
-        obs_features = torch.cat(obs_features, dim=1)
-
-        # img
-        B, T, C, W, H = obs_img.shape
-        obs_img = obs_img.reshape(B*T, C, W, H)
-        img_encoding = self.img_encoder.extract_features(obs_img)
-        # currently the size is [batch_size*(self.context_size), 1280, H/32, W/32]
-        img_encoding = self.img_encoder._avg_pooling(img_encoding)
-        # currently the size is [batch_size*(self.context_size), 1280, 1, 1]
-        if self.img_encoder._global_params.include_top:
-            img_encoding = img_encoding.flatten(start_dim=1)
-            img_encoding = self.img_encoder._dropout(img_encoding)
-        # currently, the size is [batch_size, self.context_size, self.img_encoding_size]
-        img_encoding = self.compress_obs_enc(img_encoding)
-        # currently, the size is [batch_size*(self.context_size), self.img_encoding_size]
-        # reshape the img_encoding to [context + 1, batch, encoding_size], note that the order is flipped
-        img_encoding = img_encoding.reshape((self.context_size, -1, self.img_encoding_size))
-        img_encoding = torch.transpose(img_encoding, 0, 1)
+            tokens_list.append(lin_encoding)
 
         # concatenate the goal encoding to the observation encoding
-        tokens = torch.cat((obs_features, img_encoding, lin_encoding), dim=1)
+        tokens = torch.cat(tokens_list, dim=1)
 
         final_repr = self.decoder(tokens)
         # currently, the size is [batch_size, 32]
         latent_pred = self.latent_predictor(final_repr)
 
         return latent_pred
-
 
 # Utils for Group Norm
 def replace_bn_with_gn(
@@ -254,7 +276,6 @@ def replace_bn_with_gn(
     return root_module
 
 
-from typing import List, Dict, Optional, Tuple, Callable
 
 def replace_submodules(
         root_module: nn.Module,
