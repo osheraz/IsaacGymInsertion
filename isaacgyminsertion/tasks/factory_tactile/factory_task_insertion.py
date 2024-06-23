@@ -964,10 +964,22 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         # plug_pos_noise = torch.rand((len(env_ids), 3)) * self.cfg_task.randomize.plug_pos_xy_noise[0]  # 0 to 0.0254
         # plug_pos_noise[:, 2] = ((torch.rand((len(env_ids),)) * (0.007 - 0.003)) + 0.003) + 0.02  # 0.003 to 0.01
         # plug_pos[:, :] += plug_pos_noise
-        plug_euler_w_noise = np.array([0., 0., 0.])
-        plug_euler_w_noise += np.random.uniform(-0.03, 0.03, plug_euler_w_noise.shape)
-        plug_euler_w_noise[-1] = 0
-        plug_quat[:, :] = torch.from_numpy(R.from_euler('xyz', plug_euler_w_noise).as_quat())
+        plug_rot_noise = 2 * (
+                torch.rand((len(env_ids), 3), dtype=torch.float32, device=self.device)
+                - 0.5
+        )
+        plug_rot_noise = plug_rot_noise @ torch.diag(
+            torch.tensor(
+                self.cfg_task.randomize.plug_rot_noise,
+                dtype=torch.float32,
+                device=self.device,
+            )
+        )
+        # plug_euler_w_noise = np.array([0., 0., 0.])
+        # plug_euler_w_noise += np.random.uniform(-0.03, 0.03, plug_euler_w_noise.shape)
+        # plug_euler_w_noise[-1] = 0
+
+        plug_quat[:, :] = torch.from_numpy(R.from_euler('xyz', plug_rot_noise.cpu().detach().numpy()).as_quat())
 
         for i, e in enumerate(env_ids):
             subassembly = subassemblies[e]
