@@ -85,7 +85,7 @@ def fill_sequence(data: np.ndarray,
 
 
 def load_grasp_state(folder: str, prefix: str) -> np.ndarray:
-    return np.load(os.path.join(folder, f'{prefix}_0.npz'))[prefix][0]
+    return np.load(os.path.join(folder, f'{prefix}_1.npz'))[prefix][0]
 
 
 def load_data(folder: str, prefix: str, buffer_start_idx: int, buffer_end_idx: int) -> np.ndarray:
