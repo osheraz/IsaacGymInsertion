@@ -143,6 +143,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
     def _acquire_task_tensors(self):
         """Acquire tensors."""
+        self.rot_axis_buf = torch.zeros((self.num_envs, 3), device=self.device, dtype=torch.float)
         self.force_scale = self.cfg_task.randomize.force_scale
         self.force_prob_range = [0.001, 0.1]
         self.force_decay = 0.99
@@ -400,6 +401,9 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         """Reset environments. Apply actions from policy as position/rotation targets, force/torque targets, and/or PD gains."""
 
         self.prev_actions[:] = self.actions.clone()
+        self.prev_plug_quat = self.plug_quat.clone()
+        self.prev_plug_pos = self.plug_pos.clone()
+
         env_ids = self.reset_buf.nonzero(as_tuple=False).squeeze(-1)
 
         if len(env_ids) > 0:
@@ -430,7 +434,6 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             ], dim=-1).clone()
 
         # Update targets
-        print(self.actions[:, -3:])
 
         self.targets = self.prev_targets + delta_targets
         self._apply_actions_as_ctrl_targets(actions=self.actions,
@@ -683,8 +686,9 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self._update_reset_buf()
         self._update_rew_buf()
 
-    def _update_rew_buf(self):
+    def _update_rew_buf_test(self):
         """Compute reward at current timestep."""
+        self.rot_axis_buf[:, -1] = -1
 
         act = self.actions[:, -3:]
         prv = self.prev_actions[:, -3:]
@@ -701,9 +705,6 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         quat_diff = torch_jit_utils.quat_mul(self.plug_quat, torch_jit_utils.quat_conjugate(self.goal_ori))
         rot_dist = 2.0 * torch.asin(torch.clamp(torch.norm(quat_diff[:, 0:3], p=2, dim=-1), max=1.0))
         ori_reward = self.cfg_task.rl.ori_reward_scale * -1 / (torch.abs(rot_dist) + 0.1)
-
-        keypoint_dist = self._get_keypoint_dist()
-        keypoint_reward = keypoint_dist * self.cfg_task.rl.keypoint_reward_scale
 
         left_finger_dist = torch.norm(self.left_finger_pos[:, :2] - self.fingertip_centered_pos[:, :2], p=2, dim=-1)
         right_finger_dist = torch.norm(self.right_finger_pos[:, :2] - self.fingertip_centered_pos[:, :2], p=2, dim=-1)
@@ -743,7 +744,6 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.rew_buf[:] = torch.where(goal_resets == 1, self.rew_buf + self.cfg_task.rl.reach_bonus, self.rew_buf)
 
         self.extras['successes'] = ((self.timeout_reset_buf | distance_reset_buf) * self.success_reset_buf) * 1.0
-        self.extras['keypoint_reward'] = keypoint_reward
         self.extras['ori_reward'] = ori_reward
 
         self.reward_log_buf[:] = self.rew_buf[:]
@@ -769,6 +769,91 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             print("Direct average consecutive successes = {:.1f}".format(direct_average_successes/(self.total_resets + self.num_envs)))
             if self.total_resets > 0:
                 print("Post-Reset average consecutive successes = {:.1f}".format(self.total_successes/self.total_resets))
+
+    def _update_rew_buf(self):
+        """Compute reward at current timestep."""
+        self.rot_axis_buf[:, -1] = -1
+
+        act = self.actions[:, -3:]
+        prv = self.prev_actions[:, -3:]
+
+        action_penalty = torch.norm(act, p=2, dim=-1)
+        action_reward = self.cfg_task.rl.action_penalty_scale * action_penalty
+
+        action_delta_penalty = torch.norm(act - prv, p=2, dim=-1)
+        action_delta_reward = self.cfg_task.rl.action_delta_scale * action_delta_penalty
+        # work_penalty = action_penalty * (dof_pos - previous_dof_pos) / self.dt
+
+        hand_joints_penalty = torch.norm(self.hand_joints - self.init_hand_joints, p=2, dim=-1)
+        hand_joint_reward = self.cfg_task.rl.tension_penalty * hand_joints_penalty
+
+        quat_diff = torch_jit_utils.quat_mul(self.plug_quat, torch_jit_utils.quat_conjugate(self.prev_plug_quat))
+        angdiff = torch_jit_utils.quat_to_axis_angle(quat_diff)
+        object_angvel = angdiff / (self.control_freq_inv * self.dt)
+        vec_dot = (object_angvel * self.rot_axis_buf).sum(-1)
+        ori_reward = torch.clip(vec_dot, max=0.5, min=-0.5)
+
+        object_linvel = ((self.plug_pos - self.prev_plug_pos) / (self.control_freq_inv * self.dt)).clone()
+        object_linvel_penalty = torch.norm(object_linvel, p=1, dim=-1) * self.cfg_task.rl.linvel_penalty
+
+        # keypoint_dist = self._get_keypoint_dist()
+        # keypoint_reward = keypoint_dist * self.cfg_task.rl.keypoint_reward_scale
+
+        # left_finger_dist = torch.norm(self.left_finger_pos[:, :2] - self.fingertip_centered_pos[:, :2], p=2, dim=-1)
+        # right_finger_dist = torch.norm(self.right_finger_pos[:, :2] - self.fingertip_centered_pos[:, :2], p=2, dim=-1)
+        # middle_finger_dist = torch.norm(self.middle_finger_pos[:, :2] - self.fingertip_centered_pos[:, :2], p=2, dim=-1)
+        # fingertips_center_dist = left_finger_dist + right_finger_dist + middle_finger_dist
+        # dist_reward = self.cfg_task.rl.keypoint_reward_scale * fingertips_center_dist
+
+        # Find out which envs hit the goal and update successes count
+        # loose_contact = torch.where(torch.norm(self.finger_normalized_forces) <= self.cfg_task.rl.min_grasp_force,
+        #                             torch.ones_like(self.reset_buf),
+        #                             torch.zeros_like(self.reset_buf))
+
+        # Penalty for losing the grip
+        distance_reset_buf = (self.far_from_goal_buf | self.degrasp_buf)
+        # early_reset_reward = distance_reset_buf * self.cfg_task.rl.early_reset_reward_scale
+
+        # self.success_reset_buf[:] = goal_resets
+        self.extras['successes'] = ((self.timeout_reset_buf | distance_reset_buf) * self.success_reset_buf) * 1.0
+
+        # self.successes = self.successes + goal_resets
+        num_resets = torch.sum(self.reset_buf)
+        finished_cons_successes = torch.sum(self.successes * self.reset_buf.float())
+        av_factor = 0.1
+        self.consecutive_successes = torch.where(num_resets > 0, av_factor * finished_cons_successes / num_resets + (
+                1.0 - av_factor) * self.consecutive_successes, self.consecutive_successes)
+
+        # Compute the reward
+        self.rew_buf[:] = ori_reward + action_reward + action_delta_reward
+        self.rew_buf[:] += object_linvel_penalty
+        self.rew_buf[:] += hand_joint_reward
+
+        self.reward_log_buf[:] = self.rew_buf[:]
+
+        is_last_step = (self.progress_buf[0] == self.max_episode_length - 1)
+        if is_last_step: # and not self.cfg_task.rl.reset_at_fails:
+            if not self.cfg_task.data_logger.collect_data:
+                success_dones = self.success_reset_buf.nonzero()
+                failure_dones = (1.0 - self.success_reset_buf).nonzero()
+
+                print('Success Rate:', torch.mean(self.success_reset_buf * 1.0).item(),
+                      'Avg Ep Reward:', torch.mean(self.reward_log_buf).item(),
+                      ' Success Reward:', self.rew_buf[success_dones].mean().item(),
+                      ' Failure Reward:', self.rew_buf[failure_dones].mean().item())
+
+        if self.cfg_task.rl.reset_at_fails:
+            self.total_resets = self.total_resets + self.reset_buf.sum()
+            direct_average_successes = self.total_successes + self.successes.sum()
+            self.total_successes = self.total_successes + (self.successes * self.reset_buf).sum()
+
+            # The direct average shows the overall result more quickly, but slightly undershoots long term
+            # policy performance.
+            # print("Direct average consecutive successes = {:.1f}".format(
+            #     direct_average_successes / (self.total_resets + self.num_envs)))
+            # if self.total_resets > 0:
+            #     print("Post-Reset average consecutive successes = {:.1f}".format(
+            #         self.total_successes / self.total_resets))
 
     def _update_reset_buf(self):
         """Assign environments for reset if successful or failed."""
@@ -798,7 +883,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         #if self.cfg_task.data_logger.collect_data or self.cfg_task.data_logger.collect_test_sim:
         if self.cfg_task.rl.reset_at_fails:
-            self.reset_buf[:] |= self.degrasp_buf[:]
+            # self.reset_buf[:] |= self.degrasp_buf[:]
 
             # If plug is too far from socket pos
             self.reset_buf[:] |= self.far_from_goal_buf[:]
@@ -1008,6 +1093,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         plug_hand_pos, plug_hand_quat = self.pose_world_to_hand_base(self.plug_pos, self.plug_quat, as_matrix=False)
         self.plug_hand_pos_init[...] = plug_hand_pos
         self.plug_hand_quat_init[...] = plug_hand_quat
+        self.init_hand_joints = self.hand_joints.clone()
 
         if self.cfg_task.env.record_video and 0 in env_ids:
             if self.complete_video_frames is None:
@@ -1252,6 +1338,9 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         self.prev_targets[env_ids] *= 0
         self.prev_actions[env_ids] *= 0
+        self.prev_plug_quat[env_ids] *= 0
+        self.prev_plug_pos[env_ids] *= 0
+
         self.rel_act_angles[env_ids] *= 0
 
         self.force_hist = np.zeros(3)

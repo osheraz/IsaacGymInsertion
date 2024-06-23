@@ -83,7 +83,7 @@ env:
     tactile_wrt_force: False
 
     compute_contact_gt: True
-    num_points: 500
+    num_points: 2
 
     record_video: True
     record_ft: True
@@ -140,7 +140,7 @@ rl:
     num_keypoints: 4  # number of keypoints used in reward
     keypoint_scale: 1.0  # length of line of keypoints
 
-    max_episode_length: 500 # 8192  # terminate episode after this number of timesteps (failure)
+    max_episode_length: 8192 # 8192  # terminate episode after this number of timesteps (failure)
 
     orientation_threshold: 0.1
     far_error_thresh: 0.100  # threshold above which plug is considered too far from bolt
@@ -148,12 +148,15 @@ rl:
     success_height_thresh: 0.005  # threshold distance below which plug is considered successfully inserted
 
     keypoint_reward_scale: -0.1 # scale on keypoint-based reward
-    action_penalty_scale: -0.002  # scale on action penalty
-    action_delta_scale: -0.02
-    ori_reward_scale: -0.5 # scale on ori-based reward
-    loose_penalty: -0.05
-    tension_penalty: -0.01
+
+    action_penalty_scale: -0.1  # scale on action penalty
+    action_delta_scale: -0.1
+    ori_reward_scale: 5.0 # scale on ori-based reward
+    linvel_penalty: -0.3
+    tension_penalty: -0.3
+
     min_grasp_force: 0.05
+    loose_penalty: -0.05
 
     early_reset_reward_scale: -1.0
     engagement_reward_scale: 0.4

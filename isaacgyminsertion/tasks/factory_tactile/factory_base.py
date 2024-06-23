@@ -301,6 +301,8 @@ class FactoryBaseTactile(VecTask, FactoryABCBase):
         self.ctrl_target_fingertip_centered_quat = torch.zeros((self.num_envs, 4), device=self.device)
 
         self.prev_actions = torch.zeros((self.num_envs, self.num_actions), device=self.device)
+        self.prev_plug_quat = torch.zeros((self.num_envs, 4), device=self.device)
+        self.prev_plug_pos = torch.zeros((self.num_envs, 3), device=self.device)
 
         self.gripper_normal_quat = (torch.tensor([-1 / 2 ** 0.5, -1 / 2 ** 0.5, 0.0, 0.0],
                                                  device=self.device).unsqueeze(0).repeat(self.num_envs, 1))
