@@ -13,7 +13,7 @@ img_crop_w: 12
 img_crop_h: 24
 
 tactile_type: 'gray' # rgb
-tactile_gaussian_noise: 0.001
+tactile_gaussian_noise: 0.01
 tactile_masking_prob: 0.0
 tactile_patch_size: 16
 tactile_color_jitter: False

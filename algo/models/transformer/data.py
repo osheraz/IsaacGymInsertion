@@ -287,7 +287,7 @@ class TactileDataset(Dataset):
 class TactileTestDataset(Dataset):
     def __init__(self, files, sequence_length=500,
                  normalize_dict=None,
-                 stride=10,
+                 stride=25,
                  img_transform=None,
                  tactile_transform=None,
                  tactile_channel=3,
@@ -319,8 +319,8 @@ class TactileTestDataset(Dataset):
             done_idx = done.nonzero()[0][-1]
             total_len = done_idx
             if total_len >= self.sequence_length:
-                num_subsequences = (total_len - self.sequence_length) // self.stride + 1
-                self.indices_per_trajectory.extend([(file_idx, i * self.stride) for i in range(num_subsequences)])
+                num_subsequences = (total_len - self.sequence_length - 1) // self.stride + 1
+                self.indices_per_trajectory.extend([(file_idx, 1 + i * self.stride) for i in range(num_subsequences)])
         print('Total sub trajectories:', len(self.indices_per_trajectory))
 
     def __len__(self):
@@ -366,12 +366,12 @@ class TactileTestDataset(Dataset):
             img_input = self.img_transform(self.to_torch(img_input))
 
         eef_pos = data_seq["eef_pos"]
-        euler = Rotation.from_quat(data_seq["plug_hand_quat"]).as_euler('xyz')
         plug_hand_pos = data_seq["plug_hand_pos"]
+        euler = Rotation.from_quat(data_seq["plug_hand_quat"]).as_euler('xyz')
 
         if diff_pos:
-            euler = euler - Rotation.from_quat(data["plug_hand_quat"][start_idx, :]).as_euler('xyz')
-            plug_hand_pos = plug_hand_pos - data["plug_hand_pos"][start_idx, :]
+            euler = euler - Rotation.from_quat(data["plug_hand_quat"][0, :]).as_euler('xyz')
+            plug_hand_pos = plug_hand_pos - data["plug_hand_pos"][0, :]
 
         # Normalizing
         if self.normalize_dict is not None:
