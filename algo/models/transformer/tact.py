@@ -125,6 +125,7 @@ class MultiModalModel(BaseModel):
         self.img_encoding_size = img_encoding_size
         if additional_lin:
             num_lin_features += additional_lin
+            self.additional_lin = additional_lin
         self.num_lin_features = num_lin_features
         self.num_channels = num_channels
         self.share_encoding = share_encoding
@@ -242,6 +243,9 @@ class MultiModalModel(BaseModel):
 
         # currently, the size of lin_encoding is [batch_size, num_lin_features]
         if self.include_lin:
+            if self.additional_lin:
+                add_lin_input = add_lin_input
+                lin_input = torch.cat((lin_input, add_lin_input), dim=2)
             lin_encoding = self.lin_encoder(lin_input)
             if len(lin_encoding.shape) == 2:
                 lin_encoding = lin_encoding.unsqueeze(1)

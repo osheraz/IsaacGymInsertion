@@ -173,7 +173,7 @@ class TactileDataset(Dataset):
         # Extract a sequence of specific length from the array
         return data[key][start_idx:start_idx + self.sequence_length]
 
-    def __getitem__(self, idx):
+    def __getitem__(self, idx, diff_tac=True):
         file_idx, start_idx = self.indices_per_trajectory[idx]
         file_path = self.all_folders[file_idx]
 
@@ -200,6 +200,11 @@ class TactileDataset(Dataset):
         # tactile_input = data_seq["tactile"]
         tactile_input = [np.load(os.path.join(tactile_folder, f'tactile_{i}.npz'))['tactile'] for i in
                          range(start_idx, start_idx + self.sequence_length)]
+
+        if diff_tac:
+            first_tactile = np.load(os.path.join(tactile_folder, f'tactile_1.npz'))['tactile']
+            tactile_input = [(tac - first_tactile) + 1e-6 for tac in tactile_input]
+
         tactile_input = self.to_torch(np.stack(tactile_input))
 
         if self.tactile_transform is not None:

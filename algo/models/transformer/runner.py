@@ -93,7 +93,9 @@ class Runner:
                                      img_encoding_size=self.cfg.model.transformer.img_encoding_size,
                                      mha_num_attention_heads=self.cfg.model.transformer.num_heads,
                                      mha_num_attention_layers=self.cfg.model.transformer.num_layers,
-                                     mha_ff_dim_factor=self.cfg.model.transformer.dim_factor, )
+                                     mha_ff_dim_factor=self.cfg.model.transformer.dim_factor,
+                                     additional_lin=self.cfg.model.tact.output_size,
+                                     include_img=True, include_lin=True, include_tactile=False)
 
         if self.cfg.model.transformer.load_tact:
             self.tact = MultiModalModel(context_size=self.sequence_length,
@@ -144,7 +146,7 @@ class Runner:
             mask = mask.to(self.device).unsqueeze(-1)
 
             if self.tact is not None:
-                d_pos_rpy = self.tact(tac_input, img_input, lin_input)
+                d_pos_rpy = self.tact(tac_input, img_input, lin_input).unsqueeze(1)
 
             out = self.model(tac_input, img_input, lin_input, d_pos_rpy)
             loss_action = torch.zeros(1, device=self.device)
@@ -244,7 +246,7 @@ class Runner:
                 mask = mask.to(self.device).unsqueeze(-1)
 
                 if self.tact is not None:
-                    d_pos_rpy = self.tact(tac_input, img_input, lin_input)
+                    d_pos_rpy = self.tact(tac_input, img_input, lin_input).unsqueeze(1)
 
                 out = self.model(tac_input, img_input, lin_input, d_pos_rpy)
 
@@ -308,7 +310,7 @@ class Runner:
         img_input = img_input[0].cpu().detach().numpy()
         linear_features = lin_input[0].cpu().detach().numpy()
         if d_pos_rpy is not None:
-            d_pos_rpy = d_pos_rpy[0].cpu().detach().numpy()
+            d_pos_rpy = d_pos_rpy[0, -1, :].cpu().detach().numpy()
         predicted_output = out[0].cpu().detach().numpy()
         true_label = latent[0, -1, :].cpu().detach().numpy()
         # Plotting
@@ -323,13 +325,21 @@ class Runner:
             finger_sequence = np.hstack(finger_sequence)
             concat_images.append(finger_sequence)
 
-        ax1.imshow(np.vstack(concat_images))  # Adjust based on image normalization
+        ax1.imshow(np.vstack(concat_images) + 0.5)  # Adjust based on image normalization
         ax1.set_title('Input Tactile Sequence')
 
         # Adding subplot for linear features (adjust as needed)
-        ax2 = fig.add_subplot(2, 2, 2)
-        ax2.plot(d_pos_rpy[:, :], 'ok', label='hand_joints')  # Assuming the rest are actions
-        ax2.set_title('Linear input')
+        # ax2 = fig.add_subplot(2, 2, 2)
+        # ax2.plot(d_pos_rpy[:, :], 'ok', label='hand_joints')  # Assuming the rest are actions
+        # ax2.set_title('Linear input')
+        # ax2.legend()
+
+        ax2 = fig.add_subplot(2, 2, 4)
+        width = 0.35
+        indices = np.arange(len(d_pos_rpy))
+        ax2.bar(indices - width / 2, d_pos_rpy, width, label='d_pos_rpy')
+        # ax2.bar(indices + width / 2, true_label, width, label='True Label')
+        ax2.set_title('Model Output vs. True Label')
         ax2.legend()
 
         # Check if img_input has more than one timestep
@@ -388,7 +398,7 @@ class Runner:
             lin_input = lin_input.to(self.device)
 
             if self.tact is not None:
-                d_pos_rpy = self.tact(tac_input, img_input, lin_input)
+                d_pos_rpy = self.tact(tac_input, img_input, lin_input).unsqueeze(1)
 
             out = self.model(tac_input, img_input, lin_input, d_pos_rpy)
 

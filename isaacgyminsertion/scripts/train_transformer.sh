@@ -18,6 +18,7 @@ data_folder=/home/${USER}/tactile_insertion/datastore_${SEED}_${CACHE}
 output_dir=outputs/${CACHE}
 path_norm=${data_folder}/normalization.pkl
 student_ckpt_path=/home/${USER}/tactile_insertion/datastore_${SEED}_${CACHE}/tac+eef/checkpoints/model_2.pt
+tact_path=/home/${USER}/osher3_workspace/src/isaacgym/python/IsaacGymInsertion/isaacgyminsertion/outputs/${CACHE}/tact/checkpoints/model_last.pt
 
 CUDA_VISIBLE_DEVICES=${GPUS} \
 python trainV2.py task=FactoryTaskInsertionTactile headless=${HEADLESS} seed=${SEED} \
@@ -26,6 +27,8 @@ offline_training=True \
 test=False \
 offline_training_w_env=False \
 offline_train.train.student_ckpt_path="${student_ckpt_path}" \
+offline_train.model.transformer.load_tact=True \
+offline_train.model.transformer.tact_path="${tact_path}" \
 task.env.tactile=True \
 task.env.numStates=7 \
 task.env.numObservations=18 \
