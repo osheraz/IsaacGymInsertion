@@ -135,7 +135,7 @@ class Runner:
         d_pos_rpy = None
         progress_bar = tqdm(enumerate(dl), total=len(dl), desc="Training Progress", unit="batch")
 
-        for i, (tac_input, img_input, lin_input, contacts, obs_hist, latent, action, mask) in progress_bar:
+        for i, (tac_input, img_input, lin_input, pos_rpy, obs_hist, latent, action, mask) in progress_bar:
             self.model.train()
 
             tac_input = tac_input.to(self.device)  # [B T F W H C]
@@ -209,6 +209,7 @@ class Runner:
                                 lin_input,
                                 out,
                                 latent,
+                                pos_rpy,
                                 d_pos_rpy,
                                 'train')
 
@@ -235,7 +236,7 @@ class Runner:
             val_loss = []
             latent_loss_list, action_loss_list = [], []
             d_pos_rpy = None
-            for i, (tac_input, img_input, lin_input, contacts, obs_hist, latent, action, mask) in tqdm(enumerate(dl)):
+            for i, (tac_input, img_input, lin_input, pos_rpy, obs_hist, latent, action, mask) in tqdm(enumerate(dl)):
 
                 tac_input = tac_input.to(self.device)
                 img_input = img_input.to(self.device)
@@ -297,12 +298,13 @@ class Runner:
                             lin_input,
                             out,
                             latent,
+                            pos_rpy,
                             d_pos_rpy,
                             'valid')
 
         return np.mean(val_loss)
 
-    def log_output(self, tac_input, img_input, lin_input, out, latent, d_pos_rpy=None, session='train'):
+    def log_output(self, tac_input, img_input, lin_input, out, latent, pos_rpy, d_pos_rpy=None, session='train'):
         # Selecting the first example from the batch for demonstration
         # tac_input [B T F W H C]
 
@@ -311,6 +313,8 @@ class Runner:
         linear_features = lin_input[0].cpu().detach().numpy()
         if d_pos_rpy is not None:
             d_pos_rpy = d_pos_rpy[0, -1, :].cpu().detach().numpy()
+        pos_rpy = pos_rpy[0].cpu().detach().numpy()
+
         predicted_output = out[0].cpu().detach().numpy()
         true_label = latent[0, -1, :].cpu().detach().numpy()
         # Plotting
@@ -338,7 +342,7 @@ class Runner:
         width = 0.35
         indices = np.arange(len(d_pos_rpy))
         ax2.bar(indices - width / 2, d_pos_rpy, width, label='d_pos_rpy')
-        # ax2.bar(indices + width / 2, true_label, width, label='True Label')
+        ax2.bar(indices + width / 2, pos_rpy, width, label='True Label')
         ax2.set_title('Model Output vs. True Label')
         ax2.legend()
 
