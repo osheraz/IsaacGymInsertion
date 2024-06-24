@@ -3,7 +3,7 @@ from algo.models.transformer.data import DataNormalizer
 
 from torch.utils.data import DataLoader
 from torch import optim
-from algo.models.transformer.tact import TacT
+from algo.models.transformer.tact import MultiModalModel as TacT
 from algo.models.transformer.utils import define_transforms, ImageTransform, TactileTransform
 
 from tqdm import tqdm
@@ -28,7 +28,6 @@ class Runner:
     def __init__(self,
                  cfg=None,
                  agent=None,
-                 action_regularization=False,
                  num_fingers=3,
 
                  ):
@@ -84,14 +83,14 @@ class Runner:
         self.model = TacT(context_size=self.sequence_length,
                           num_channels=self.tactile_channel,
                           num_lin_features=self.cfg.model.linear.input_size,
-                          num_outputs=self.cfg.model.transformer.output_size,
+                          num_outputs=self.cfg.model.tact.output_size,
                           tactile_encoder="efficientnet-b0",
                           img_encoder="efficientnet-b0",
-                          tactile_encoding_size=self.cfg.model.transformer.tactile_encoding_size,
-                          img_encoding_size=self.cfg.model.transformer.img_encoding_size,
-                          mha_num_attention_heads=self.cfg.model.transformer.num_heads,
-                          mha_num_attention_layers=self.cfg.model.transformer.num_layers,
-                          mha_ff_dim_factor=self.cfg.model.transformer.dim_factor,
+                          tactile_encoding_size=self.cfg.model.tact.tactile_encoding_size,
+                          img_encoding_size=self.cfg.model.tact.img_encoding_size,
+                          mha_num_attention_heads=self.cfg.model.tact.num_heads,
+                          mha_num_attention_layers=self.cfg.model.tact.num_layers,
+                          mha_ff_dim_factor=self.cfg.model.tact.dim_factor,
                           include_img=False, include_lin=False, include_tactile=True)
 
         self.loss_fn_mean = torch.nn.MSELoss(reduction='mean')

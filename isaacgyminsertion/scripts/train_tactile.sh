@@ -25,7 +25,6 @@ task.env.numEnvs=${NUM_ENVS} \
 train_tactile=True \
 task.env.tactile=True \
 task.env.numStates=7 \
-offline_train.model.transformer.output_size=6 \
 task.env.numObservations=18 \
 task.tactile.tacto.width=64 \
 task.tactile.tacto.height=64 \

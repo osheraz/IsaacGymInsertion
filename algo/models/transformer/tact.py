@@ -89,7 +89,7 @@ class BaseModel(nn.Module):
         raise NotImplementedError
 
 
-class TacT(BaseModel):
+class MultiModalModel(BaseModel):
     def __init__(
             self,
             context_size: int = 3,
@@ -108,7 +108,7 @@ class TacT(BaseModel):
             include_lin: Optional[bool] = True,
             include_img: Optional[bool] = True,
             include_tactile: Optional[bool] = True,
-
+            additional_lin: Optional[int] = 0,
     ) -> None:
         """
         Modified ViT class: uses a Transformer-based architecture to encode (current and past) visual observations
@@ -119,10 +119,12 @@ class TacT(BaseModel):
             tactile_encoder (str): name of the EfficientNet architecture to use for encoding observations (ex. "efficientnet-b0")
             tactile_encoding_size (int): size of the encoding of the observation images
         """
-        super(TacT, self).__init__(context_size, num_outputs)
+        super(MultiModalModel, self).__init__(context_size, num_outputs)
 
         self.tactile_encoding_size = tactile_encoding_size
         self.img_encoding_size = img_encoding_size
+        if additional_lin:
+            num_lin_features += additional_lin
         self.num_lin_features = num_lin_features
         self.num_channels = num_channels
         self.share_encoding = share_encoding
@@ -183,10 +185,8 @@ class TacT(BaseModel):
         )
 
     def forward(
-            self, obs_tactile: torch.tensor,
-            obs_img: torch.tensor,
-            lin_input: torch.tensor = None,
-            contacts: torch.tensor = None) -> Tuple[torch.Tensor, torch.Tensor]:
+            self, obs_tactile: torch.tensor, obs_img: torch.tensor,
+            lin_input: torch.tensor = None, add_lin_input: torch.tensor = None) -> torch.Tensor:
 
         tokens_list = []
 
@@ -243,7 +243,6 @@ class TacT(BaseModel):
         # currently, the size of lin_encoding is [batch_size, num_lin_features]
         if self.include_lin:
             lin_encoding = self.lin_encoder(lin_input)
-
             if len(lin_encoding.shape) == 2:
                 lin_encoding = lin_encoding.unsqueeze(1)
             # currently, the size of goal_encoding is [batch_size, 1, self.goal_encoding_size]
@@ -258,6 +257,7 @@ class TacT(BaseModel):
         latent_pred = self.latent_predictor(final_repr)
 
         return latent_pred
+
 
 # Utils for Group Norm
 def replace_bn_with_gn(

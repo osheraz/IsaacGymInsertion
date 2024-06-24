@@ -75,7 +75,6 @@ model:
     in_channels: 1
     # TODO: add model layers here
 
-  # tactile+obs encoder
   transformer:
     full_sequence: False # if True, it makes sequence length 500
     sequence_length: 1 # ${...task.rl.max_episode_length}
@@ -83,6 +82,18 @@ model:
     num_heads: 4
     dim_factor: 4
     output_size: 8
+    tactile_encoding_size: 128
+    img_encoding_size: 128
+    load_tact: True
+    tact_path: "/home/roblab20/tactile_insertion/path_to_model/"
+
+  tact:
+    full_sequence: False # if True, it makes sequence length 500
+    sequence_length: 1 # ${...task.rl.max_episode_length}
+    num_layers: 4
+    num_heads: 4
+    dim_factor: 4
+    output_size: 6
     tactile_encoding_size: 128
     img_encoding_size: 128
 

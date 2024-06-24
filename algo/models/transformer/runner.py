@@ -1,7 +1,7 @@
 from algo.models.transformer.data import TactileDataset, DataNormalizer
 from torch.utils.data import DataLoader
 from torch import optim
-from algo.models.transformer.tact import TacT
+from algo.models.transformer.tact import MultiModalModel
 from algo.models.transformer.utils import define_transforms, ImageTransform, TactileTransform
 
 from tqdm import tqdm
@@ -24,7 +24,6 @@ from matplotlib import pyplot as plt
 from scipy.spatial.transform import Rotation
 
 
-
 class Runner:
     def __init__(self,
                  cfg=None,
@@ -42,6 +41,7 @@ class Runner:
         self.ppo_step = agent.play_latent_step if ((agent is not None) and (action_regularization)) else None
         self.optimizer = None
         self.scheduler = None
+        self.tact = None
         self.full_sequence = self.cfg.model.transformer.full_sequence
         self.sequence_length = 500 if self.full_sequence else self.cfg.model.transformer.sequence_length
         self.device = 'cuda:0'
@@ -83,17 +83,28 @@ class Runner:
             self.cfg.tactile_masking_prob
         )
 
-        self.model = TacT(context_size=self.sequence_length,
-                          num_channels=self.tactile_channel,
-                          num_lin_features=self.cfg.model.linear.input_size,
-                          num_outputs=self.cfg.model.transformer.output_size,
-                          tactile_encoder="efficientnet-b0",
-                          img_encoder="efficientnet-b0",
-                          tactile_encoding_size=self.cfg.model.transformer.tactile_encoding_size,
-                          img_encoding_size=self.cfg.model.transformer.img_encoding_size,
-                          mha_num_attention_heads=self.cfg.model.transformer.num_heads,
-                          mha_num_attention_layers=self.cfg.model.transformer.num_layers,
-                          mha_ff_dim_factor=self.cfg.model.transformer.dim_factor, )
+        self.model = MultiModalModel(context_size=self.sequence_length,
+                                     num_channels=self.tactile_channel,
+                                     num_lin_features=self.cfg.model.linear.input_size,
+                                     num_outputs=self.cfg.model.transformer.output_size,
+                                     tactile_encoder="efficientnet-b0",
+                                     img_encoder="efficientnet-b0",
+                                     tactile_encoding_size=self.cfg.model.transformer.tactile_encoding_size,
+                                     img_encoding_size=self.cfg.model.transformer.img_encoding_size,
+                                     mha_num_attention_heads=self.cfg.model.transformer.num_heads,
+                                     mha_num_attention_layers=self.cfg.model.transformer.num_layers,
+                                     mha_ff_dim_factor=self.cfg.model.transformer.dim_factor, )
+
+        if self.cfg.model.transformer.load_tact:
+            self.tact = MultiModalModel(context_size=self.sequence_length,
+                                        num_channels=self.tactile_channel,
+                                        num_outputs=self.cfg.model.tact.output_size,
+                                        tactile_encoder="efficientnet-b0",
+                                        tactile_encoding_size=self.cfg.model.tact.tactile_encoding_size,
+                                        mha_num_attention_heads=self.cfg.model.tact.num_heads,
+                                        mha_num_attention_layers=self.cfg.model.tact.num_layers,
+                                        mha_ff_dim_factor=self.cfg.model.tact.dim_factor,
+                                        include_img=False, include_lin=False, include_tactile=True)
 
         self.src_mask = torch.triu(torch.ones(self.sequence_length, self.sequence_length), diagonal=1).bool().to(
             self.device)
@@ -119,7 +130,7 @@ class Runner:
         self.model.train()
         train_loss, val_loss = [], []
         latent_loss_list, action_loss_list = [], []
-
+        d_pos_rpy = None
         progress_bar = tqdm(enumerate(dl), total=len(dl), desc="Training Progress", unit="batch")
 
         for i, (tac_input, img_input, lin_input, contacts, obs_hist, latent, action, mask) in progress_bar:
@@ -132,7 +143,10 @@ class Runner:
             action = action.to(self.device)
             mask = mask.to(self.device).unsqueeze(-1)
 
-            out = self.model(tac_input, img_input, lin_input)
+            if self.tact is not None:
+                d_pos_rpy = self.tact(tac_input, img_input, lin_input)
+
+            out = self.model(tac_input, img_input, lin_input, d_pos_rpy)
             loss_action = torch.zeros(1, device=self.device)
 
             if self.full_sequence:
@@ -188,7 +202,12 @@ class Runner:
                 action_loss_list = []
 
             if (i + 1) % eval_every == 0:
-                self.log_output(tac_input.clone(), img_input.clone(), lin_input.clone(), out.clone(), latent.clone(),
+                self.log_output(tac_input,
+                                img_input,
+                                lin_input,
+                                out,
+                                latent,
+                                d_pos_rpy,
                                 'train')
 
                 val_loss = self.validate(val_dl)
@@ -200,11 +219,11 @@ class Runner:
                 self.model.train()
 
             # if (i + 1) % test_every == 0:
-                # try:
-                #     self.test()
-                # except Exception as e:
-                #     print(f'Error during test: {e}')
-                # self.model.train()
+            # try:
+            #     self.test()
+            # except Exception as e:
+            #     print(f'Error during test: {e}')
+            # self.model.train()
 
         return val_loss
 
@@ -213,6 +232,7 @@ class Runner:
         with torch.no_grad():
             val_loss = []
             latent_loss_list, action_loss_list = [], []
+            d_pos_rpy = None
             for i, (tac_input, img_input, lin_input, contacts, obs_hist, latent, action, mask) in tqdm(enumerate(dl)):
 
                 tac_input = tac_input.to(self.device)
@@ -222,9 +242,11 @@ class Runner:
                 latent = latent.to(self.device)
                 action = action.to(self.device)
                 mask = mask.to(self.device).unsqueeze(-1)
-                # contacts = contacts.to(self.device)
 
-                out = self.model(tac_input, img_input, lin_input)
+                if self.tact is not None:
+                    d_pos_rpy = self.tact(tac_input, img_input, lin_input)
+
+                out = self.model(tac_input, img_input, lin_input, d_pos_rpy)
 
                 loss_action = torch.zeros(1, device=self.device)
 
@@ -268,22 +290,25 @@ class Runner:
             #         'val/action_loss': np.mean(action_loss_list)
             #     })
 
-            self.log_output(tac_input.clone(),
-                            img_input.clone(),
-                            lin_input.clone(),
-                            out.clone(),
-                            latent.clone(),
+            self.log_output(tac_input,
+                            img_input,
+                            lin_input,
+                            out,
+                            latent,
+                            d_pos_rpy,
                             'valid')
 
         return np.mean(val_loss)
 
-    def log_output(self, tac_input, img_input, lin_input, out, latent, session='train'):
+    def log_output(self, tac_input, img_input, lin_input, out, latent, d_pos_rpy=None, session='train'):
         # Selecting the first example from the batch for demonstration
         # tac_input [B T F W H C]
 
         image_sequence = tac_input[0].cpu().detach().numpy()
         img_input = img_input[0].cpu().detach().numpy()
-        # linear_features = lin_input[0].cpu().detach().numpy()
+        linear_features = lin_input[0].cpu().detach().numpy()
+        if d_pos_rpy is not None:
+            d_pos_rpy = d_pos_rpy[0].cpu().detach().numpy()
         predicted_output = out[0].cpu().detach().numpy()
         true_label = latent[0, -1, :].cpu().detach().numpy()
         # Plotting
@@ -302,10 +327,10 @@ class Runner:
         ax1.set_title('Input Tactile Sequence')
 
         # Adding subplot for linear features (adjust as needed)
-        # ax2 = fig.add_subplot(2, 2, 2)
-        # ax2.plot(linear_features[:, :], 'ok', label='hand_joints')  # Assuming the rest are actions
-        # ax2.set_title('Linear input')
-        # ax2.legend()
+        ax2 = fig.add_subplot(2, 2, 2)
+        ax2.plot(d_pos_rpy[:, :], 'ok', label='hand_joints')  # Assuming the rest are actions
+        ax2.set_title('Linear input')
+        ax2.legend()
 
         # Check if img_input has more than one timestep
         if img_input.ndim == 4 and img_input.shape[0] > 1:
@@ -348,6 +373,7 @@ class Runner:
 
     def get_latent(self, tac_input, img_input, lin_input):
         self.model.eval()
+        d_pos_rpy = None
         with torch.no_grad():
             # [envs, seq_len, ... ] => [envs*seq_len, C, W, H]
 
@@ -361,7 +387,10 @@ class Runner:
 
             lin_input = lin_input.to(self.device)
 
-            out = self.model(tac_input, img_input, lin_input)
+            if self.tact is not None:
+                d_pos_rpy = self.tact(tac_input, img_input, lin_input)
+
+            out = self.model(tac_input, img_input, lin_input, d_pos_rpy)
 
         return out
 
@@ -378,14 +407,22 @@ class Runner:
                 print('something went wrong, there are no test trials')
 
     def load_model(self, model_path, device='cuda:0'):
-        print('Load TacT model')
+        print('Loading Multimodal model')
         self.model.load_state_dict(torch.load(model_path))
         # self.model.eval()
         self.device = device
         self.model.to(device)
 
-    def run_train(self, file_list, save_folder, epochs=100, train_test_split=0.9, train_batch_size=32, val_batch_size=32,
-             learning_rate=1e-4, device='cuda:0', print_every=50, eval_every=250, test_every=500):
+    def load_tact_model(self, tact_path, device='cuda:0'):
+        print('Loading Tactile model')
+        self.tact.load_state_dict(torch.load(tact_path))
+        # self.model.eval()
+        self.device = device
+        self.tact.to(device)
+
+    def run_train(self, file_list, save_folder, epochs=100, train_test_split=0.9, train_batch_size=32,
+                  val_batch_size=32,
+                  learning_rate=1e-4, device='cuda:0', print_every=50, eval_every=250, test_every=500):
 
         random.shuffle(file_list)
         print('# trajectories:', len(file_list))
@@ -490,6 +527,10 @@ class Runner:
         if self.cfg.train.load_checkpoint:
             model_path = self.cfg.train.student_ckpt_path
             self.load_model(model_path, device=device)
+
+        if self.cfg.model.transformer.load_tact:
+            tact_path = self.cfg.model.transformer.tact_path
+            self.load_tact_model(tact_path, device=device)
 
         train_config = {
             "epochs": self.cfg.train.epochs,
