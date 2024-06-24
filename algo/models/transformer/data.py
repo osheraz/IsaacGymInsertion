@@ -287,7 +287,7 @@ class TactileDataset(Dataset):
 class TactileTestDataset(Dataset):
     def __init__(self, files, sequence_length=500,
                  normalize_dict=None,
-                 stride=25,
+                 stride=20,
                  img_transform=None,
                  tactile_transform=None,
                  tactile_channel=3,
@@ -319,8 +319,8 @@ class TactileTestDataset(Dataset):
             done_idx = done.nonzero()[0][-1]
             total_len = done_idx
             if total_len >= self.sequence_length:
-                num_subsequences = (total_len - self.sequence_length - 1) // self.stride + 1
-                self.indices_per_trajectory.extend([(file_idx, 1 + i * self.stride) for i in range(num_subsequences)])
+                num_subsequences = (total_len - self.sequence_length - self.stride) // self.stride + 1
+                self.indices_per_trajectory.extend([(file_idx,  self.stride + i * self.stride) for i in range(num_subsequences)])
         print('Total sub trajectories:', len(self.indices_per_trajectory))
 
     def __len__(self):
@@ -347,7 +347,7 @@ class TactileTestDataset(Dataset):
                          range(start_idx, start_idx + self.sequence_length)]
         if diff_tac:
             first_tactile = np.load(os.path.join(tactile_folder, f'tactile_1.npz'))['tactile']
-            tactile_input = [tac - first_tactile for tac in tactile_input]
+            tactile_input = [(tac - first_tactile) + 1e-6 for tac in tactile_input]
 
         tactile_input = self.to_torch(np.stack(tactile_input))
 
@@ -359,9 +359,13 @@ class TactileTestDataset(Dataset):
             tactile_input = self.tactile_transform(tactile_input_reshaped)
             tactile_input = tactile_input.view(1, 3, self.tactile_channel, *tactile_input.shape[-2:])
 
-        img_input = np.stack([np.load(os.path.join(img_folder, f'img_{i}.npz'))['img'] for i in
-                              range(start_idx, start_idx + self.sequence_length)])
+        img_input = [np.load(os.path.join(img_folder, f'img_{i}.npz'))['img'] for i in
+                              range(start_idx, start_idx + self.sequence_length)]
+        if diff_tac:
+            first_img = np.load(os.path.join(img_folder, f'img_1.npz'))['img']
+            img_input = [(im - first_img) + 1e-6 for im in img_input]
 
+        img_input = np.stack(img_input)
         if self.img_transform is not None:
             img_input = self.img_transform(self.to_torch(img_input))
 

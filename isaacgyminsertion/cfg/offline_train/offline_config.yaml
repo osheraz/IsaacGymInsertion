@@ -12,8 +12,8 @@ img_patch_size: 16
 img_crop_w: 12
 img_crop_h: 24
 
-tactile_type: 'gray' # rgb
-tactile_gaussian_noise: 0.01
+tactile_type: 'rgb' # rgb
+tactile_gaussian_noise: 0.001
 tactile_masking_prob: 0.0
 tactile_patch_size: 16
 tactile_color_jitter: False
@@ -28,7 +28,7 @@ train:
   epochs: 100
   train_batch_size: 16
   val_batch_size: 16
-  learning_rate: 5e-4
+  learning_rate: 1e-4
   train_test_split: 0.98
   action_regularization: False # propagate gradients for action loss
   action_regularization_weight: 0.0 # weight for action regularization

@@ -220,7 +220,7 @@ class Runner:
             finger_sequence = np.hstack(finger_sequence)
             concat_images.append(finger_sequence)
 
-        ax1.imshow(np.vstack(concat_images))  # Adjust based on image normalization
+        ax1.imshow(np.vstack(concat_images) + 0.5)  # Adjust based on image normalization
         ax1.set_title('Input Tactile Sequence')
 
         # Adding subplot for linear features (adjust as needed)
@@ -320,7 +320,7 @@ class Runner:
         self.device = device
         self.model = self.model.to(self.device)
 
-        self.optimizer = optim.AdamW(self.model.parameters(), lr=learning_rate)
+        self.optimizer = optim.AdamW(self.model.parameters(), lr=learning_rate, weight_decay=1e-6)
 
         if self.cfg.train.scheduler == 'reduce':
             self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(self.optimizer,
