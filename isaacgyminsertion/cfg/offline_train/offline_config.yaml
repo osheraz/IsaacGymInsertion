@@ -45,8 +45,8 @@ train:
   action_scale: 1.0
 
   # Train params for on screen logging
-  print_every: 200
-  eval_every: 200
+  print_every: 400
+  eval_every: 400
   test_every: 500
   test_episodes: 4000 # per epoch batch
 

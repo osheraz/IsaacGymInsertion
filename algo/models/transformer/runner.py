@@ -313,7 +313,7 @@ class Runner:
         linear_features = lin_input[0].cpu().detach().numpy()
         if d_pos_rpy is not None:
             d_pos_rpy = d_pos_rpy[0, -1, :].cpu().detach().numpy()
-        pos_rpy = pos_rpy[0].cpu().detach().numpy()
+        pos_rpy = pos_rpy[0, -1, :].cpu().detach().numpy()
 
         predicted_output = out[0].cpu().detach().numpy()
         true_label = latent[0, -1, :].cpu().detach().numpy()
@@ -338,7 +338,7 @@ class Runner:
         # ax2.set_title('Linear input')
         # ax2.legend()
 
-        ax2 = fig.add_subplot(2, 2, 4)
+        ax2 = fig.add_subplot(2, 2, 2)
         width = 0.35
         indices = np.arange(len(d_pos_rpy))
         ax2.bar(indices - width / 2, d_pos_rpy, width, label='d_pos_rpy')
