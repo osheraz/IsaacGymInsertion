@@ -24,6 +24,7 @@ import torch
 import torch.distributed as dist
 import numpy as np
 
+from algo.models.transformer.data import get_last_sequence
 from algo.ppo.experience import ExperienceBuffer, DataLogger
 from algo.ppo.experience import VectorizedExperienceBuffer
 # from algo.models.models import ActorCritic
@@ -729,7 +730,7 @@ class PPO(object):
 
             concatenated_img = np.concatenate(imgs, axis=1)  # Concatenate images horizontally
 
-            d = depth[0, t] .cpu().detach().numpy()
+            d = depth[0, t].cpu().detach().numpy()
             d = np.transpose(d, (1, 2, 0))
             cv2.imshow('Depth Sequence', d + 0.5)  # Display the concatenated image
 
@@ -737,88 +738,39 @@ class PPO(object):
 
             cv2.waitKey(1)
 
-    def get_last_student_obs(self, data, normalize_dict):
-        # cnn input
+    def get_last_student_obs(self, data, normalize_dict, diff_tac=True):
         self.to_torch = lambda x: torch.from_numpy(x).float()
+        sequence_length = self.full_config.offline_train.model.transformer.sequence_length
 
         # E, T, F, C, W, H = tactile.shape
-        # tactile = tactile.reshape(E, T, F*C, W, H)
         tactile = data["tactile"]
         img = data["img"]
-
-        # plug_pos_error = data["plug_pos_error"]
-        # plug_quat_error = data["plug_quat_error"]
-
         eef_pos = data['eef_pos']
-        # hand_joints = data['hand_joints']
-
-        # ori = data["plug_hand_quat"].cpu().numpy().squeeze(0) + 1e-8
-        # object_ori = Rotation.from_quat(ori).as_euler('xyz')
-        # object_ori = np.hstack((np.sin(object_ori[:, 0:1]), np.cos(object_ori[:, 0:1]),
-        #                    np.sin(object_ori[:, 1:2]), np.cos(object_ori[:, 1:2]),))
-        # object_ori = self.to_torch(object_ori).unsqueeze(0)
-
-        action = data["action"]
         noisy_socket_pos = data["noisy_socket_pos"][:, :, :3]
+
+        # Adjust tactile and lin_input based on the sequence length and progress buffer
+        tactile_adjusted = get_last_sequence(tactile, self.env.progress_buf, sequence_length)
+        if diff_tac:
+            tactile_adjusted = tactile_adjusted - tactile[:, 1, ...] + 1e-6
+
+        img = get_last_sequence(img, self.env.progress_buf, sequence_length)
+        eef_pos = get_last_sequence(eef_pos, self.env.progress_buf, sequence_length)
+        noisy_socket_pos = get_last_sequence(noisy_socket_pos, self.env.progress_buf, sequence_length)
 
         if normalize_dict is not None:
             eef_pos = (eef_pos - normalize_dict["mean"]["eef_pos"]) / normalize_dict["std"]["eef_pos"]
-            noisy_socket_pos = (noisy_socket_pos - normalize_dict["mean"]["noisy_socket_pos"][:3]) / normalize_dict["std"]["noisy_socket_pos"][:3]
-            # plug_pos_error = (plug_pos_error - normalize_dict["mean"]["plug_pos_error"]) / normalize_dict["std"][
-            #     "plug_pos_error"]
-            # plug_quat_error = (plug_quat_error - normalize_dict["mean"]["plug_quat_error"]) / normalize_dict["std"][
-            #     "plug_quat_error"]
+            noisy_socket_pos = (noisy_socket_pos - normalize_dict["mean"]["noisy_socket_pos"][:3]) / \
+                               normalize_dict["std"]["noisy_socket_pos"][:3]
 
         lin_input = torch.cat([
             eef_pos,
             noisy_socket_pos,
-            # action
         ], dim=-1)
 
         if self.full_config.offline_train.model.transformer.full_sequence:
             return tactile, img, lin_input
 
-        sequence_length = self.full_config.offline_train.model.transformer.sequence_length
-        # Adjust tactile and lin_input based on the sequence length and progress buffer
-        tactile_adjusted = self.get_last_sequence(tactile, self.env.progress_buf, sequence_length)
-        img_adjusted = self.get_last_sequence(img, self.env.progress_buf, sequence_length)
-        lin_input_adjusted = self.get_last_sequence(lin_input, self.env.progress_buf, sequence_length)
-        # ori_adjusted = self.get_last_sequence(object_ori, self.env.progress_buf, sequence_length)
-
-        return tactile_adjusted, img_adjusted, lin_input_adjusted
-
-    def get_last_sequence(self, input_tensor, progress_buf, sequence_length):
-        """
-        Adjusts the input tensor to the desired sequence length by padding with zeros if the
-        actual sequence length is less than the desired, or by selecting the most recent
-        entries up to the desired sequence length if the actual sequence is longer.
-
-        Parameters:
-        - input_tensor: A tensor with shape [E, T, ...], where E is the number of environments,
-          and T is the temporal dimension.
-        - progress_buf: A tensor or an array indicating the actual sequence length for each environment.
-        - sequence_length: The desired sequence length.
-
-        Returns:
-        - A tensor adjusted to [E, sequence_length, ...].
-        """
-
-        E, _, *other_dims = input_tensor.shape
-        adjusted_tensor = torch.zeros(E, sequence_length, *other_dims, device=input_tensor.device,
-                                      dtype=input_tensor.dtype)
-
-        for env_id in range(E):
-
-            actual_seq_len = progress_buf[env_id]
-            if actual_seq_len < sequence_length:
-                # If the sequence is shorter, pad the beginning with zeros
-                start_pad = sequence_length - actual_seq_len
-                adjusted_tensor[env_id, start_pad:, :] = input_tensor[env_id, :actual_seq_len, :]
-            else:
-                # If the sequence is longer, take the most recent `sequence_length` entries
-                adjusted_tensor[env_id, :, :] = input_tensor[env_id, actual_seq_len - sequence_length:actual_seq_len, :]
-
-        return adjusted_tensor
+        return tactile_adjusted, img, lin_input
 
 
 def policy_kl(p0_mu, p0_sigma, p1_mu, p1_sigma):

@@ -123,7 +123,7 @@ randomize:
 
     grasp_plug_noise: 0.005 # xyz noise on plug position during grasp
     above_socket_noise: [0.03, 0.03, 0.001]
-    plug_rot_noise: [0.3, 0.3, 0.0] # 0.03, 0.03
+    plug_rot_noise: [0.03, 0.03, 0.0] # 0.03, 0.03
 
 rl:
 

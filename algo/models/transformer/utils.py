@@ -5,6 +5,7 @@ import os
 from torch import nn
 from torchvision import transforms
 
+
 class ImageTransform:
     def __init__(self, image_transform=None):
         self.image_transform = image_transform
@@ -23,7 +24,7 @@ class ImageTransform:
 class TactileTransform:
     def __init__(self, tactile_transform=None):
         self.tactile_transform = tactile_transform
-        self.out_channel = 1
+        self.out_channel = 3
         self.to_gray = transforms.Compose([
             transforms.ToPILImage(),
             transforms.Grayscale(num_output_channels=1),
@@ -51,6 +52,7 @@ class TactileTransform:
                                    *tac_input.shape[2:])  # Reshape back to [B, T, Num_cam, C, new_H, new_W]
 
         return tac_input
+
 
 def set_seed(seed, torch_deterministic=False, rank=0):
     """ set seed across modules """

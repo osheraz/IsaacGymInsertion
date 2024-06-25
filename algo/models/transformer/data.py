@@ -17,6 +17,39 @@ import random
 import cv2
 
 
+def get_last_sequence(input_tensor, progress_buf, sequence_length):
+    """
+    Adjusts the input tensor to the desired sequence length by padding with zeros if the
+    actual sequence length is less than the desired, or by selecting the most recent
+    entries up to the desired sequence length if the actual sequence is longer.
+
+    Parameters:
+    - input_tensor: A tensor with shape [E, T, ...], where E is the number of environments,
+      and T is the temporal dimension.
+    - progress_buf: A tensor or an array indicating the actual sequence length for each environment.
+    - sequence_length: The desired sequence length.
+
+    Returns:
+    - A tensor adjusted to [E, sequence_length, ...].
+    """
+
+    E, _, *other_dims = input_tensor.shape
+    adjusted_tensor = torch.zeros(E, sequence_length, *other_dims, device=input_tensor.device,
+                                  dtype=input_tensor.dtype)
+
+    for env_id in range(E):
+
+        actual_seq_len = progress_buf[env_id]
+        if actual_seq_len < sequence_length:
+            # If the sequence is shorter, pad the beginning with zeros
+            start_pad = sequence_length - actual_seq_len
+            adjusted_tensor[env_id, start_pad:, :] = input_tensor[env_id, :actual_seq_len, :]
+        else:
+            # If the sequence is longer, take the most recent `sequence_length` entries
+            adjusted_tensor[env_id, :, :] = input_tensor[env_id, actual_seq_len - sequence_length:actual_seq_len, :]
+
+    return adjusted_tensor
+
 class DataNormalizer:
     def __init__(self, cfg, file_list):
         self.cfg = cfg
@@ -222,7 +255,7 @@ class TactileDataset(Dataset):
 
         eef_pos = data_seq["eef_pos"]
         action = data_seq["action"]
-        contacts = data_seq["action"]  # contact
+        # contacts = data_seq["action"]  # contact
         obs_hist = data_seq["obs_hist"]
         noisy_socket_pos = data_seq["noisy_socket_pos"][:, :3]
         euler = Rotation.from_quat(data_seq["plug_hand_quat"]).as_euler('xyz')
