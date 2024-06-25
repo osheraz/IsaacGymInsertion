@@ -23,7 +23,7 @@ import argparse
 from typing import Optional
 from termcolor import cprint
 from isaacgyminsertion.utils.utils import set_np_formatting, set_seed
-from algo.models.transformer.deploy import HardwarePlayer
+from algo.models.transformer.deploy_tact import HardwarePlayer
 
 import warnings
 
@@ -44,23 +44,16 @@ def find_config_folder(base_folder):
 
 
 # Enter here the model you want to test (base folder)
-teacher = 'gt_test'
-student = 'student'
-cfg_name = find_config_folder(f"./outputs/{teacher}/")
+# teacher = 'gt_test'
+# tact = 'tact'
+# cfg_name = find_config_folder(f"./outputs/{teacher}/")
 
+cfg_path = '/home/roblab20/osher3_workspace/src/isaacgym/python/IsaacGymInsertion/isaacgyminsertion/outputs/gt_test/tact/'
 
-@hydra.main(config_name=f"config_{cfg_name[1]}", config_path=f"./outputs/{teacher}/{cfg_name[0]}")
+@hydra.main(config_name="config", config_path="./cfg")
 def main(config: DictConfig):
-    config.checkpoint = f'outputs/{teacher}/stage1_nn/last.pth'
-    config.offline_train.train.student_ckpt_path = f'outputs/{teacher}/{student}/checkpoints/model_last.pt'
-    config.offline_train.train.normalize_file = f'outputs/{teacher}/{student}/normalization.pkl'
-
-    if config.checkpoint:
-        config.checkpoint = to_absolute_path(config.checkpoint)
-    if config.offline_train.train.student_ckpt_path:
-        config.offline_train.train.student_ckpt_path = to_absolute_path(config.offline_train.train.student_ckpt_path)
-    if config.offline_train.train.normalize_file:
-        config.offline_train.train.normalize_file = to_absolute_path(config.offline_train.train.normalize_file)
+    config.offline_train.model.transformer.tact_path = to_absolute_path(f'outputs/gt_test/tact/checkpoints/model_last.pt')
+    config.offline_train.train.normalize_file = to_absolute_path(f'outputs/gt_test/tact/normalization.pkl')
 
     set_np_formatting()
     config.seed = set_seed(config.seed)

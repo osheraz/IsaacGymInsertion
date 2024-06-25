@@ -168,7 +168,6 @@ class Runner:
             val_loss = []
             latent_loss_list, action_loss_list = [], []
             for i, (tac_input, img_input, lin_input, label) in tqdm(enumerate(dl)):
-
                 tac_input = tac_input.to(self.device)
                 img_input = img_input.to(self.device)
                 lin_input = lin_input.to(self.device)
@@ -177,12 +176,9 @@ class Runner:
 
                 out = self.model(tac_input, img_input, lin_input)
 
-
-
                 loss = self.loss_fn_mean(out[:, :], label[:, -1, :])
 
                 val_loss.append(loss.item())
-
 
             # self._wandb_log({
             #     'val/loss': np.mean(val_loss),
@@ -267,21 +263,26 @@ class Runner:
         # Clean up plt to free memory
         plt.close(fig)
 
+    def get_latent(self, tac_input=None, img_input=None, lin_input=None):
+        # Check if all inputs are None
+        if tac_input is None and img_input is None and lin_input is None:
+            raise ValueError("All inputs cannot be None")
 
-    def get_latent(self, tac_input, img_input, lin_input):
         self.model.eval()
+
         with torch.no_grad():
-            # [envs, seq_len, ... ] => [envs*seq_len, C, W, H]
+            if tac_input is not None:
+                tac_input = tac_input.to(self.device)
+                if self.tactile_transform is not None:
+                    tac_input = TactileTransform(self.tactile_eval_transform)(tac_input).to(self.device)
 
-            tac_input = tac_input.to(self.device)
-            if self.tactile_transform is not None:
-                tac_input = TactileTransform(self.tactile_transform)(tac_input).to(self.device)
+            if img_input is not None:
+                img_input = img_input.to(self.device)
+                if self.img_transform is not None:
+                    img_input = ImageTransform(self.img_eval_transform)(img_input).to(self.device)
 
-            img_input = img_input.to(self.device)
-            if self.img_transform is not None:
-                img_input = ImageTransform(self.img_transform)(img_input).to(self.device)
-
-            lin_input = lin_input.to(self.device)
+            if lin_input is not None:
+                lin_input = lin_input.to(self.device)
 
             out = self.model(tac_input, img_input, lin_input)
 
@@ -306,8 +307,9 @@ class Runner:
         self.device = device
         self.model.to(device)
 
-    def run_train(self, file_list, save_folder, epochs=100, train_test_split=0.9, train_batch_size=32, val_batch_size=32,
-             learning_rate=1e-4, device='cuda:0', print_every=50, eval_every=250, test_every=500):
+    def run_train(self, file_list, save_folder, epochs=100, train_test_split=0.9, train_batch_size=32,
+                  val_batch_size=32,
+                  learning_rate=1e-4, device='cuda:0', print_every=50, eval_every=250, test_every=500):
 
         random.shuffle(file_list)
         print('# trajectories:', len(file_list))

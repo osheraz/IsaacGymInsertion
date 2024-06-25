@@ -85,7 +85,7 @@ model:
     tactile_encoding_size: 128
     img_encoding_size: 128
     load_tact: False
-    tact_path: "/home/roblab20/tactile_insertion/path_to_model/"
+    tact_path: "/home/roblab20/osher3_workspace/src/isaacgym/python/IsaacGymInsertion/isaacgyminsertion/outputs/gt_test/tact/checkpoints/model_last.pt"
 
   tact:
     full_sequence: False # if True, it makes sequence length 500
