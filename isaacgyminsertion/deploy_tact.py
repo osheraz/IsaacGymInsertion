@@ -47,8 +47,7 @@ def find_config_folder(base_folder):
 # teacher = 'gt_test'
 # tact = 'tact'
 # cfg_name = find_config_folder(f"./outputs/{teacher}/")
-
-cfg_path = '/home/roblab20/osher3_workspace/src/isaacgym/python/IsaacGymInsertion/isaacgyminsertion/outputs/gt_test/tact/'
+# cfg_path = '/home/roblab20/osher3_workspace/src/isaacgym/python/IsaacGymInsertion/isaacgyminsertion/outputs/gt_test/tact/'
 
 @hydra.main(config_name="config", config_path="./cfg")
 def main(config: DictConfig):

@@ -301,7 +301,7 @@ class Runner:
                 print('something went wrong, there are no test trials')
 
     def load_model(self, model_path, device='cuda:0'):
-        print('Load TacT model')
+        print('Loading tact model:', model_path)
         self.model.load_state_dict(torch.load(model_path))
         # self.model.eval()
         self.device = device

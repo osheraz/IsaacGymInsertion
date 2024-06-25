@@ -37,7 +37,9 @@ def to_torch(x, dtype=torch.float, device='cuda:0', requires_grad=False):
 
 class HardwarePlayer:
     def __init__(self, full_config):
-
+        self.f_right = None
+        self.f_left = None
+        self.f_bottom = None
         self.num_envs = 1
         self.deploy_config = full_config.deploy
         self.full_config = full_config
@@ -166,8 +168,8 @@ class HardwarePlayer:
 
         # tactile buffers
         self.num_channels = self.cfg_tactile.encoder.num_channels
-        self.width = self.cfg_tactile.encoder.width // 2 if self.cfg_tactile.half_image else self.cfg_tactile.encoder.width
-        self.height = self.cfg_tactile.encoder.height
+        self.width = self.tact_config.tactile_width // 2 if self.cfg_tactile.half_image else self.tact_config.tactile_width
+        self.height = self.tact_config.tactile_height
 
         # tactile buffers
         self.tactile_imgs = torch.zeros(

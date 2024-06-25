@@ -664,15 +664,13 @@ class PPO(object):
             if offline_test:
                 if get_latent is not None:
                     # Making data for the latent prediction from student model
-                    tactile, img, lin_input = self.get_last_student_obs(self.data_logger.data_logger.get_data(),
-                                                                        stud_norm_dict)
-                    self.display_obs(tactile, img)
+                    tactile, img, lin_input, gt_pos_rpy = self.get_last_student_obs(self.data_logger.data_logger.get_data(),
+                                                                                     stud_norm_dict)
                     # getting the latent data from the student model
                     if self.full_config.offline_train.model.transformer.full_sequence:
-                        latent = get_latent(tactile, img, lin_input)[self.env_ids,
-                                 self.env.progress_buf.view(-1, 1), :].squeeze(1)
+                        latent = get_latent(tactile, img, lin_input)[self.env_ids, self.env.progress_buf.view(-1, 1), :].squeeze(1)
                     else:
-                        latent = get_latent(tactile, img, lin_input)
+                        latent, out_pos_rpy = get_latent(tactile, img, lin_input)
 
                     # Adding the latent to the obs_dict (if present test with student, else test with teacher)
                     # If we predict the error directly with the model
@@ -707,6 +705,7 @@ class PPO(object):
         return num_success, total_dones
 
     def display_obs(self, tactile, depth):
+
         for t in range(tactile.shape[1]):  # Iterate through the sequence of images
             # Extract the images for all fingers at time step 't' and adjust dimensions for display.
             fingers_images = tactile[0, t]  # This selects all fingers at time 't', shape is [F, C, W, H]
@@ -734,12 +733,11 @@ class PPO(object):
             d = np.transpose(d, (1, 2, 0))
             cv2.imshow('Depth Sequence', d + 0.5)  # Display the concatenated image
 
-            cv2.imshow('Tactile Sequence', concatenated_img)  # Display the concatenated image
+            cv2.imshow('Tactile Sequence', concatenated_img + 0.5)  # Display the concatenated image
 
             cv2.waitKey(1)
 
-    def get_last_student_obs(self, data, normalize_dict, diff_tac=True):
-        self.to_torch = lambda x: torch.from_numpy(x).float()
+    def get_last_student_obs(self, data, normalize_dict, diff=True, diff_tac=True, display=True):
         sequence_length = self.full_config.offline_train.model.transformer.sequence_length
 
         # E, T, F, C, W, H = tactile.shape
@@ -747,13 +745,14 @@ class PPO(object):
         img = data["img"]
         eef_pos = data['eef_pos']
         noisy_socket_pos = data["noisy_socket_pos"][:, :, :3]
+        plug_hand_quat = data["plug_hand_quat"].cpu().detach().numpy()
+        euler = Rotation.from_quat(plug_hand_quat).as_euler('xyz')
+        plug_hand_pos = data["plug_hand_pos"]
 
-        # Adjust tactile and lin_input based on the sequence length and progress buffer
-        tactile_adjusted = get_last_sequence(tactile, self.env.progress_buf, sequence_length)
-        if diff_tac:
-            tactile_adjusted = tactile_adjusted - tactile[:, 1, ...] + 1e-6
+        if diff:
+            euler = euler - euler[0, :]
+            plug_hand_pos = plug_hand_pos - plug_hand_pos[0, :]
 
-        img = get_last_sequence(img, self.env.progress_buf, sequence_length)
         eef_pos = get_last_sequence(eef_pos, self.env.progress_buf, sequence_length)
         noisy_socket_pos = get_last_sequence(noisy_socket_pos, self.env.progress_buf, sequence_length)
 
@@ -761,16 +760,39 @@ class PPO(object):
             eef_pos = (eef_pos - normalize_dict["mean"]["eef_pos"]) / normalize_dict["std"]["eef_pos"]
             noisy_socket_pos = (noisy_socket_pos - normalize_dict["mean"]["noisy_socket_pos"][:3]) / \
                                normalize_dict["std"]["noisy_socket_pos"][:3]
+            if not diff:
+                euler = (euler - normalize_dict["mean"]["plug_hand_euler"]) / normalize_dict["std"][
+                    "plug_hand_euler"]
+                plug_hand_pos = (plug_hand_pos - normalize_dict["mean"]["plug_hand_pos"]) / \
+                                normalize_dict["std"]["plug_hand_pos"]
+
+            else:
+                euler = (euler - normalize_dict["mean"]["plug_hand_diff_euler"]) / normalize_dict["std"][
+                    "plug_hand_diff_euler"]
+                plug_hand_pos = (plug_hand_pos - normalize_dict["mean"]["plug_hand_pos_diff"]) / \
+                                normalize_dict["std"]["plug_hand_pos_diff"]
+
+        obj_pos_rpy = np.hstack((plug_hand_pos, euler))
 
         lin_input = torch.cat([
             eef_pos,
             noisy_socket_pos,
         ], dim=-1)
 
-        if self.full_config.offline_train.model.transformer.full_sequence:
-            return tactile, img, lin_input
+        # Adjust tactile and lin_input based on the sequence length and progress buffer
+        tactile_adjusted = get_last_sequence(tactile, self.env.progress_buf, sequence_length)
+        if diff_tac:
+            tactile_adjusted = tactile_adjusted - tactile[:, 1, ...] + 1e-6
 
-        return tactile_adjusted, img, lin_input
+        img = get_last_sequence(img, self.env.progress_buf, sequence_length)
+
+        if display:
+            self.display_obs(tactile_adjusted, img)
+
+        if self.full_config.offline_train.model.transformer.full_sequence:
+            return tactile, img, lin_input, obj_pos_rpy
+
+        return tactile_adjusted, img, lin_input, obj_pos_rpy
 
 
 def policy_kl(p0_mu, p0_sigma, p1_mu, p1_sigma):

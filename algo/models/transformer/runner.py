@@ -389,7 +389,6 @@ class Runner:
         self.model.eval()
         d_pos_rpy = None
         with torch.no_grad():
-            # [envs, seq_len, ... ] => [envs*seq_len, C, W, H]
 
             tac_input = tac_input.to(self.device)
             if self.tactile_transform is not None:
@@ -406,7 +405,7 @@ class Runner:
 
             out = self.model(tac_input, img_input, lin_input, d_pos_rpy)
 
-        return out
+        return out, d_pos_rpy
 
     def test(self):
         with torch.inference_mode():
@@ -421,14 +420,14 @@ class Runner:
                 print('something went wrong, there are no test trials')
 
     def load_model(self, model_path, device='cuda:0'):
-        print('Loading Multimodal model')
+        print('Loading Multimodal model:', model_path)
         self.model.load_state_dict(torch.load(model_path))
         # self.model.eval()
         self.device = device
         self.model.to(device)
 
     def load_tact_model(self, tact_path, device='cuda:0'):
-        print('Loading Tactile model')
+        print('Loading Tactile model:', tact_path)
         self.tact.load_state_dict(torch.load(tact_path))
         # self.model.eval()
         self.device = device
