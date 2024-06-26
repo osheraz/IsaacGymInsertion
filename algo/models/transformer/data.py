@@ -38,10 +38,10 @@ def get_last_sequence(input_tensor, progress_buf, sequence_length):
                                   dtype=input_tensor.dtype)
 
     for env_id in range(E):
-
         actual_seq_len = progress_buf[env_id]
         if actual_seq_len < sequence_length:
             # If the sequence is shorter, pad the beginning with zeros
+            actual_seq_len = progress_buf[env_id] + 1
             start_pad = sequence_length - actual_seq_len
             adjusted_tensor[env_id, start_pad:, :] = input_tensor[env_id, :actual_seq_len, :]
         else:
@@ -49,6 +49,7 @@ def get_last_sequence(input_tensor, progress_buf, sequence_length):
             adjusted_tensor[env_id, :, :] = input_tensor[env_id, actual_seq_len - sequence_length:actual_seq_len, :]
 
     return adjusted_tensor
+
 
 class DataNormalizer:
     def __init__(self, cfg, file_list):
@@ -352,7 +353,8 @@ class TactileTestDataset(Dataset):
             total_len = done_idx
             if total_len >= self.sequence_length:
                 num_subsequences = (total_len - self.sequence_length - self.stride) // self.stride + 1
-                self.indices_per_trajectory.extend([(file_idx,  self.stride + i * self.stride) for i in range(num_subsequences)])
+                self.indices_per_trajectory.extend(
+                    [(file_idx, self.stride + i * self.stride) for i in range(num_subsequences)])
         print('Total sub trajectories:', len(self.indices_per_trajectory))
 
     def __len__(self):
@@ -392,7 +394,7 @@ class TactileTestDataset(Dataset):
             tactile_input = tactile_input.view(1, 3, self.tactile_channel, *tactile_input.shape[-2:])
 
         img_input = [np.load(os.path.join(img_folder, f'img_{i}.npz'))['img'] for i in
-                              range(start_idx, start_idx + self.sequence_length)]
+                     range(start_idx, start_idx + self.sequence_length)]
         if diff_tac:
             first_img = np.load(os.path.join(img_folder, f'img_1.npz'))['img']
             img_input = [(im - first_img) + 1e-6 for im in img_input]

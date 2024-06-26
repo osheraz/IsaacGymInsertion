@@ -392,7 +392,7 @@ class Runner:
 
             tac_input = tac_input.to(self.device)
             if self.tactile_transform is not None:
-                tac_input = TactileTransform(self.tactile_eval_transform)(tac_input).to(self.device)
+                tac_input = TactileTransform(self.tactile_transform)(tac_input).to(self.device)
 
             img_input = img_input.to(self.device)
             if self.img_transform is not None:

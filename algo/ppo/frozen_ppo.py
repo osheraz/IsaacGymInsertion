@@ -23,7 +23,10 @@ import imageio
 import torch
 import torch.distributed as dist
 import numpy as np
+import matplotlib
 
+matplotlib.use('TkAgg')
+import matplotlib.pyplot as plt
 from algo.models.transformer.data import get_last_sequence
 from algo.ppo.experience import ExperienceBuffer, DataLogger
 from algo.ppo.experience import VectorizedExperienceBuffer
@@ -631,13 +634,13 @@ class PPO(object):
 
         # convert normalizing measures to torch and add to device
         if normalize_dict is not None:
-            stud_norm_dict = {
+            stats = {
                 'mean': {},
                 'std': {}
             }
             for key in normalize_dict['mean'].keys():
-                stud_norm_dict['mean'][key] = torch.tensor(normalize_dict['mean'][key], device=self.device)
-                stud_norm_dict['std'][key] = torch.tensor(normalize_dict['std'][key], device=self.device)
+                stats['mean'][key] = torch.tensor(normalize_dict['mean'][key], device=self.device)
+                stats['std'][key] = torch.tensor(normalize_dict['std'][key], device=self.device)
 
         # reset all envs
         self.obs = self.env.reset()
@@ -664,22 +667,31 @@ class PPO(object):
             if offline_test:
                 if get_latent is not None:
                     # Making data for the latent prediction from student model
-                    tactile, img, lin_input, gt_pos_rpy = self.get_last_student_obs(self.data_logger.data_logger.get_data(),
-                                                                                     stud_norm_dict)
+                    tactile, img, lin_input, gt_pos_rpy = self.get_last_student_obs(
+                        self.data_logger.data_logger.get_data(), stats)
                     # getting the latent data from the student model
                     if self.full_config.offline_train.model.transformer.full_sequence:
-                        latent = get_latent(tactile, img, lin_input)[self.env_ids, self.env.progress_buf.view(-1, 1), :].squeeze(1)
+                        latent = get_latent(tactile, img, lin_input)[self.env_ids, self.env.progress_buf.view(-1, 1),
+                                 :].squeeze(1)
                     else:
                         latent, out_pos_rpy = get_latent(tactile, img, lin_input)
 
-                    # Adding the latent to the obs_dict (if present test with student, else test with teacher)
-                    # If we predict the error directly with the model
-                    # original_plug_pos_error = (latent[:,:3] * stud_norm_dict["std"]["plug_pos_error"]) + \
-                    #                            stud_norm_dict["mean"]["plug_pos_error"]
-                    # original_plug_quat_error = (latent[:, 3:] * stud_norm_dict["std"]["plug_quat_error"]) + \
-                    #                            stud_norm_dict["mean"]["plug_quat_error"]
-                    #
-                    # latent = torch.cat((original_plug_pos_error, original_plug_quat_error), dim=1)
+                    if True:
+                        stats_mean = torch.cat([stats["mean"]["plug_hand_pos_diff"],
+                                                stats['mean']['plug_hand_diff_euler']], dim=-1)
+                        stats_std = torch.cat([stats["std"]["plug_hand_pos_diff"],
+                                               stats['std']['plug_hand_diff_euler']], dim=-1)
+
+                        out_pos_rpy = out_pos_rpy[0] * stats_std + stats_mean
+                        gt_pos_rpy = gt_pos_rpy[0] * stats_std + stats_mean
+
+                        plt.scatter(list(range(out_pos_rpy.shape[-1])),
+                                    out_pos_rpy.clone().detach().cpu().numpy()[0, :],
+                                    color='r')
+                        plt.scatter(list(range(gt_pos_rpy.shape[-1])), gt_pos_rpy.clone().cpu().numpy()[0, :],
+                                    color='b')
+                        plt.pause(0.0001)
+                        plt.cla()
 
             obs_dict = {
                 'obs': self.running_mean_std(self.obs['obs']),
@@ -704,6 +716,71 @@ class PPO(object):
         print('[LastTest] success rate:', num_success / total_dones)
         return num_success, total_dones
 
+    def get_last_student_obs(self, data, normalize_dict, diff=True, diff_tac=True, display=True):
+        sequence_length = self.full_config.offline_train.model.transformer.sequence_length
+
+        # E, T, F, C, W, H = tactile.shape
+        tactile = data["tactile"]
+        img = data["img"]
+        eef_pos = data['eef_pos']
+        noisy_socket_pos = data["noisy_socket_pos"][:, :, :3]
+        plug_hand_quat = data["plug_hand_quat"]
+        plug_hand_pos = data["plug_hand_pos"]
+
+        plug_hand_quat = get_last_sequence(plug_hand_quat, self.env.progress_buf, sequence_length)
+        plug_hand_pos = get_last_sequence(plug_hand_pos, self.env.progress_buf, sequence_length)
+        eef_pos = get_last_sequence(eef_pos, self.env.progress_buf, sequence_length)
+        noisy_socket_pos = get_last_sequence(noisy_socket_pos, self.env.progress_buf, sequence_length)
+        plug_hand_quat = plug_hand_quat.squeeze(0).cpu().detach().numpy()
+
+        euler = torch.tensor(Rotation.from_quat(plug_hand_quat + 1e-6).as_euler('xyz'), device=self.device).unsqueeze(0)
+
+        if diff:
+            first_plug_hand_quat = data["plug_hand_quat"][:, 0, :].cpu().detach().numpy() + 1e-6
+            first_euler = torch.tensor(Rotation.from_quat(first_plug_hand_quat).as_euler('xyz'),
+                                       device=self.device).unsqueeze(0)
+            euler = euler - first_euler
+            plug_hand_pos = plug_hand_pos - data["plug_hand_pos"][:, 0, :]
+
+        if normalize_dict is not None:
+            eef_pos = (eef_pos - normalize_dict["mean"]["eef_pos"]) / normalize_dict["std"]["eef_pos"]
+            noisy_socket_pos = (noisy_socket_pos - normalize_dict["mean"]["noisy_socket_pos"][:3]) / \
+                               normalize_dict["std"]["noisy_socket_pos"][:3]
+            if not diff:
+                euler = (euler - normalize_dict["mean"]["plug_hand_euler"]) / normalize_dict["std"][
+                    "plug_hand_euler"]
+                plug_hand_pos = (plug_hand_pos - normalize_dict["mean"]["plug_hand_pos"]) / \
+                                normalize_dict["std"]["plug_hand_pos"]
+
+            else:
+                euler = (euler - normalize_dict["mean"]["plug_hand_diff_euler"]) / normalize_dict["std"][
+                    "plug_hand_diff_euler"]
+                plug_hand_pos = (plug_hand_pos - normalize_dict["mean"]["plug_hand_pos_diff"]) / \
+                                normalize_dict["std"]["plug_hand_pos_diff"]
+
+        obj_pos_rpy = torch.cat([plug_hand_pos, euler], dim=-1).to(self.device)
+
+        lin_input = torch.cat([
+            eef_pos,
+            noisy_socket_pos,
+        ], dim=-1)
+
+        # Adjust tactile and lin_input based on the sequence length and progress buffer
+        tactile_adjusted = get_last_sequence(tactile, self.env.progress_buf, sequence_length)
+
+        if diff_tac:
+            tactile_adjusted = tactile_adjusted - tactile[:, 1, ...] + 1e-6
+
+        img = get_last_sequence(img, self.env.progress_buf, sequence_length)
+
+        if display:
+            self.display_obs(tactile_adjusted, img)
+
+        if self.full_config.offline_train.model.transformer.full_sequence:
+            return tactile, img, lin_input, obj_pos_rpy
+
+        return tactile_adjusted, img, lin_input, obj_pos_rpy
+
     def display_obs(self, tactile, depth):
 
         for t in range(tactile.shape[1]):  # Iterate through the sequence of images
@@ -722,7 +799,7 @@ class PPO(object):
                 img = img.numpy()  # Convert to numpy
                 img = np.transpose(img, (1, 2, 0))  # Reorder dimensions to [W, H, C]
                 # Scale the image data to [0, 255] and convert to uint8
-                img = (img * 255).astype(np.uint8)
+                # img = (img * 255).astype(np.uint8)
                 if img.shape[2] == 1:  # If grayscale, convert to BGR for consistent OpenCV display
                     img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
                 imgs.append(img)
@@ -736,63 +813,6 @@ class PPO(object):
             cv2.imshow('Tactile Sequence', concatenated_img + 0.5)  # Display the concatenated image
 
             cv2.waitKey(1)
-
-    def get_last_student_obs(self, data, normalize_dict, diff=True, diff_tac=True, display=True):
-        sequence_length = self.full_config.offline_train.model.transformer.sequence_length
-
-        # E, T, F, C, W, H = tactile.shape
-        tactile = data["tactile"]
-        img = data["img"]
-        eef_pos = data['eef_pos']
-        noisy_socket_pos = data["noisy_socket_pos"][:, :, :3]
-        plug_hand_quat = data["plug_hand_quat"].cpu().detach().numpy()
-        euler = Rotation.from_quat(plug_hand_quat).as_euler('xyz')
-        plug_hand_pos = data["plug_hand_pos"]
-
-        if diff:
-            euler = euler - euler[0, :]
-            plug_hand_pos = plug_hand_pos - plug_hand_pos[0, :]
-
-        eef_pos = get_last_sequence(eef_pos, self.env.progress_buf, sequence_length)
-        noisy_socket_pos = get_last_sequence(noisy_socket_pos, self.env.progress_buf, sequence_length)
-
-        if normalize_dict is not None:
-            eef_pos = (eef_pos - normalize_dict["mean"]["eef_pos"]) / normalize_dict["std"]["eef_pos"]
-            noisy_socket_pos = (noisy_socket_pos - normalize_dict["mean"]["noisy_socket_pos"][:3]) / \
-                               normalize_dict["std"]["noisy_socket_pos"][:3]
-            if not diff:
-                euler = (euler - normalize_dict["mean"]["plug_hand_euler"]) / normalize_dict["std"][
-                    "plug_hand_euler"]
-                plug_hand_pos = (plug_hand_pos - normalize_dict["mean"]["plug_hand_pos"]) / \
-                                normalize_dict["std"]["plug_hand_pos"]
-
-            else:
-                euler = (euler - normalize_dict["mean"]["plug_hand_diff_euler"]) / normalize_dict["std"][
-                    "plug_hand_diff_euler"]
-                plug_hand_pos = (plug_hand_pos - normalize_dict["mean"]["plug_hand_pos_diff"]) / \
-                                normalize_dict["std"]["plug_hand_pos_diff"]
-
-        obj_pos_rpy = np.hstack((plug_hand_pos, euler))
-
-        lin_input = torch.cat([
-            eef_pos,
-            noisy_socket_pos,
-        ], dim=-1)
-
-        # Adjust tactile and lin_input based on the sequence length and progress buffer
-        tactile_adjusted = get_last_sequence(tactile, self.env.progress_buf, sequence_length)
-        if diff_tac:
-            tactile_adjusted = tactile_adjusted - tactile[:, 1, ...] + 1e-6
-
-        img = get_last_sequence(img, self.env.progress_buf, sequence_length)
-
-        if display:
-            self.display_obs(tactile_adjusted, img)
-
-        if self.full_config.offline_train.model.transformer.full_sequence:
-            return tactile, img, lin_input, obj_pos_rpy
-
-        return tactile_adjusted, img, lin_input, obj_pos_rpy
 
 
 def policy_kl(p0_mu, p0_sigma, p1_mu, p1_sigma):
