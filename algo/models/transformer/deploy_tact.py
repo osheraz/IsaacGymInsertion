@@ -358,8 +358,7 @@ class HardwarePlayer:
         # some-like taking a new socket pose measurement
         self._update_socket_pose()
 
-        obs = torch.cat([eef_pos,
-                         ], dim=-1)
+        obs = torch.cat([eef_pos], dim=-1)
 
         obs_dict = {'obs': obs}
 

@@ -222,7 +222,7 @@ class ExperimentEnv:
             print(e)
             return False
 
-    def set_random_init_error(self, true_socket_pose):
+    def set_random_init_error(self, true_socket_pose, with_tracker=True):
 
         # TODO change motion to be without moveit
         if torch.is_tensor(true_socket_pose):
@@ -233,9 +233,16 @@ class ExperimentEnv:
             ee_pose = self.arm.move_manipulator.get_cartesian_pose_moveit()
             ee_pos = [ee_pose.position.x, ee_pose.position.y, ee_pose.position.z]
             ee_quat = [ee_pose.orientation.x, ee_pose.orientation.y, ee_pose.orientation.z, ee_pose.orientation.w]
-            obj_pos = self.tracker.get_obj_pos()  # tracker already gives the bottom of the object
-            obj_height = 0  # 0.07
-            init_delta_height = 0.05
+
+            if with_tracker:
+                obj_pos = self.tracker.get_obj_pos()  # tracker already gives the bottom of the object
+                obj_height = 0  # 0.07
+                init_delta_height = 0.05
+            else:
+                obj_pos = true_socket_pose
+                obj_pos[-1] += 0.015
+                obj_height = 0  # 0.07
+                init_delta_height = 0.05
 
             if not np.isnan(np.sum(obj_pos)):
 

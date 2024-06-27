@@ -726,13 +726,13 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                             f"images/dim/{self.count:05}.png",
                         )
 
-                    if False and i == 0:
+                    if True and i == 0:
                         img = self.process_depth_image(im)
                         img = img.cpu().numpy()
                         # img = np.uint8(img.cpu().numpy() * 255)
                         # cv2.imshow("images2", img)
-                        cv2.imshow("Depth Image", np.expand_dims(img,0).transpose(1, 2, 0) + 0.5)
-                        cv2.waitKey(1)
+                        cv2.imshow("Depth Image", np.expand_dims(img, 0).transpose(1, 2, 0) + 0.5)
+                        cv2.waitKey(0)
 
             self.gym.end_access_image_tensors(self.sim)
 
