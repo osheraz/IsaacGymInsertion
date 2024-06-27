@@ -385,7 +385,7 @@ class Runner:
         # Clean up plt to free memory
         plt.close(fig)
 
-    def get_latent(self, tac_input, img_input, lin_input):
+    def get_latent(self, tac_input, img_input, lin_input, gt_label=None):
         self.model.eval()
         d_pos_rpy = None
         with torch.no_grad():
@@ -403,7 +403,10 @@ class Runner:
             if self.tact is not None:
                 d_pos_rpy = self.tact(tac_input, img_input, lin_input).unsqueeze(1)
 
-            out = self.model(tac_input, img_input, lin_input, d_pos_rpy)
+            if gt_label is not None:
+                out = self.model(tac_input, img_input, lin_input, gt_label.to(dtype=torch.float32))
+            else:
+                out = self.model(tac_input, img_input, lin_input, d_pos_rpy)
 
         return out, d_pos_rpy
 

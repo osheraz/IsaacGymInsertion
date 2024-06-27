@@ -674,9 +674,10 @@ class PPO(object):
                         latent = get_latent(tactile, img, lin_input)[self.env_ids, self.env.progress_buf.view(-1, 1),
                                  :].squeeze(1)
                     else:
-                        latent, out_pos_rpy = get_latent(tactile, img, lin_input)
+                        # TODO: !!!!!!!!!!!@@@@@@@@@@@@@!
+                        latent, out_pos_rpy = get_latent(tactile, img, lin_input, gt_pos_rpy)
 
-                    if True:
+                    if False:
                         stats_mean = torch.cat([stats["mean"]["plug_hand_pos_diff"],
                                                 stats['mean']['plug_hand_diff_euler']], dim=-1)
                         stats_std = torch.cat([stats["std"]["plug_hand_pos_diff"],
