@@ -10,20 +10,13 @@
 # https://github.com/NVIDIA-Omniverse/IsaacGymEnvs/
 # --------------------------------------------------------
 
-import os
-from datetime import datetime
 # noinspection PyUnresolvedReferences
 import isaacgym
 import hydra
-from omegaconf import DictConfig, OmegaConf
-from hydra.utils import to_absolute_path
+from omegaconf import DictConfig
 
-import re
-import argparse
-from typing import Optional
-from termcolor import cprint
 from isaacgyminsertion.utils.utils import set_np_formatting, set_seed
-from algo.models.diffusion.deploy import HardwarePlayer
+from algo.deploy.deploy_diffusion import HardwarePlayer
 import warnings
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)

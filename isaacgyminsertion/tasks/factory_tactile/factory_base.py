@@ -45,9 +45,8 @@ from isaacgym import gymapi, gymtorch
 from isaacgyminsertion.utils import torch_jit_utils as torch_utils
 from isaacgyminsertion.tasks.base.vec_task import VecTask
 import isaacgyminsertion.tasks.factory_tactile.factory_control as fc
-from isaacgyminsertion.tasks.factory_tactile.factory_schema_class_base import FactoryABCBase
-from isaacgyminsertion.tasks.factory_tactile.factory_schema_config_base import FactorySchemaConfigBase
-from matplotlib import pyplot as plt
+from isaacgyminsertion.tasks.factory_tactile.schema.factory_schema_class_base import FactoryABCBase
+from isaacgyminsertion.tasks.factory_tactile.schema.factory_schema_config_base import FactorySchemaConfigBase
 from isaacgyminsertion.tasks.factory_tactile.factory_utils import quat2R
 
 

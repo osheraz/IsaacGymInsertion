@@ -23,7 +23,7 @@ import argparse
 from typing import Optional
 from termcolor import cprint
 from isaacgyminsertion.utils.utils import set_np_formatting, set_seed
-from algo.deploy.deploy import HardwarePlayer
+from algo.deploy.deploy_s1 import HardwarePlayer
 import warnings
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)

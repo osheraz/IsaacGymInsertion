@@ -35,28 +35,21 @@ Only the environment is provided; training a successful RL policy is an open res
 """
 
 import hydra
-import numpy as np
 import omegaconf
-import time
 import os
-from scipy.spatial.transform import Rotation as R
-
-import torch
 
 os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
 
 from isaacgym import gymapi, gymtorch
 from isaacgyminsertion.tasks.factory_tactile.factory_env_insertion import FactoryEnvInsertionTactile
-from isaacgyminsertion.tasks.factory_tactile.factory_schema_class_task import FactoryABCTask
-from isaacgyminsertion.tasks.factory_tactile.factory_schema_config_task import FactorySchemaConfigTask
+from isaacgyminsertion.tasks.factory_tactile.schema.factory_schema_class_task import FactoryABCTask
+from isaacgyminsertion.tasks.factory_tactile.schema.factory_schema_config_task import FactorySchemaConfigTask
 import isaacgyminsertion.tasks.factory_tactile.factory_control as fc
 from isaacgyminsertion.tasks.factory_tactile.factory_utils import *
 from isaacgyminsertion.utils import torch_jit_utils
 import cv2
 from isaacgyminsertion.allsight.tacto_allsight_wrapper.util.util import tensor2im
-from matplotlib import pyplot as plt
 from torchvision.utils import save_image
-from torchvision import transforms
 
 torch.set_printoptions(sci_mode=False)
 
@@ -464,7 +457,6 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             self.reset_idx(env_ids)
 
         self.actions = actions.clone().to(self.device)  # shape = (num_envs, num_actions); values = [-1, 1]
-
         # test actions for whenever we want to see some axis motion
         # self.actions[:, :] = 0.
         # self.actions[:, 0] = 1.
@@ -494,6 +486,8 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                 self.rb_forces[force_indices, self.object_rb_handles, :].shape, device=self.device) * self.object_rb_masses * self.force_scale
 
             self.gym.apply_rigid_body_force_tensors(self.sim, gymtorch.unwrap_tensor(self.rb_forces), None, gymapi.LOCAL_SPACE)
+
+        # self.pertube_plug()
 
     def post_physics_step(self):
         """Step buffers. Refresh tensors. Compute observations and reward."""
@@ -726,13 +720,21 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                             f"images/dim/{self.count:05}.png",
                         )
 
-                    if True and i == 0:
+                    if False and i == 0:
                         img = self.process_depth_image(im)
                         img = img.cpu().numpy()
+                        # trans_im = im.detach().clone()
+                        # trans_im = -1 / trans_im
+                        # trans_im = trans_im / torch.max(trans_im)
+                        # print(trans_im.max(), trans_im.min())
+                        # cv2.imshow("test Image", np.expand_dims(trans_im.cpu().detach().numpy(), 0).transpose(1, 2, 0))
+
                         # img = np.uint8(img.cpu().numpy() * 255)
                         # cv2.imshow("images2", img)
                         cv2.imshow("Depth Image", np.expand_dims(img, 0).transpose(1, 2, 0) + 0.5)
-                        cv2.waitKey(0)
+                        print(img.max(), img.min())
+
+                        cv2.waitKey(1)
 
             self.gym.end_access_image_tensors(self.sim)
 
@@ -1144,6 +1146,62 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         # Simulate one step to apply changes
         # self._simulate_and_refresh()
+
+    def pertube_plug(self):
+
+        # Parameters
+        import math
+        num_steps = 10  # Number of incremental steps
+        total_rotation_degrees = -30  # Total rotation in degrees
+        increment_degrees = total_rotation_degrees / num_steps  # Rotation per step
+        increment_radians = math.radians(increment_degrees)  # Convert to radians
+
+        # Generate initial random noise (if needed, adjust accordingly)
+        plug_noise_xy = 2 * (torch.rand((self.num_envs, 2), dtype=torch.float32, device=self.device) - 0.5)  # [-1, 1]
+        plug_noise_xy = plug_noise_xy @ torch.diag(torch.tensor([0.006, 0.006], device=self.device))
+
+        # Initial quaternion (assuming identity quaternion for simplicity)
+        # You may need to adjust this based on the actual initial state
+        initial_quat = self.plug_quat[0]
+
+        # Perform incremental rotation
+        for step in range(num_steps):
+
+            # Calculate incremental rotation quaternion (around z-axis for simplicity)
+            angle = increment_radians * (step + 1)
+            cos_half_angle = math.cos(angle / 2)
+            sin_half_angle = math.sin(angle / 2)
+
+            incremental_quat = torch.tensor([cos_half_angle, sin_half_angle, 0.0, 0.0 ], dtype=torch.float32,
+                                              device=self.device)
+
+            # Apply incremental rotation to the current quaternion
+            self.root_quat[:, self.plug_actor_id_env] = torch.tensor([
+                initial_quat[0] * incremental_quat[0] - initial_quat[1] * incremental_quat[1] - initial_quat[2] *
+                incremental_quat[2] - initial_quat[3] * incremental_quat[3],
+                initial_quat[0] * incremental_quat[1] + initial_quat[1] * incremental_quat[0] + initial_quat[2] *
+                incremental_quat[3] - initial_quat[3] * incremental_quat[2],
+                initial_quat[0] * incremental_quat[2] - initial_quat[1] * incremental_quat[3] + initial_quat[2] *
+                incremental_quat[0] + initial_quat[3] * incremental_quat[1],
+                initial_quat[0] * incremental_quat[3] + initial_quat[1] * incremental_quat[2] - initial_quat[2] *
+                incremental_quat[1] + initial_quat[3] * incremental_quat[0]
+            ])
+
+            # Set linear and angular velocities to zero
+            self.root_linvel[:, self.plug_actor_id_env] = 0.0
+            self.root_angvel[:, self.plug_actor_id_env] = 0.0
+
+            # Convert actor IDs to int32 and update the simulator state
+            plug_actor_ids_sim_int32 = self.plug_actor_ids_sim.clone().to(dtype=torch.int32, device=self.device)
+            self.gym.set_actor_root_state_tensor_indexed(
+                self.sim,
+                gymtorch.unwrap_tensor(self.root_state),
+                gymtorch.unwrap_tensor(plug_actor_ids_sim_int32[:]),
+                len(plug_actor_ids_sim_int32[:])
+            )
+
+            # Simulate and refresh the environment
+            self._simulate_and_refresh()
 
     def _reset_object(self, env_ids, new_pose=None):
         """Reset root state of plug."""

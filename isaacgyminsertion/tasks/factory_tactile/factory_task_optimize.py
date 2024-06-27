@@ -35,24 +35,17 @@ Only the environment is provided; training a successful RL policy is an open res
 """
 
 import hydra
-import numpy as np
 import omegaconf
-import time
-
-import os
-import torch
 
 from isaacgym import gymapi, gymtorch
 from isaacgyminsertion.tasks.factory_tactile.factory_env_insertion import FactoryEnvInsertionTactile
-from isaacgyminsertion.tasks.factory_tactile.factory_schema_class_task import FactoryABCTask
-from isaacgyminsertion.tasks.factory_tactile.factory_schema_config_task import FactorySchemaConfigTask
+from isaacgyminsertion.tasks.factory_tactile.schema.factory_schema_class_task import FactoryABCTask
+from isaacgyminsertion.tasks.factory_tactile.schema.factory_schema_config_task import FactorySchemaConfigTask
 import isaacgyminsertion.tasks.factory_tactile.factory_control as fc
 from isaacgyminsertion.tasks.factory_tactile.factory_utils import *
 from isaacgyminsertion.utils import torch_jit_utils
-from multiprocessing import Process, Queue, Manager
 from tqdm import tqdm
 import cv2
-from isaacgyminsertion.allsight.experiments.allsight_render import allsight_renderer
 from hyperopt import fmin, hp, tpe, space_eval
 
 torch.set_printoptions(sci_mode=False)

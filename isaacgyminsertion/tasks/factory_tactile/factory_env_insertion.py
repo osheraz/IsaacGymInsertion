@@ -40,12 +40,11 @@ import numpy as np
 import os
 import torch
 
-from isaacgym import gymapi, gymtorch
+from isaacgym import gymapi
 from isaacgyminsertion.tasks.factory_tactile.factory_base import FactoryBaseTactile
-from isaacgyminsertion.tasks.factory_tactile.factory_schema_class_env import FactoryABCEnv
-from isaacgyminsertion.tasks.factory_tactile.factory_schema_config_env import FactorySchemaConfigEnv
+from isaacgyminsertion.tasks.factory_tactile.schema.factory_schema_class_env import FactoryABCEnv
+from isaacgyminsertion.tasks.factory_tactile.schema.factory_schema_config_env import FactorySchemaConfigEnv
 from isaacgyminsertion.allsight.experiments.allsight_render import allsight_renderer
-from isaacgyminsertion.allsight.experiments.digit_render import digit_renderer
 import isaacgyminsertion.tasks.factory_tactile.factory_control as fc
 import trimesh
 import open3d as o3d
@@ -53,8 +52,6 @@ from scipy.spatial.transform import Rotation as R
 import omegaconf
 import matplotlib.pyplot as plt
 from isaacgyminsertion.utils import torch_jit_utils
-
-from tqdm import tqdm
 
 
 class ExtrinsicContact:
@@ -704,12 +701,11 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
             self.camera_props.width = 1280
             self.camera_props.height = 720
             if subassembly not in self.all_rendering_camera:
-
                 self.all_rendering_camera[subassembly] = []
                 self.all_rendering_camera[subassembly].append(i)
 
                 cam1, trans1 = self.make_handle_trans(1280, 720, i, (0.8, 0.1, 0.4),
-                                                    (np.deg2rad(0), np.deg2rad(40), np.deg2rad(180)))
+                                                      (np.deg2rad(0), np.deg2rad(40), np.deg2rad(180)))
                 self.gym.attach_camera_to_body(
                     cam1,
                     self.envs[i],
@@ -721,7 +717,7 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
                 self.all_rendering_camera[subassembly].append(cam1)
 
                 cam2, trans2 = self.make_handle_trans(1280, 720, i, (0.8, -0.1, 0.4),
-                                                     (np.deg2rad(0), np.deg2rad(40), np.deg2rad(180)))
+                                                      (np.deg2rad(0), np.deg2rad(40), np.deg2rad(180)))
                 self.gym.attach_camera_to_body(
                     cam2,
                     self.envs[i],
@@ -736,7 +732,8 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
                 # add external cam
                 # Standard deviations for the errors
                 self.pos_error_std = self.cfg_env.external_cam.pos_noise  # Position error standard deviation
-                self.rot_error_std = np.deg2rad(self.cfg_env.external_cam.rot_noise)  # Rotation error standard deviation
+                self.rot_error_std = np.deg2rad(
+                    self.cfg_env.external_cam.rot_noise)  # Rotation error standard deviation
 
                 # Generate random position and rotation errors
                 random_pos_error = np.random.normal(0, self.pos_error_std, 3)
@@ -928,6 +925,10 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
                                                      offset=self.socket_heights,
                                                      device=self.device)
 
+        self.plug_tip = fc.translate_along_local_z(pos=self.plug_pos,
+                                                   quat=self.plug_quat,
+                                                   offset=self.plug_heights,
+                                                   device=self.device)
 
     def _render_headless(self):
 
@@ -943,7 +944,6 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
                                                          gymapi.IMAGE_COLOR)
 
                 video_frame1 = video_frame1.reshape((self.camera_props.height, self.camera_props.width, 4))
-
 
                 video_frame2 = self.gym.get_camera_image(self.sim,
                                                          self.envs[env_id],
