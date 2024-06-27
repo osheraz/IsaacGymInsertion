@@ -61,7 +61,8 @@ class Runner:
                                                                                              self.crop_img_height,
                                                                                              self.cfg.img_patch_size,
                                                                                              self.cfg.img_gaussian_noise,
-                                                                                             self.cfg.img_masking_prob)
+                                                                                             self.cfg.img_masking_prob,
+                                                                                             is_tactile=False)
         # tactile
         self.num_fingers = num_fingers
         self.tactile_channel = 1 if self.cfg.tactile_type == "gray" else 3

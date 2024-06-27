@@ -88,7 +88,7 @@ def set_seed(seed, torch_deterministic=False, rank=0):
 
 
 def define_transforms(channel, color_jitter, width, height, crop_width,
-                      crop_height, img_patch_size, img_gaussian_noise=0.0, img_masking_prob=0.0):
+                      crop_height, img_patch_size, img_gaussian_noise=0.0, img_masking_prob=0.0, is_tactile=True):
     # Use color jitter to augment the image
     if color_jitter:
         if channel == 3:
@@ -124,9 +124,15 @@ def define_transforms(channel, color_jitter, width, height, crop_width,
         )
 
     # Crop randomization, normalization
-    transform = nn.Sequential(
-        transforms.RandomCrop((crop_width, crop_height)),
-    )
+    if not is_tactile:
+        transform = nn.Sequential(
+            CenterCropTransform((height, width), (150, 180)),
+            transforms.RandomCrop((crop_width, crop_height)),
+        )
+    else:
+        transform = nn.Sequential(
+            transforms.RandomCrop((crop_width, crop_height)),
+        )
 
     # Add gaussian noise to the image
     if img_gaussian_noise > 0.0:
@@ -164,10 +170,15 @@ def define_transforms(channel, color_jitter, width, height, crop_width,
             )(x)
         )
     # For evaluation, only center crop and normalize
-    eval_transform = nn.Sequential(
-        transforms.CenterCrop((crop_width, crop_height)),
-    )
-
+    if not is_tactile:
+        eval_transform = nn.Sequential(
+            CenterCropTransform((height, width), (150, 180)),
+            # transforms.RandomCrop((crop_width, crop_height)),
+        )
+    else:
+        eval_transform = nn.Sequential(
+            transforms.CenterCrop((crop_width, crop_height)),
+        )
     # print('transform {}'.format(transform))
     # print('eval_transform {}'.format(eval_transform))
     # print('downsample {}'.format(downsample))
@@ -186,6 +197,29 @@ class GaussianNoise(nn.Module):
             return x + noise
         return x
 
+class CenterCropTransform(nn.Module):
+    def __init__(self, crop_size, center):
+        super().__init__()
+        self.crop_size = crop_size
+        self.center = center
+
+    def forward(self, img):
+        _, _, height, width = img.size()
+        crop_width, crop_height = self.crop_size
+
+        center_x, center_y = self.center
+
+        # Ensure the center is within the bounds
+        center_x = max(crop_width // 2, min(center_x, width - crop_width // 2))
+        center_y = max(crop_height // 2, min(center_y, height - crop_height // 2))
+
+        left = center_x - crop_width // 2
+        top = center_y - crop_height // 2
+        right = center_x + crop_width // 2
+        bottom = center_y + crop_height // 2
+
+        img = img[:, :, top:bottom, left:right]
+        return img
 
 def mask_img(x, img_patch_size, img_masking_prob):
     # Divide the image into patches and randomly mask some of them

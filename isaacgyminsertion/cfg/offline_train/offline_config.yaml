@@ -4,13 +4,13 @@ output_dir: "/home/roblab20/tactile_insertion/datastore_42_gt_test" # where to s
 
 img_type: "depth"
 img_color_jitter: False
-img_width: 180
-img_height: 220
-img_gaussian_noise: 0.001
+img_width: 120
+img_height: 160
+img_gaussian_noise: 0.002
 img_masking_prob: 0.0
 img_patch_size: 16
-img_crop_w: 12
-img_crop_h: 24
+img_crop_w: 4
+img_crop_h: 4
 
 tactile_type: 'rgb' # rgb
 tactile_gaussian_noise: 0.001
