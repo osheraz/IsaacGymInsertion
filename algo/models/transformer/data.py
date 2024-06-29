@@ -35,7 +35,7 @@ def get_last_sequence(input_tensor, progress_buf, sequence_length):
 
     E, _, *other_dims = input_tensor.shape
     adjusted_tensor = torch.zeros(E, sequence_length, *other_dims, device=input_tensor.device,
-                                  dtype=input_tensor.dtype)
+                                  dtype=input_tensor.dtype) + 1e-6
 
     for env_id in range(E):
         actual_seq_len = progress_buf[env_id]

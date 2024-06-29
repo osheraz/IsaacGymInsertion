@@ -96,7 +96,7 @@ class Runner:
                                      mha_num_attention_layers=self.cfg.model.transformer.num_layers,
                                      mha_ff_dim_factor=self.cfg.model.transformer.dim_factor,
                                      additional_lin=self.cfg.model.tact.output_size,
-                                     include_img=True, include_lin=True, include_tactile=False)
+                                     include_img=False, include_lin=True, include_tactile=False)
 
         if self.cfg.model.transformer.load_tact:
             self.tact = MultiModalModel(context_size=self.sequence_length,

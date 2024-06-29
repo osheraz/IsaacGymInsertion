@@ -115,15 +115,17 @@ randomize:
     plug_pos_xy_initial: [0.50, 0.0, 0.0]  # z 0.03  initial XY position of plug on table
     plug_pos_xy_noise: [ 0.01,  0.01] # noise on plug position
     plug_quat_noise: [0.0, 0.0, 0.0, 0.0]
+    plug_pos_z_noise_bounds: [ 0.003, 0.015 ]  # noise on socket offset from table
+
     socket_pos_xy_initial: [0.5, 0.0, 0.0]  # initial XY position of plug on table # round_hole_2in  width = 0.1016, length = 0.09144
     socket_pos_xy_noise: [0.01, 0.01]  # noise on socket position
     socket_rot_euler_noise: 0.035  # noise on socket position
     socket_pos_z_noise_bounds: [-0.002, 0.003]  # noise on socket offset from table
-    plug_pos_z_noise_bounds: [ 0.003, 0.015]  # noise on socket offset from table
+
 
     grasp_plug_noise: 0.005 # xyz noise on plug position during grasp
     above_socket_noise: [0.03, 0.03, 0.001]
-    plug_rot_noise: [0.03, 0.03, 0.0] # 0.03, 0.03
+    plug_rot_noise: [0.2, 0.2, 0.0] # 0.03, 0.03
 
 rl:
 
