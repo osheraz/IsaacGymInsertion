@@ -123,9 +123,9 @@ class MultiModalModel(BaseModel):
 
         self.tactile_encoding_size = tactile_encoding_size
         self.img_encoding_size = img_encoding_size
+        self.additional_lin = additional_lin
         if additional_lin:
             num_lin_features += additional_lin
-            self.additional_lin = additional_lin
         self.num_lin_features = num_lin_features
         self.num_channels = num_channels
         self.share_encoding = share_encoding

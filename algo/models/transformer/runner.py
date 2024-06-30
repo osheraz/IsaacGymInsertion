@@ -95,8 +95,8 @@ class Runner:
                                      mha_num_attention_heads=self.cfg.model.transformer.num_heads,
                                      mha_num_attention_layers=self.cfg.model.transformer.num_layers,
                                      mha_ff_dim_factor=self.cfg.model.transformer.dim_factor,
-                                     additional_lin=self.cfg.model.tact.output_size,
-                                     include_img=False, include_lin=True, include_tactile=False)
+                                     additional_lin=self.cfg.model.tact.output_size if self.cfg.model.transformer.load_tact else 0,
+                                     include_img=False, include_lin=True, include_tactile=True)
 
         if self.cfg.model.transformer.load_tact:
             self.tact = MultiModalModel(context_size=self.sequence_length,
@@ -339,13 +339,14 @@ class Runner:
         # ax2.set_title('Linear input')
         # ax2.legend()
 
-        ax2 = fig.add_subplot(2, 2, 2)
-        width = 0.35
-        indices = np.arange(len(d_pos_rpy))
-        ax2.bar(indices - width / 2, d_pos_rpy, width, label='d_pos_rpy')
-        ax2.bar(indices + width / 2, pos_rpy, width, label='True Label')
-        ax2.set_title('Model Output vs. True Label')
-        ax2.legend()
+        if d_pos_rpy is not None:
+            ax2 = fig.add_subplot(2, 2, 2)
+            width = 0.35
+            indices = np.arange(len(d_pos_rpy))
+            ax2.bar(indices - width / 2, d_pos_rpy, width, label='d_pos_rpy')
+            ax2.bar(indices + width / 2, pos_rpy, width, label='True Label')
+            ax2.set_title('Model Output vs. True Label')
+            ax2.legend()
 
         # Check if img_input has more than one timestep
         if img_input.ndim == 4 and img_input.shape[0] > 1:
