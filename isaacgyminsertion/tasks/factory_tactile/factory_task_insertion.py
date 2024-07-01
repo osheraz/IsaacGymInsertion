@@ -377,14 +377,6 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         for e in range(self.num_envs):
 
-            # plug_file = self.asset_info_insertion[self.envs_asset[e]['subassembly'] ][self.envs_asset[e]['components'][0]]['urdf_path']
-            # plug_file += '_subdiv_3x.obj' if 'rectangular' in plug_file else '.obj'
-            # mesh_root = os.path.join(os.path.dirname(__file__), '..', '..', '..', 'assets', 'factory', 'mesh',
-            #                          'factory_insertion')
-            # self.tactile_handles.append([allsight_renderer(self.cfg_tactile,
-            #                                                os.path.join(mesh_root, plug_file), randomize=False,
-            #                                                finger_idx=i) for i in range(len(self.fingertips))])
-
             self.tactile_handles[e][0].update_pose_given_sim_pose(left_finger_pose[e], object_pose[e])
             self.tactile_handles[e][1].update_pose_given_sim_pose(right_finger_pose[e], object_pose[e])
             self.tactile_handles[e][2].update_pose_given_sim_pose(middle_finger_pose[e], object_pose[e])
@@ -426,12 +418,10 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                     resized_img = tactile_img
 
                 if self.num_channels == 3:
-                    # self.tactile_imgs[e, n] = torch_jit_utils.rgb_transform(resized_img).to(self.device)
                     self.tactile_imgs[e, n] = to_torch(resized_img).permute(2, 0, 1).to(self.device)
                 else:
                     resized_img = cv2.cvtColor(resized_img.astype('float32'), cv2.COLOR_BGR2GRAY)
                     self.tactile_imgs[e, n] = to_torch(resized_img).to(self.device)
-                    # self.tactile_imgs[e, n] = torch_jit_utils.gray_transform(resized_img).to(self.device)
 
                 tactile_imgs_per_env.append(tactile_img)
                 height_maps_per_env.append(height_map)
@@ -487,7 +477,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
             self.gym.apply_rigid_body_force_tensors(self.sim, gymtorch.unwrap_tensor(self.rb_forces), None, gymapi.LOCAL_SPACE)
 
-        # self.pertube_plug()
+        self.pertube_plug()
 
     def post_physics_step(self):
         """Step buffers. Refresh tensors. Compute observations and reward."""
@@ -1147,51 +1137,44 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         # Simulate one step to apply changes
         # self._simulate_and_refresh()
 
-    def pertube_plug(self):
+    def pertube_plug(self, axis='x', interval=np.radians(20), num_steps=400):
 
-        # Parameters
-        import math
-        num_steps = 10  # Number of incremental steps
-        total_rotation_degrees = -30  # Total rotation in degrees
-        increment_degrees = total_rotation_degrees / num_steps  # Rotation per step
-        increment_radians = math.radians(increment_degrees)  # Convert to radians
+        initial_pos = self.plug_pos.clone()
+        tip_pos = self.plug_tip.clone()
+        initial_quat = self.plug_quat.clone()
 
-        # Generate initial random noise (if needed, adjust accordingly)
-        plug_noise_xy = 2 * (torch.rand((self.num_envs, 2), dtype=torch.float32, device=self.device) - 0.5)  # [-1, 1]
-        plug_noise_xy = plug_noise_xy @ torch.diag(torch.tensor([0.006, 0.006], device=self.device))
-
-        # Initial quaternion (assuming identity quaternion for simplicity)
-        # You may need to adjust this based on the actual initial state
-        initial_quat = self.plug_quat[0]
-
-        # Perform incremental rotation
         for step in range(num_steps):
+            # Calculate the angle for a smooth oscillation between -interval and +interval
+            cycle_angle = interval * np.sin((2 * np.pi / num_steps) * step)
+            cos_half_angle = np.cos(cycle_angle / 2)
+            sin_half_angle = np.sin(cycle_angle / 2)
 
-            # Calculate incremental rotation quaternion (around z-axis for simplicity)
-            angle = increment_radians * (step + 1)
-            cos_half_angle = math.cos(angle / 2)
-            sin_half_angle = math.sin(angle / 2)
+            if axis == 'x':
+                incremental_quat = torch.tensor([[sin_half_angle, 0.0, 0.0, cos_half_angle]], dtype=torch.float32,
+                                                device=self.device)
+            elif axis == 'y':
+                incremental_quat = torch.tensor([[0.0, sin_half_angle, 0.0, cos_half_angle]], dtype=torch.float32,
+                                                device=self.device)
+            elif axis == 'z':
+                incremental_quat = torch.tensor([[0.0, 0.0, sin_half_angle, cos_half_angle]], dtype=torch.float32,
+                                                device=self.device)
+            else:
+                raise ValueError("Invalid axis. Choose from 'x', 'y', or 'z'.")
 
-            incremental_quat = torch.tensor([cos_half_angle, sin_half_angle, 0.0, 0.0 ], dtype=torch.float32,
-                                              device=self.device)
+            # Calculate the rotation quaternion relative to the initial orientation
+            new_quat = quat_mul(initial_quat, incremental_quat)
 
-            # Apply incremental rotation to the current quaternion
-            self.root_quat[:, self.plug_actor_id_env] = torch.tensor([
-                initial_quat[0] * incremental_quat[0] - initial_quat[1] * incremental_quat[1] - initial_quat[2] *
-                incremental_quat[2] - initial_quat[3] * incremental_quat[3],
-                initial_quat[0] * incremental_quat[1] + initial_quat[1] * incremental_quat[0] + initial_quat[2] *
-                incremental_quat[3] - initial_quat[3] * incremental_quat[2],
-                initial_quat[0] * incremental_quat[2] - initial_quat[1] * incremental_quat[3] + initial_quat[2] *
-                incremental_quat[0] + initial_quat[3] * incremental_quat[1],
-                initial_quat[0] * incremental_quat[3] + initial_quat[1] * incremental_quat[2] - initial_quat[2] *
-                incremental_quat[1] + initial_quat[3] * incremental_quat[0]
-            ])
+            # Calculate new base position using the tip as the pivot
+            rotated_offset = quat_apply(incremental_quat, initial_pos - tip_pos)
+            new_base_pos = tip_pos + rotated_offset
 
-            # Set linear and angular velocities to zero
+            # Update root quaternion and position for the base
+            self.root_quat[:, self.plug_actor_id_env] = new_quat
+            self.root_pos[:, self.plug_actor_id_env] = new_base_pos
+
             self.root_linvel[:, self.plug_actor_id_env] = 0.0
             self.root_angvel[:, self.plug_actor_id_env] = 0.0
 
-            # Convert actor IDs to int32 and update the simulator state
             plug_actor_ids_sim_int32 = self.plug_actor_ids_sim.clone().to(dtype=torch.int32, device=self.device)
             self.gym.set_actor_root_state_tensor_indexed(
                 self.sim,
@@ -1200,8 +1183,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                 len(plug_actor_ids_sim_int32[:])
             )
 
-            # Simulate and refresh the environment
-            self._simulate_and_refresh()
+            self._simulate_and_refresh(update_tactile=True)
 
     def _reset_object(self, env_ids, new_pose=None):
         """Reset root state of plug."""
@@ -1338,12 +1320,12 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         self._simulate_and_refresh()
 
-    def _simulate_and_refresh(self):
+    def _simulate_and_refresh(self, update_tactile=False):
         """Simulate one step, refresh tensors, and render results."""
 
         self.gym.simulate(self.sim)
         self.render()
-        self._refresh_task_tensors()
+        self._refresh_task_tensors(update_tactile=update_tactile)
 
     def _reset_buffers(self, env_ids):
         """Reset buffers. """

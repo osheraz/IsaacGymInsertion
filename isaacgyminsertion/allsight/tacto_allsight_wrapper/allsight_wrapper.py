@@ -42,8 +42,8 @@ class Renderer(tRenderer):
         inheritance of tacto renderer object
     '''
 
-    def __init__(self, width, height, background, config_path, headless):
-        super().__init__(width, height, background, config_path, headless=headless)
+    def __init__(self, width, height, background, config_path, headless, DEBUG=False):
+        super().__init__(width, height, background, config_path, headless=headless, DEBUG=DEBUG)
 
     def _post_process(self, color, depth, camera_index, noise=True, calibration=True):
         if calibration:

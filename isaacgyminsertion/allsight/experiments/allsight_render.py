@@ -21,7 +21,6 @@ from omegaconf import DictConfig
 import random
 from isaacgyminsertion.allsight.tacto_allsight_wrapper import allsight_wrapper
 from time import time
-DEBUG = False
 from dataclasses import dataclass
 
 
@@ -61,7 +60,9 @@ class allsight_renderer:
     ):
 
         self.render_config = cfg
-        self.show_depth = True
+        self.show_depth = False
+        self.DEBUG = False
+
         self.finger_idx = finger_idx
 
         if randomize:
@@ -87,12 +88,13 @@ class allsight_renderer:
             width=width, height=height,
             **{"config_path": conf_path},
             background=bg if cfg.with_bg else None,
-            headless=True
+            headless=True,
+            DEBUG=self.DEBUG
         )
 
         self.mask = circle_mask(size=(width, height))
 
-        if not DEBUG:
+        if not self.DEBUG:
             self.bg_img, self.bg_depth = self.renderer.render()
             self.bg_depth = self.bg_depth[0]
             self.bg_img = self.bg_img[0]
@@ -205,16 +207,8 @@ class allsight_renderer:
 
         gel_depth = depth
 
-        # cam_depth = self.correct_image_height_map(gel_depth) #  pix in gel frame
-        # assert np.allclose(cam_depth, depth), "Conversion to pixels is incorrect"
-
         if self.randomize_light:
             self.renderer.randomize_light()
-
-        # if self.half_image:
-        #     w = color.shape[0]
-        #     color = color[:w//2]
-        #     gel_depth = gel_depth[:w//2]
 
         return color, gel_depth #, contact_mask
 

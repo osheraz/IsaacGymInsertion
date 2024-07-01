@@ -60,10 +60,9 @@ def matrix2trans(matrix):
 #     pose[:3, :3] = r
 #     return pose
 
-DEBUG = False
 
 class Renderer:
-    def __init__(self, width, height, background, config_path, headless=True):
+    def __init__(self, width, height, background, config_path, headless=True, DEBUG=False):
         """
 
         :param width: scalar
@@ -74,7 +73,8 @@ class Renderer:
 
         if headless:
             os.environ["PYOPENGL_PLATFORM"] = "egl"
-            
+
+        self.DEBUG = DEBUG
         self._width = width
         self._height = height
 
@@ -155,7 +155,7 @@ class Renderer:
         self.default_light = self.conf.sensor.lights
         self._init_light(self.default_light)
 
-        if DEBUG:
+        if self.DEBUG:
             self.r = pyrender.Renderer(self.width, self.height)
             print("\n-----------Debug mode, on screen rendering of poses-----------\n")
         else:
@@ -437,7 +437,7 @@ class Renderer:
             light_node = self.light_nodes[i]
             light_node.matrix = light_pose
 
-        if DEBUG:
+        if self.DEBUG:
             pyrender.Viewer(self.scene, use_raymond_lighting=True)
 
     def update_object_pose(self, obj_name, position, orientation):
