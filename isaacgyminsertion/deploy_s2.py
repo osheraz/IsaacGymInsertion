@@ -19,7 +19,7 @@ from hydra.utils import to_absolute_path
 
 import re
 from isaacgyminsertion.utils.utils import set_np_formatting, set_seed
-from algo.deploy.deploy_student import HardwarePlayer
+from algo.deploy.deploy_s2 import HardwarePlayer
 
 import warnings
 
