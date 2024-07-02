@@ -10,9 +10,9 @@ sensor:
   
   camera:
     - cam0:
-      position: [0.003, 0.0, 0.0] # Camera position
+      position: [0.01, 0.0, 0.0] # Camera position
       orientation: [90, 0 , -90] # Euler angles, "xyz", in degrees; e.g. [0, 0, 0]: towards negative z-axis; [90, 0, -90]: towards x-axis
-      yfov: 115  #140.8 # Vertical field of view in degrees
+      yfov: 118  #140.8 # Vertical field of view in degrees
       znear: 0.001  # Distance to the near clipping plane, in meters
       #lightIDList: [0, 1, 2, 3 ,4 ,5, 6, 7, 8] # Select light ID list for rendering (OpenGL has max limit of 8 lights)
       lightIDList: [0,1,2] 
@@ -58,8 +58,8 @@ sensor:
 
   force:
     enable: True # flag for enable force feedback. When enabled, the larger normal force is, the closer object is adjusted to the sensor.  ---TODO---
-    range_force: [0, 35] # dynamic range of forces used to simulate the elastomer deformation
-    max_deformation: 0.011 # max pose depth adjustment, in meters
+    range_force: [0, 10] # dynamic range of forces used to simulate the elastomer deformation
+    max_deformation: 0.008 # max pose depth adjustment, in meters
 
   bg_calibration:
     enable: True

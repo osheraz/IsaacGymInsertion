@@ -132,7 +132,8 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.force_decay = to_torch(self.force_decay, dtype=torch.float, device=self.device)
         self.force_prob_range = to_torch(self.force_prob_range, dtype=torch.float, device=self.device)
         self.random_force_prob = torch.exp((torch.log(self.force_prob_range[0]) - torch.log(self.force_prob_range[1]))
-                                           * torch.rand(self.num_envs, device=self.device) + torch.log(self.force_prob_range[1]))
+                                           * torch.rand(self.num_envs, device=self.device) + torch.log(
+            self.force_prob_range[1]))
         self.rb_forces = torch.zeros((self.num_envs, self.num_bodies, 3), dtype=torch.float, device=self.device)
 
         self.hand_joints = torch.zeros((self.num_envs, 6), device=self.device)
@@ -203,6 +204,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             )
 
         if self.external_cam:
+
             self.img_queue = torch.zeros(
                 (self.num_envs, self.img_hist_len, 1 if self.cam_type == 'd' else 3, self.res[1], self.res[0]),
                 device=self.device,
@@ -334,7 +336,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         # fingertip forces
         e = 0.9 if self.cfg_task.env.smooth_force else 0
-        normalize_forces = lambda x: torch.norm(x, dim=-1) # (torch.clamp(torch.norm(x, dim=-1), 0, 10) / 10).view(-1)
+        normalize_forces = lambda x: torch.norm(x, dim=-1)  # (torch.clamp(torch.norm(x, dim=-1), 0, 10) / 10).view(-1)
         self.finger_normalized_forces[:, 0] = (1 - e) * normalize_forces(
             self.left_finger_force.clone()) + e * self.finger_normalized_forces[:, 0]
         self.finger_normalized_forces[:, 1] = (1 - e) * normalize_forces(
@@ -402,7 +404,6 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                     tactile_img = self.tactile_handles[e][n].remove_bg(tactile_img, self.tactile_handles[e][n].bg_img)
                     tactile_img *= self.tactile_handles[e][n].mask
 
-                # Shit happens
                 tactile_img = np.flipud(tactile_img).copy()
 
                 # Cutting by half
@@ -473,11 +474,13 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             # apply new forces
             force_indices = (torch.rand(self.num_envs, device=self.device) < self.random_force_prob).nonzero()
             self.rb_forces[force_indices, self.object_rb_handles, :] = torch.randn(
-                self.rb_forces[force_indices, self.object_rb_handles, :].shape, device=self.device) * self.object_rb_masses * self.force_scale
+                self.rb_forces[force_indices, self.object_rb_handles, :].shape,
+                device=self.device) * self.object_rb_masses * self.force_scale
 
-            self.gym.apply_rigid_body_force_tensors(self.sim, gymtorch.unwrap_tensor(self.rb_forces), None, gymapi.LOCAL_SPACE)
+            self.gym.apply_rigid_body_force_tensors(self.sim, gymtorch.unwrap_tensor(self.rb_forces), None,
+                                                    gymapi.LOCAL_SPACE)
 
-        self.pertube_plug()
+        # self.rotate_plug()
 
     def post_physics_step(self):
         """Step buffers. Refresh tensors. Compute observations and reward."""
@@ -673,12 +676,13 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                 if self.cam_type == "rgb":
                     im = self.gym.get_camera_image_gpu_tensor(
                         self.sim,
+                        self.envs[i],
                         self.camera_handles[i],
                         gymapi.IMAGE_COLOR,
                     )
                     im = gymtorch.wrap_tensor(im)
 
-                    if self.save_im:
+                    if self.save_im and False:
                         trans_im = im.detach().clone()
                         trans_im = (trans_im[..., :3]).float() / 255
                         save_image(
@@ -1137,7 +1141,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         # Simulate one step to apply changes
         # self._simulate_and_refresh()
 
-    def pertube_plug(self, axis='x', interval=np.radians(20), num_steps=400):
+    def rotate_plug(self, axis='x', interval=np.radians(20), num_steps=400):
 
         initial_pos = self.plug_pos.clone()
         tip_pos = self.plug_tip.clone()
@@ -1350,7 +1354,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.rb_forces[env_ids, :, :] = 0.0
 
         if self.cfg_task.env.tactile:
-            self.tactile_queue[env_ids,...] = 0
+            self.tactile_queue[env_ids, ...] = 0
             self.tactile_imgs[env_ids, ...] = 0.
         if self.external_cam:
             self.img_queue[env_ids] = 0
@@ -1435,51 +1439,65 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self._move_gripper_to_dof_pos(env_ids=env_ids, gripper_dof_pos=gripper_dof_pos, sim_steps=sim_steps)
         self.ctrl_target_gripper_dof_pos = gripper_dof_pos
 
-    def _close_gripper(self, env_ids, sim_steps=20):
-        """Fully close gripper using controller. Called outside RL loop (i.e., after last step of episode)."""
+    def _close_gripper(self, env_ids, percentage=1.0, sim_steps=20):
+        """
+        Close gripper to a specified percentage of the maximum closing using controller.
+        Args:
+            env_ids: IDs of the environments.
+            percentage: Float representing the percentage of the max closing (0 to 100).
+            sim_steps: Number of simulation steps.
+        """
+        scale = percentage / 1  # Scale percentage to a value between 0 and 1
 
         gripper_dof_pos = self.gripper_dof_pos.clone()
-        gripper_dof_pos[env_ids,
-        list(self.dof_dict.values()).index(
-            'base_to_finger_1_1') - 7] = self.cfg_task.env.openhand.base_angle
-        gripper_dof_pos[env_ids,
-        list(self.dof_dict.values()).index(
-            'base_to_finger_2_1') - 7] = -self.cfg_task.env.openhand.base_angle
 
-        gripper_proximal_close_noise = np.random.uniform(0.0, 0.01, 3)
-        gripper_dof_pos[env_ids,
-        list(self.dof_dict.values()).index(
-            'finger_1_1_to_finger_1_2') - 7] = self.cfg_task.env.openhand.proximal_close + \
-                                               gripper_proximal_close_noise[0]
-        gripper_dof_pos[env_ids,
-        list(self.dof_dict.values()).index(
-            'finger_2_1_to_finger_2_2') - 7] = self.cfg_task.env.openhand.proximal_close + \
-                                               gripper_proximal_close_noise[1]
-        gripper_dof_pos[env_ids,
-        list(self.dof_dict.values()).index(
-            'base_to_finger_3_2') - 7] = self.cfg_task.env.openhand.proximal_close + \
-                                         gripper_proximal_close_noise[2]
+        def scaled_position(index, open_value, close_value, noise):
+            target_value = open_value + scale * (close_value - open_value) + noise
+            current_value = self.gripper_dof_pos[env_ids, index]
+            target_tensor = torch.tensor(target_value, dtype=current_value.dtype, device=current_value.device)
+            return torch.max(current_value, target_tensor)
 
-        gripper_distal_close_noise = np.random.uniform(0., 0.005, 3)
-        gripper_dof_pos[env_ids,
-        list(self.dof_dict.values()).index(
-            'finger_1_2_to_finger_1_3') - 7] = self.cfg_task.env.openhand.distal_close + \
-                                               gripper_distal_close_noise[0]
-        gripper_dof_pos[env_ids,
-        list(self.dof_dict.values()).index(
-            'finger_2_2_to_finger_2_3') - 7] = self.cfg_task.env.openhand.distal_close + \
-                                               gripper_distal_close_noise[1]
-        gripper_dof_pos[env_ids,
-        list(self.dof_dict.values()).index(
-            'finger_3_2_to_finger_3_3') - 7] = self.cfg_task.env.openhand.distal_close + \
-                                               gripper_distal_close_noise[2]
+        gripper_proximal_close_noise = np.random.uniform(0.0, self.cfg_task.env.openhand.proximal_noise, 3)
+        gripper_distal_close_noise = np.random.uniform(0., self.cfg_task.env.openhand.distal_noise, 3)
 
-        # slowly grasp the plug
+        positions_indices = [
+            ('base_to_finger_1_1', 0.0,
+             self.cfg_task.env.openhand.base_angle, 0.0),
+            ('base_to_finger_2_1', 0.0,
+             -self.cfg_task.env.openhand.base_angle, 0.0),
+            ('finger_1_1_to_finger_1_2',
+             self.cfg_task.env.openhand.proximal_open,
+             self.cfg_task.env.openhand.proximal_close, gripper_proximal_close_noise[0]),
+            ('finger_2_1_to_finger_2_2',
+             self.cfg_task.env.openhand.proximal_open,
+             self.cfg_task.env.openhand.proximal_close, gripper_proximal_close_noise[1]),
+            ('base_to_finger_3_2',
+             self.cfg_task.env.openhand.proximal_open,
+             self.cfg_task.env.openhand.proximal_close,
+             gripper_proximal_close_noise[2]),
+            (
+                'finger_1_2_to_finger_1_3', self.cfg_task.env.openhand.distal_open,
+                self.cfg_task.env.openhand.distal_close,
+                gripper_distal_close_noise[0]),
+            (
+                'finger_2_2_to_finger_2_3', self.cfg_task.env.openhand.distal_open,
+                self.cfg_task.env.openhand.distal_close,
+                gripper_distal_close_noise[1]),
+            (
+                'finger_3_2_to_finger_3_3', self.cfg_task.env.openhand.distal_open,
+                self.cfg_task.env.openhand.distal_close,
+                gripper_distal_close_noise[2]),
+        ]
+
+        for dof, open_value, close_value, noise in positions_indices:
+            index = list(self.dof_dict.values()).index(dof) - 7
+            gripper_dof_pos[env_ids, index] = scaled_position(index, open_value, close_value, noise)
+
+        # Slowly grasp the plug
         if self.cfg_task.grasp_at_init:
             for i in range(100):
                 diff = gripper_dof_pos[env_ids, :] - self.gripper_dof_pos[env_ids, :]
                 self.ctrl_target_gripper_dof_pos[env_ids, :] = self.gripper_dof_pos[env_ids, :] + diff * 0.1
-
                 self._move_gripper_to_dof_pos(env_ids=env_ids, gripper_dof_pos=self.ctrl_target_gripper_dof_pos,
                                               sim_steps=1)
         else:

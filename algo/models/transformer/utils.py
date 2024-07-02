@@ -4,6 +4,7 @@ import torch
 import os
 from torch import nn
 from torchvision import transforms
+from matplotlib import pyplot as plt
 
 
 class ImageTransform:
@@ -242,3 +243,86 @@ def mask_img(x, img_patch_size, img_masking_prob):
         3, img_patch_size, img_patch_size
     )[mask] = 0
     return x
+
+
+def log_output(tac_input, img_input, lin_input, out, latent, pos_rpy, save_folder, d_pos_rpy=None, session='train'):
+    # Selecting the first example from the batch for demonstration
+    # tac_input [B T F W H C]
+
+    image_sequence = tac_input[0].cpu().detach().numpy()
+    img_input = img_input[0].cpu().detach().numpy()
+    linear_features = lin_input[0].cpu().detach().numpy()
+    if d_pos_rpy is not None:
+        d_pos_rpy = d_pos_rpy[0, -1, :].cpu().detach().numpy()
+    pos_rpy = pos_rpy[0, -1, :].cpu().detach().numpy()
+
+    predicted_output = out[0].cpu().detach().numpy()
+    true_label = latent[0, -1, :].cpu().detach().numpy()
+    # Plotting
+    fig = plt.figure(figsize=(20, 10))
+
+    # Adding subplot for image sequence (adjust as needed)
+    ax1 = fig.add_subplot(2, 2, 1)
+    concat_images = []
+    # image_sequence [T F W H C]
+    for finger_idx in range(image_sequence.shape[1]):
+        finger_sequence = [np.transpose(img, (1, 2, 0)) for img in image_sequence[:, finger_idx, ...]]
+        finger_sequence = np.hstack(finger_sequence)
+        concat_images.append(finger_sequence)
+
+    ax1.imshow(np.vstack(concat_images) + 0.5)  # Adjust based on image normalization
+    ax1.set_title('Input Tactile Sequence')
+
+    # Adding subplot for linear features (adjust as needed)
+    # ax2 = fig.add_subplot(2, 2, 2)
+    # ax2.plot(d_pos_rpy[:, :], 'ok', label='hand_joints')  # Assuming the rest are actions
+    # ax2.set_title('Linear input')
+    # ax2.legend()
+
+    if d_pos_rpy is not None:
+        ax2 = fig.add_subplot(2, 2, 2)
+        width = 0.35
+        indices = np.arange(len(d_pos_rpy))
+        ax2.bar(indices - width / 2, d_pos_rpy, width, label='d_pos_rpy')
+        ax2.bar(indices + width / 2, pos_rpy, width, label='True Label')
+        ax2.set_title('Model Output vs. True Label')
+        ax2.legend()
+
+    # Check if img_input has more than one timestep
+    if img_input.ndim == 4 and img_input.shape[0] > 1:
+        concat_img_input = []
+        for t in range(img_input.shape[0]):
+            img = img_input[t]
+            img = np.transpose(img, (1, 2, 0))  # Convert from [W, H, C] to [H, W, C]
+            img = img + 0.5  # Adjust normalization if needed
+            concat_img_input.append(img)
+
+        # Horizontally stack the images for each timestep
+        concat_img_input = np.hstack(concat_img_input)
+    else:
+        # Handle the case where there is only one timestep
+        img = img_input[0] if img_input.ndim == 4 else img_input
+        img = np.transpose(img, (1, 2, 0))  # Convert from [W, H, C] to [H, W, C]
+        img = img + 0.5  # Adjust normalization if needed
+        concat_img_input = img
+
+    # Plot the concatenated image sequence
+    ax3 = fig.add_subplot(2, 2, 3)
+    ax3.imshow(concat_img_input)
+    ax3.set_title('Input Image Sequence')
+
+    # Adding subplot for Output vs. True Label comparison
+    ax4 = fig.add_subplot(2, 2, 4)
+    width = 0.35
+    indices = np.arange(len(predicted_output))
+    ax4.bar(indices - width / 2, predicted_output, width, label='Predicted')
+    ax4.bar(indices + width / 2, true_label, width, label='True Label')
+    ax4.set_title('Model Output vs. True Label')
+    ax4.legend()
+
+    # Adjust layout
+    plt.tight_layout()
+    # Saving the figure
+    plt.savefig(f'{save_folder}/{session}_example.png')
+    # Clean up plt to free memory
+    plt.close(fig)

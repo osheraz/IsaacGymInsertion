@@ -25,7 +25,7 @@ env:
     env_name: 'FactoryEnvInsertionTactile'
     aggregate_mode: True
 
-    desired_subassemblies: ['triangle',
+    desired_subassemblies: ['yellow_round_peg_2in',
 #                            'red_round_peg_1_5in',
 #                            'triangle',
 #                            'triangle',

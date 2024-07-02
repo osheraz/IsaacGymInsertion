@@ -3,7 +3,7 @@ GPUS=${1:-0}
 SEED=${2:-42}
 CACHE=${3:-gt_test}
 NUM_ENVS=${4:-1}
-HEADLESS=${5:-True}
+HEADLESS=${5:-False}
 
 array=( $@ )
 len=${#array[@]}
@@ -32,7 +32,7 @@ offline_train.model.transformer.sequence_length=1 \
 offline_train.train.load_checkpoint=True \
 offline_train.train.student_ckpt_path="${student_ckpt_path}" \
 offline_train.train.only_test=True \
-offline_train.model.transformer.load_tact=False \
+offline_train.model.transformer.load_tact=True \
 offline_train.model.transformer.tact_path="${tact_path}" \
 task.env.tactile=True \
 task.env.numStates=7 \

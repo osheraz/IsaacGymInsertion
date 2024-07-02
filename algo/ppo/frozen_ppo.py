@@ -674,7 +674,6 @@ class PPO(object):
                         latent = get_latent(tactile, img, lin_input)[self.env_ids, self.env.progress_buf.view(-1, 1),
                                  :].squeeze(1)
                     else:
-                        # TODO: !!!!!!!!!!!@@@@@@@@@@@@@!
                         latent, out_pos_rpy = get_latent(tactile, img, lin_input, gt_pos_rpy)
 
                     if False:
@@ -717,7 +716,7 @@ class PPO(object):
         print('[LastTest] success rate:', num_success / total_dones)
         return num_success, total_dones
 
-    def get_last_student_obs(self, data, normalize_dict, diff=True, diff_tac=True, display=True):
+    def get_last_student_obs(self, data, normalize_dict, diff=True, diff_tac=True, display=False):
         sequence_length = self.full_config.offline_train.model.transformer.sequence_length
 
         # E, T, F, C, W, H = tactile.shape

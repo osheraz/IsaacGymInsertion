@@ -147,6 +147,7 @@ class allsight_renderer:
                 f"color and depth{self.finger_idx}", cv2.cvtColor(color_n_depth, cv2.COLOR_RGB2BGR)
             )
         else:
+
             cv2.imshow("color", cv2.cvtColor(color, cv2.COLOR_RGB2BGR))
 
         cv2.waitKey(1)

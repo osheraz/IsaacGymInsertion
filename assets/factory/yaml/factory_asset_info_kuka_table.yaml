@@ -2,7 +2,7 @@
 openhand_finger_length: 0.028  # distance from origin of finger to bottom of fingerpad
 # kuka_fingerpad_length: 0.017608  # distance from top of inner surface of fingerpad to bottom of inner surface of fingerpad
 
-table_depth: 0.6  # depth of table
+table_depth: 0.73  # depth of table
 table_width: 1.0  # width of table
 
 # Todo modifed for the kuka options

@@ -2,7 +2,7 @@ from algo.models.transformer.data import TactileDataset, DataNormalizer
 from torch.utils.data import DataLoader
 from torch import optim
 from algo.models.transformer.tact import MultiModalModel
-from algo.models.transformer.utils import define_transforms, ImageTransform, TactileTransform
+from algo.models.transformer.utils import define_transforms, ImageTransform, TactileTransform, log_output
 
 from tqdm import tqdm
 import torch
@@ -14,14 +14,9 @@ from omegaconf import DictConfig, OmegaConf
 import os
 import wandb
 import time
-from algo.models.transformer.utils import set_seed
 from hydra.utils import to_absolute_path
 from warmup_scheduler import GradualWarmupScheduler
-from torch import nn
-from torch.nn import ModuleList
-from torchvision import transforms
 from matplotlib import pyplot as plt
-from scipy.spatial.transform import Rotation
 
 
 class Runner:
@@ -96,7 +91,7 @@ class Runner:
                                      mha_num_attention_layers=self.cfg.model.transformer.num_layers,
                                      mha_ff_dim_factor=self.cfg.model.transformer.dim_factor,
                                      additional_lin=self.cfg.model.tact.output_size if self.cfg.model.transformer.load_tact else 0,
-                                     include_img=False, include_lin=True, include_tactile=True)
+                                     include_img=True, include_lin=True, include_tactile=False)
 
         if self.cfg.model.transformer.load_tact:
             self.tact = MultiModalModel(context_size=self.sequence_length,
@@ -205,14 +200,15 @@ class Runner:
                 action_loss_list = []
 
             if (i + 1) % eval_every == 0:
-                self.log_output(tac_input,
-                                img_input,
-                                lin_input,
-                                out,
-                                latent,
-                                pos_rpy,
-                                d_pos_rpy,
-                                'train')
+                log_output(tac_input,
+                           img_input,
+                           lin_input,
+                           out,
+                           latent,
+                           pos_rpy,
+                           self.save_folder,
+                           d_pos_rpy,
+                           'train')
 
                 val_loss = self.validate(val_dl)
                 print(f'validation loss: {val_loss}')
@@ -294,100 +290,19 @@ class Runner:
             #         'val/action_loss': np.mean(action_loss_list)
             #     })
 
-            self.log_output(tac_input,
-                            img_input,
-                            lin_input,
-                            out,
-                            latent,
-                            pos_rpy,
-                            d_pos_rpy,
-                            'valid')
+            log_output(tac_input,
+                       img_input,
+                       lin_input,
+                       out,
+                       latent,
+                       pos_rpy,
+                       self.save_folder,
+                       d_pos_rpy,
+                       'valid')
 
         return np.mean(val_loss)
 
-    def log_output(self, tac_input, img_input, lin_input, out, latent, pos_rpy, d_pos_rpy=None, session='train'):
-        # Selecting the first example from the batch for demonstration
-        # tac_input [B T F W H C]
-
-        image_sequence = tac_input[0].cpu().detach().numpy()
-        img_input = img_input[0].cpu().detach().numpy()
-        linear_features = lin_input[0].cpu().detach().numpy()
-        if d_pos_rpy is not None:
-            d_pos_rpy = d_pos_rpy[0, -1, :].cpu().detach().numpy()
-        pos_rpy = pos_rpy[0, -1, :].cpu().detach().numpy()
-
-        predicted_output = out[0].cpu().detach().numpy()
-        true_label = latent[0, -1, :].cpu().detach().numpy()
-        # Plotting
-        fig = plt.figure(figsize=(20, 10))
-
-        # Adding subplot for image sequence (adjust as needed)
-        ax1 = fig.add_subplot(2, 2, 1)
-        concat_images = []
-        # image_sequence [T F W H C]
-        for finger_idx in range(image_sequence.shape[1]):
-            finger_sequence = [np.transpose(img, (1, 2, 0)) for img in image_sequence[:, finger_idx, ...]]
-            finger_sequence = np.hstack(finger_sequence)
-            concat_images.append(finger_sequence)
-
-        ax1.imshow(np.vstack(concat_images) + 0.5)  # Adjust based on image normalization
-        ax1.set_title('Input Tactile Sequence')
-
-        # Adding subplot for linear features (adjust as needed)
-        # ax2 = fig.add_subplot(2, 2, 2)
-        # ax2.plot(d_pos_rpy[:, :], 'ok', label='hand_joints')  # Assuming the rest are actions
-        # ax2.set_title('Linear input')
-        # ax2.legend()
-
-        if d_pos_rpy is not None:
-            ax2 = fig.add_subplot(2, 2, 2)
-            width = 0.35
-            indices = np.arange(len(d_pos_rpy))
-            ax2.bar(indices - width / 2, d_pos_rpy, width, label='d_pos_rpy')
-            ax2.bar(indices + width / 2, pos_rpy, width, label='True Label')
-            ax2.set_title('Model Output vs. True Label')
-            ax2.legend()
-
-        # Check if img_input has more than one timestep
-        if img_input.ndim == 4 and img_input.shape[0] > 1:
-            concat_img_input = []
-            for t in range(img_input.shape[0]):
-                img = img_input[t]
-                img = np.transpose(img, (1, 2, 0))  # Convert from [W, H, C] to [H, W, C]
-                img = img + 0.5  # Adjust normalization if needed
-                concat_img_input.append(img)
-
-            # Horizontally stack the images for each timestep
-            concat_img_input = np.hstack(concat_img_input)
-        else:
-            # Handle the case where there is only one timestep
-            img = img_input[0] if img_input.ndim == 4 else img_input
-            img = np.transpose(img, (1, 2, 0))  # Convert from [W, H, C] to [H, W, C]
-            img = img + 0.5  # Adjust normalization if needed
-            concat_img_input = img
-
-        # Plot the concatenated image sequence
-        ax3 = fig.add_subplot(2, 2, 3)
-        ax3.imshow(concat_img_input)
-        ax3.set_title('Input Image Sequence')
-
-        # Adding subplot for Output vs. True Label comparison
-        ax4 = fig.add_subplot(2, 2, 4)
-        width = 0.35
-        indices = np.arange(len(predicted_output))
-        ax4.bar(indices - width / 2, predicted_output, width, label='Predicted')
-        ax4.bar(indices + width / 2, true_label, width, label='True Label')
-        ax4.set_title('Model Output vs. True Label')
-        ax4.legend()
-
-        # Adjust layout
-        plt.tight_layout()
-        # Saving the figure
-        plt.savefig(f'{self.save_folder}/{session}_example.png')
-        # Clean up plt to free memory
-        plt.close(fig)
-
-    def get_latent(self, tac_input, img_input, lin_input, gt_label=None):
+    def get_latent(self, tac_input, img_input, lin_input, gt_label=None, use_gt=False):
         self.model.eval()
         d_pos_rpy = None
         with torch.no_grad():
@@ -405,10 +320,12 @@ class Runner:
             if self.tact is not None:
                 d_pos_rpy = self.tact(tac_input, img_input, lin_input).unsqueeze(1)
 
-            if gt_label is not None:
-                out = self.model(tac_input, img_input, lin_input, gt_label.to(dtype=torch.float32))
+                if gt_label is not None and use_gt:
+                    out = self.model(tac_input, img_input, lin_input, gt_label.to(dtype=torch.float32))
+                else:
+                    out = self.model(tac_input, img_input, lin_input, d_pos_rpy)
             else:
-                out = self.model(tac_input, img_input, lin_input, d_pos_rpy)
+                out = self.model(tac_input, img_input, lin_input)
 
         return out, d_pos_rpy
 

@@ -30,7 +30,7 @@ tactile: # Pulling from task
     visualize_gui: True
 
   with_bg: True # add background reference frame
-  show_depth: True # visualize depth
+  show_depth: False # visualize depth
   show_detect: False #
   diff: True
   half_image: True # --> tacto & encoder width // 2
@@ -63,9 +63,11 @@ env:
 
     openhand:
         distal_open: 0.1
-        distal_close: 0.6
+        distal_close: 0.7
         proximal_open: 1.0
         proximal_close: 2.4 # 4
+        proximal_noise: 0.1
+        distal_noise: 0.2
         base_angle: 0.7
         tactile_finger: [ 'finger_1_3', 'finger_2_3', 'finger_3_3' ] # left, right, middle
 
