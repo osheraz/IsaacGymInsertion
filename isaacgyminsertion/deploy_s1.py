@@ -29,29 +29,30 @@ import warnings
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 # Enter here the model you want to test (base folder)
-model_to_test = 'gt_test'
+# model_to_test = 'gt_test'
 
 
-def find_config_folder(base_folder):
-    for root, dirs, files in os.walk(base_folder):
-        for file in files:
-            if re.match(r'config_\w+\.yaml', file):
-                folder_name = os.path.basename(root)
-                match = re.match(r'config_(\w+)\.yaml', file)
-                if match:
-                    config_id = match.group(1)
-                    return folder_name, config_id
+# def find_config_folder(base_folder):
+#     for root, dirs, files in os.walk(base_folder):
+#         for file in files:
+#             if re.match(r'config_\w+\.yaml', file):
+#                 folder_name = os.path.basename(root)
+#                 match = re.match(r'config_(\w+)\.yaml', file)
+#                 if match:
+#                     config_id = match.group(1)
+#                     return folder_name, config_id
+#
+#     return None, None
+#
+#
+# cfg_name = find_config_folder(f"./outputs/{model_to_test}/")
 
-    return None, None
 
-
-cfg_name = find_config_folder(f"./outputs/{model_to_test}/")
-
-
-@hydra.main(config_name=f"config_{cfg_name[1]}", config_path=f"./outputs/{model_to_test}/{cfg_name[0]}")
+# @hydra.main(config_name=f"config_{cfg_name[1]}", config_path=f"./outputs/{model_to_test}/{cfg_name[0]}")
+@hydra.main(config_name="config", config_path="./cfg")
 def main(config: DictConfig):
 
-    config.checkpoint = f'outputs/{model_to_test}/stage1_nn/last.pth'
+    config.checkpoint = f'outputs/gt_test/stage1_nn/last.pth'
     if config.checkpoint:
         config.checkpoint = to_absolute_path(config.checkpoint)
 
@@ -67,3 +68,4 @@ def main(config: DictConfig):
 
 if __name__ == '__main__':
     main()
+

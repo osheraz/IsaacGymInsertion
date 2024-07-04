@@ -22,7 +22,18 @@ import deepdish as dd
 import multiprocessing as mp
 import numpy as np
 from tqdm import tqdm
+import os
+import numpy as np
+import torch
+import multiprocessing as mp
+from tqdm import tqdm
+from datetime import datetime
 
+NUM_JOINTS = 7
+ROT_MAT_SIZE = 9
+POS_SIZE = 3
+QUAT_SIZE = 4
+ACT_SIZE = 6
 
 def transform_op(arr):
     """
@@ -92,8 +103,8 @@ class ExperienceBuffer(Dataset):
             else:
                 input_dict[k] = v[batch_idx]
         return input_dict['values'], input_dict['neglogpacs'], input_dict['advantages'], input_dict['mus'], \
-               input_dict['sigmas'], input_dict['returns'], input_dict['actions'], \
-               input_dict['obses'], input_dict['priv_info'], input_dict['contacts']
+            input_dict['sigmas'], input_dict['returns'], input_dict['actions'], \
+            input_dict['obses'], input_dict['priv_info'], input_dict['contacts']
 
     def update_mu_sigma(self, mu, sigma):
         start = self.last_range[0]
@@ -219,7 +230,7 @@ class VectorizedExperienceBuffer:
         return obses, priv_obses, tactile_imgs, actions, rewards, dones
 
 
-class DataLogger():
+class DataLoggerOld():
 
     def __init__(self, num_envs, episode_length, device, dir_path, total_trajectories, save_trajectory, **kwargs):
 
@@ -248,7 +259,7 @@ class DataLogger():
         if save_trajectory:
             self.pbar = tqdm(total=self.total_trajectories)
             self.total_trajectories = total_trajectories
-            self.num_workers = 8
+            self.num_workers = 12
             try:
                 self.q_s = [mp.JoinableQueue(maxsize=episode_length) for _ in range(self.num_workers)]
                 self.workers = [mp.Process(target=self.worker, args=(q, idx)) for idx, q in enumerate(self.q_s)]
@@ -320,7 +331,7 @@ class DataLogger():
                     self._save_batch_trajectories(batch_data)
             self._reset_buffers(save_env_ids)
             if save_trajectory:
-                if (self.trajectory_ctr >= self.total_trajectories):
+                if self.trajectory_ctr >= self.total_trajectories:
                     self.pbar.close()
                     for q in self.q_s:
                         q.put(None)
@@ -357,12 +368,151 @@ class DataLogger():
     def reset(self):
         self._reset_buffers(torch.arange(self.num_envs, dtype=torch.long, device=self.device).unsqueeze(-1))
 
+class DataLogger:
+
+    def __init__(self, num_envs, episode_length, device, dir_path, total_trajectories, save_trajectory, **kwargs):
+        self.buffer = []
+        self.id = 0
+        self.count = 0
+        self.num_envs = num_envs
+        self.device = device
+        self.transitions_per_env = episode_length
+        self.data_shapes = {}
+
+        if not os.path.exists(dir_path):
+            os.makedirs(dir_path, exist_ok=True)
+        self.dir = dir_path
+
+        for key, value in kwargs.items():
+            if key.endswith("_shape"):
+                self.data_shapes[key.replace("_shape", "")] = value
+
+        self.pbar = None
+        self.trajectory_ctr = 0
+        self.total_trajectories = total_trajectories
+
+        self._init_buffers()
+
+        if save_trajectory:
+            self.pbar = tqdm(total=self.total_trajectories)
+            self.num_workers = 12
+            self.manager = mp.Manager()
+            self.q_s = [self.manager.Queue(maxsize=episode_length) for _ in range(self.num_workers)]
+            self.workers = [mp.Process(target=self.worker, args=(q, idx)) for idx, q in enumerate(self.q_s)]
+            for worker in self.workers:
+                worker.daemon = True
+                worker.start()
+
+    def _init_buffers(self):
+        self.log_data = {}
+        for key, shape in self.data_shapes.items():
+            if shape is not None:
+                data_shape = (self.num_envs, self.transitions_per_env, shape)
+                if isinstance(shape, torch.Size):
+                    data_shape = (self.num_envs, self.transitions_per_env, *shape)
+                self.log_data[key] = torch.zeros(data_shape, dtype=torch.float32, device=self.device)
+
+        self.done = torch.zeros((self.num_envs, self.transitions_per_env), dtype=torch.bool, device=self.device)
+        self.env_step_counter = torch.zeros((self.num_envs, 1), dtype=torch.long, device=self.device).view(-1, 1)
+        self.env_ids = torch.arange(self.num_envs, dtype=torch.long, device=self.device).unsqueeze(-1)
+
+    def _reset_buffers(self, env_ids):
+        for key, buffer in self.log_data.items():
+            buffer[env_ids, ...] = 0.
+        self.done[env_ids, ...] = 0.
+        self.env_step_counter[env_ids, ...] = 0.
+
+    def _save_batch_trajectories(self, data):
+        q_id = np.random.randint(0, self.num_workers)
+        while True:
+            try:
+                self.q_s[q_id].put(data)
+                break
+            except mp.queues.Full:
+                q_id = (q_id + 1) % self.num_workers
+
+    def update(self, save_trajectory=True, **kwargs):
+        for key, value in kwargs.items():
+            if key == "done":
+                continue
+            if value is None:
+                value = torch.zeros((self.num_envs, self.data_shapes[key]), dtype=torch.float32, device=self.device)
+            self.log_data[key][self.env_ids, self.env_step_counter, ...] = value.clone().unsqueeze(1)
+
+        done = kwargs.get('done', None)
+        if done is None:
+            done = torch.zeros_like(self.done[:, 0, ...]).to(torch.bool)
+        if done.dtype != torch.bool:
+            done = done.clone().to(torch.bool)
+
+        self.done[self.env_ids, self.env_step_counter, ...] = done.clone().unsqueeze(1)
+        self.env_step_counter += 1
+        dones = done.to(torch.long).nonzero()
+        if len(dones) > 0:
+            save_env_ids = dones.squeeze(1)
+            if save_trajectory:
+                self.pbar.update(len(dones))
+                self.trajectory_ctr += len(dones)
+                for save_env_id in save_env_ids:
+                    batch_data = {key: self.log_data[key][save_env_id, ...].clone().cpu() for key in self.log_data}
+                    batch_data['done'] = self.done[save_env_id, ...].clone().cpu()
+                    self._save_batch_trajectories(batch_data)
+            self._reset_buffers(save_env_ids)
+            if save_trajectory:
+                if self.trajectory_ctr >= self.total_trajectories:
+                    self.pbar.close()
+                    self._shutdown_workers()
+                    print('Data collection finished!')
+                    exit()
+
+    def worker(self, q, q_idx):
+        data_path = os.path.join(self.dir, f'{q_idx}')
+        if not os.path.exists(data_path):
+            os.makedirs(data_path)
+
+        try:
+            while True:
+                try:
+                    item = q.get()
+                except mp.queues.Empty:
+                    continue
+                if item is None:
+                    print(f"Worker {q_idx} received shutdown signal.")
+                    break
+                # save the data
+                for k, v in item.items():
+                    if isinstance(item[k], torch.Tensor):
+                        item[k] = item[k].numpy()
+                np.savez_compressed(os.path.join(data_path, f'{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}.npz'), **item)
+                q.task_done()
+        except (KeyboardInterrupt, EOFError) as e:
+            print(f"Exception {e} detected in worker {q_idx}. Exiting gracefully.")
+        except Exception as e:
+            print(f"Unexpected error in worker {q_idx}: {e}")
+        finally:
+            q.task_done()
+
+    def _shutdown_workers(self):
+        print("Shutting down workers...")
+        for q in self.q_s:
+            q.put(None)
+        for worker in self.workers:
+            worker.join()
+            worker.terminate()
+        print("All workers shut down successfully.")
+
+    def get_data(self):
+        return self.log_data
+
+    def reset(self):
+        self._reset_buffers(torch.arange(self.num_envs, dtype=torch.long, device=self.device).unsqueeze(-1))
+
+
 
 class SimLogger():
 
     def __init__(self, env):
         self.env = env
-        ROT_MAT_SIZE = 9
         self.gt_contact = env.cfg_task.env.compute_contact_gt
 
         log_items = {
@@ -419,7 +569,8 @@ class SimLogger():
         socket_pos = torch.cat(self.env.pose_world_to_robot_base(self.env.socket_pos.clone(),
                                                                  self.env.socket_quat.clone()), dim=-1)
         noisy_socket_pos = torch.cat(self.env.pose_world_to_robot_base(self.env.noisy_gripper_goal_pos.clone(),
-                                                                       self.env.noisy_gripper_goal_quat.clone()), dim=-1)
+                                                                       self.env.noisy_gripper_goal_quat.clone()),
+                                     dim=-1)
 
         new_action = None
         if action is not None:
@@ -473,11 +624,11 @@ class RealLogger():
 
         self.env = env
 
-        NUM_JOINTS = 7
-        ROT_MAT_SIZE = 9
-        POS_SIZE = 3
-        QUAT_SIZE = 4
-        ACT_SIZE = 6
+        self.with_zed = self.env.deploy_config.env.depth_cam,
+        self.with_tactile = self.env.deploy_config.env.tactile,
+        self.with_ext_cam = self.env.deploy_config.env.ext_cam,
+        self.with_hand = self.env.deploy_config.env.hand,
+        self.with_arm = self.env.deploy_config.env.arm
 
         log_items = {
             'arm_joints_shape': NUM_JOINTS,
@@ -486,17 +637,17 @@ class RealLogger():
             'noisy_socket_pos_shape': POS_SIZE + QUAT_SIZE,
             'action_shape': ACT_SIZE,
             'target_shape': ACT_SIZE,
-            'obs_hist_shape': env.obs_buf.shape[-1],
-            'obs_hist_stud_shape': env.obs_student_buf.shape[-1],
-            'tactile_shape': env.tactile_imgs.shape[1:],
-            'img_shape': env.image_buf.shape[1:],
-            'contact_shape': env.num_contact_points,
+            'obs_hist_shape': env.full_config.task.env.numObservations,
+            'obs_hist_stud_shape': env.full_config.task.env.numObsStudent,
+            'contact_shape': env.full_config.task.env.num_points,
             'latent_shape': env.deploy_config.network.merge_mlp.units[-1],
-            'plug_hand_pos_shape': POS_SIZE + QUAT_SIZE,
+            'ft_shape': env.ft_data.shape[-1],
+            'priv_obs_shape': env.full_config.train.ppo.priv_info_dim,
             'plug_pos_error_shape': POS_SIZE + QUAT_SIZE,
             'plug_pos_shape': POS_SIZE + QUAT_SIZE,
-            'priv_obs_shape': env.priv_info_dim,
-            'ft_shape': env.ft_data.shape[-1],
+            'plug_hand_pos_shape': POS_SIZE + QUAT_SIZE,
+            'img_shape': env.image_buf.shape[1:],
+            'tactile_shape': env.tactile_imgs.shape[1:],
         }
 
         log_folder = env.deploy_config.data_logger.base_folder
@@ -524,40 +675,52 @@ class RealLogger():
         noisy_socket_pos = torch.cat((self.env.noisy_gripper_goal_pos.clone(),
                                       self.env.noisy_gripper_goal_quat.clone()), dim=-1)
 
-        plug_pos = torch.cat((self.env.plug_pos.clone(),
-                              self.env.plug_quat.clone()), dim=-1)
-
-        plug_hand_pos = torch.cat((self.env.plug_hand_pos.clone(),
-                                   self.env.plug_hand_quat.clone()), dim=-1)
-
-        plug_pos_error = torch.cat((self.env.plug_pos_error.clone(),
-                                    self.env.plug_quat_error.clone()), dim=-1)
-
         ft = self.env.ft_data.clone()
-        contacts = self.env.contacts.clone()
-        obs_hist = self.env.obs_buf.clone()
-        obs_hist_stud = self.env.obs_student_buf.clone()
+        # contacts = self.env.contacts.clone()
+        # obs_hist = self.env.obs_buf.clone()
+        # obs_hist_stud = self.env.obs_student_buf.clone()
         priv_obs = self.env.states_buf.clone()
 
         log_data = {
-            'plug_pos': plug_pos,
-            'plug_hand_pos': plug_hand_pos,
-            'plug_pos_error': plug_pos_error,
             'arm_joints': self.env.arm_dof_pos.clone(),
             'eef_pos': eef_pos,
             'socket_pos': socket_pos,
             'noisy_socket_pos': noisy_socket_pos,
             'action': action,
-            'target': self.env.targets,
-            'tactile': self.env.tactile_imgs.clone(),
-            'img': self.env.image_buf.clone(),
             'latent': latent,
-            'obs_hist': obs_hist,
-            'obs_hist_stud': obs_hist_stud,
             'priv_obs': priv_obs,
             'done': done.squeeze(0),
-            'contact': contacts,
+            # 'target': self.env.targets,
+            # 'obs_hist': obs_hist,
+            # 'obs_hist_stud': obs_hist_stud,
+            # 'contact': contacts,
             'ft': ft
         }
+
+        if self.with_ext_cam:
+            plug_pos = torch.cat((self.env.plug_pos.clone(),
+                                  self.env.plug_quat.clone()), dim=-1)
+
+            plug_hand_pos = torch.cat((self.env.plug_hand_pos.clone(),
+                                       self.env.plug_hand_quat.clone()), dim=-1)
+
+            plug_pos_error = torch.cat((self.env.plug_pos_error.clone(),
+                                        self.env.plug_quat_error.clone()), dim=-1)
+
+            log_data.update({
+                'plug_pos': plug_pos,
+                'plug_hand_pos': plug_hand_pos,
+                'plug_pos_error': plug_pos_error,
+            })
+
+        if self.with_zed:
+            log_data.update({
+                'img': self.env.image_buf.clone()
+            })
+
+        if self.with_tactile:
+            log_data.update({
+                'tactile': self.env.tactile_imgs.clone()
+            })
 
         self.data_logger.update(save_trajectory=save_trajectory, **log_data)

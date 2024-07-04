@@ -540,14 +540,13 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         # noisy_delta_pos = self.noisy_gripper_goal_pos - self.fingertip_centered_pos
 
         eef_pos = torch.cat(self.pose_world_to_robot_base(self.fingertip_centered_pos.clone(),
-                                                          self.fingertip_centered_quat.clone()), dim=-1)
+                                                          self.fingertip_centered_quat.clone(),
+                                                          to_rep='rot6d'),
+                            dim=-1)
         actions = self.actions.clone()
 
-        # obs = torch.cat([eef_pos, actions, targets], dim=-1)
         obs = torch.cat([eef_pos,
                          actions,
-                         # self.noisy_gripper_goal_pos.clone(),
-                         # noisy_delta_pos
                          ], dim=-1)
 
         self.obs_queue[:, :-self.num_observations] = self.obs_queue[:, self.num_observations:]
@@ -563,7 +562,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         # Define state (for teacher)
 
         self.plug_socket_dist[:, :] = self.plug_pos - self.socket_pos
-        plug_hand_pos, plug_hand_quat = self.pose_world_to_hand_base(self.plug_pos, self.plug_quat, as_matrix=False)
+        plug_hand_pos, plug_hand_quat = self.pose_world_to_hand_base(self.plug_pos, self.plug_quat)
         self.plug_hand_pos[...] = plug_hand_pos
         self.plug_hand_quat[...] = plug_hand_quat
 
@@ -760,16 +759,14 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         engagement = self._get_engagement_reward_scale(is_plug_engaged_w_socket, self.cfg_task.rl.success_height_thresh)
         engagement_reward = engagement * self.cfg_task.rl.engagement_reward_scale
 
-        # print(keypoint_reward[0], engagement_reward[0], ori_reward[0])
-
-        self.rew_buf[:] = keypoint_reward + engagement_reward + ori_reward + action_reward + action_delta_reward
-
         distance_reset_buf = (self.far_from_goal_buf | self.degrasp_buf)
         early_reset_reward = distance_reset_buf * self.cfg_task.rl.early_reset_reward_scale
-        self.rew_buf[:] += (early_reset_reward)
 
+        self.rew_buf[:] = keypoint_reward + engagement_reward + ori_reward + action_reward + action_delta_reward
+        self.rew_buf[:] += early_reset_reward
         # self.rew_buf[:] += (early_reset_reward * self.timeout_reset_buf)
         # self.rew_buf[:] += (self.timeout_reset_buf * self.success_reset_buf) * self.cfg_task.rl.success_bonus
+
         self.extras['successes'] = ((self.timeout_reset_buf | distance_reset_buf) * self.success_reset_buf) * 1.0
         self.extras['keypoint_reward'] = keypoint_reward
         self.extras['engagement_reward'] = engagement_reward
@@ -822,8 +819,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             self.reset_buf[:] |= self.degrasp_buf[:]
 
         # If plug is too far from socket pos
-        self.dist_plug_socket = torch.norm(self.plug_pos - self.socket_pos, p=2, dim=-1)
-        self.far_from_goal_buf[:] = self.dist_plug_socket > 0.2  # self.cfg_task.rl.far_error_thresh,
+        self.far_from_goal_buf[:] = torch.norm(self.plug_pos - self.socket_pos, p=2, dim=-1) > 0.2
         # self.reset_buf[:] |= self.far_from_goal_buf[:]
 
     def _reset_predefined_environment(self, env_ids):
@@ -1036,7 +1032,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self._refresh_task_tensors(update_tactile=True)
 
         # Update init grasp pos
-        plug_hand_pos, plug_hand_quat = self.pose_world_to_hand_base(self.plug_pos, self.plug_quat, as_matrix=False)
+        plug_hand_pos, plug_hand_quat = self.pose_world_to_hand_base(self.plug_pos, self.plug_quat)
         self.plug_hand_pos_init[...] = plug_hand_pos
         self.plug_hand_quat_init[...] = plug_hand_quat
 

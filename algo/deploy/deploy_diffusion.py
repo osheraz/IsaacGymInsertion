@@ -163,7 +163,7 @@ class HardwarePlayer:
 
     def _pose_world_to_hand_base(self, pos, quat, as_matrix=True):
         """Convert pose from world frame to robot base frame."""
-
+        # todo: ADD ROTATIONS
         info = self.env.get_info_for_control()
         ee_pose = info['ee_pose']
 

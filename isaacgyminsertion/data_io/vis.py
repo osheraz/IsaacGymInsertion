@@ -10,8 +10,9 @@ import random
 # %%
 import yaml
 
-all_paths = glob('/home/osher/tactile_insertion/datastore_42_gt_test/*/*/obs/*.npz')
+# all_paths = glob('/home/osher/tactile_insertion/datastore_42_gt_test/*/*/obs/*.npz')
 # all_paths = glob('/home/roblab20/tactile_diffusion/datastore_real/*/*/obs/*.npz')
+all_paths = glob('/home/roblab20/tactile_tests/datastore_real/*/*/obs/*.npz')
 
 print(len(all_paths))
 
@@ -447,7 +448,7 @@ if False:
     plt.scatter(data['socket_pos'][1:done_idx, 0], data['socket_pos'][1:done_idx, 1], color='r', s=35)
     plt.show()
 
-if False:
+if True:
     import cv2
     import numpy as np
     from tqdm import tqdm
@@ -493,7 +494,7 @@ if False:
             img2 = tactile_img[j][1] #- img2
             img3 = tactile_img[j][2] #- img3
 
-        depth = depth_img[j]
+        # depth = depth_img[j]
         # img1 = np.transpose(img1, (1, 2, 0))
         # img2 = np.transpose(img2, (1, 2, 0))
         # img3 = np.transpose(img3, (1, 2, 0))
@@ -505,14 +506,13 @@ if False:
 
         # Update and redraw the tactile image
         # depth = np.uint8(depth)
-        cv2.imshow("Depth Image", depth.transpose(1, 2, 0) + 0.5)
+        # cv2.imshow("Depth Image", depth.transpose(1, 2, 0) + 0.5)
+        cv2.namedWindow('test', cv2.WND_PROP_FULLSCREEN)
+        key = cv2.waitKey(20)
         cv2.imshow('test', img.transpose(1, 2, 0))
+        # cv2.waitKey(200) & 0xFF
 
-        # cv2.imshow('test2', )
-
-        cv2.waitKey(200)
-
-if True:
+if False:
     fig = plt.figure(figsize=(18, 10))
     ax = fig.add_subplot(111)
     a = []
@@ -524,15 +524,15 @@ if True:
         done_idx = data['done'].nonzero()[-1][0]
         if done_idx < 10:
             continue
-        label = Rotation.from_quat(data["plug_hand_quat"][:done_idx, :]).as_euler('xyz', degrees=True)  # data["latent"] #
-        to_plot = label # - label[0, :]
+        label = Rotation.from_quat(data["plug_hand_pos"][:done_idx, 3:]).as_euler('xyz', degrees=True)  # data["latent"] #
+        to_plot = label - label[0, :]
 
         if i == 0:
             a = to_plot
         else:
             a = np.vstack((a, to_plot))
 
-        plt.plot(to_plot[:,0], 'o')
+        plt.plot(to_plot[:,], 'o')
 
         # plt.plot(sin_cos_representation[:,2:4], 'ko')
         # plt.plot(sin_cos_representation[:,4:6], 'go')

@@ -58,8 +58,8 @@ def extract_and_save_frames(file_list):
                 print(f'File processing generated an exception: {exc}')
 
 # Define the path to the data
-# data_path = "/home/roblab20/tactile_diffusion/datastore_real"
-data_path = "/home/osher/tactile_insertion/datastore_42_gt_test"
+data_path = "/home/roblab20/tactile_tests/datastore_real"
+# data_path = "/home/osher/tactile_insertion/datastore_42_gt_test"
 
 print('Loading trajectories from', data_path)
 

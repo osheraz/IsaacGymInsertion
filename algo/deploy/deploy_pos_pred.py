@@ -14,21 +14,13 @@ import hydra
 import cv2
 from isaacgyminsertion.utils import torch_jit_utils
 import isaacgyminsertion.tasks.factory_tactile.factory_control as fc
-from isaacgyminsertion.tasks.factory_tactile.factory_utils import quat2R
 from algo.models.transformer.tactile_runner import Runner as TAgent
 from scipy.spatial.transform import Rotation
 
-from time import time
 import numpy as np
-import omegaconf
-from matplotlib import pyplot as plt
+from isaacgyminsertion.tasks.factory_tactile.factory_utils import quat2R, RotationTransformer
 
-import json
-import trimesh
-import open3d as o3d
 from matplotlib import pyplot as plt
-# from tf.transformations import quaternion_matrix, identity_matrix, quaternion_from_matrix
-from tqdm import tqdm
 
 
 def to_torch(x, dtype=torch.float, device='cuda:0', requires_grad=False):
@@ -37,10 +29,13 @@ def to_torch(x, dtype=torch.float, device='cuda:0', requires_grad=False):
 
 class HardwarePlayer:
     def __init__(self, full_config):
+
         self.f_right = None
         self.f_left = None
         self.f_bottom = None
         self.num_envs = 1
+        self.grasp_flag = True
+
         self.deploy_config = full_config.deploy
         self.full_config = full_config
         self.tact_config = full_config.offline_train
@@ -50,6 +45,9 @@ class HardwarePlayer:
 
         self.device = self.full_config["rl_device"]
         self.episode_length = torch.zeros((1, 1), device=self.device, dtype=torch.float)
+        self.actions = torch.zeros((1, 6), device=self.device, dtype=torch.float)
+        self.latent = torch.zeros((1, 8), device=self.device, dtype=torch.float)
+
         self.tactile_seq_length = self.tact_config.model.transformer.sequence_length
         self.img_hist_len = self.tact_config.model.transformer.sequence_length
         self.external_cam = self.full_config.task.external_cam.external_cam
@@ -59,19 +57,18 @@ class HardwarePlayer:
         self.far_clip = self.full_config.task.external_cam.far_clip
         self.dis_noise = self.full_config.task.external_cam.dis_noise
 
-        self.grasp_flag = True
         self.cfg_tactile = full_config.task.tactile
-
-        self.tact = TAgent(self.full_config)
 
         self.cfg_tactile = full_config.task.tactile
         asset_info_path = '../../assets/factory/yaml/factory_asset_info_insertion.yaml'
         # asset_info_path = '../../../assets/factory/yaml/factory_asset_info_insertion.yaml'
         self.asset_info_insertion = hydra.compose(config_name=asset_info_path)
         self.asset_info_insertion = self.asset_info_insertion['']['']['']['']['']['']['assets']['factory']['yaml']
+        self.rot_tf = RotationTransformer()
 
     def restore(self, fn):
         import pickle
+        self.tact = TAgent(self.full_config)
         self.tact.load_model(self.tact_config.model.transformer.tact_path)
         self.tact.model.eval()
         self.stats = pickle.load(open(self.tact_config.train.normalize_file, "rb"))
@@ -111,7 +108,7 @@ class HardwarePlayer:
             self.plug_width = self.asset_info_insertion[subassembly][components[0]]['diameter']
             self.socket_width = self.asset_info_insertion[subassembly][components[1]]['diameter']
 
-    def _pose_world_to_hand_base(self, pos, quat, as_matrix=True):
+    def _pose_world_to_hand_base(self, pos, quat, to_rep=None):
         """Convert pose from world frame to robot base frame."""
 
         info = self.env.get_info_for_control()
@@ -140,8 +137,10 @@ class HardwarePlayer:
             robot_base_transform_inv[0], robot_base_transform_inv[1], quat, pos
         )
 
-        if as_matrix:
-            return pos_in_robot_base, quat2R(quat_in_robot_base).reshape(1, -1)
+        if to_rep == 'matrix':
+            return pos_in_robot_base, quat2R(quat_in_robot_base).reshape(self.num_envs, -1)
+        elif to_rep == 'rot6d':
+            return pos_in_robot_base, self.rot_tf.forward(quat_in_robot_base)
         else:
             return pos_in_robot_base, quat_in_robot_base
 
@@ -168,8 +167,10 @@ class HardwarePlayer:
 
         # tactile buffers
         self.num_channels = self.cfg_tactile.encoder.num_channels
-        self.width = self.tact_config.tactile_width // 2 if self.cfg_tactile.half_image else self.tact_config.tactile_width
-        self.height = self.tact_config.tactile_height
+        # self.width = self.tact_config.tactile_width // 2 if self.cfg_tactile.half_image else self.tact_config.tactile_width
+        # self.height = self.tact_config.tactile_height
+        self.width = self.cfg_tactile.encoder.width // 2 if self.cfg_tactile.half_image else self.cfg_tactile.encoder.width
+        self.height = self.cfg_tactile.encoder.height
 
         # tactile buffers
         self.tactile_imgs = torch.zeros(
@@ -278,11 +279,9 @@ class HardwarePlayer:
             jacobian_type='geometric',
             rot_error_type='quat')
 
-        self.plug_hand_pos, self.plug_hand_quat = self._pose_world_to_hand_base(self.plug_pos,
-                                                                                self.plug_quat,
-                                                                                as_matrix=False)
+        self.plug_hand_pos, self.plug_hand_quat = self._pose_world_to_hand_base(self.plug_pos, self.plug_quat)
 
-    def compute_observations(self, with_tactile=True, with_img=True, display_image=True, with_priv=False, diff_tac=True):
+    def compute_observations(self, with_tactile=True, with_img=True, display_image=True, with_priv=False, diff_tac=False):
 
         obses = self.env.get_obs()
 
@@ -297,6 +296,9 @@ class HardwarePlayer:
 
         eef_pos = torch.cat((self.fingertip_centered_pos,
                              quat2R(self.fingertip_centered_quat).reshape(1, -1)), dim=-1)
+
+        # eef_pos = torch.cat((self.fingertip_centered_pos,
+        #                      self.rot_tf.forward(self.fingertip_centered_quat).reshape(1, -1)), dim=-1)
 
         if with_tactile:
 
@@ -326,7 +328,7 @@ class HardwarePlayer:
                 bottom -= self.f_bottom
 
             if display_image:
-                cv2.imshow("Hand View\tLeft\tRight\tMiddle", np.concatenate((left, right, bottom), axis=1) + 0.5)
+                cv2.imshow("Hand View\tLeft\tRight\tMiddle", np.concatenate((left, right, bottom), axis=1))
                 cv2.waitKey(1)
 
             if self.num_channels == 3:
@@ -370,18 +372,16 @@ class HardwarePlayer:
         if with_priv:
             # Compute privileged info (gt_error + contacts)
             self._update_plug_pose()
-            plug_hand_quat = self.plug_hand_quat.squeeze(0).cpu().detach().numpy()
-            euler = Rotation.from_quat(plug_hand_quat).as_euler('xyz')
-            euler = torch.tensor(euler, device=self.device, dtype=torch.float).unsqueeze(0)
 
             state_tensors = [
                 self.plug_hand_pos,  # 3
-                euler,
+                self.plug_hand_quat,
                 # self.plug_pos_error,  # 3
                 # self.plug_quat_error,  # 4
             ]
 
             obs_dict['priv_info'] = torch.cat(state_tensors, dim=-1)
+            self.states_buf = torch.cat(state_tensors, dim=-1)  # shape = (num_envs, num_states)
 
         return obs_dict
 
@@ -395,7 +395,7 @@ class HardwarePlayer:
         self.inserted = is_very_close_xy & is_bellow_surface
         is_too_far = (plug_socket_xy_distance > 0.08) | (self.fingertip_centered_pos[:, 2] > 0.125)
 
-        timeout = (self.episode_length >= self.max_episode_length)
+        timeout = (self.episode_length >= self.max_episode_length - 1)
 
         self.done = timeout  # | is_too_far |  self.inserted
 
@@ -425,7 +425,8 @@ class HardwarePlayer:
 
             self.grasp_and_init()
         # self.env.randomize_grasp()
-
+        self.env.release()
+        self.env.grasp()
         self.env.arm.move_manipulator.scale_vel(scale_vel=0.02, scale_acc=0.02)
         self.inserted[...] = False
         self.done[...] = False
@@ -462,12 +463,18 @@ class HardwarePlayer:
         self.done[...] = False
         self.episode_length[...] = 0.
 
-    def deploy(self):
+    def deploy(self, test=False):
 
         # self._initialize_grasp_poses()
         from algo.deploy.env.env import ExperimentEnv
         rospy.init_node('DeployEnv')
-        self.env = ExperimentEnv(with_zed=False)
+
+        self.env = ExperimentEnv(with_zed=self.deploy_config.env.depth_cam,
+                                 with_tactile=self.deploy_config.env.tactile,
+                                 with_ext_cam=self.deploy_config.env.ext_cam,
+                                 with_hand=self.deploy_config.env.hand,
+                                 with_arm=self.deploy_config.env.arm)
+
         self.env.arm.move_manipulator.scale_vel(scale_vel=0.004, scale_acc=0.004)
 
         rospy.logwarn('Finished setting the env, lets play.')
@@ -477,7 +484,6 @@ class HardwarePlayer:
 
         self._create_asset_info()
         self._acquire_task_tensors()
-        self.deploy_config.data_logger.collect_data = False
 
         # ---- Data Logger ----
         if self.deploy_config.data_logger.collect_data:
@@ -493,7 +499,7 @@ class HardwarePlayer:
 
         self.grasp_and_init()
 
-        num_episodes = 5
+        num_episodes = self.deploy_config.data_logger.total_trajectories
         cur_episode = 0
 
         fig = plt.figure(figsize=(10, 10))
@@ -516,6 +522,8 @@ class HardwarePlayer:
             tactile = obs_dict['tactile']
             label = obs_dict['priv_info'].cpu().detach().numpy()[0]
             label0 = label.copy()
+            sxyz, squat = label0[:3], label0[3:] + 1e-6
+            seuler = Rotation.from_quat(squat).as_euler('xyz')
 
             self._update_reset_buf()
 
@@ -524,19 +532,24 @@ class HardwarePlayer:
 
             while not self.done[0, 0]:
 
-                out = self.tact.get_latent(tactile).cpu().detach().numpy()
-                d_plug_pos, d_euler = out[:, :3], out[:, 3:]
-                d_plug_pos = (d_plug_pos * self.stats["std"]["plug_hand_pos_diff"]) + self.stats["mean"]["plug_hand_pos_diff"]
-                d_euler = (d_euler * self.stats["std"]["plug_hand_diff_euler"]) + self.stats["mean"]["plug_hand_diff_euler"]
-                d_pos_rpy = np.hstack((d_plug_pos, d_euler))[0]
+                if test:
+                    out = self.tact.get_latent(tactile).cpu().detach().numpy()
+                    d_plug_pos, d_euler = out[:, :3], out[:, 3:]
+                    d_plug_pos = (d_plug_pos * self.stats["std"]["plug_hand_pos_diff"]) + self.stats["mean"]["plug_hand_pos_diff"]
+                    d_euler = (d_euler * self.stats["std"]["plug_hand_diff_euler"]) + self.stats["mean"]["plug_hand_diff_euler"]
+                    d_pos_rpy = np.hstack((d_plug_pos, d_euler))[0]
 
                 if display:
-                    label -= label0
-                    ax1.bar(indices - width / 2, d_pos_rpy[:3], width, label='d_pos_rpy')
-                    ax1.bar(indices + width / 2, label[:3], width, label='True Label')
-                    ax2.bar(indices - width / 2, d_pos_rpy[3:], width, label='d_pos_rpy')
-                    ax2.bar(indices + width / 2, label[3:], width, label='True Label')
-                    ax1.set_ylim([-0.01, 0.01])
+                    if test:
+                        ax1.bar(indices - width / 2, d_pos_rpy[:3], width, label='d_pos_rpy')
+                        ax2.bar(indices - width / 2, d_pos_rpy[3:], width, label='d_pos_rpy')
+                    xyz, quat = label[:3], label[3:] + 1e-6
+                    euler = Rotation.from_quat(quat).as_euler('xyz')
+                    xyz = xyz - sxyz
+                    euler = euler - seuler
+                    ax1.bar(indices + width / 2, xyz, width, label='True POS')
+                    ax2.bar(indices + width / 2, euler, width, label='True RPY')
+                    ax1.set_ylim([-0.02, 0.02])
                     ax2.set_ylim([-0.5, 0.5])
                     plt.pause(0.00000000002)
                     ax1.cla()
@@ -546,8 +559,8 @@ class HardwarePlayer:
                 self._update_reset_buf()
                 self.episode_length += 1
 
-                # if self.deploy_config.data_logger.collect_data:
-                #     data_logger.log_trajectory_data(action, latent, self.done.clone())
+                if self.deploy_config.data_logger.collect_data:
+                    data_logger.log_trajectory_data(self.actions, self.latent, self.done.clone())
 
                 if self.done[0, 0]:
                     cur_episode += 1
@@ -560,3 +573,4 @@ class HardwarePlayer:
 
             self.env.arm.move_manipulator.stop_motion()
             self.reset()
+

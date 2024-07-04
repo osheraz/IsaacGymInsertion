@@ -2,11 +2,98 @@ from isaacgyminsertion.utils.torch_jit_utils import *
 from isaacgym.torch_utils import *
 from scipy.spatial.transform import Rotation as R
 
+from typing import Union
+import pytorch3d.transforms as pt
+import torch
+import numpy as np
+import functools
+
+
+class RotationTransformer:
+    valid_reps = [
+        'axis_angle',
+        'euler_angles',
+        'quaternion',
+        'rotation_6d',
+        'matrix'
+    ]
+
+    def __init__(self,
+                 from_rep='quaternion',
+                 to_rep='rotation_6d',
+                 from_convention=None,
+                 to_convention=None):
+        """
+        Valid representations
+
+        Always use matrix as intermediate representation.
+        """
+        assert from_rep != to_rep
+        assert from_rep in self.valid_reps
+        assert to_rep in self.valid_reps
+        if from_rep == 'euler_angles':
+            assert from_convention is not None
+        if to_rep == 'euler_angles':
+            assert to_convention is not None
+
+        forward_funcs = list()
+        inverse_funcs = list()
+
+        if from_rep != 'matrix':
+            funcs = [
+                getattr(pt, f'{from_rep}_to_matrix'),
+                getattr(pt, f'matrix_to_{from_rep}')
+            ]
+            if from_convention is not None:
+                funcs = [functools.partial(func, convention=from_convention)
+                         for func in funcs]
+            forward_funcs.append(funcs[0])
+            inverse_funcs.append(funcs[1])
+
+        if to_rep != 'matrix':
+            funcs = [
+                getattr(pt, f'matrix_to_{to_rep}'),
+                getattr(pt, f'{to_rep}_to_matrix')
+            ]
+            if to_convention is not None:
+                funcs = [functools.partial(func, convention=to_convention)
+                         for func in funcs]
+            forward_funcs.append(funcs[0])
+            inverse_funcs.append(funcs[1])
+
+        inverse_funcs = inverse_funcs[::-1]
+
+        self.forward_funcs = forward_funcs
+        self.inverse_funcs = inverse_funcs
+
+    @staticmethod
+    def _apply_funcs(x: Union[np.ndarray, torch.Tensor], funcs: list) -> Union[np.ndarray, torch.Tensor]:
+        x_ = x
+        if isinstance(x, np.ndarray):
+            x_ = torch.from_numpy(x)
+        x_: torch.Tensor
+        for func in funcs:
+            x_ = func(x_)
+        y = x_
+        if isinstance(x, np.ndarray):
+            y = x_.numpy()
+        return y
+
+    def forward(self, x: Union[np.ndarray, torch.Tensor]
+                ) -> Union[np.ndarray, torch.Tensor]:
+        return self._apply_funcs(x, self.forward_funcs)
+
+    def inverse(self, x: Union[np.ndarray, torch.Tensor]
+                ) -> Union[np.ndarray, torch.Tensor]:
+        return self._apply_funcs(x, self.inverse_funcs)
+
+
 def axis_angle2quat(axis_angle_error):
     angle = torch.norm(-axis_angle_error, p=2, dim=-1)
     axis = -axis_angle_error / angle.unsqueeze(-1)
     quat = quat_from_angle_axis(angle, axis)
     return quat
+
 
 def matrix_to_euler_xyz(rotation_matrix: torch.Tensor) -> torch.Tensor:
     """
@@ -40,11 +127,11 @@ def quat2euler(quat):
     euler = torch.stack([euler_x, euler_y, euler_z], dim=-1)
     return euler
 
+
 def quat2euler2(quat):
     M = quaternion_to_matrix(quat)
     euler = matrix_to_euler_xyz(M)
     return euler
-
 
 
 def euler_angles_to_matrix(euler_angles: torch.Tensor, convention: str) -> torch.Tensor:
@@ -120,11 +207,11 @@ def xyzquat_to_tf_numpy(position_quat: np.ndarray) -> np.ndarray:
     # return T.squeeze()
     return T
 
+
 # pose vector: [position(3), quaternion(4)] = [x, y, z, q1, q2, q3, q0]
 # pose matrix (SE3): [[R, p], [0^T, 1]]
 # (7, ) or (N, 7) -> (4, 4) or (N, 4, 4)
 def pose_vec_to_mat(input_vec: torch.Tensor):
-
     if isinstance(input_vec, np.ndarray):
         vec = torch.Tensor(input_vec)
     else:
@@ -132,7 +219,7 @@ def pose_vec_to_mat(input_vec: torch.Tensor):
 
     assert vec.ndim in {1, 2} and vec.size(-1) == 7, f"invalid pose vector shape: {vec.size()}"
     ndim = vec.ndim
-    if ndim == 1: vec = vec.view((1, -1)) # (1, 7)
+    if ndim == 1: vec = vec.view((1, -1))  # (1, 7)
     N = vec.size(0)
 
     p = vec[..., :3].view((-1, 3, 1))
@@ -151,6 +238,7 @@ def pose_vec_to_mat(input_vec: torch.Tensor):
 
     return SE3
 
+
 # (unit) quaternion to rotation matrix
 # [vec, w] = [q1, q2, q3, q0] -> R
 # (4, ) or (N, 4)-> (3, 3) or (N, 3, 3)
@@ -158,19 +246,20 @@ def quat2R(quat: torch.Tensor):
     assert quat.ndim in {1, 2} and quat.size(-1) == 4, f"invalid quaternion shape: {quat.size()}"
     quat = unify(quat)
     ndim = quat.ndim
-    if ndim == 1: quat = quat.view((1, -1)) # (1, 4)
+    if ndim == 1: quat = quat.view((1, -1))  # (1, 4)
 
-    q0, q1, q2, q3 = quat[..., -1], quat[..., 0], quat[..., 1], quat[..., 2] # (N, )
+    q0, q1, q2, q3 = quat[..., -1], quat[..., 0], quat[..., 1], quat[..., 2]  # (N, )
     # print([q.size() for q in [q0, q1, q2, q3]])
     R = torch.stack([
-        torch.stack([1-2*q2**2-2*q3**2,   2*q1*q2-2*q0*q3,   2*q1*q3+2*q0*q2], dim=-1),
-        torch.stack([  2*q1*q2+2*q0*q3, 1-2*q1**2-2*q3**2,   2*q2*q3-2*q0*q1], dim=-1),
-        torch.stack([  2*q1*q3-2*q0*q2,   2*q2*q3+2*q0*q1, 1-2*q1**2-2*q2**2], dim=-1)
-    ], dim=1) # (N, 3, 3)
+        torch.stack([1 - 2 * q2 ** 2 - 2 * q3 ** 2, 2 * q1 * q2 - 2 * q0 * q3, 2 * q1 * q3 + 2 * q0 * q2], dim=-1),
+        torch.stack([2 * q1 * q2 + 2 * q0 * q3, 1 - 2 * q1 ** 2 - 2 * q3 ** 2, 2 * q2 * q3 - 2 * q0 * q1], dim=-1),
+        torch.stack([2 * q1 * q3 - 2 * q0 * q2, 2 * q2 * q3 + 2 * q0 * q1, 1 - 2 * q1 ** 2 - 2 * q2 ** 2], dim=-1)
+    ], dim=1)  # (N, 3, 3)
 
     if ndim == 1: R = R.squeeze()
 
     return R
+
 
 def quaternion_to_matrix(quaternions: torch.Tensor) -> torch.Tensor:
     """
@@ -203,5 +292,6 @@ def quaternion_to_matrix(quaternions: torch.Tensor) -> torch.Tensor:
     )
     return o.reshape(quaternions.shape[:-1] + (3, 3))
 
-def unify(x, eps: float = 1e-9): # (dim, ) or (N, dim)
+
+def unify(x, eps: float = 1e-9):  # (dim, ) or (N, dim)
     return x / torch.clamp(torch.linalg.norm(x, axis=-1, keepdims=True), min=eps, max=None)

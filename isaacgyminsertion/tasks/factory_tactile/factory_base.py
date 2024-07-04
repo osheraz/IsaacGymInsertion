@@ -47,7 +47,7 @@ from isaacgyminsertion.tasks.base.vec_task import VecTask
 import isaacgyminsertion.tasks.factory_tactile.factory_control as fc
 from isaacgyminsertion.tasks.factory_tactile.schema.factory_schema_class_base import FactoryABCBase
 from isaacgyminsertion.tasks.factory_tactile.schema.factory_schema_config_base import FactorySchemaConfigBase
-from isaacgyminsertion.tasks.factory_tactile.factory_utils import quat2R
+from isaacgyminsertion.tasks.factory_tactile.factory_utils import quat2R, RotationTransformer
 
 
 class FactoryBaseTactile(VecTask, FactoryABCBase):
@@ -70,6 +70,7 @@ class FactoryBaseTactile(VecTask, FactoryABCBase):
         self.record_now = False
         self.complete_video_frames = None
         self.video_frames = []
+        self.rot_tf = RotationTransformer()
 
     def _get_base_yaml_params(self):
         """Initialize instance variables from YAML files."""
@@ -330,12 +331,6 @@ class FactoryBaseTactile(VecTask, FactoryABCBase):
             self.gym.fetch_results(self.sim, True) # ?
             self.gym.render_all_camera_sensors(self.sim)
             self.gym.start_access_image_tensors(self.sim)
-
-        # self.test_plot.append(self.socket_contact_force[0, 2].item())
-        # # if len(self.test_plot) > 100:
-        # plt.plot(self.test_plot[:])
-        # plt.pause(0.00001)
-        # plt.clf()
 
         # Privileged
         self.finger_midpoint_pos = (self.left_finger_pos + self.right_finger_pos + self.middle_finger_pos) * (1 / 3)
@@ -634,7 +629,7 @@ class FactoryBaseTactile(VecTask, FactoryABCBase):
             print('Export completed.')
             sys.exit()
 
-    def pose_world_to_robot_base(self, pos, quat, as_matrix=True):
+    def pose_world_to_robot_base(self, pos, quat, to_rep=None):
         """Convert pose from world frame to robot base frame."""
 
         # convert
@@ -645,15 +640,16 @@ class FactoryBaseTactile(VecTask, FactoryABCBase):
             robot_base_transform_inv[0], robot_base_transform_inv[1], quat, pos
         )
 
-        if as_matrix:
+        if to_rep == 'matrix':
             return pos_in_robot_base, quat2R(quat_in_robot_base).reshape(self.num_envs, -1)
+        elif to_rep == 'rot6d':
+            return pos_in_robot_base, self.rot_tf.forward(quat_in_robot_base)
         else:
             return pos_in_robot_base, quat_in_robot_base
 
-    def pose_world_to_hand_base(self, pos, quat, as_matrix=True):
+    def pose_world_to_hand_base(self, pos, quat, to_rep=None):
         """Convert pose from world frame to robot base frame."""
 
-        # convert TODO should we clone here?
         torch_pi = torch.tensor(
             np.pi,
             dtype=torch.float32,
@@ -674,7 +670,9 @@ class FactoryBaseTactile(VecTask, FactoryABCBase):
             robot_base_transform_inv[0], robot_base_transform_inv[1], quat, pos
         )
 
-        if as_matrix:
+        if to_rep == 'matrix':
             return pos_in_robot_base, quat2R(quat_in_robot_base).reshape(self.num_envs, -1)
+        elif to_rep == 'rot6d':
+            return pos_in_robot_base, self.rot_tf.forward(quat_in_robot_base)
         else:
             return pos_in_robot_base, quat_in_robot_base

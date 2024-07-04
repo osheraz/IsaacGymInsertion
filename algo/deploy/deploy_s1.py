@@ -30,10 +30,12 @@ from matplotlib import pyplot as plt
 # from tf.transformations import quaternion_matrix, identity_matrix, quaternion_from_matrix
 from tqdm import tqdm
 
+
 def to_torch(x, dtype=torch.float, device='cuda:0', requires_grad=False):
     return torch.tensor(x, dtype=dtype, device=device, requires_grad=requires_grad)
 
-class HardwarePlayer(object):
+
+class HardwarePlayer:
     def __init__(self, full_config):
 
         self.num_envs = 1
@@ -97,7 +99,6 @@ class HardwarePlayer(object):
         self.far_clip = self.full_config.task.external_cam.far_clip
         self.dis_noise = self.full_config.task.external_cam.dis_noise
 
-
         net_config = {
             'actor_units': self.full_config.train.network.mlp.units,
             'actions_num': self.num_actions,
@@ -143,7 +144,8 @@ class HardwarePlayer(object):
 
         asset_info_path = '../../../assets/factory/yaml/factory_asset_info_insertion.yaml'
         self.asset_info_insertion = hydra.compose(config_name=asset_info_path)
-        self.asset_info_insertion = self.asset_info_insertion['']['']['']['']['']['']['']['']['']['assets']['factory']['yaml']
+        self.asset_info_insertion = self.asset_info_insertion['']['']['']['']['']['']['']['']['']['assets']['factory'][
+            'yaml']
 
         self.extrinsic_contact = None
 
@@ -396,9 +398,9 @@ class HardwarePlayer(object):
         self.fingertip_centered_pos = torch.tensor(ee_pose[:3], device=self.device, dtype=torch.float).unsqueeze(0)
         self.fingertip_centered_quat = torch.tensor(ee_pose[3:], device=self.device, dtype=torch.float).unsqueeze(0)
 
-        #TODO added noise
+        # TODO added noise
         eef_pos = torch.cat((self.fingertip_centered_pos,
-                            quat2R(self.fingertip_centered_quat).reshape(1, -1)), dim=-1)
+                             quat2R(self.fingertip_centered_quat).reshape(1, -1)), dim=-1)
 
         # Cutting by half
         if self.cfg_tactile.half_image:
@@ -747,14 +749,8 @@ class HardwarePlayer(object):
 
         while cur_episode < num_episodes:
 
-            # TODO add a module that set init interaction with the socket
-            # self.env.set_random_init_error(true_socket_pose=true_socket_pose)
-            # self.env.grasp()  # little squeeze
-
             # Bias the ft sensor
             self.env.arm.calib_robotiq()
-            # rospy.sleep(2.0)
-            # self.env.arm.calib_robotiq()
 
             obs, obs_stud, tactile, priv = self.compute_observations(with_priv=True)
             self._update_reset_buf()
@@ -766,13 +762,12 @@ class HardwarePlayer(object):
 
                 obs = self.running_mean_std(obs.clone())
                 priv = self.priv_mean_std(priv.clone())
-                # obs_stud = self.running_mean_std_stud(obs_stud.clone())
 
                 input_dict = {
                     'obs': obs,
-                    # 'student_obs': obs_stud,
-                    # 'tactile_hist': tactile,
                     'priv_info': priv,
+                    # 'student_obs': self.running_mean_std_stud(obs_stud.clone()),
+                    # 'tactile_hist': tactile,
                     # 'contacts': self.contacts.clone()
                 }
 
