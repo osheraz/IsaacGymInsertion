@@ -306,10 +306,19 @@ class HardwarePlayer:
 
             # Cutting by half
             if self.cfg_tactile.half_image:
+
                 w = left.shape[0]
                 left = left[:w // 2, :, :]
                 right = right[:w // 2, :, :]
                 bottom = bottom[:w // 2, :, :]
+
+                h = left.shape[1]  # Get the height of the image
+                crop_size = h // 6  # Define the amount to crop from each side
+
+                # Crop h // 4 from both the top and bottom
+                left = left[:, crop_size:-crop_size, :]
+                right = right[:, crop_size:-crop_size, :]
+                bottom = bottom[:, crop_size:-crop_size, :]
 
             # Resizing to encoder size
             left = cv2.resize(left, (self.height, self.width), interpolation=cv2.INTER_AREA)
@@ -328,7 +337,7 @@ class HardwarePlayer:
                 bottom -= self.f_bottom
 
             if display_image:
-                cv2.imshow("Hand View\tLeft\tRight\tMiddle", np.concatenate((left, right, bottom), axis=1))
+                cv2.imshow("Hand View\tLeft\tRight\tMiddle", np.concatenate((left, right, bottom), axis=1) + 0.5)
                 cv2.waitKey(1)
 
             if self.num_channels == 3:
@@ -484,7 +493,7 @@ class HardwarePlayer:
 
         self._create_asset_info()
         self._acquire_task_tensors()
-
+        self.deploy_config.data_logger.collect_data = False
         # ---- Data Logger ----
         if self.deploy_config.data_logger.collect_data:
             from algo.ppo.experience import RealLogger
@@ -518,7 +527,7 @@ class HardwarePlayer:
 
             # TODO add a module that set init interaction with the socket
 
-            obs_dict = self.compute_observations(with_priv=True, with_img=False)
+            obs_dict = self.compute_observations(with_priv=True, with_img=False, diff_tac=test)
             tactile = obs_dict['tactile']
             label = obs_dict['priv_info'].cpu().detach().numpy()[0]
             label0 = label.copy()
@@ -570,7 +579,8 @@ class HardwarePlayer:
                 obs_dict = self.compute_observations(with_priv=True, with_img=False)
                 tactile = obs_dict['tactile']
                 label = obs_dict['priv_info'].cpu().detach().numpy()[0]
-
+                print(label)
             self.env.arm.move_manipulator.stop_motion()
             self.reset()
 
+        self.env.release()

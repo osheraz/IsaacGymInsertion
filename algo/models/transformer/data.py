@@ -52,10 +52,10 @@ def get_last_sequence(input_tensor, progress_buf, sequence_length):
 
 
 class DataNormalizer:
-    def __init__(self, cfg, file_list):
+    def __init__(self, cfg, file_list, save_path=None):
         self.cfg = cfg
         self.normalize_keys = self.cfg.train.normalize_keys
-        self.normalization_path = self.cfg.train.normalize_file
+        self.normalization_path = self.cfg.train.normalize_file if self.cfg.train.load_stats else save_path + '/normalization.pkl'
         self.normalize_dict = {"mean": {}, "std": {}}
         self.file_list = file_list
         self.remove_failed_trajectories()
@@ -86,13 +86,13 @@ class DataNormalizer:
 
     def load_or_create_normalization_file(self):
         """Load the normalization file if it exists, otherwise create it."""
-        if self.cfg.train.load_stats or os.path.exists(self.normalization_path):
+        if self.cfg.train.load_stats and os.path.exists(self.normalization_path):
             if os.path.exists(self.normalization_path):
                 with open(self.normalization_path, 'rb') as f:
                     self.normalize_dict = pickle.load(f)
                     print('Loaded stats file from: ', self.normalization_path)
             else:
-                assert 'Failed to load stats file'
+                raise FileNotFoundError('Failed to load stats file')
         else:
             self.create_normalization_file()
 
@@ -101,6 +101,7 @@ class DataNormalizer:
         for norm_key in self.normalize_keys:
             print(f'Creating new normalization file for {norm_key}')
             data = self.aggregate_data(norm_key)
+            # Pass the correction argument here if needed
             self.calculate_normalization_values(data, norm_key)
         self.save_normalization_file()
 
@@ -119,7 +120,47 @@ class DataNormalizer:
 
     def calculate_normalization_values(self, data, norm_key):
         """Calculate mean and standard deviation for the given data."""
-        if norm_key == 'plug_hand_quat':
+        if norm_key == 'plug_hand_pos':
+            if data.shape[1] == 7:  # Combined position and quaternion
+                # Assuming the first 3 columns are positions and the last 4 columns are quaternions
+                pos = data[:, :3]
+                quat = data[:, 3:]
+
+                # Process position data
+                diff_pos = pos - pos[0, :]
+                self.normalize_dict['mean']["plug_hand_pos"] = np.mean(pos, axis=0)
+                self.normalize_dict['std']["plug_hand_pos"] = np.std(pos, axis=0)
+                self.normalize_dict['mean']["plug_hand_pos_diff"] = np.mean(diff_pos, axis=0)
+                self.normalize_dict['std']["plug_hand_pos_diff"] = np.std(diff_pos, axis=0)
+
+                # Process quaternion data
+                self.normalize_dict['mean']["plug_hand_quat"] = np.mean(quat, axis=0)
+                self.normalize_dict['std']["plug_hand_quat"] = np.std(quat, axis=0)
+                euler = Rotation.from_quat(quat).as_euler('xyz')
+                self.normalize_dict['mean']["plug_hand_euler"] = np.mean(euler, axis=0)
+                self.normalize_dict['std']["plug_hand_euler"] = np.std(euler, axis=0)
+
+                diff_euler = euler - euler[0, :]
+                self.normalize_dict['mean']["plug_hand_diff_euler"] = np.mean(diff_euler, axis=0)
+                self.normalize_dict['std']["plug_hand_diff_euler"] = np.std(diff_euler, axis=0)
+
+                sin_cos_repr = np.hstack((np.sin(euler[:, 0:1]), np.cos(euler[:, 0:1]),
+                                          np.sin(euler[:, 1:2]), np.cos(euler[:, 1:2])))
+
+                self.normalize_dict['mean']["plug_hand_sin_cos_euler"] = np.mean(sin_cos_repr, axis=0)
+                self.normalize_dict['std']["plug_hand_sin_cos_euler"] = np.std(sin_cos_repr, axis=0)
+            else:  # Only position data
+                pos = data
+                diff_pos = pos - pos[0, :]
+                self.normalize_dict['mean']["plug_hand_pos"] = np.mean(pos, axis=0)
+                self.normalize_dict['std']["plug_hand_pos"] = np.std(pos, axis=0)
+                self.normalize_dict['mean']["plug_hand_pos_diff"] = np.mean(diff_pos, axis=0)
+                self.normalize_dict['std']["plug_hand_pos_diff"] = np.std(diff_pos, axis=0)
+
+        elif norm_key == 'plug_hand_quat':
+            self.normalize_dict['mean'][norm_key] = np.mean(data, axis=0)
+            self.normalize_dict['std'][norm_key] = np.std(data, axis=0)
+
             euler = Rotation.from_quat(data).as_euler('xyz')
             self.normalize_dict['mean']["plug_hand_euler"] = np.mean(euler, axis=0)
             self.normalize_dict['std']["plug_hand_euler"] = np.std(euler, axis=0)
@@ -129,19 +170,15 @@ class DataNormalizer:
             self.normalize_dict['std']["plug_hand_diff_euler"] = np.std(diff_euler, axis=0)
 
             sin_cos_repr = np.hstack((np.sin(euler[:, 0:1]), np.cos(euler[:, 0:1]),
-                                      np.sin(euler[:, 1:2]), np.cos(euler[:, 1:2]),))
+                                      np.sin(euler[:, 1:2]), np.cos(euler[:, 1:2])))
 
             self.normalize_dict['mean']["plug_hand_sin_cos_euler"] = np.mean(sin_cos_repr, axis=0)
             self.normalize_dict['std']["plug_hand_sin_cos_euler"] = np.std(sin_cos_repr, axis=0)
 
-        if norm_key == 'plug_hand_pos':
-            pos = data
-            diff_pos = pos - pos[0, :]
-            self.normalize_dict['mean']["plug_hand_pos_diff"] = np.mean(diff_pos, axis=0)
-            self.normalize_dict['std']["plug_hand_pos_diff"] = np.std(diff_pos, axis=0)
-
-        self.normalize_dict['mean'][norm_key] = np.mean(data, axis=0)
-        self.normalize_dict['std'][norm_key] = np.std(data, axis=0)
+        else:
+            # Handle other normalization keys
+            self.normalize_dict['mean'][norm_key] = np.mean(data, axis=0)
+            self.normalize_dict['std'][norm_key] = np.std(data, axis=0)
 
     def save_normalization_file(self):
         """Save the normalization values to file."""
@@ -153,7 +190,6 @@ class DataNormalizer:
         """Main method to run the process."""
         self.ensure_directory_exists(self.normalization_path)
         self.load_or_create_normalization_file()
-
 
 class TactileDataset(Dataset):
     def __init__(self, files, sequence_length=500,
@@ -225,7 +261,9 @@ class TactileDataset(Dataset):
         mask[:padding_length] = 0
 
         keys = ["eef_pos", "action", "latent", "obs_hist", "noisy_socket_pos",
-                "hand_joints", "plug_hand_quat", "plug_hand_pos", "plug_pos_error", "plug_quat_error"]
+                "hand_joints", "plug_hand_quat", "plug_hand_pos",
+                "plug_pos_error", "plug_quat_error"
+                ]
 
         data_seq = {key: self.extract_sequence(data, key, start_idx) for key in keys}
 
@@ -320,7 +358,7 @@ class TactileDataset(Dataset):
 class TactileTestDataset(Dataset):
     def __init__(self, files, sequence_length=500,
                  normalize_dict=None,
-                 stride=20,
+                 stride=2,
                  img_transform=None,
                  tactile_transform=None,
                  tactile_channel=3,
@@ -367,14 +405,17 @@ class TactileTestDataset(Dataset):
     def __getitem__(self, idx, diff_tac=True, diff_pos=True):
         file_idx, start_idx = self.indices_per_trajectory[idx]
         file_path = self.all_folders[file_idx]
-
-        # Load data from the file
-        data = np.load(file_path)
         tactile_folder = file_path[:-7].replace('obs', 'tactile')
         img_folder = file_path[:-7].replace('obs', 'img')
 
-        keys = ["eef_pos", "action", "latent", "plug_hand_quat", "plug_hand_pos"]
-        data_seq = {key: self.extract_sequence(data, key, start_idx) for key in keys}
+        # Load data from the file
+        data = np.load(file_path)
+        data_dict = {key: data[key] for key in data}
+        data_dict["plug_hand_quat"] = data_dict["plug_hand_pos"][:, 3:]
+        data_dict["plug_hand_pos"] = data_dict["plug_hand_pos"][:, :3]
+
+        keys = ["eef_pos", "action", "latent", "plug_hand_pos", "plug_hand_quat"]
+        data_seq = {key: self.extract_sequence(data_dict, key, start_idx) for key in keys}
 
         # T, F, C, W, H = tactile_input.shape
         tactile_input = [np.load(os.path.join(tactile_folder, f'tactile_{i}.npz'))['tactile'] for i in
@@ -384,14 +425,15 @@ class TactileTestDataset(Dataset):
             tactile_input = [(tac - first_tactile) + 1e-6 for tac in tactile_input]
 
         tactile_input = self.to_torch(np.stack(tactile_input))
+        T, F, C, W, H = tactile_input.shape
 
         if self.tactile_transform is not None:
-            tactile_input_reshaped = tactile_input.view(-1, 3, *tactile_input.shape[-2:])
+            tactile_input_reshaped = tactile_input.view(-1, C, *tactile_input.shape[-2:])
             if self.tactile_channel == 1:
                 tactile_input_reshaped = torch.stack([self.to_gray(image) for image in tactile_input_reshaped])
 
             tactile_input = self.tactile_transform(tactile_input_reshaped)
-            tactile_input = tactile_input.view(1, 3, self.tactile_channel, *tactile_input.shape[-2:])
+            tactile_input = tactile_input.view(T, F, self.tactile_channel, *tactile_input.shape[-2:])
 
         img_input = [np.load(os.path.join(img_folder, f'img_{i}.npz'))['img'] for i in
                      range(start_idx, start_idx + self.sequence_length)]
@@ -408,8 +450,8 @@ class TactileTestDataset(Dataset):
         euler = Rotation.from_quat(data_seq["plug_hand_quat"]).as_euler('xyz')
 
         if diff_pos:
-            euler = euler - Rotation.from_quat(data["plug_hand_quat"][0, :]).as_euler('xyz')
-            plug_hand_pos = plug_hand_pos - data["plug_hand_pos"][0, :]
+            euler = euler - Rotation.from_quat(data_dict["plug_hand_quat"][0, :]).as_euler('xyz')
+            plug_hand_pos = plug_hand_pos - data_dict["plug_hand_pos"][0, :]
 
         # Normalizing
         if self.normalize_dict is not None:

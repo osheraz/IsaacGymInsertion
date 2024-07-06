@@ -508,7 +508,7 @@ if True:
         # depth = np.uint8(depth)
         # cv2.imshow("Depth Image", depth.transpose(1, 2, 0) + 0.5)
         cv2.namedWindow('test', cv2.WND_PROP_FULLSCREEN)
-        key = cv2.waitKey(20)
+        key = cv2.waitKey(30)
         cv2.imshow('test', img.transpose(1, 2, 0))
         # cv2.waitKey(200) & 0xFF
 

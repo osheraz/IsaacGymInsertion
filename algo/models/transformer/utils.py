@@ -132,6 +132,11 @@ def define_transforms(channel, color_jitter, width, height, crop_width,
         )
     else:
         transform = nn.Sequential(
+            transforms.Resize(
+                (width, height),
+                interpolation=transforms.InterpolationMode.BILINEAR,
+                antialias=True
+            ),
             transforms.RandomCrop((crop_width, crop_height)),
         )
 
@@ -178,11 +183,16 @@ def define_transforms(channel, color_jitter, width, height, crop_width,
         )
     else:
         eval_transform = nn.Sequential(
+            transforms.Resize(
+                (width, height),
+                interpolation=transforms.InterpolationMode.BILINEAR,
+                antialias=True
+            ),
             transforms.CenterCrop((crop_width, crop_height)),
         )
-    # print('transform {}'.format(transform))
-    # print('eval_transform {}'.format(eval_transform))
-    # print('downsample {}'.format(downsample))
+    print('transform {}'.format(transform))
+    print('eval_transform {}'.format(eval_transform))
+    print('downsample {}'.format(downsample))
 
     return transform, downsample, eval_transform
 

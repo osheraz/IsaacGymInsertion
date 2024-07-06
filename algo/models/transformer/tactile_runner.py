@@ -114,7 +114,7 @@ class Runner:
         self.model.train()
         train_loss, val_loss = [], []
 
-        progress_bar = tqdm(enumerate(dl), total=len(dl), desc="Training Progress", unit="batch")
+        progress_bar = tqdm(enumerate(dl), total=len(dl), desc="Training Progress", unit="batch", leave=True)
 
         for i, (tac_input, img_input, lin_input, label) in progress_bar:
 
@@ -141,7 +141,7 @@ class Runner:
                 'Loss': np.mean(train_loss)
             })
 
-            if (i + 1) % print_every == 0:
+            if (i + 1) % print_every == 0 or (i == len(dl) - 1):
                 print(f'step {i + 1}:', np.mean(train_loss))
                 self._wandb_log({'train/loss': np.mean(train_loss)})
                 self.fig.clf()
@@ -149,7 +149,7 @@ class Runner:
                 plt.plot(self.train_loss, '-ro', linewidth=3, label='train loss')
                 train_loss = []
 
-            if (i + 1) % eval_every == 0:
+            if (i + 1) % eval_every == 0 or (i == len(dl) - 1):
                 self.log_output(tac_input, img_input, lin_input, out, label, 'train')
 
                 val_loss = self.validate(val_dl)
@@ -166,8 +166,9 @@ class Runner:
         self.model.eval()
         with torch.no_grad():
             val_loss = []
-            latent_loss_list, action_loss_list = [], []
-            for i, (tac_input, img_input, lin_input, label) in tqdm(enumerate(dl)):
+
+            p_bar = tqdm(enumerate(dl), total=len(dl), desc="Eval Progress", unit="batch", leave=True)
+            for i, (tac_input, img_input, lin_input, label) in p_bar:
                 tac_input = tac_input.to(self.device)
                 img_input = img_input.to(self.device)
                 lin_input = lin_input.to(self.device)
@@ -179,6 +180,11 @@ class Runner:
                 loss = self.loss_fn_mean(out[:, :], label[:, -1, :])
 
                 val_loss.append(loss.item())
+
+                p_bar.set_postfix({
+                    'Batch': i + 1,
+                    'Loss': np.mean(val_loss)
+                })
 
             # self._wandb_log({
             #     'val/loss': np.mean(val_loss),
@@ -429,12 +435,12 @@ class Runner:
         print('Loading trajectories from', self.cfg.data_folder)
 
         file_list = glob(os.path.join(self.cfg.data_folder, '*/*/obs/*.npz'))
-        save_folder = f'{to_absolute_path(self.cfg.output_dir)}/dpos_{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}'
+        save_folder = f'{to_absolute_path(self.cfg.output_dir)}/models/dpos_{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}'
         os.makedirs(save_folder, exist_ok=True)
         self.save_folder = save_folder
 
         # Either create new norm or load existing
-        normalizer = DataNormalizer(self.cfg, file_list)
+        normalizer = DataNormalizer(self.cfg, file_list, self.save_folder)
         normalizer.run()
         self.normalize_dict = normalizer.normalize_dict
 

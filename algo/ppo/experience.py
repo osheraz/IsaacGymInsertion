@@ -463,7 +463,7 @@ class DataLogger:
                     self.pbar.close()
                     self._shutdown_workers()
                     print('Data collection finished!')
-                    exit()
+                    # exit()
 
     def worker(self, q, q_idx):
         data_path = os.path.join(self.dir, f'{q_idx}')

@@ -28,19 +28,22 @@ warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 @hydra.main(config_name="config", config_path="./cfg")
 def main(config: DictConfig):
-    test = False
     set_np_formatting()
     config.seed = set_seed(config.seed)
 
     agent = HardwarePlayer(config)
+    # model_path = 'outputs/gt_test/tact/'
+    model_path = '/home/roblab20/tactile_tests/datastore_real/models/clear'
+    test = True
 
     if test:
-        config.offline_train.model.transformer.tact_path = to_absolute_path(f'outputs/gt_test/tact/checkpoints'
-                                                                            f'/model_last.pt')
-        config.offline_train.train.normalize_file = to_absolute_path(f'outputs/gt_test/tact/normalization.pkl')
+        config.offline_train.model.transformer.load_tact = True
+        config.offline_train.model.transformer.tact_path = to_absolute_path(model_path + '/checkpoints/model_last.pt')
+        config.offline_train.train.load_stats = True
+        config.offline_train.train.normalize_file = to_absolute_path(model_path + '/normalization.pkl')
         agent.restore(config.checkpoint)  # restore policy
 
-    agent.deploy()
+    agent.deploy(test=test)
 
 
 if __name__ == '__main__':
