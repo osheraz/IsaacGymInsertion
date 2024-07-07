@@ -76,7 +76,6 @@ class allsight_renderer:
         self.zrange = 0.002
         width = cfg.tacto.width
         height = cfg.tacto.height
-        self.half_image = cfg.half_image
 
         self.subtract_bg = cfg.diff
         leds = 'white'

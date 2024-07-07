@@ -76,8 +76,10 @@ class PPO(object):
         self.tactile_input_dim = [self.network_config.tactile_encoder.img_width,
                                   self.network_config.tactile_encoder.img_height,
                                   self.network_config.tactile_encoder.num_channels]
-        if self.task_config.tactile.half_image:
+        if self.task_config.tactile.crop_roi:
             self.tactile_input_dim[0] = self.tactile_input_dim[0] // 2
+            self.tactile_input_dim[1] = self.tactile_input_dim[1] - self.tactile_input_dim[1] // 3
+
         self.mlp_tactile_info_dim = self.network_config.tactile_mlp.units[0]
         self.tactile_hist_dim = (self.network_config.tactile_encoder.tactile_seq_length, 3, *self.tactile_input_dim)
 

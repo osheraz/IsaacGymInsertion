@@ -9,6 +9,7 @@ name: FactoryTaskInsertionTactile
 physics_engine: ${..physics_engine}
 
 grasp_at_init: True
+collect_rotate: True
 
 grasp_logger:
     total_grasp: 1000
@@ -25,20 +26,21 @@ data_logger:
 
 tactile: # Pulling from task
   tacto:
-    width: 224 # 224 # 480 | 224
-    height: 224 # 224 # 480 | 224 for the gan
+    width: 128 # 224 # 480 | 224
+    height: 128 # 224 # 480 | 224 for the gan
     visualize_gui: True
 
   with_bg: True # add background reference frame
   show_depth: False # visualize depth
   show_detect: False #
   diff: True
-  half_image: True # --> tacto & encoder width // 2
+  crop_roi: True
   tactile_freq: 2
 
+  # before cropping
   encoder:
-    width: 64
-    height: 64
+    width: 128
+    height: 128
     num_channels: 3 # 1 (Grayscale), 3 (RGB)
 
   sim2real: False
@@ -63,7 +65,7 @@ env:
 
     openhand:
         distal_open: 0.1
-        distal_close: 0.7
+        distal_close: 0.4
         proximal_open: 1.0
         proximal_close: 2.4
         proximal_noise: 0.1
@@ -86,7 +88,7 @@ env:
     tactile_wrt_force: False
 
     compute_contact_gt: False
-    num_points: 2 # 500
+    num_points: 2
 
     record_video: True
     record_ft: True
@@ -127,7 +129,7 @@ randomize:
 
     grasp_plug_noise: 0.005 # xyz noise on plug position during grasp
     above_socket_noise: [0.03, 0.03, 0.001]
-    plug_rot_noise: [0.2, 0.2, 0.0] # 0.03, 0.03
+    plug_rot_noise: [0.05, 0.05, 0.05] # 0.03, 0.03
 
 rl:
 

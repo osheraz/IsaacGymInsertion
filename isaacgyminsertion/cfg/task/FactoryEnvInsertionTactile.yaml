@@ -25,37 +25,19 @@ env:
     env_name: 'FactoryEnvInsertionTactile'
     aggregate_mode: True
 
-    desired_subassemblies: ['yellow_round_peg_2in',
+    desired_subassemblies: [
+#                            'small_triangle',
+#                            'triangle',
 #                            'red_round_peg_1_5in',
-#                            'triangle',
-#                            'triangle',
-#                            'rectangular_peg_hole_16mm_loose'
-    ] # ,
-#                             'round_peg_hole_16mm_loose',
-#                             'yellow_round_peg_2in',
-#                             'red_round_peg_1_5in',
-#                             'rectangular_peg_hole_16mm_loose']
-
-#    desired_subassemblies: [ 'yellow_round_peg_2in' ]
-                        #    'red_round_peg_1_5in',red_round_peg_1_5in
-                        #     yellow_round_peg_2in, 'rectangular_peg_hole_16mm_loose', 'triangle'
-                        #   ]
+#                            'yellow_round_peg_2in',
+#                            'round_peg_hole_16mm_loose',
+#                            'rectangular_peg_hole_16mm_loose',
+#                            'rectangular_peg_hole_32mm_loose',
+                            'square_peg_hole_32mm_loose',
+    ]
 
     plug_lateral_offset: 0.1  # Y-axis offset of plug before initial reset to prevent initial interpenetration with socket
     plug_friction: 0.99
-
-    # Subassembly options:
-    # {round_peg_hole_4mm_tight, round_peg_hole_4mm_loose,
-    # round_peg_hole_8mm_tight, round_peg_hole_8mm_loose,
-    # round_peg_hole_12mm_tight, round_peg_hole_12mm_loose,
-    # round_peg_hole_16mm_tight, round_peg_hole_16mm_loose,
-    # rectangular_peg_hole_4mm_tight, rectangular_peg_hole_4mm_loose,
-    # rectangular_peg_hole_8mm_tight, rectangular_peg_hole_8mm_loose,
-    # rectangular_peg_hole_12mm_tight, rectangular_peg_hole_12mm_loose,
-    # rectangular_peg_hole_16mm_tight, rectangular_peg_hole_16mm_loose,
-    # bnc, dsub, usb}
-    #
-    # NOTE: BNC, D-sub, and USB are currently unavailable while we await approval from manufacturers.
 
 # Domain randomization params
 randomize:

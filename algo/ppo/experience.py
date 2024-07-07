@@ -35,6 +35,7 @@ POS_SIZE = 3
 QUAT_SIZE = 4
 ACT_SIZE = 6
 
+
 def transform_op(arr):
     """
     swap and then flatten axes 0 and 1
@@ -103,8 +104,8 @@ class ExperienceBuffer(Dataset):
             else:
                 input_dict[k] = v[batch_idx]
         return input_dict['values'], input_dict['neglogpacs'], input_dict['advantages'], input_dict['mus'], \
-            input_dict['sigmas'], input_dict['returns'], input_dict['actions'], \
-            input_dict['obses'], input_dict['priv_info'], input_dict['contacts']
+               input_dict['sigmas'], input_dict['returns'], input_dict['actions'], \
+               input_dict['obses'], input_dict['priv_info'], input_dict['contacts']
 
     def update_mu_sigma(self, mu, sigma):
         start = self.last_range[0]
@@ -368,6 +369,7 @@ class DataLoggerOld():
     def reset(self):
         self._reset_buffers(torch.arange(self.num_envs, dtype=torch.long, device=self.device).unsqueeze(-1))
 
+
 class DataLogger:
 
     def __init__(self, num_envs, episode_length, device, dir_path, total_trajectories, save_trajectory, **kwargs):
@@ -483,7 +485,8 @@ class DataLogger:
                 for k, v in item.items():
                     if isinstance(item[k], torch.Tensor):
                         item[k] = item[k].numpy()
-                np.savez_compressed(os.path.join(data_path, f'{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}.npz'), **item)
+                np.savez_compressed(os.path.join(data_path, f'{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}.npz'),
+                                    **item)
                 q.task_done()
         except (KeyboardInterrupt, EOFError) as e:
             print(f"Exception {e} detected in worker {q_idx}. Exiting gracefully.")
@@ -508,7 +511,6 @@ class DataLogger:
         self._reset_buffers(torch.arange(self.num_envs, dtype=torch.long, device=self.device).unsqueeze(-1))
 
 
-
 class SimLogger():
 
     def __init__(self, env):
@@ -524,8 +526,6 @@ class SimLogger():
             'plug_pos_shape': env.plug_pos.size()[-1] + ROT_MAT_SIZE,
             'action_shape': env.cfg_task.env.numActions,
             'target_shape': env.cfg_task.env.numTargets,
-            'tactile_shape': env.tactile_imgs.shape[1:],
-            'img_shape': env.image_buf.shape[1:],
             'rigid_physics_params_shape': env.rigid_physics_params.shape[-1],
             'plug_hand_pos_shape': env.plug_hand_pos.shape[-1],
             'plug_hand_quat_shape': env.plug_hand_quat.shape[-1],
@@ -540,7 +540,15 @@ class SimLogger():
             'latent_shape': env.cfg_ppo.network.priv_mlp.units[-1],
         }
 
-        if self.gt_contact and False:
+        if self.env.external_cam:
+            log_items.update({
+                'img_shape': env.image_buf.shape[1:],
+            })
+        if self.env.cfg_task.env.tactile:
+            log_items.update({
+                'tactile_shape': env.tactile_imgs.shape[1:],
+            })
+        if self.env.cfg_task.env.compute_contact_gt:
             log_items.update({
                 'contact_latent_shape': 4,
             })
@@ -588,8 +596,6 @@ class SimLogger():
             'plug_pos': plug_pos,
             'action': new_action,
             'target': self.env.targets.clone(),
-            'tactile': self.env.tactile_imgs.clone(),
-            'img': self.env.image_buf.clone(),
             'rigid_physics_params': self.env.rigid_physics_params.clone(),
             'plug_hand_pos': self.env.plug_hand_pos.clone(),
             'plug_hand_quat': self.env.plug_hand_quat.clone(),
@@ -604,13 +610,22 @@ class SimLogger():
             'hand_joints': self.env.hand_joints.clone(),
         }
 
+        if self.env.external_cam:
+            log_data.update({
+                'img': self.env.image_buf.clone(),
+            })
+        if self.env.cfg_task.env.tactile:
+            log_data.update({
+                'tactile': self.env.tactile_imgs.clone(),
+            })
+
         if latent is not None:
             new_latent = latent.clone()
             log_data.update({
                 'latent': new_latent
             })
 
-            if self.gt_contact and False:
+            if self.env.cfg_task.env.compute_contact_gt:
                 log_data.update({
                     'contact_latent': new_latent[:, 11:15]
                 })

@@ -681,7 +681,7 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
 
             self.plug_heights.append(self.asset_info_insertion[subassembly][components[0]]['length'])
             self.socket_heights.append(self.asset_info_insertion[subassembly][components[1]]['height'])
-            if any('rectangular' in sub for sub in components):
+            if any('rectangular' in sub for sub in components) or any('square' in sub for sub in components):
                 self.plug_depths.append(self.asset_info_insertion[subassembly][components[0]]['width'])
                 self.plug_widths.append(self.asset_info_insertion[subassembly][components[0]]['depth'])
                 self.socket_widths.append(self.asset_info_insertion[subassembly][components[1]]['width'])
@@ -767,7 +767,7 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
             # self.envs_asset[i] = {'subassembly': subassembly, 'components': components}
             self.envs_asset[i] = subassembly
             plug_file = self.asset_info_insertion[subassembly][components[0]]['urdf_path']
-            plug_file += '_subdiv_3x.obj' if 'rectangular' in plug_file else '.obj'
+            plug_file += '_subdiv_3x.obj' if (('rectangular' in plug_file) or ('square' in plug_file)) else '.obj'
             socket_file = self.asset_info_insertion[subassembly][components[1]]['urdf_path']
             socket_file += '_subdiv_3x.obj' if 'factory' in plug_file else '.obj'
 

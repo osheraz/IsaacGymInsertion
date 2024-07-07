@@ -629,7 +629,7 @@ class FactoryBaseTactile(VecTask, FactoryABCBase):
             print('Export completed.')
             sys.exit()
 
-    def pose_world_to_robot_base(self, pos, quat, to_rep=None):
+    def pose_world_to_robot_base(self, pos, quat, to_rep='matrix'):
         """Convert pose from world frame to robot base frame."""
 
         # convert

@@ -167,9 +167,9 @@ class HardwarePlayer:
 
         # tactile buffers
         self.num_channels = self.cfg_tactile.encoder.num_channels
-        # self.width = self.tact_config.tactile_width // 2 if self.cfg_tactile.half_image else self.tact_config.tactile_width
+        # self.width = self.tact_config.tactile_width // 2 if self.cfg_tactile.crop_roi else self.tact_config.tactile_width
         # self.height = self.tact_config.tactile_height
-        self.width = self.cfg_tactile.encoder.width // 2 if self.cfg_tactile.half_image else self.cfg_tactile.encoder.width
+        self.width = self.cfg_tactile.encoder.width // 2 if self.cfg_tactile.crop_roi else self.cfg_tactile.encoder.width
         self.height = self.cfg_tactile.encoder.height
 
         # tactile buffers
@@ -305,7 +305,7 @@ class HardwarePlayer:
             left, right, bottom = obses['frames']
 
             # Cutting by half
-            if self.cfg_tactile.half_image:
+            if self.cfg_tactile.crop_roi:
 
                 w = left.shape[0]
                 left = left[:w // 2, :, :]
