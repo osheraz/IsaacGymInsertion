@@ -25,10 +25,10 @@ import torch.distributed as dist
 import numpy as np
 import matplotlib
 
-matplotlib.use('TkAgg')
+# matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
 from algo.models.transformer.data import get_last_sequence
-from algo.ppo.experience import ExperienceBuffer, DataLogger
+from algo.ppo.experience import ExperienceBuffer
 from algo.ppo.experience import VectorizedExperienceBuffer
 # from algo.models.models import ActorCritic
 from algo.models.models_split import ActorCriticSplit as ActorCritic
@@ -625,7 +625,6 @@ class PPO(object):
 
     def test(self, get_latent=None, normalize_dict=None, milestone=100):
         # this will test either the student or the teacher model.
-        # (check if the student model can be tested within models)
 
         self.set_eval()
 

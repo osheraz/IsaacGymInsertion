@@ -231,7 +231,7 @@ class VectorizedExperienceBuffer:
         return obses, priv_obses, tactile_imgs, actions, rewards, dones
 
 
-class DataLoggerOld():
+class DataLoggerSim():
 
     def __init__(self, num_envs, episode_length, device, dir_path, total_trajectories, save_trajectory, **kwargs):
 
@@ -370,7 +370,7 @@ class DataLoggerOld():
         self._reset_buffers(torch.arange(self.num_envs, dtype=torch.long, device=self.device).unsqueeze(-1))
 
 
-class DataLogger:
+class DataLoggerReal:
 
     def __init__(self, num_envs, episode_length, device, dir_path, total_trajectories, save_trajectory, **kwargs):
         self.buffer = []
@@ -557,7 +557,7 @@ class SimLogger():
         log_folder = os.path.expanduser("~")
         log_folder = os.path.join(log_folder, 'tactile_insertion')
 
-        self.data_logger_init = lambda x: DataLogger(env.num_envs,
+        self.data_logger_init = lambda x: DataLoggerSim(env.num_envs,
                                                      env.max_episode_length,
                                                      env.device,
                                                      os.path.join(log_folder,

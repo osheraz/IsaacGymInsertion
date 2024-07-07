@@ -9,14 +9,14 @@ name: FactoryTaskInsertionTactile
 physics_engine: ${..physics_engine}
 
 grasp_at_init: True
-collect_rotate: True
+collect_rotate: False
 
 grasp_logger:
     total_grasp: 1000
 
 data_logger:
     # for data collection
-    collect_data: False
+    collect_data: True
     total_trajectories: 2000
     base_folder: "/home/roblab20/tactile_insertion"
     sub_folder: ''

@@ -820,7 +820,8 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         # TODO: Reset at grasping fails
         if self.cfg_task.data_logger.collect_data or self.cfg_task.data_logger.collect_test_sim:
-            self.reset_buf[:] |= self.degrasp_buf[:]
+            if not self.cfg_task.collect_rotate:
+                self.reset_buf[:] |= self.degrasp_buf[:]
 
         # If plug is too far from socket pos
         self.far_from_goal_buf[:] = torch.norm(self.plug_pos - self.socket_pos, p=2, dim=-1) > 0.2
@@ -1142,68 +1143,76 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         # Simulate one step to apply changes
         # self._simulate_and_refresh()
 
-    def rotate_plug(self, interval=np.radians(10), num_steps=1000):
-
+    def rotate_plug(self, interval=np.radians(5)):
         if self.cfg_task.data_logger.collect_data:
             from algo.ppo.experience import SimLogger
             self.data_logger = SimLogger(env=self)
             self.data_logger.data_logger = self.data_logger.data_logger_init(None)
 
-        initial_pos = self.plug_pos.clone()
-        tip_pos = self.plug_tip.clone()
-        initial_quat = self.plug_quat.clone()
+        for _ in range(self.cfg_task.data_logger.total_trajectories):
+            self.reset_idx(torch.arange(self.num_envs, device=self.device))
 
-        # Randomly select an axis for each environment
-        axes = torch.randint(0, 3, (self.num_envs,), device=self.device)
+            initial_pos = self.plug_pos.clone()
+            tip_pos = self.plug_tip.clone()
+            initial_quat = self.plug_quat.clone()
 
-        for step in range(num_steps):
-            # Calculate the angle for a smooth oscillation between -interval and +interval
-            cycle_angle = interval * np.sin((2 * np.pi / num_steps) * step)
-            cos_half_angle = np.cos(cycle_angle / 2)
-            sin_half_angle = np.sin(cycle_angle / 2)
+            # Randomly select an axis and a direction for each environment
+            axes = torch.randint(0, 3, (self.num_envs,), device=self.device)
+            directions = torch.randint(0, 2, (self.num_envs,),
+                                       device=self.device) * 2 - 1  # -1 for decreasing, 1 for increasing
+            num_steps = self.max_episode_length
 
-            # Create a quaternion for each environment based on its random axis
-            incremental_quat = torch.zeros((self.num_envs, 4), dtype=torch.float32, device=self.device)
-            for i in range(self.num_envs):
-                if axes[i] == 0:  # x-axis
-                    incremental_quat[i] = torch.tensor([sin_half_angle, 0.0, 0.0, cos_half_angle], dtype=torch.float32,
-                                                       device=self.device)
-                elif axes[i] == 1:  # y-axis
-                    incremental_quat[i] = torch.tensor([0.0, sin_half_angle, 0.0, cos_half_angle], dtype=torch.float32,
-                                                       device=self.device)
-                elif axes[i] == 2:  # z-axis
-                    incremental_quat[i] = torch.tensor([0.0, 0.0, sin_half_angle, cos_half_angle], dtype=torch.float32,
-                                                       device=self.device)
+            for step in range(num_steps):
 
-            # Calculate the rotation quaternion relative to the initial orientation
-            new_quat = quat_mul(initial_quat, incremental_quat)
+                cycle_angle = interval * np.sin((2 * np.pi / num_steps) * step)
+                cycle_angle = cycle_angle * directions
 
-            # Calculate new base position using the tip as the pivot
-            rotated_offset = quat_apply(incremental_quat, initial_pos - tip_pos)
-            new_base_pos = tip_pos + rotated_offset
+                cos_half_angle = torch.cos(cycle_angle / 2)
+                sin_half_angle = torch.sin(cycle_angle / 2)
 
-            # Update root quaternion and position for the base
-            self.root_quat[:, self.plug_actor_id_env] = new_quat
-            self.root_pos[:, self.plug_actor_id_env] = new_base_pos
+                incremental_quat = torch.zeros((self.num_envs, 4), dtype=torch.float32, device=self.device)
+                for i in range(self.num_envs):
+                    if axes[i] == 0:  # x-axis
+                        incremental_quat[i] = torch.tensor([sin_half_angle[i], 0.0, 0.0, cos_half_angle[i]],
+                                                           dtype=torch.float32, device=self.device)
+                    elif axes[i] == 1:  # y-axis
+                        incremental_quat[i] = torch.tensor([0.0, sin_half_angle[i], 0.0, cos_half_angle[i]],
+                                                           dtype=torch.float32, device=self.device)
+                    elif axes[i] == 2:  # z-axis
+                        incremental_quat[i] = torch.tensor([0.0, 0.0, sin_half_angle[i], cos_half_angle[i]],
+                                                           dtype=torch.float32, device=self.device)
 
-            self.root_linvel[:, self.plug_actor_id_env] = 0.0
-            self.root_angvel[:, self.plug_actor_id_env] = 0.0
+                # Calculate the rotation quaternion relative to the initial orientation
+                new_quat = quat_mul(initial_quat, incremental_quat)
 
-            plug_actor_ids_sim_int32 = self.plug_actor_ids_sim.clone().to(dtype=torch.int32, device=self.device)
-            self.gym.set_actor_root_state_tensor_indexed(
-                self.sim,
-                gymtorch.unwrap_tensor(self.root_state),
-                gymtorch.unwrap_tensor(plug_actor_ids_sim_int32[:]),
-                len(plug_actor_ids_sim_int32[:])
-            )
+                # Calculate new base position using the tip as the pivot
+                rotated_offset = quat_apply(incremental_quat, initial_pos - tip_pos)
+                new_base_pos = tip_pos + rotated_offset
 
-            self._simulate_and_refresh()
-            self.post_physics_step()
-            self._update_reset_buf()
+                # Update root quaternion and position for the base
+                self.root_quat[:, self.plug_actor_id_env] = new_quat
+                self.root_pos[:, self.plug_actor_id_env] = new_base_pos
 
-            if self.cfg_task.data_logger.collect_data:
-                self.data_logger.log_trajectory_data(self.actions, None, self.reset_buf, save_trajectory=True)
+                self.root_linvel[:, self.plug_actor_id_env] = 0.0
+                self.root_angvel[:, self.plug_actor_id_env] = 0.0
 
+                plug_actor_ids_sim_int32 = self.plug_actor_ids_sim.clone().to(dtype=torch.int32, device=self.device)
+                self.gym.set_actor_root_state_tensor_indexed(
+                    self.sim,
+                    gymtorch.unwrap_tensor(self.root_state),
+                    gymtorch.unwrap_tensor(plug_actor_ids_sim_int32[:]),
+                    len(plug_actor_ids_sim_int32[:])
+                )
+
+                self._simulate_and_refresh()
+                self.post_physics_step()
+                self._update_reset_buf()
+
+                if self.cfg_task.data_logger.collect_data:
+                    self.data_logger.log_trajectory_data(self.actions,
+                                                  None,
+                                                         self.timeout_reset_buf.clone(),
+                                                         save_trajectory=True)
 
     def _reset_object(self, env_ids, new_pose=None):
         """Reset root state of plug."""
