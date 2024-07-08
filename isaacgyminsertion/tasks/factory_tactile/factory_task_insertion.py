@@ -987,8 +987,8 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         kuka_dof_pos[:, 7:] = 0.
         self._reset_kuka(env_ids, new_pose=kuka_dof_pos)
 
-        for _, v in self.all_rendering_camera.items():
-            self.init_plug_pos_cam[v[0], :] = plug_pos[v[0], :]
+        # for _, v in self.all_rendering_camera.items():
+        #     self.init_plug_pos_cam[v[0], :] = plug_pos[v[0], :]
 
         object_pose = {
             'socket_pose': socket_pos,

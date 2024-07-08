@@ -23,9 +23,9 @@ class ImageTransform:
 
 
 class TactileTransform:
-    def __init__(self, tactile_transform=None):
+    def __init__(self, tactile_transform=None, out_channel=3):
         self.tactile_transform = tactile_transform
-        self.out_channel = 3
+        self.out_channel = out_channel
         self.to_gray = transforms.Compose([
             transforms.ToPILImage(),
             transforms.Grayscale(num_output_channels=1),
@@ -34,8 +34,8 @@ class TactileTransform:
 
     def __call__(self, tac_input):
         # tac_input shape: [B, T, Num_cam, C, H, W]
-        B, T, Num_cam, C, H, W = tac_input.shape
-        tac_input = tac_input.view(-1, C, H, W)  # Shape: [B * T * Num_cam, C, H, W]
+        B, T, F, C, H, W = tac_input.shape
+        tac_input = tac_input.view(-1, C, H, W)  # Shape: [B * T * F, C, H, W]
 
         transformed_list = []
 
@@ -49,8 +49,8 @@ class TactileTransform:
             transformed_list.append(transformed_image)
         tac_input = torch.stack(transformed_list)
 
-        tac_input = tac_input.view(B, T, Num_cam, self.out_channel,
-                                   *tac_input.shape[2:])  # Reshape back to [B, T, Num_cam, C, new_H, new_W]
+        tac_input = tac_input.view(B, T, F, self.out_channel,
+                                   *tac_input.shape[2:])  # Reshape back to [B, T, F, C, new_H, new_W]
 
         return tac_input
 

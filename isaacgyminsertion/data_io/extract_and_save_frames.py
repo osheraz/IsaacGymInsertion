@@ -23,22 +23,25 @@ def process_file(file_path):
         print(f'File processing generated an exception: {exc}')
         os.remove(file_path)
         return
-    # Extract img and tactile sequences
-    img_sequence = data['img']
-    tactile_sequence = data['tactile']
+
+    # Extract img and tactile sequences if they exist
+    img_sequence = data['img'] if 'img' in data else None
+    tactile_sequence = data['tactile'] if 'tactile' in data else None
 
     # Remove img and tactile from the data dictionary
     data_dict = {key: data[key] for key in data.files if key not in ['img', 'tactile']}
 
-    # Save each frame in the img sequence
-    for idx, img in enumerate(img_sequence):
-        img_filename = os.path.join(output_img_folder, f"img_{idx}.npz")
-        np.savez_compressed(img_filename, img=img)
+    # Save each frame in the img sequence if it exists
+    if img_sequence is not None:
+        for idx, img in enumerate(img_sequence):
+            img_filename = os.path.join(output_img_folder, f"img_{idx}.npz")
+            np.savez_compressed(img_filename, img=img)
 
-    # Save each frame in the tactile sequence
-    for idx, tactile in enumerate(tactile_sequence):
-        tactile_filename = os.path.join(output_tactile_folder, f"tactile_{idx}.npz")
-        np.savez_compressed(tactile_filename, tactile=tactile)
+    # Save each frame in the tactile sequence if it exists
+    if tactile_sequence is not None:
+        for idx, tactile in enumerate(tactile_sequence):
+            tactile_filename = os.path.join(output_tactile_folder, f"tactile_{idx}.npz")
+            np.savez_compressed(tactile_filename, tactile=tactile)
 
     # Save the remaining data to a new .npz file
     remaining_data_filename = os.path.join(output_obs_folder, f"obs.npz")
@@ -58,8 +61,8 @@ def extract_and_save_frames(file_list):
                 print(f'File processing generated an exception: {exc}')
 
 # Define the path to the data
-data_path = "/home/roblab20/tactile_tests/datastore_real"
-# data_path = "/home/osher/tactile_insertion/datastore_42_gt_test"
+# data_path = "/home/roblab20/tactile_tests/datastore_real"
+data_path = "/home/osher/tactile_insertion/datastore_42_gt_test"
 
 print('Loading trajectories from', data_path)
 

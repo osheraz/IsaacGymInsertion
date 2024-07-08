@@ -16,7 +16,7 @@ grasp_logger:
 
 data_logger:
     # for data collection
-    collect_data: True
+    collect_data: False
     total_trajectories: 2000
     base_folder: "/home/roblab20/tactile_insertion"
     sub_folder: ''
@@ -129,7 +129,7 @@ randomize:
 
     grasp_plug_noise: 0.005 # xyz noise on plug position during grasp
     above_socket_noise: [0.03, 0.03, 0.001]
-    plug_rot_noise: [0.05, 0.05, 0.05] # 0.03, 0.03
+    plug_rot_noise: [0.15, 0.15, 0.05] # 0.03, 0.03
 
 rl:
 

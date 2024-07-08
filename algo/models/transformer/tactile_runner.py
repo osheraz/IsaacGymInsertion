@@ -84,7 +84,7 @@ class Runner:
                           num_channels=self.tactile_channel,
                           num_lin_features=self.cfg.model.linear.input_size,
                           num_outputs=self.cfg.model.tact.output_size,
-                          tactile_encoder="efficientnet-b0",
+                          tactile_encoder='depth',  #  "efficientnet-b0",
                           img_encoder="efficientnet-b0",
                           tactile_encoding_size=self.cfg.model.tact.tactile_encoding_size,
                           img_encoding_size=self.cfg.model.tact.img_encoding_size,
@@ -230,28 +230,28 @@ class Runner:
         ax2.set_title('Linear input')
         ax2.legend()
 
-        # Check if img_input has more than one timestep
-        if img_input.ndim == 4 and img_input.shape[0] > 1:
-            concat_img_input = []
-            for t in range(img_input.shape[0]):
-                img = img_input[t]
-                img = np.transpose(img, (1, 2, 0))  # Convert from [W, H, C] to [H, W, C]
-                img = img + 0.5  # Adjust normalization if needed
-                concat_img_input.append(img)
-
-            # Horizontally stack the images for each timestep
-            concat_img_input = np.hstack(concat_img_input)
-        else:
-            # Handle the case where there is only one timestep
-            img = img_input[0] if img_input.ndim == 4 else img_input
-            img = np.transpose(img, (1, 2, 0))  # Convert from [W, H, C] to [H, W, C]
-            img = img + 0.5  # Adjust normalization if needed
-            concat_img_input = img
-
-        # Plot the concatenated image sequence
-        ax3 = fig.add_subplot(2, 2, 3)
-        ax3.imshow(concat_img_input)
-        ax3.set_title('Input Image Sequence')
+        # # Check if img_input has more than one timestep
+        # if img_input.ndim == 4 and img_input.shape[0] > 1:
+        #     concat_img_input = []
+        #     for t in range(img_input.shape[0]):
+        #         img = img_input[t]
+        #         img = np.transpose(img, (1, 2, 0))  # Convert from [W, H, C] to [H, W, C]
+        #         img = img + 0.5  # Adjust normalization if needed
+        #         concat_img_input.append(img)
+        #
+        #     # Horizontally stack the images for each timestep
+        #     concat_img_input = np.hstack(concat_img_input)
+        # else:
+        #     # Handle the case where there is only one timestep
+        #     img = img_input[0] if img_input.ndim == 4 else img_input
+        #     img = np.transpose(img, (1, 2, 0))  # Convert from [W, H, C] to [H, W, C]
+        #     img = img + 0.5  # Adjust normalization if needed
+        #     concat_img_input = img
+        #
+        # # Plot the concatenated image sequence
+        # ax3 = fig.add_subplot(2, 2, 3)
+        # ax3.imshow(concat_img_input)
+        # ax3.set_title('Input Image Sequence')
 
         # Adding subplot for Output vs. True Label comparison
         ax4 = fig.add_subplot(2, 2, 4)

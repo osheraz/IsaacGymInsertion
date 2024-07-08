@@ -166,6 +166,7 @@ class DataNormalizer:
             self.normalize_dict['std']["plug_hand_euler"] = np.std(euler, axis=0)
 
             diff_euler = euler - euler[0, :]
+
             self.normalize_dict['mean']["plug_hand_diff_euler"] = np.mean(diff_euler, axis=0)
             self.normalize_dict['std']["plug_hand_diff_euler"] = np.std(diff_euler, axis=0)
 
@@ -356,20 +357,23 @@ class TactileDataset(Dataset):
 
 
 class TactileTestDataset(Dataset):
-    def __init__(self, files, sequence_length=500,
+    def __init__(self, files,
+                 sequence_length=500,
                  normalize_dict=None,
-                 stride=2,
+                 stride=3,
                  img_transform=None,
                  tactile_transform=None,
                  tactile_channel=3,
+                 real_data=False
                  ):
 
         self.all_folders = files
         self.sequence_length = sequence_length
         self.stride = stride  # sequence_length
         self.normalize_dict = normalize_dict
-
+        self.real_data = real_data
         self.tactile_channel = tactile_channel
+
         if self.tactile_channel == 1:
             self.to_gray = transforms.Compose([
                 transforms.ToPILImage(),
@@ -402,7 +406,7 @@ class TactileTestDataset(Dataset):
         # Extract a sequence of specific length from the array
         return data[key][start_idx:start_idx + self.sequence_length]
 
-    def __getitem__(self, idx, diff_tac=True, diff_pos=True):
+    def __getitem__(self, idx, diff_tac=True, diff_pos=True, with_img=False):
         file_idx, start_idx = self.indices_per_trajectory[idx]
         file_path = self.all_folders[file_idx]
         tactile_folder = file_path[:-7].replace('obs', 'tactile')
@@ -411,13 +415,13 @@ class TactileTestDataset(Dataset):
         # Load data from the file
         data = np.load(file_path)
         data_dict = {key: data[key] for key in data}
-        data_dict["plug_hand_quat"] = data_dict["plug_hand_pos"][:, 3:]
-        data_dict["plug_hand_pos"] = data_dict["plug_hand_pos"][:, :3]
+        if self.real_data:
+            data_dict["plug_hand_quat"] = data_dict["plug_hand_pos"][:, 3:]
+            data_dict["plug_hand_pos"] = data_dict["plug_hand_pos"][:, :3]
 
         keys = ["eef_pos", "action", "latent", "plug_hand_pos", "plug_hand_quat"]
         data_seq = {key: self.extract_sequence(data_dict, key, start_idx) for key in keys}
 
-        # T, F, C, W, H = tactile_input.shape
         tactile_input = [np.load(os.path.join(tactile_folder, f'tactile_{i}.npz'))['tactile'] for i in
                          range(start_idx, start_idx + self.sequence_length)]
         if diff_tac:
@@ -435,15 +439,18 @@ class TactileTestDataset(Dataset):
             tactile_input = self.tactile_transform(tactile_input_reshaped)
             tactile_input = tactile_input.view(T, F, self.tactile_channel, *tactile_input.shape[-2:])
 
-        img_input = [np.load(os.path.join(img_folder, f'img_{i}.npz'))['img'] for i in
-                     range(start_idx, start_idx + self.sequence_length)]
-        if diff_tac:
-            first_img = np.load(os.path.join(img_folder, f'img_1.npz'))['img']
-            img_input = [(im - first_img) + 1e-6 for im in img_input]
+        if with_img:
+            img_input = [np.load(os.path.join(img_folder, f'img_{i}.npz'))['img'] for i in
+                         range(start_idx, start_idx + self.sequence_length)]
+            if diff_tac:
+                first_img = np.load(os.path.join(img_folder, f'img_1.npz'))['img']
+                img_input = [(im - first_img) + 1e-6 for im in img_input]
 
-        img_input = np.stack(img_input)
-        if self.img_transform is not None:
-            img_input = self.img_transform(self.to_torch(img_input))
+            img_input = np.stack(img_input)
+            if self.img_transform is not None:
+                img_input = self.img_transform(self.to_torch(img_input))
+        else:
+            img_input = np.zeros_like(data_seq["eef_pos"])
 
         eef_pos = data_seq["eef_pos"]
         plug_hand_pos = data_seq["plug_hand_pos"]
@@ -456,6 +463,7 @@ class TactileTestDataset(Dataset):
         # Normalizing
         if self.normalize_dict is not None:
             eef_pos = (eef_pos - self.normalize_dict["mean"]["eef_pos"]) / self.normalize_dict["std"]["eef_pos"]
+
             if not diff_pos:
                 euler = (euler - self.normalize_dict["mean"]["plug_hand_euler"]) / self.normalize_dict["std"][
                     "plug_hand_euler"]

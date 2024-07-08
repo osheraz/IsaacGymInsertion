@@ -6,6 +6,39 @@ import torch.nn.functional as F
 import math
 from typing import List, Dict, Optional, Tuple, Callable
 
+class DepthOnlyFCBackbone54x96(nn.Module):
+    def __init__(self, latent_dim, output_activation=None, num_channel=1):
+        super().__init__()
+
+        self.num_frames = num_channel
+        activation = nn.ELU()
+        self.image_compression = nn.Sequential(
+            # [1, 54, 96]
+            nn.Conv2d(in_channels=self.num_frames, out_channels=32, kernel_size=5),
+            # [32, 50, 92]
+            nn.MaxPool2d(kernel_size=2, stride=2),
+            # [32, 25, 46]
+            activation,
+            nn.Conv2d(in_channels=32, out_channels=64, kernel_size=3),
+            # [64, 23, 44]
+            activation,
+            nn.Flatten(),
+            # Calculate the flattened size: 64 * 23 * 44
+            nn.Linear(64 * 23 * 44, 128),
+            activation,
+            nn.Linear(128, latent_dim)
+        )
+
+        if output_activation == "tanh":
+            self.output_activation = nn.Tanh()
+        else:
+            self.output_activation = activation
+
+    def forward(self, images: torch.Tensor):
+        images_compressed = self.image_compression(images)
+        latent = self.output_activation(images_compressed)
+
+        return latent
 
 class PositionalEncoding(nn.Module):
     def __init__(self, d_model, max_seq_len=6):
@@ -134,12 +167,16 @@ class MultiModalModel(BaseModel):
         self.include_tactile = include_tactile
         self.include_img = include_img
         num_features = 0
+        self.tactile_encoder_type = tactile_encoder
 
         if include_tactile:
             if tactile_encoder.split("-")[0] == "efficientnet":
                 self.tactile_encoder = EfficientNet.from_name(tactile_encoder, in_channels=num_channels)
                 self.tactile_encoder = replace_bn_with_gn(self.tactile_encoder)
                 self.num_tactile_features = self.tactile_encoder._fc.in_features
+            elif tactile_encoder == 'depth':
+                self.tactile_encoder = DepthOnlyFCBackbone54x96(latent_dim=self.tactile_encoding_size, num_channel=num_channels)
+                self.num_tactile_features = 128
             else:
                 raise NotImplementedError
 
@@ -199,23 +236,32 @@ class MultiModalModel(BaseModel):
 
             obs_features = []
             if self.share_encoding:
-                for finger in fingers:
-                    # get the observation encoding
-                    tactile_encoding = self.tactile_encoder.extract_features(finger)
-                    # currently the size is [batch_size*(self.context_size), 1280, H/32, W/32]
-                    tactile_encoding = self.tactile_encoder._avg_pooling(tactile_encoding)
-                    # currently the size is [batch_size*(self.context_size), 1280, 1, 1]
-                    if self.tactile_encoder._global_params.include_top:
-                        tactile_encoding = tactile_encoding.flatten(start_dim=1)
-                        tactile_encoding = self.tactile_encoder._dropout(tactile_encoding)
-                    # currently, the size is [batch_size, self.context_size, self.tactile_encoding_size]
-                    tactile_encoding = self.compress_obs_enc(tactile_encoding)
-                    # currently, the size is [batch_size*(self.context_size), self.tactile_encoding_size]
-                    # reshape the tactile_encoding to [context + 1, batch, encoding_size], note that the order is flipped
-                    tactile_encoding = tactile_encoding.reshape((self.context_size, -1, self.tactile_encoding_size))
-                    tactile_encoding = torch.transpose(tactile_encoding, 0, 1)
-                    # currently, the size is [batch_size, self.context_size, self.tactile_encoding_size]
-                    obs_features.append(tactile_encoding)
+                if self.tactile_encoder_type.split("-")[0] == "efficientnet":
+                    for finger in fingers:
+                        # get the observation encoding
+                        tactile_encoding = self.tactile_encoder.extract_features(finger)
+                        # currently the size is [batch_size*(self.context_size), 1280, H/32, W/32]
+                        tactile_encoding = self.tactile_encoder._avg_pooling(tactile_encoding)
+                        # currently the size is [batch_size*(self.context_size), 1280, 1, 1]
+                        if self.tactile_encoder._global_params.include_top:
+                            tactile_encoding = tactile_encoding.flatten(start_dim=1)
+                            tactile_encoding = self.tactile_encoder._dropout(tactile_encoding)
+                        # currently, the size is [batch_size, self.context_size, self.tactile_encoding_size]
+                        tactile_encoding = self.compress_obs_enc(tactile_encoding)
+                        # currently, the size is [batch_size*(self.context_size), self.tactile_encoding_size]
+                        # reshape the tactile_encoding to [context, batch, encoding_size], note that the order is flipped
+                        tactile_encoding = tactile_encoding.reshape((self.context_size, -1, self.tactile_encoding_size))
+                        tactile_encoding = torch.transpose(tactile_encoding, 0, 1)
+                        obs_features.append(tactile_encoding)
+
+                        # currently, the size is [batch_size, self.context_size, self.tactile_encoding_size]
+                elif self.tactile_encoder_type == "depth":
+                    for finger in fingers:
+                        # get the observation encoding
+                        tactile_encoding = self.tactile_encoder(finger)
+                        tactile_encoding = tactile_encoding.reshape((self.context_size, -1, self.tactile_encoding_size))
+                        tactile_encoding = torch.transpose(tactile_encoding, 0, 1)
+                        obs_features.append(tactile_encoding)
             else:
                 raise NotImplementedError
 

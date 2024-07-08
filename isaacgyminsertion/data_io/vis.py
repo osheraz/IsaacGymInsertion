@@ -6,13 +6,14 @@ from pathlib import Path
 import os
 from glob import glob
 import random
+from scipy.spatial.transform import Rotation
 
 # %%
 import yaml
 
-# all_paths = glob('/home/osher/tactile_insertion/datastore_42_gt_test/*/*/obs/*.npz')
+all_paths = glob('/home/osher/tactile_insertion/datastore_42_gt_test/*/*/obs/*.npz')
 # all_paths = glob('/home/roblab20/tactile_diffusion/datastore_real/*/*/obs/*.npz')
-all_paths = glob('/home/roblab20/tactile_tests/datastore_real/*/*/obs/*.npz')
+# all_paths = glob('/home/roblab20/tactile_tests/datastore_real/*/*/obs/*.npz')
 
 print(len(all_paths))
 
@@ -381,7 +382,6 @@ if False:
     plt.plot(data['eef_pos'][1:done_idx, 0], data['eef_pos'][1:done_idx, 1])
     plt.scatter(data['socket_pos'][1:done_idx, 0], data['socket_pos'][1:done_idx, 1], color='r', s=35)
     plt.show()
-from scipy.spatial.transform import Rotation
 
 if False:
     fig = plt.figure(figsize=(18, 10))
@@ -448,7 +448,7 @@ if False:
     plt.scatter(data['socket_pos'][1:done_idx, 0], data['socket_pos'][1:done_idx, 1], color='r', s=35)
     plt.show()
 
-if True:
+if False:
     import cv2
     import numpy as np
     from tqdm import tqdm
@@ -481,8 +481,8 @@ if True:
     tactile_img = np.stack([np.load(os.path.join(tactile_folder, f'tactile_{i}.npz'))['tactile'] for i in
                         range(0, done_idx)])
 
-    depth_img = np.stack(
-        [np.load(os.path.join(img_folder, f'img_{i}.npz'))['img'] for i in range(0, done_idx)])
+    # depth_img = np.stack(
+    #     [np.load(os.path.join(img_folder, f'img_{i}.npz'))['img'] for i in range(0, done_idx)])
 
     for j in tqdm(range(0, done_idx)):
         if j == 0:
@@ -512,7 +512,7 @@ if True:
         cv2.imshow('test', img.transpose(1, 2, 0))
         # cv2.waitKey(200) & 0xFF
 
-if False:
+if True:
     fig = plt.figure(figsize=(18, 10))
     ax = fig.add_subplot(111)
     a = []
@@ -524,7 +524,9 @@ if False:
         done_idx = data['done'].nonzero()[-1][0]
         if done_idx < 10:
             continue
-        label = Rotation.from_quat(data["plug_hand_pos"][:done_idx, 3:]).as_euler('xyz', degrees=True)  # data["latent"] #
+        # label = Rotation.from_quat(data["plug_hand_pos"][:done_idx, 3:]).as_euler('xyz', degrees=True)  # data["latent"] #
+
+        label = Rotation.from_quat(data["plug_hand_quat"][:done_idx, :]).as_euler('xyz', degrees=True)  # data["latent"] #
         to_plot = label - label[0, :]
 
         if i == 0:

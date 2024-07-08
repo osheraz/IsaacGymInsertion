@@ -12,22 +12,22 @@ img_patch_size: 16
 img_crop_w: 0
 img_crop_h: 0
 
-tactile_type: 'rgb' # rgb
-tactile_gaussian_noise: 0.00
+tactile_type: 'gray' # rgb | gray
+tactile_gaussian_noise: 0.001
 tactile_masking_prob: 0.0
 tactile_patch_size: 16
 tactile_color_jitter: False
-tactile_width: 64
-tactile_height: 64
-tactile_crop_w: 0
-tactile_crop_h: 0
+tactile_width: 128
+tactile_height: 128
+tactile_crop_w: 10
+tactile_crop_h: 32
 
 # supervised learning
 train:
   # basic training hyperparameters
-  epochs: 100
-  train_batch_size: 16
-  val_batch_size: 16
+  epochs: 50
+  train_batch_size: 64
+  val_batch_size: 64
   learning_rate: 1e-4
   train_test_split: 0.98
   action_regularization: False # propagate gradients for action loss
@@ -45,9 +45,9 @@ train:
   action_scale: 1.0
 
   # Train params for on screen logging
-  print_every: 700
-  eval_every: 780
-  test_every: 780
+  print_every: 2000
+  eval_every: 2000
+  test_every: 2000
   test_episodes: 4000 # per epoch batch
 
   # Only val/test ( val- dataset, test - env)
@@ -58,7 +58,7 @@ train:
   normalize_keys: ["eef_pos",
                    "noisy_socket_pos",
                    "action",
-#                   "plug_hand_quat",
+                   "plug_hand_quat",
                    "plug_hand_pos",
 #                    "plug_pos_error",
 #                   "plug_quat_error"
