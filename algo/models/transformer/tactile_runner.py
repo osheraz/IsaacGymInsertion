@@ -84,7 +84,7 @@ class Runner:
                           num_channels=self.tactile_channel,
                           num_lin_features=self.cfg.model.linear.input_size,
                           num_outputs=self.cfg.model.tact.output_size,
-                          tactile_encoder='depth',  #  "efficientnet-b0",
+                          tactile_encoder='efficientnet-b0',  #  "efficientnet-b0",
                           img_encoder="efficientnet-b0",
                           tactile_encoding_size=self.cfg.model.tact.tactile_encoding_size,
                           img_encoding_size=self.cfg.model.tact.img_encoding_size,

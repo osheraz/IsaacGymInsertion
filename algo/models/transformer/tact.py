@@ -166,8 +166,9 @@ class MultiModalModel(BaseModel):
         self.include_lin = include_lin
         self.include_tactile = include_tactile
         self.include_img = include_img
-        num_features = 0
         self.tactile_encoder_type = tactile_encoder
+
+        num_features = 0
 
         if include_tactile:
             if tactile_encoder.split("-")[0] == "efficientnet":
@@ -176,7 +177,7 @@ class MultiModalModel(BaseModel):
                 self.num_tactile_features = self.tactile_encoder._fc.in_features
             elif tactile_encoder == 'depth':
                 self.tactile_encoder = DepthOnlyFCBackbone54x96(latent_dim=self.tactile_encoding_size, num_channel=num_channels)
-                self.num_tactile_features = 128
+                self.num_tactile_features = self.tactile_encoding_size
             else:
                 raise NotImplementedError
 

@@ -448,19 +448,21 @@ if False:
     plt.scatter(data['socket_pos'][1:done_idx, 0], data['socket_pos'][1:done_idx, 1], color='r', s=35)
     plt.show()
 
-if False:
+if True:
     import cv2
     import numpy as np
     from tqdm import tqdm
 
     fig = plt.figure(figsize=(18, 10))
     ax = fig.add_subplot(111)
-    path = random.sample(all_paths, 1)[0]
-    # path = '/home/roblab20/tactile_diffusion/datastore_real/1/2024-06-14_12-56-02/obs/obs.npz'
-    # path = all_paths[i]
-    data = np.load(path)
-    done_idx = data['done'].nonzero()[-1][0]
-    print(done_idx)
+    done_idx = 0
+    while done_idx == 0:
+        path = random.sample(all_paths, 1)[0]
+        # path = '/home/roblab20/tactile_diffusion/datastore_real/1/2024-06-14_12-56-02/obs/obs.npz'
+        # path = all_paths[i]
+        data = np.load(path)
+        done_idx = data['done'].nonzero()[-1][0]
+        print(done_idx)
 
     def reverse_normalize(image):
         mean = np.array([0.5, 0.5, 0.5])
@@ -480,9 +482,25 @@ if False:
     # tactile_img = data['tactile'][:done_idx, ...]
     tactile_img = np.stack([np.load(os.path.join(tactile_folder, f'tactile_{i}.npz'))['tactile'] for i in
                         range(0, done_idx)])
+    first = np.load(os.path.join(tactile_folder, f'tactile_1.npz'))['tactile']
+
+    # tactile_img -= first
+
+    # Flatten the tensor to 1D array
+    # testim = tactile_img[10][0]
+
+    plt.figure(figsize=(10, 6))
 
     # depth_img = np.stack(
     #     [np.load(os.path.join(img_folder, f'img_{i}.npz'))['img'] for i in range(0, done_idx)])
+    def binarize_image(tensor, threshold=0.55):
+        # Apply threshold
+        tensor_binarized = (tensor > threshold).astype(np.float32)
+        return tensor_binarized
+
+
+    print(tactile_img.shape)
+    print(tactile_img.max(), tactile_img.min())
 
     for j in tqdm(range(0, done_idx)):
         if j == 0:
@@ -490,9 +508,9 @@ if False:
             img2 = tactile_img[j][1]
             img3 = tactile_img[j][2]
         else:
-            img1 = tactile_img[j][0] #- img1
-            img2 = tactile_img[j][1] #- img2
-            img3 = tactile_img[j][2] #- img3
+            img1 = tactile_img[j][0]
+            img2 = tactile_img[j][1]
+            img3 = tactile_img[j][2]
 
         # depth = depth_img[j]
         # img1 = np.transpose(img1, (1, 2, 0))
@@ -508,11 +526,14 @@ if False:
         # depth = np.uint8(depth)
         # cv2.imshow("Depth Image", depth.transpose(1, 2, 0) + 0.5)
         cv2.namedWindow('test', cv2.WND_PROP_FULLSCREEN)
+        cv2.namedWindow('bin', cv2.WND_PROP_FULLSCREEN)
         key = cv2.waitKey(30)
-        cv2.imshow('test', img.transpose(1, 2, 0))
+        cv2.imshow('test', img.transpose(1, 2, 0) + 0.5)
+        cv2.imshow('bin', binarize_image(img).transpose(1, 2, 0))
+
         # cv2.waitKey(200) & 0xFF
 
-if True:
+if False:
     fig = plt.figure(figsize=(18, 10))
     ax = fig.add_subplot(111)
     a = []
