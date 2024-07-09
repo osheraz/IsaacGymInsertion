@@ -29,8 +29,6 @@ import matplotlib
 import matplotlib.pyplot as plt
 from algo.models.transformer.data import get_last_sequence
 from algo.ppo.experience import ExperienceBuffer
-from algo.ppo.experience import VectorizedExperienceBuffer
-# from algo.models.models import ActorCritic
 from algo.models.models_split import ActorCriticSplit as ActorCritic
 from algo.models.running_mean_std import RunningMeanStd
 
@@ -668,12 +666,12 @@ class PPO(object):
             if offline_test:
                 if get_latent is not None:
                     # Making data for the latent prediction from student model
-                    tactile, img, lin_input, gt_pos_rpy = self.get_last_student_obs(
-                        self.data_logger.data_logger.get_data(), stats)
+                    last_obs = self.get_last_student_obs(self.data_logger.data_logger.get_data(), stats)
+                    tactile, img, lin_input, gt_pos_rpy = last_obs
                     # getting the latent data from the student model
                     if self.full_config.offline_train.model.transformer.full_sequence:
-                        latent = get_latent(tactile, img, lin_input)[self.env_ids, self.env.progress_buf.view(-1, 1),
-                                 :].squeeze(1)
+                        latent = get_latent(tactile, img, lin_input)[self.env_ids,
+                                                                     self.env.progress_buf.view(-1, 1), :].squeeze(1)
                     else:
                         latent, out_pos_rpy = get_latent(tactile, img, lin_input, gt_pos_rpy)
 
@@ -717,7 +715,7 @@ class PPO(object):
         print('[LastTest] success rate:', num_success / total_dones)
         return num_success, total_dones
 
-    def get_last_student_obs(self, data, normalize_dict, diff=True, diff_tac=True, display=False):
+    def get_last_student_obs(self, data, normalize_dict, diff=True, diff_tac=True, display=True):
         sequence_length = self.full_config.offline_train.model.transformer.sequence_length
 
         # E, T, F, C, W, H = tactile.shape
@@ -727,11 +725,14 @@ class PPO(object):
         noisy_socket_pos = data["noisy_socket_pos"][:, :, :3]
         plug_hand_quat = data["plug_hand_quat"]
         plug_hand_pos = data["plug_hand_pos"]
+        action = data["action"]
 
         plug_hand_quat = get_last_sequence(plug_hand_quat, self.env.progress_buf, sequence_length)
         plug_hand_pos = get_last_sequence(plug_hand_pos, self.env.progress_buf, sequence_length)
         eef_pos = get_last_sequence(eef_pos, self.env.progress_buf, sequence_length)
         noisy_socket_pos = get_last_sequence(noisy_socket_pos, self.env.progress_buf, sequence_length)
+        action = get_last_sequence(action, self.env.progress_buf, sequence_length)
+
         plug_hand_quat = plug_hand_quat.squeeze(0).cpu().detach().numpy()
 
         euler = torch.tensor(Rotation.from_quat(plug_hand_quat + 1e-6).as_euler('xyz'), device=self.device).unsqueeze(0)
@@ -759,11 +760,13 @@ class PPO(object):
                 plug_hand_pos = (plug_hand_pos - normalize_dict["mean"]["plug_hand_pos_diff"]) / \
                                 normalize_dict["std"]["plug_hand_pos_diff"]
 
-        obj_pos_rpy = torch.cat([plug_hand_pos, euler], dim=-1).to(self.device)
+        obj_pos_rpy = torch.cat([plug_hand_pos, euler], dim=-1).to(self.device).float()
 
         lin_input = torch.cat([
             eef_pos,
             noisy_socket_pos,
+            action,
+            obj_pos_rpy
         ], dim=-1)
 
         # Adjust tactile and lin_input based on the sequence length and progress buffer

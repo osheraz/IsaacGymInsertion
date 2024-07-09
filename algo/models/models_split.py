@@ -222,7 +222,6 @@ class ActorCriticSplit(nn.Module):
             if 'priv_info' in obs_dict:
 
                 extrin_priv = self.env_mlp(obs_dict['priv_info'])
-                # extrin_priv = self.env_mlp(extrin)
 
                 if self.contact_info:
                     extrin_contact = self.contact_ae.forward_enc(obs_dict['contacts'])

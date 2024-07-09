@@ -35,7 +35,7 @@ def get_last_sequence(input_tensor, progress_buf, sequence_length):
 
     E, _, *other_dims = input_tensor.shape
     adjusted_tensor = torch.zeros(E, sequence_length, *other_dims, device=input_tensor.device,
-                                  dtype=input_tensor.dtype) + 1e-6
+                                  dtype=torch.float32) + 1e-6
 
     for env_id in range(E):
         actual_seq_len = progress_buf[env_id]
@@ -295,7 +295,6 @@ class TactileDataset(Dataset):
 
         eef_pos = data_seq["eef_pos"]
         action = data_seq["action"]
-        # contacts = data_seq["action"]  # contact
         obs_hist = data_seq["obs_hist"]
         noisy_socket_pos = data_seq["noisy_socket_pos"][:, :3]
         euler = Rotation.from_quat(data_seq["plug_hand_quat"]).as_euler('xyz')
@@ -314,10 +313,6 @@ class TactileDataset(Dataset):
             eef_pos = (eef_pos - self.normalize_dict["mean"]["eef_pos"]) / self.normalize_dict["std"]["eef_pos"]
             noisy_socket_pos = (noisy_socket_pos - self.normalize_dict["mean"]["noisy_socket_pos"][:3]) / \
                                self.normalize_dict["std"]["noisy_socket_pos"][:3]
-            # plug_pos_error = (plug_pos_error - self.normalize_dict["mean"]["plug_pos_error"]) / \
-            #                  self.normalize_dict["std"]["plug_pos_error"]
-            # plug_quat_error = (plug_quat_error - self.normalize_dict["mean"]["plug_quat_error"]) / \
-            #                   self.normalize_dict["std"]["plug_quat_error"]
             if not diff:
                 euler = (euler - self.normalize_dict["mean"]["plug_hand_euler"]) / self.normalize_dict["std"][
                     "plug_hand_euler"]
@@ -337,10 +332,16 @@ class TactileDataset(Dataset):
 
         shift_action_right = np.concatenate([np.zeros((1, action.shape[-1])), action[:-1, :]], axis=0)
 
+        # Generate and add noise to noisy_socket_pos and obj_pos_rpy
+        noisy_socket_pos_noise = np.random.normal(loc=0, scale=0.002, size=noisy_socket_pos.shape)
+        obj_pos_rpy_noise = np.random.normal(loc=0, scale=0.002, size=obj_pos_rpy.shape)
+        noisy_socket_pos += noisy_socket_pos_noise
+
         lin_input = np.concatenate([
-            eef_pos,
-            noisy_socket_pos,
-            # hand_joints,
+            eef_pos,      # 12
+            noisy_socket_pos + noisy_socket_pos_noise, # 3
+            action, # 6
+            obj_pos_rpy + obj_pos_rpy_noise, # 6
         ], axis=-1)
 
         # Convert to torch tensors

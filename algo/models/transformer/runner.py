@@ -91,7 +91,9 @@ class Runner:
                                      mha_num_attention_layers=self.cfg.model.transformer.num_layers,
                                      mha_ff_dim_factor=self.cfg.model.transformer.dim_factor,
                                      additional_lin=self.cfg.model.tact.output_size if self.cfg.model.transformer.load_tact else 0,
-                                     include_img=True, include_lin=True, include_tactile=False)
+                                     include_img=self.cfg.model.use_img,
+                                     include_lin=self.cfg.model.use_lin,
+                                     include_tactile=self.cfg.model.use_tactile)
 
         if self.cfg.model.transformer.load_tact:
             self.tact = MultiModalModel(context_size=self.sequence_length,
@@ -102,10 +104,12 @@ class Runner:
                                         mha_num_attention_heads=self.cfg.model.tact.num_heads,
                                         mha_num_attention_layers=self.cfg.model.tact.num_layers,
                                         mha_ff_dim_factor=self.cfg.model.tact.dim_factor,
-                                        include_img=False, include_lin=False, include_tactile=True)
+                                        include_img=self.cfg.model.tact.use_tactile,
+                                        include_lin=self.cfg.model.tact.use_tactile,
+                                        include_tactile=self.cfg.model.tact.use_tactile)
 
-        self.src_mask = torch.triu(torch.ones(self.sequence_length, self.sequence_length), diagonal=1).bool().to(
-            self.device)
+        self.src_mask = torch.triu(torch.ones(self.sequence_length, self.sequence_length),
+                                   diagonal=1).bool().to(self.device)
 
         self.loss_fn_mean = torch.nn.MSELoss(reduction='mean')
         self.loss_fn = torch.nn.MSELoss(reduction='none')
