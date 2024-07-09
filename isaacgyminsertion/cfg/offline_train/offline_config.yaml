@@ -82,6 +82,8 @@ model:
   use_tactile: False
   use_lin: True
 
+  model_type: 'simple'
+
   transformer:
     full_sequence: False # if True, it makes sequence length 500
     sequence_length: 30 # ${...task.rl.max_episode_length}

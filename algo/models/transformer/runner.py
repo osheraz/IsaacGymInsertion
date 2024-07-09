@@ -80,24 +80,27 @@ class Runner:
             self.cfg.tactile_masking_prob
         )
 
-        # self.model = MultiModalModel(context_size=self.sequence_length,
-        #                              num_channels=self.tactile_channel,
-        #                              num_lin_features=self.cfg.model.linear.input_size,
-        #                              num_outputs=self.cfg.model.transformer.output_size,
-        #                              tactile_encoder="efficientnet-b0",
-        #                              img_encoder="efficientnet-b0",
-        #                              tactile_encoding_size=self.cfg.model.transformer.tactile_encoding_size,
-        #                              img_encoding_size=self.cfg.model.transformer.img_encoding_size,
-        #                              mha_num_attention_heads=self.cfg.model.transformer.num_heads,
-        #                              mha_num_attention_layers=self.cfg.model.transformer.num_layers,
-        #                              mha_ff_dim_factor=self.cfg.model.transformer.dim_factor,
-        #                              additional_lin=self.cfg.model.tact.output_size if self.cfg.model.transformer.load_tact else 0,
-        #                              include_img=self.cfg.model.use_img,
-        #                              include_lin=self.cfg.model.use_lin,
-        #                              include_tactile=self.cfg.model.use_tactile)
-
-        self.model = AdaptTConv(ft_dim=self.cfg.model.linear.input_size,
-                                ft_out_dim=self.cfg.model.transformer.output_size)
+        if self.cfg.model.model_type == 'transformer':
+            self.model = MultiModalModel(context_size=self.sequence_length,
+                                         num_channels=self.tactile_channel,
+                                         num_lin_features=self.cfg.model.linear.input_size,
+                                         num_outputs=self.cfg.model.transformer.output_size,
+                                         tactile_encoder="efficientnet-b0",
+                                         img_encoder="efficientnet-b0",
+                                         tactile_encoding_size=self.cfg.model.transformer.tactile_encoding_size,
+                                         img_encoding_size=self.cfg.model.transformer.img_encoding_size,
+                                         mha_num_attention_heads=self.cfg.model.transformer.num_heads,
+                                         mha_num_attention_layers=self.cfg.model.transformer.num_layers,
+                                         mha_ff_dim_factor=self.cfg.model.transformer.dim_factor,
+                                         additional_lin=self.cfg.model.tact.output_size if self.cfg.model.transformer.load_tact else 0,
+                                         include_img=self.cfg.model.use_img,
+                                         include_lin=self.cfg.model.use_lin,
+                                         include_tactile=self.cfg.model.use_tactile)
+        elif self.cfg.model.model_type == 'simple':
+            self.model = AdaptTConv(ft_dim=self.cfg.model.linear.input_size,
+                                    ft_out_dim=self.cfg.model.transformer.output_size)
+        else:
+            assert NotImplementedError
 
         if self.cfg.model.transformer.load_tact:
             self.tact = MultiModalModel(context_size=self.sequence_length,
