@@ -141,11 +141,13 @@ class HardwarePlayer:
         self.priv_mean_std.eval()
 
         self.cfg_tactile = full_config.task.tactile
+        asset_info_path = '../../assets/factory/yaml/factory_asset_info_insertion.yaml'
 
-        asset_info_path = '../../../assets/factory/yaml/factory_asset_info_insertion.yaml'
+        # asset_info_path = '../../../assets/factory/yaml/factory_asset_info_insertion.yaml'
         self.asset_info_insertion = hydra.compose(config_name=asset_info_path)
-        self.asset_info_insertion = self.asset_info_insertion['']['']['']['']['']['']['']['']['']['assets']['factory'][
-            'yaml']
+        # self.asset_info_insertion = self.asset_info_insertion['']['']['']['']['']['']['']['']['']['assets']['factory'][
+        #     'yaml']
+        self.asset_info_insertion = self.asset_info_insertion['']['']['']['']['']['']['assets']['factory']['yaml']
 
         self.extrinsic_contact = None
 
@@ -261,7 +263,7 @@ class HardwarePlayer:
 
         # tactile buffers
         self.num_channels = self.cfg_tactile.encoder.num_channels
-        self.width = self.cfg_tactile.encoder.width // 2 if self.cfg_tactile.half_image else self.cfg_tactile.encoder.width
+        self.width = self.cfg_tactile.encoder.width // 2 if self.cfg_tactile.crop_roi else self.cfg_tactile.encoder.width
         self.height = self.cfg_tactile.encoder.height
 
         # tactile buffers
@@ -403,7 +405,7 @@ class HardwarePlayer:
                              quat2R(self.fingertip_centered_quat).reshape(1, -1)), dim=-1)
 
         # Cutting by half
-        if self.cfg_tactile.half_image:
+        if self.cfg_tactile.crop_roi:
             w = left.shape[0]
             left = left[:w // 2, :, :]
             right = right[:w // 2, :, :]
@@ -470,7 +472,7 @@ class HardwarePlayer:
             state_tensors = [
                 # self.plug_hand_pos,  # 3
                 # self.plug_hand_quat,  # 4
-                self.plug_pos_error + self.socket_obs_pos_noise,  # 3
+                self.plug_pos_error, # + self.socket_obs_pos_noise,  # 3
                 self.plug_quat_error,  # 4
             ]
 
@@ -517,7 +519,7 @@ class HardwarePlayer:
 
             self.grasp_and_init()
 
-        self.env.randomize_grasp()
+        # self.env.randomize_grasp()
 
         self.env.arm.move_manipulator.scale_vel(scale_vel=0.02, scale_acc=0.02)
         self.inserted[...] = False

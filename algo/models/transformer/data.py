@@ -311,19 +311,13 @@ class TactileDataset(Dataset):
         # Normalizing
         if self.normalize_dict is not None:
             eef_pos = (eef_pos - self.normalize_dict["mean"]["eef_pos"]) / self.normalize_dict["std"]["eef_pos"]
-            noisy_socket_pos = (noisy_socket_pos - self.normalize_dict["mean"]["noisy_socket_pos"][:3]) / \
-                               self.normalize_dict["std"]["noisy_socket_pos"][:3]
+            noisy_socket_pos = (noisy_socket_pos - self.normalize_dict["mean"]["noisy_socket_pos"][:3]) / self.normalize_dict["std"]["noisy_socket_pos"][:3]
             if not diff:
-                euler = (euler - self.normalize_dict["mean"]["plug_hand_euler"]) / self.normalize_dict["std"][
-                    "plug_hand_euler"]
-                plug_hand_pos = (plug_hand_pos - self.normalize_dict["mean"]["plug_hand_pos"]) / \
-                                self.normalize_dict["std"]["plug_hand_pos"]
-
+                euler = (euler - self.normalize_dict["mean"]["plug_hand_euler"]) / self.normalize_dict["std"]["plug_hand_euler"]
+                plug_hand_pos = (plug_hand_pos - self.normalize_dict["mean"]["plug_hand_pos"]) / self.normalize_dict["std"]["plug_hand_pos"]
             else:
-                euler = (euler - self.normalize_dict["mean"]["plug_hand_diff_euler"]) / self.normalize_dict["std"][
-                    "plug_hand_diff_euler"]
-                plug_hand_pos = (plug_hand_pos - self.normalize_dict["mean"]["plug_hand_pos_diff"]) / \
-                                self.normalize_dict["std"]["plug_hand_pos_diff"]
+                euler = (euler - self.normalize_dict["mean"]["plug_hand_diff_euler"]) / self.normalize_dict["std"]["plug_hand_diff_euler"]
+                plug_hand_pos = (plug_hand_pos - self.normalize_dict["mean"]["plug_hand_pos_diff"]) / self.normalize_dict["std"]["plug_hand_pos_diff"]
 
         obj_pos_rpy = np.hstack((plug_hand_pos, euler))
 

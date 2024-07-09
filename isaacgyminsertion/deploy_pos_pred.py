@@ -33,8 +33,8 @@ def main(config: DictConfig):
 
     agent = HardwarePlayer(config)
     # model_path = 'outputs/gt_test/tact/'
-    model_path = '/home/roblab20/tactile_tests/datastore_real/models/clear'
-    test = True
+    model_path = '/home/roblab20/osher3_workspace/src/isaacgym/python/IsaacGymInsertion/isaacgyminsertion/outputs/depth'
+    test = False
 
     if test:
         config.offline_train.model.transformer.load_tact = True

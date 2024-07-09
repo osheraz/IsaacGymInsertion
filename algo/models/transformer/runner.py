@@ -104,8 +104,8 @@ class Runner:
                                         mha_num_attention_heads=self.cfg.model.tact.num_heads,
                                         mha_num_attention_layers=self.cfg.model.tact.num_layers,
                                         mha_ff_dim_factor=self.cfg.model.tact.dim_factor,
-                                        include_img=self.cfg.model.tact.use_tactile,
-                                        include_lin=self.cfg.model.tact.use_tactile,
+                                        include_img=self.cfg.model.tact.use_img,
+                                        include_lin=self.cfg.model.tact.use_lin,
                                         include_tactile=self.cfg.model.tact.use_tactile)
 
         self.src_mask = torch.triu(torch.ones(self.sequence_length, self.sequence_length),
@@ -311,15 +311,18 @@ class Runner:
         d_pos_rpy = None
         with torch.no_grad():
 
-            tac_input = tac_input.to(self.device)
-            if self.tactile_transform is not None:
-                tac_input = TactileTransform(self.tactile_transform)(tac_input).to(self.device)
+            if self.cfg.model.tact.use_tactile:
+                tac_input = tac_input.to(self.device)
+                if self.tactile_transform is not None:
+                    tac_input = TactileTransform(self.tactile_transform)(tac_input).to(self.device)
 
-            img_input = img_input.to(self.device)
-            if self.img_transform is not None:
-                img_input = ImageTransform(self.img_eval_transform)(img_input).to(self.device)
+            if self.cfg.model.tact.use_img:
+                img_input = img_input.to(self.device)
+                if self.img_transform is not None:
+                    img_input = ImageTransform(self.img_eval_transform)(img_input).to(self.device)
 
-            lin_input = lin_input.to(self.device)
+            if self.cfg.model.tact.use_lin:
+                lin_input = lin_input.to(self.device)
 
             if self.tact is not None:
                 d_pos_rpy = self.tact(tac_input, img_input, lin_input).unsqueeze(1)

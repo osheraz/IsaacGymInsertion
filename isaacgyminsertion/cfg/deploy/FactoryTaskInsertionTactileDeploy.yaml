@@ -26,7 +26,7 @@ data_logger:
 # taking from training default, allows to over write
 # actually, we should write different config for each observation we test
 rl:
-    max_episode_length: 200
+    max_episode_length: 1000
     pos_action_scale: [0.005, 0.005, 0.004]
     rot_action_scale: [0.01, 0.01, 0.01]
     clamp_rot: ${...task.rl.clamp_rot}

@@ -104,8 +104,8 @@ class ExperienceBuffer(Dataset):
             else:
                 input_dict[k] = v[batch_idx]
         return input_dict['values'], input_dict['neglogpacs'], input_dict['advantages'], input_dict['mus'], \
-               input_dict['sigmas'], input_dict['returns'], input_dict['actions'], \
-               input_dict['obses'], input_dict['priv_info'], input_dict['contacts']
+            input_dict['sigmas'], input_dict['returns'], input_dict['actions'], \
+            input_dict['obses'], input_dict['priv_info'], input_dict['contacts']
 
     def update_mu_sigma(self, mu, sigma):
         start = self.last_range[0]
@@ -558,13 +558,13 @@ class SimLogger():
         log_folder = os.path.join(log_folder, 'tactile_insertion')
 
         self.data_logger_init = lambda x: DataLoggerSim(env.num_envs,
-                                                     env.max_episode_length,
-                                                     env.device,
-                                                     os.path.join(log_folder,
-                                                                  env.cfg_task.data_logger.sub_folder),
-                                                     env.cfg_task.data_logger.total_trajectories,
-                                                     save_trajectory=env.cfg_task.data_logger.collect_data,
-                                                     **log_items)
+                                                        env.max_episode_length,
+                                                        env.device,
+                                                        os.path.join(log_folder,
+                                                                     env.cfg_task.data_logger.sub_folder),
+                                                        env.cfg_task.data_logger.total_trajectories,
+                                                        save_trajectory=env.cfg_task.data_logger.collect_data,
+                                                        **log_items)
 
         self.data_logger = None
 
@@ -667,14 +667,14 @@ class RealLogger():
 
         log_folder = env.deploy_config.data_logger.base_folder
 
-        self.data_logger_init = lambda x: DataLogger(env.num_envs,
-                                                     env.max_episode_length,
-                                                     env.device,
-                                                     os.path.join(log_folder,
-                                                                  env.deploy_config.data_logger.sub_folder),
-                                                     env.deploy_config.data_logger.total_trajectories,
-                                                     save_trajectory=env.deploy_config.data_logger.collect_data,
-                                                     **log_items)
+        self.data_logger_init = lambda x: DataLoggerReal(env.num_envs,
+                                                         env.max_episode_length,
+                                                         env.device,
+                                                         os.path.join(log_folder,
+                                                                      env.deploy_config.data_logger.sub_folder),
+                                                         env.deploy_config.data_logger.total_trajectories,
+                                                         save_trajectory=env.deploy_config.data_logger.collect_data,
+                                                         **log_items)
 
         self.data_logger = None
 

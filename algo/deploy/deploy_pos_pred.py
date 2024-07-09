@@ -167,8 +167,6 @@ class HardwarePlayer:
 
         # tactile buffers
         self.num_channels = self.cfg_tactile.encoder.num_channels
-        # self.width = self.tact_config.tactile_width // 2 if self.cfg_tactile.crop_roi else self.tact_config.tactile_width
-        # self.height = self.tact_config.tactile_height
         self.width = self.cfg_tactile.encoder.width // 2 if self.cfg_tactile.crop_roi else self.cfg_tactile.encoder.width
         self.height = self.cfg_tactile.encoder.height
 
@@ -297,28 +295,23 @@ class HardwarePlayer:
         eef_pos = torch.cat((self.fingertip_centered_pos,
                              quat2R(self.fingertip_centered_quat).reshape(1, -1)), dim=-1)
 
-        # eef_pos = torch.cat((self.fingertip_centered_pos,
-        #                      self.rot_tf.forward(self.fingertip_centered_quat).reshape(1, -1)), dim=-1)
-
         if with_tactile:
 
             left, right, bottom = obses['frames']
 
             # Cutting by half
             if self.cfg_tactile.crop_roi:
-
                 w = left.shape[0]
                 left = left[:w // 2, :, :]
                 right = right[:w // 2, :, :]
                 bottom = bottom[:w // 2, :, :]
 
-                h = left.shape[1]  # Get the height of the image
-                crop_size = h // 6  # Define the amount to crop from each side
-
-                # Crop h // 4 from both the top and bottom
-                left = left[:, crop_size:-crop_size, :]
-                right = right[:, crop_size:-crop_size, :]
-                bottom = bottom[:, crop_size:-crop_size, :]
+                # h = left.shape[1]  # Get the height of the image
+                # crop_size = h // 6  # Define the amount to crop from each side
+                # # Crop h // 4 from both the top and bottom
+                # left = left[:, crop_size:-crop_size, :]
+                # right = right[:, crop_size:-crop_size, :]
+                # bottom = bottom[:, crop_size:-crop_size, :]
 
             # Resizing to encoder size
             left = cv2.resize(left, (self.height, self.width), interpolation=cv2.INTER_AREA)
@@ -337,7 +330,7 @@ class HardwarePlayer:
                 bottom -= self.f_bottom
 
             if display_image:
-                cv2.imshow("Hand View\tLeft\tRight\tMiddle", np.concatenate((left, right, bottom), axis=1) + 0.5)
+                cv2.imshow("Hand View\tLeft\tRight\tMiddle", np.concatenate((left, right, bottom), axis=1))
                 cv2.waitKey(1)
 
             if self.num_channels == 3:
@@ -345,12 +338,9 @@ class HardwarePlayer:
                 self.tactile_imgs[0, 1] = to_torch(right).permute(2, 0, 1).to(self.device)
                 self.tactile_imgs[0, 2] = to_torch(bottom).permute(2, 0, 1).to(self.device)
             else:
-                self.tactile_imgs[0, 0] = to_torch(
-                    cv2.cvtColor(left.astype('float32'), cv2.COLOR_BGR2GRAY)).to(self.device)
-                self.tactile_imgs[0, 1] = to_torch(
-                    cv2.cvtColor(right.astype('float32'), cv2.COLOR_BGR2GRAY)).to(self.device)
-                self.tactile_imgs[0, 2] = to_torch(
-                    cv2.cvtColor(bottom.astype('float32'), cv2.COLOR_BGR2GRAY)).to(self.device)
+                self.tactile_imgs[0, 0] = to_torch(cv2.cvtColor(left.astype('float32'), cv2.COLOR_BGR2GRAY)).to(self.device)
+                self.tactile_imgs[0, 1] = to_torch(cv2.cvtColor(right.astype('float32'), cv2.COLOR_BGR2GRAY)).to(self.device)
+                self.tactile_imgs[0, 2] = to_torch(cv2.cvtColor(bottom.astype('float32'), cv2.COLOR_BGR2GRAY)).to(self.device)
 
             self.tactile_queue[:, 1:] = self.tactile_queue[:, :-1].clone().detach()
             self.tactile_queue[:, 0, :] = self.tactile_imgs
@@ -493,7 +483,7 @@ class HardwarePlayer:
 
         self._create_asset_info()
         self._acquire_task_tensors()
-        self.deploy_config.data_logger.collect_data = False
+        self.deploy_config.data_logger.collect_data = True
         # ---- Data Logger ----
         if self.deploy_config.data_logger.collect_data:
             from algo.ppo.experience import RealLogger
@@ -542,6 +532,7 @@ class HardwarePlayer:
             while not self.done[0, 0]:
 
                 if test:
+                    print(tactile.max(), tactile.min())
                     out = self.tact.get_latent(tactile).cpu().detach().numpy()
                     d_plug_pos, d_euler = out[:, :3], out[:, 3:]
                     d_plug_pos = (d_plug_pos * self.stats["std"]["plug_hand_pos_diff"]) + self.stats["mean"]["plug_hand_pos_diff"]
@@ -554,10 +545,9 @@ class HardwarePlayer:
                         ax2.bar(indices - width / 2, d_pos_rpy[3:], width, label='d_pos_rpy')
                     xyz, quat = label[:3], label[3:] + 1e-6
                     euler = Rotation.from_quat(quat).as_euler('xyz')
-                    xyz = xyz - sxyz
-                    euler = euler - seuler
-                    ax1.bar(indices + width / 2, xyz, width, label='True POS')
-                    ax2.bar(indices + width / 2, euler, width, label='True RPY')
+                    ax1.bar(indices + width / 2, xyz - sxyz, width, label='True POS')
+                    ax2.bar(indices + width / 2, euler - seuler, width, label='True RPY')
+
                     ax1.set_ylim([-0.02, 0.02])
                     ax2.set_ylim([-0.5, 0.5])
                     plt.pause(0.00000000002)
@@ -576,10 +566,10 @@ class HardwarePlayer:
                     break
 
                 # Compute next observation
-                obs_dict = self.compute_observations(with_priv=True, with_img=False)
+                obs_dict = self.compute_observations(with_priv=True, with_img=False, diff_tac=test)
                 tactile = obs_dict['tactile']
                 label = obs_dict['priv_info'].cpu().detach().numpy()[0]
-                print(label)
+
             self.env.arm.move_manipulator.stop_motion()
             self.reset()
 

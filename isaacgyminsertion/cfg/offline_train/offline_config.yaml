@@ -96,7 +96,7 @@ model:
 
   tact:
     full_sequence: False # if True, it makes sequence length 500
-    sequence_length: 10 # ${...task.rl.max_episode_length}
+    sequence_length: 1 # ${...task.rl.max_episode_length}
     num_layers: 4
     num_heads: 4
     dim_factor: 4
