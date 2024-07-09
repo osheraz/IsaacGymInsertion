@@ -80,7 +80,7 @@ class Runner:
             self.cfg.tactile_masking_prob
         )
 
-        if self.cfg.model.model_type == 'transformer':
+        if self.cfg.model.model_type == 'tact':
             self.model = MultiModalModel(context_size=self.sequence_length,
                                          num_channels=self.tactile_channel,
                                          num_lin_features=self.cfg.model.linear.input_size,
@@ -508,7 +508,7 @@ class Runner:
         print('Loading trajectories from', self.cfg.data_folder)
 
         file_list = glob(os.path.join(self.cfg.data_folder, '*/*/obs/*.npz'))
-        save_folder = f'{to_absolute_path(self.cfg.output_dir)}/tact_{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}'
+        save_folder = f'{to_absolute_path(self.cfg.output_dir)}/{self.cfg.model.model_type}_{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}'
         os.makedirs(save_folder, exist_ok=True)
         self.save_folder = save_folder
 
