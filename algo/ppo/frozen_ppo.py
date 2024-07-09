@@ -371,7 +371,7 @@ class PPO(object):
             'obs': processed_obs,
             'latent': obs_dict['latent'],
         }
-        action, latent = self.model.act_inference(input_dict)
+        action, latent = self.model.bc_act(input_dict)
         return action, latent
 
     def train_epoch(self):
@@ -716,6 +716,7 @@ class PPO(object):
         return num_success, total_dones
 
     def get_last_student_obs(self, data, normalize_dict, diff=True, diff_tac=True, display=True):
+
         sequence_length = self.full_config.offline_train.model.transformer.sequence_length
 
         # E, T, F, C, W, H = tactile.shape
@@ -786,6 +787,9 @@ class PPO(object):
         return tactile_adjusted, img, lin_input, obj_pos_rpy
 
     def display_obs(self, tactile, depth):
+
+        tactile = tactile[:,-1:, ...]
+        depth = depth[:,-1:, ...]
 
         for t in range(tactile.shape[1]):  # Iterate through the sequence of images
             # Extract the images for all fingers at time step 't' and adjust dimensions for display.

@@ -2,6 +2,7 @@ from algo.models.transformer.data import TactileDataset, DataNormalizer
 from torch.utils.data import DataLoader
 from torch import optim
 from algo.models.transformer.tact import MultiModalModel
+from algo.models.models_split import AdaptTConv
 from algo.models.transformer.utils import define_transforms, ImageTransform, TactileTransform, log_output
 
 from tqdm import tqdm
@@ -79,21 +80,24 @@ class Runner:
             self.cfg.tactile_masking_prob
         )
 
-        self.model = MultiModalModel(context_size=self.sequence_length,
-                                     num_channels=self.tactile_channel,
-                                     num_lin_features=self.cfg.model.linear.input_size,
-                                     num_outputs=self.cfg.model.transformer.output_size,
-                                     tactile_encoder="efficientnet-b0",
-                                     img_encoder="efficientnet-b0",
-                                     tactile_encoding_size=self.cfg.model.transformer.tactile_encoding_size,
-                                     img_encoding_size=self.cfg.model.transformer.img_encoding_size,
-                                     mha_num_attention_heads=self.cfg.model.transformer.num_heads,
-                                     mha_num_attention_layers=self.cfg.model.transformer.num_layers,
-                                     mha_ff_dim_factor=self.cfg.model.transformer.dim_factor,
-                                     additional_lin=self.cfg.model.tact.output_size if self.cfg.model.transformer.load_tact else 0,
-                                     include_img=self.cfg.model.use_img,
-                                     include_lin=self.cfg.model.use_lin,
-                                     include_tactile=self.cfg.model.use_tactile)
+        # self.model = MultiModalModel(context_size=self.sequence_length,
+        #                              num_channels=self.tactile_channel,
+        #                              num_lin_features=self.cfg.model.linear.input_size,
+        #                              num_outputs=self.cfg.model.transformer.output_size,
+        #                              tactile_encoder="efficientnet-b0",
+        #                              img_encoder="efficientnet-b0",
+        #                              tactile_encoding_size=self.cfg.model.transformer.tactile_encoding_size,
+        #                              img_encoding_size=self.cfg.model.transformer.img_encoding_size,
+        #                              mha_num_attention_heads=self.cfg.model.transformer.num_heads,
+        #                              mha_num_attention_layers=self.cfg.model.transformer.num_layers,
+        #                              mha_ff_dim_factor=self.cfg.model.transformer.dim_factor,
+        #                              additional_lin=self.cfg.model.tact.output_size if self.cfg.model.transformer.load_tact else 0,
+        #                              include_img=self.cfg.model.use_img,
+        #                              include_lin=self.cfg.model.use_lin,
+        #                              include_tactile=self.cfg.model.use_tactile)
+
+        self.model = AdaptTConv(ft_dim=self.cfg.model.linear.input_size,
+                                ft_out_dim=self.cfg.model.transformer.output_size)
 
         if self.cfg.model.transformer.load_tact:
             self.tact = MultiModalModel(context_size=self.sequence_length,
@@ -143,6 +147,7 @@ class Runner:
             lin_input = lin_input.to(self.device)
             latent = latent.to(self.device)
             action = action.to(self.device)
+
             mask = mask.to(self.device).unsqueeze(-1)
 
             if self.tact is not None:
@@ -166,6 +171,7 @@ class Runner:
 
             else:
                 loss_latent = self.loss_fn_mean(out, latent[:, -1, :])
+
                 if self.ppo_step is not None:
                     obs_hist = obs_hist[:, -1, :].to(self.device).view(obs_hist.shape[0], obs_hist.shape[-1])
                     pred_action, _ = self.ppo_step({'obs': obs_hist, 'latent': out})
@@ -204,15 +210,16 @@ class Runner:
                 action_loss_list = []
 
             if (i + 1) % eval_every == 0:
-                log_output(tac_input,
-                           img_input,
-                           lin_input,
-                           out,
-                           latent,
-                           pos_rpy,
-                           self.save_folder,
-                           d_pos_rpy,
-                           'train')
+                if tac_input.ndim > 2:
+                    log_output(tac_input,
+                               img_input,
+                               lin_input,
+                               out,
+                               latent,
+                               pos_rpy,
+                               self.save_folder,
+                               d_pos_rpy,
+                               'train')
 
                 val_loss = self.validate(val_dl)
                 print(f'validation loss: {val_loss}')
@@ -293,16 +300,17 @@ class Runner:
             #     self._wandb_log({
             #         'val/action_loss': np.mean(action_loss_list)
             #     })
+            if tac_input.ndim > 2:
 
-            log_output(tac_input,
-                       img_input,
-                       lin_input,
-                       out,
-                       latent,
-                       pos_rpy,
-                       self.save_folder,
-                       d_pos_rpy,
-                       'valid')
+                log_output(tac_input,
+                           img_input,
+                           lin_input,
+                           out,
+                           latent,
+                           pos_rpy,
+                           self.save_folder,
+                           d_pos_rpy,
+                           'valid')
 
         return np.mean(val_loss)
 
@@ -411,7 +419,10 @@ class Runner:
                                   normalize_dict=self.normalize_dict,
                                   img_transform=self.img_transform,
                                   tactile_transform=self.tactile_transform,
-                                  tactile_channel=self.tactile_channel
+                                  tactile_channel=self.tactile_channel,
+                                  include_img=self.cfg.model.use_img,
+                                  include_lin=self.cfg.model.use_lin,
+                                  include_tactile=self.cfg.model.use_tactile
                                   )
         train_dl = DataLoader(train_ds,
                               batch_size=train_batch_size,
@@ -427,7 +438,10 @@ class Runner:
                                 normalize_dict=self.normalize_dict,
                                 img_transform=self.img_eval_transform,
                                 tactile_transform=self.tactile_eval_transform,
-                                tactile_channel=self.tactile_channel
+                                tactile_channel=self.tactile_channel,
+                                include_img=self.cfg.model.use_img,
+                                include_lin=self.cfg.model.use_lin,
+                                include_tactile=self.cfg.model.use_tactile
                                 )
 
         val_dl = DataLoader(val_ds,

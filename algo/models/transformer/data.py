@@ -200,6 +200,9 @@ class TactileDataset(Dataset):
                  img_transform=None,
                  tactile_transform=None,
                  tactile_channel=3,
+                 include_img=True,
+                 include_lin=True,
+                 include_tactile=True
                  ):
 
         self.all_folders = files
@@ -207,6 +210,10 @@ class TactileDataset(Dataset):
         self.stride = stride  # sequence_length
         self.full_sequence = full_sequence
         self.normalize_dict = normalize_dict
+
+        self.include_img = include_img
+        self.include_lin = include_lin
+        self.include_tactile = include_tactile
 
         self.tactile_channel = tactile_channel
         if self.tactile_channel == 1:
@@ -269,29 +276,33 @@ class TactileDataset(Dataset):
         data_seq = {key: self.extract_sequence(data, key, start_idx) for key in keys}
 
         # Tactile input [T F W H C]
-        # tactile_input = data_seq["tactile"]
-        tactile_input = [np.load(os.path.join(tactile_folder, f'tactile_{i}.npz'))['tactile'] for i in
-                         range(start_idx, start_idx + self.sequence_length)]
+        if self.include_tactile:
+            tactile_input = [np.load(os.path.join(tactile_folder, f'tactile_{i}.npz'))['tactile'] for i in
+                             range(start_idx, start_idx + self.sequence_length)]
+            if diff_tac:
+                first_tactile = np.load(os.path.join(tactile_folder, f'tactile_1.npz'))['tactile']
+                tactile_input = [(tac - first_tactile) + 1e-6 for tac in tactile_input]
 
-        if diff_tac:
-            first_tactile = np.load(os.path.join(tactile_folder, f'tactile_1.npz'))['tactile']
-            tactile_input = [(tac - first_tactile) + 1e-6 for tac in tactile_input]
+            tactile_input = self.to_torch(np.stack(tactile_input))
+            T, F, W, H, C = tactile_input.shape
+            if self.tactile_transform is not None:
+                tactile_input_reshaped = tactile_input.view(-1, 3, *tactile_input.shape[-2:])
+                if self.tactile_channel == 1:
+                    tactile_input_reshaped = torch.stack([self.to_gray(image) for image in tactile_input_reshaped])
 
-        tactile_input = self.to_torch(np.stack(tactile_input))
+                tactile_input = self.tactile_transform(tactile_input_reshaped)
+                tactile_input = tactile_input.view(T, F, self.tactile_channel, *tactile_input.shape[-2:])
+        else:
+            tactile_input = torch.zeros(1)
 
-        if self.tactile_transform is not None:
-            tactile_input_reshaped = tactile_input.view(-1, 3, *tactile_input.shape[-2:])
-            if self.tactile_channel == 1:
-                tactile_input_reshaped = torch.stack([self.to_gray(image) for image in tactile_input_reshaped])
+        if self.include_img:
+            img_input = np.stack([np.load(os.path.join(img_folder, f'img_{i}.npz'))['img'] for i in
+                                  range(start_idx, start_idx + self.sequence_length)])
 
-            tactile_input = self.tactile_transform(tactile_input_reshaped)
-            tactile_input = tactile_input.view(1, 3, self.tactile_channel, *tactile_input.shape[-2:])
-
-        img_input = np.stack([np.load(os.path.join(img_folder, f'img_{i}.npz'))['img'] for i in
-                              range(start_idx, start_idx + self.sequence_length)])
-
-        if self.img_transform is not None:
-            img_input = self.img_transform(self.to_torch(img_input))
+            if self.img_transform is not None:
+                img_input = self.img_transform(self.to_torch(img_input))
+        else:
+            img_input = torch.zeros(1)
 
         eef_pos = data_seq["eef_pos"]
         action = data_seq["action"]
@@ -299,6 +310,7 @@ class TactileDataset(Dataset):
         noisy_socket_pos = data_seq["noisy_socket_pos"][:, :3]
         euler = Rotation.from_quat(data_seq["plug_hand_quat"]).as_euler('xyz')
         plug_hand_pos = data_seq["plug_hand_pos"]
+
         # plug_pos_error = data_seq["plug_pos_error"]
         # plug_quat_error = data_seq["plug_quat_error"]
 
@@ -322,8 +334,6 @@ class TactileDataset(Dataset):
         obj_pos_rpy = np.hstack((plug_hand_pos, euler))
 
         label = latent
-        # Output
-
         shift_action_right = np.concatenate([np.zeros((1, action.shape[-1])), action[:-1, :]], axis=0)
 
         # Generate and add noise to noisy_socket_pos and obj_pos_rpy

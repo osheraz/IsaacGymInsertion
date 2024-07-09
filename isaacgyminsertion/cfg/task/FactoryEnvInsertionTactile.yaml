@@ -28,7 +28,7 @@ env:
     desired_subassemblies: [
 #                            'small_triangle',
 #                            'triangle',
-                            'red_round_peg_1_5in',
+#                            'red_round_peg_1_5in',
                             'yellow_round_peg_2in',
 #                            'rectangular_peg_hole_32mm_loose',
 #                            'square_peg_hole_32mm_loose',

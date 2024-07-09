@@ -190,9 +190,9 @@ def define_transforms(channel, color_jitter, width, height, crop_width,
             ),
             transforms.CenterCrop((crop_width, crop_height)),
         )
-    print('transform {}'.format(transform))
-    print('eval_transform {}'.format(eval_transform))
-    print('downsample {}'.format(downsample))
+    # print('transform {}'.format(transform))
+    # print('eval_transform {}'.format(eval_transform))
+    # print('downsample {}'.format(downsample))
 
     return transform, downsample, eval_transform
 

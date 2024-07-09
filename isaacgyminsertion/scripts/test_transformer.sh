@@ -17,7 +17,7 @@ data=/home/${USER}/tactile_insertion
 data_folder=/home/${USER}/tactile_insertion/datastore_${SEED}_${CACHE}
 path_norm=/${data_folder}/normalization.pkl
 output_dir=outputs/${CACHE}
-student_ckpt_path=/home/${USER}/osher3_workspace/src/isaacgym/python/IsaacGymInsertion/isaacgyminsertion/outputs/${CACHE}/student/checkpoints/model_last.pt
+student_ckpt_path=/home/${USER}/osher3_workspace/src/isaacgym/python/IsaacGymInsertion/isaacgyminsertion/outputs/${CACHE}/small/checkpoints/model_last.pt
 tact_path=/home/${USER}/osher3_workspace/src/isaacgym/python/IsaacGymInsertion/isaacgyminsertion/outputs/${CACHE}/tact/checkpoints/model_last.pt
 
 CUDA_VISIBLE_DEVICES=${GPUS} \

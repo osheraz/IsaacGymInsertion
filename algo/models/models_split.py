@@ -54,9 +54,9 @@ class ContactAE(nn.Module):
         return self.contact_dec_mlp(x)
 
 
-class FTAdaptTConv(nn.Module):
+class AdaptTConv(nn.Module):
     def __init__(self, ft_dim=6 * 5, ft_out_dim=32):
-        super(FTAdaptTConv, self).__init__()
+        super(AdaptTConv, self).__init__()
         self.channel_transform = nn.Sequential(
             nn.Linear(ft_dim, 32),
             nn.ReLU(inplace=True),
@@ -73,11 +73,15 @@ class FTAdaptTConv(nn.Module):
         )
         self.low_dim_proj = nn.Linear(32 * 3, ft_out_dim)
 
-    def forward(self, x):
+    def forward(self, img, tactile, x, shit=None):
         x = self.channel_transform(x)  # (N, 50, 32)
+
         x = x.permute((0, 2, 1))  # (N, 32, 50)
+
         x = self.temporal_aggregation(x)  # (N, 32, 3)
+
         x = self.low_dim_proj(x.flatten(1))
+
         return x
 
 
@@ -164,7 +168,7 @@ class ActorCriticSplit(nn.Module):
                 #     assert 'ft is not supported yet, force rendering is currently ambiguous'
                 #     self.ft_units = kwargs["ft_units"]
                 #     ft_input_shape = kwargs["ft_input_shape"]
-                #     self.ft_adapt_tconv = FTAdaptTConv(ft_dim=ft_input_shape,
+                #     self.ft_adapt_tconv = AdaptTConv(ft_dim=ft_input_shape,
                 #                                        ft_out_dim=self.ft_units[-1])
 
         self.actor_mlp = MLP(units=self.units, input_size=mlp_input_shape)
@@ -205,6 +209,11 @@ class ActorCriticSplit(nn.Module):
 
     @torch.no_grad()
     def act_inference(self, obs_dict):
+        # used for testing
+        mu, logstd, value, latent, _ = self._actor_critic(obs_dict)
+        return mu, latent
+
+    def bc_act(self, obs_dict):
         # used for testing
         mu, logstd, value, latent, _ = self._actor_critic(obs_dict)
         return mu, latent
