@@ -49,7 +49,7 @@ env:
   numObsStudent: ${...task.env.numObsStudent}
   numActions: ${...task.env.numActions}
   numTargets: ${...task.env.numTargets}
-  socket_pos_obs_noise: [ 0.001, 0.001, 0.0 ]
+  socket_pos_obs_noise: [ 0.00, 0.00, 0.0 ]
   socket_rot_obs_noise: [ 0.0, 0.0, 0.0 ]
   fingertip_midpoint_rot_initial: [ -3.14159265359, 0.0, -1.57079632679 ]
 

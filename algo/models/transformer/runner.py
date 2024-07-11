@@ -4,6 +4,7 @@ from torch import optim
 from algo.models.transformer.tact import MultiModalModel
 from algo.models.models_split import AdaptTConv
 from algo.models.transformer.utils import define_transforms, ImageTransform, TactileTransform, log_output
+from algo.models.transformer.tcn import TCN
 
 from tqdm import tqdm
 import torch
@@ -96,9 +97,16 @@ class Runner:
                                          include_img=self.cfg.model.use_img,
                                          include_lin=self.cfg.model.use_lin,
                                          include_tactile=self.cfg.model.use_tactile)
+
         elif self.cfg.model.model_type == 'simple':
             self.model = AdaptTConv(ft_dim=self.cfg.model.linear.input_size,
                                     ft_out_dim=self.cfg.model.transformer.output_size)
+        elif self.cfg.model.model_type == 'tcn':
+            self.model = TCN(input_size=self.cfg.model.linear.input_size,
+                             output_size=self.cfg.model.transformer.output_size,
+                             num_channels=[128] * 3,
+                             kernel_size=5,
+                             dropout=0).to(self.device)
         else:
             assert NotImplementedError
 
@@ -349,8 +357,8 @@ class Runner:
 
     def test(self):
         with torch.inference_mode():
-            normalize_dict = self.normalize_dict.copy()
-            num_success, total_trials = self.agent.test(self.get_latent, normalize_dict)
+            stats = self.stats.copy()
+            num_success, total_trials = self.agent.test(self.get_latent, stats)
             if total_trials > 0:
                 print(f'{num_success}/{total_trials}, success rate on :', num_success / total_trials)
                 self._wandb_log({
@@ -416,17 +424,19 @@ class Runner:
         val_files = [file_list[i] for i in val_idxs]
 
         # Passing trajectories
-        train_ds = TactileDataset(files=training_files,
+        train_ds = TactileDataset(traj_files=training_files,
                                   full_sequence=self.full_sequence,
                                   sequence_length=self.sequence_length,
-                                  normalize_dict=self.normalize_dict,
+                                  stats=self.stats,
                                   img_transform=self.img_transform,
                                   tactile_transform=self.tactile_transform,
                                   tactile_channel=self.tactile_channel,
                                   include_img=self.cfg.model.use_img,
                                   include_lin=self.cfg.model.use_lin,
-                                  include_tactile=self.cfg.model.use_tactile
+                                  include_tactile=self.cfg.model.use_tactile,
+                                  keys=self.cfg.train.keys,
                                   )
+
         train_dl = DataLoader(train_ds,
                               batch_size=train_batch_size,
                               shuffle=True,
@@ -435,16 +445,17 @@ class Runner:
                               persistent_workers=True,
                               )
 
-        val_ds = TactileDataset(files=val_files,
+        val_ds = TactileDataset(traj_files=val_files,
                                 full_sequence=self.full_sequence,
                                 sequence_length=self.sequence_length,
-                                normalize_dict=self.normalize_dict,
+                                stats=self.stats,
                                 img_transform=self.img_eval_transform,
                                 tactile_transform=self.tactile_eval_transform,
                                 tactile_channel=self.tactile_channel,
                                 include_img=self.cfg.model.use_img,
                                 include_lin=self.cfg.model.use_lin,
-                                include_tactile=self.cfg.model.use_tactile
+                                include_tactile=self.cfg.model.use_tactile,
+                                keys=self.cfg.train.keys,
                                 )
 
         val_dl = DataLoader(val_ds,
@@ -515,7 +526,7 @@ class Runner:
         # Either create new norm or load existing
         normalizer = DataNormalizer(self.cfg, file_list)
         normalizer.run()
-        self.normalize_dict = normalizer.normalize_dict
+        self.stats = normalizer.stats
 
         if self.cfg.train.only_test:
             print('Only testing')

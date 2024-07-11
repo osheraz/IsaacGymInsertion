@@ -55,6 +55,10 @@ train:
   only_test: False
   only_validate: False
 
+  keys: ["eef_pos", "action", "latent", "obs_hist", "noisy_socket_pos",
+          "hand_joints", "plug_hand_quat", "plug_hand_pos",
+          "plug_pos_error", "plug_quat_error"]
+
   # normalize data
   normalize_keys: ["eef_pos",
                    "noisy_socket_pos",

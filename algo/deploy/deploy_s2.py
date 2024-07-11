@@ -307,7 +307,7 @@ class HardwarePlayer:
         )
         socket_obs_pos_noise = socket_obs_pos_noise @ torch.diag(
             torch.tensor(
-                self.full_config.task.env.socket_pos_obs_noise,
+                self.deploy_config.env.socket_pos_obs_noise,
                 dtype=torch.float32,
                 device=self.device,
             )

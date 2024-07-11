@@ -56,7 +56,7 @@ class DataNormalizer:
         self.cfg = cfg
         self.normalize_keys = self.cfg.train.normalize_keys
         self.normalization_path = self.cfg.train.normalize_file if self.cfg.train.load_stats else save_path + '/normalization.pkl'
-        self.normalize_dict = {"mean": {}, "std": {}}
+        self.stats = {"mean": {}, "std": {}}
         self.file_list = file_list
         self.remove_failed_trajectories()
 
@@ -89,7 +89,7 @@ class DataNormalizer:
         if self.cfg.train.load_stats and os.path.exists(self.normalization_path):
             if os.path.exists(self.normalization_path):
                 with open(self.normalization_path, 'rb') as f:
-                    self.normalize_dict = pickle.load(f)
+                    self.stats = pickle.load(f)
                     print('Loaded stats file from: ', self.normalization_path)
             else:
                 raise FileNotFoundError('Failed to load stats file')
@@ -128,235 +128,225 @@ class DataNormalizer:
 
                 # Process position data
                 diff_pos = pos - pos[0, :]
-                self.normalize_dict['mean']["plug_hand_pos"] = np.mean(pos, axis=0)
-                self.normalize_dict['std']["plug_hand_pos"] = np.std(pos, axis=0)
-                self.normalize_dict['mean']["plug_hand_pos_diff"] = np.mean(diff_pos, axis=0)
-                self.normalize_dict['std']["plug_hand_pos_diff"] = np.std(diff_pos, axis=0)
+                self.stats['mean']["plug_hand_pos"] = np.mean(pos, axis=0)
+                self.stats['std']["plug_hand_pos"] = np.std(pos, axis=0)
+                self.stats['mean']["plug_hand_pos_diff"] = np.mean(diff_pos, axis=0)
+                self.stats['std']["plug_hand_pos_diff"] = np.std(diff_pos, axis=0)
 
                 # Process quaternion data
-                self.normalize_dict['mean']["plug_hand_quat"] = np.mean(quat, axis=0)
-                self.normalize_dict['std']["plug_hand_quat"] = np.std(quat, axis=0)
+                self.stats['mean']["plug_hand_quat"] = np.mean(quat, axis=0)
+                self.stats['std']["plug_hand_quat"] = np.std(quat, axis=0)
                 euler = Rotation.from_quat(quat).as_euler('xyz')
-                self.normalize_dict['mean']["plug_hand_euler"] = np.mean(euler, axis=0)
-                self.normalize_dict['std']["plug_hand_euler"] = np.std(euler, axis=0)
+                self.stats['mean']["plug_hand_euler"] = np.mean(euler, axis=0)
+                self.stats['std']["plug_hand_euler"] = np.std(euler, axis=0)
 
                 diff_euler = euler - euler[0, :]
-                self.normalize_dict['mean']["plug_hand_diff_euler"] = np.mean(diff_euler, axis=0)
-                self.normalize_dict['std']["plug_hand_diff_euler"] = np.std(diff_euler, axis=0)
+                self.stats['mean']["plug_hand_diff_euler"] = np.mean(diff_euler, axis=0)
+                self.stats['std']["plug_hand_diff_euler"] = np.std(diff_euler, axis=0)
 
                 sin_cos_repr = np.hstack((np.sin(euler[:, 0:1]), np.cos(euler[:, 0:1]),
                                           np.sin(euler[:, 1:2]), np.cos(euler[:, 1:2])))
 
-                self.normalize_dict['mean']["plug_hand_sin_cos_euler"] = np.mean(sin_cos_repr, axis=0)
-                self.normalize_dict['std']["plug_hand_sin_cos_euler"] = np.std(sin_cos_repr, axis=0)
+                self.stats['mean']["plug_hand_sin_cos_euler"] = np.mean(sin_cos_repr, axis=0)
+                self.stats['std']["plug_hand_sin_cos_euler"] = np.std(sin_cos_repr, axis=0)
             else:  # Only position data
                 pos = data
                 diff_pos = pos - pos[0, :]
-                self.normalize_dict['mean']["plug_hand_pos"] = np.mean(pos, axis=0)
-                self.normalize_dict['std']["plug_hand_pos"] = np.std(pos, axis=0)
-                self.normalize_dict['mean']["plug_hand_pos_diff"] = np.mean(diff_pos, axis=0)
-                self.normalize_dict['std']["plug_hand_pos_diff"] = np.std(diff_pos, axis=0)
+                self.stats['mean']["plug_hand_pos"] = np.mean(pos, axis=0)
+                self.stats['std']["plug_hand_pos"] = np.std(pos, axis=0)
+                self.stats['mean']["plug_hand_pos_diff"] = np.mean(diff_pos, axis=0)
+                self.stats['std']["plug_hand_pos_diff"] = np.std(diff_pos, axis=0)
 
         elif norm_key == 'plug_hand_quat':
-            self.normalize_dict['mean'][norm_key] = np.mean(data, axis=0)
-            self.normalize_dict['std'][norm_key] = np.std(data, axis=0)
+            self.stats['mean'][norm_key] = np.mean(data, axis=0)
+            self.stats['std'][norm_key] = np.std(data, axis=0)
 
             euler = Rotation.from_quat(data).as_euler('xyz')
-            self.normalize_dict['mean']["plug_hand_euler"] = np.mean(euler, axis=0)
-            self.normalize_dict['std']["plug_hand_euler"] = np.std(euler, axis=0)
+            self.stats['mean']["plug_hand_euler"] = np.mean(euler, axis=0)
+            self.stats['std']["plug_hand_euler"] = np.std(euler, axis=0)
 
             diff_euler = euler - euler[0, :]
 
-            self.normalize_dict['mean']["plug_hand_diff_euler"] = np.mean(diff_euler, axis=0)
-            self.normalize_dict['std']["plug_hand_diff_euler"] = np.std(diff_euler, axis=0)
+            self.stats['mean']["plug_hand_diff_euler"] = np.mean(diff_euler, axis=0)
+            self.stats['std']["plug_hand_diff_euler"] = np.std(diff_euler, axis=0)
 
             sin_cos_repr = np.hstack((np.sin(euler[:, 0:1]), np.cos(euler[:, 0:1]),
                                       np.sin(euler[:, 1:2]), np.cos(euler[:, 1:2])))
 
-            self.normalize_dict['mean']["plug_hand_sin_cos_euler"] = np.mean(sin_cos_repr, axis=0)
-            self.normalize_dict['std']["plug_hand_sin_cos_euler"] = np.std(sin_cos_repr, axis=0)
+            self.stats['mean']["plug_hand_sin_cos_euler"] = np.mean(sin_cos_repr, axis=0)
+            self.stats['std']["plug_hand_sin_cos_euler"] = np.std(sin_cos_repr, axis=0)
 
         else:
             # Handle other normalization keys
-            self.normalize_dict['mean'][norm_key] = np.mean(data, axis=0)
-            self.normalize_dict['std'][norm_key] = np.std(data, axis=0)
+            self.stats['mean'][norm_key] = np.mean(data, axis=0)
+            self.stats['std'][norm_key] = np.std(data, axis=0)
 
     def save_normalization_file(self):
         """Save the normalization values to file."""
         print(f'Saved new normalization file at: {self.normalization_path}')
         with open(self.normalization_path, 'wb') as f:
-            pickle.dump(self.normalize_dict, f)
+            pickle.dump(self.stats, f)
 
     def run(self):
         """Main method to run the process."""
         self.ensure_directory_exists(self.normalization_path)
         self.load_or_create_normalization_file()
 
+
 class TactileDataset(Dataset):
-    def __init__(self, files, sequence_length=500,
-                 full_sequence=False,
-                 normalize_dict=None,
-                 stride=5,
-                 img_transform=None,
-                 tactile_transform=None,
-                 tactile_channel=3,
-                 include_img=True,
-                 include_lin=True,
-                 include_tactile=True
-                 ):
+    def __init__(self, traj_files, sequence_length=500, full_sequence=False, stats=None, stride=5, tactile_channel=3,
+                 img_transform=None, tactile_transform=None, include_img=True, include_lin=True, include_tactile=True,
+                 keys=None):
+        """
+        Initialize the TactileDataset.
 
-        self.all_folders = files
+        Args:
+            traj_files (list): List of trajectory file paths.
+            sequence_length (int): Length of sequences.
+            full_sequence (bool): Whether to use full sequence.
+            stats (dict): Statistics for normalization.
+            stride (int): Stride for sub-sequence generation.
+            tactile_channel (int): Number of tactile channels.
+            img_transform (callable): Transformations for images.
+            tactile_transform (callable): Transformations for tactile data.
+            include_img (bool): Whether to include image data.
+            include_lin (bool): Whether to include linear data.
+            include_tactile (bool): Whether to include tactile data.
+            keys (list): Keys for the data to extract.
+        """
+
+        self.all_folders = traj_files
         self.sequence_length = sequence_length
-        self.stride = stride  # sequence_length
+        self.stride = stride
         self.full_sequence = full_sequence
-        self.normalize_dict = normalize_dict
-
+        self.stats = stats
+        self.keys = keys
         self.include_img = include_img
         self.include_lin = include_lin
         self.include_tactile = include_tactile
-
         self.tactile_channel = tactile_channel
-        if self.tactile_channel == 1:
-            self.to_gray = transforms.Compose([
-                transforms.ToPILImage(),
-                transforms.Grayscale(num_output_channels=1),
-                transforms.ToTensor()  # Convert PIL Image back to tensor
-            ])
+
+        self.to_gray = transforms.Compose([
+            transforms.ToPILImage(),
+            transforms.Grayscale(num_output_channels=1),
+            transforms.ToTensor()
+        ]) if self.tactile_channel == 1 else None
 
         self.to_torch = lambda x: torch.from_numpy(x).float()
-
         self.img_transform = img_transform
         self.tactile_transform = tactile_transform
+        self.indices_per_trajectory = self._generate_indices()
 
-        # Store indices corresponding to each trajectory
-        self.indices_per_trajectory = []
+        print('Total sub trajectories:', len(self.indices_per_trajectory))
+
+    def _generate_indices(self):
+        indices = []
         for file_idx, file in enumerate(self.all_folders):
             data = np.load(file)
             done = data["done"]
             done_idx = done.nonzero()[0][-1]
             total_len = done_idx
             if self.full_sequence:
-                assert total_len == sequence_length, f"Sequence length mismatch in {file}."
-                self.indices_per_trajectory.append((file_idx, 0))
+                assert total_len == self.sequence_length, f"Sequence length mismatch in {file}."
+                indices.append((file_idx, 0))
             else:
                 if total_len >= self.sequence_length:
                     num_subsequences = (total_len - self.sequence_length) // self.stride + 1
-                    self.indices_per_trajectory.extend([(file_idx, i * self.stride) for i in range(num_subsequences)])
-        print('Total sub trajectories:', len(self.indices_per_trajectory))
+                    indices.extend([(file_idx, i * self.stride) for i in range(num_subsequences)])
+        return indices
 
     def __len__(self):
-        return int((len(self.indices_per_trajectory)))
+        return len(self.indices_per_trajectory)
 
     def extract_sequence(self, data, key, start_idx):
-        # Extract a sequence of specific length from the array
         return data[key][start_idx:start_idx + self.sequence_length]
 
+    def _load_and_preprocess_tactile(self, tactile_folder, start_idx, diff_tac):
+        tactile_input = [np.load(os.path.join(tactile_folder, f'tactile_{i}.npz'))['tactile'] for i in
+                         range(start_idx, start_idx + self.sequence_length)]
+        if diff_tac:
+            first_tactile = np.load(os.path.join(tactile_folder, f'tactile_1.npz'))['tactile']
+            tactile_input = [(tac - first_tactile) + 1e-6 for tac in tactile_input]
+
+        tactile_input = self.to_torch(np.stack(tactile_input))
+
+        if self.tactile_transform is not None:
+            tactile_input = self._apply_tactile_transform(tactile_input)
+        return tactile_input
+
+    def _apply_tactile_transform(self, tactile_input):
+        T, F, W, H, C = tactile_input.shape
+        tactile_input_reshaped = tactile_input.view(-1, 3, W, H)
+        if self.tactile_channel == 1:
+            tactile_input_reshaped = torch.stack([self.to_gray(image) for image in tactile_input_reshaped])
+        tactile_input = self.tactile_transform(tactile_input_reshaped)
+        tactile_input = tactile_input.view(T, F, self.tactile_channel, W, H)
+        return tactile_input
+
+    def _load_and_preprocess_image(self, img_folder, start_idx):
+        img_input = np.stack([np.load(os.path.join(img_folder, f'img_{i}.npz'))['img'] for i in
+                              range(start_idx, start_idx + self.sequence_length)])
+        if self.img_transform is not None:
+            img_input = self.img_transform(self.to_torch(img_input))
+        return img_input
+
+    def _normalize_data(self, data_seq, diff, first_obs):
+        eef_pos = data_seq["eef_pos"]
+        noisy_socket_pos = data_seq["noisy_socket_pos"][:, :3]
+        euler = Rotation.from_quat(data_seq["plug_hand_quat"]).as_euler('xyz')
+        plug_hand_pos = data_seq["plug_hand_pos"]
+
+        if diff:
+            euler = euler - Rotation.from_quat(first_obs["plug_hand_quat"]).as_euler('xyz')
+            plug_hand_pos = plug_hand_pos - first_obs["plug_hand_pos"]
+
+        if self.stats is not None:
+            eef_pos = (eef_pos - self.stats["mean"]["eef_pos"]) / self.stats["std"]["eef_pos"]
+            noisy_socket_pos = (noisy_socket_pos - self.stats["mean"]["noisy_socket_pos"][:3]) / self.stats["std"]["noisy_socket_pos"][:3]
+            euler_mean_key = "plug_hand_diff_euler" if diff else "plug_hand_euler"
+            plug_hand_pos_mean_key = "plug_hand_pos_diff" if diff else "plug_hand_pos"
+            euler = (euler - self.stats["mean"][euler_mean_key]) / self.stats["std"][euler_mean_key]
+            plug_hand_pos = (plug_hand_pos - self.stats["mean"][plug_hand_pos_mean_key]) / self.stats["std"][plug_hand_pos_mean_key]
+
+        obj_pos_rpy = np.hstack((plug_hand_pos, euler))
+        return eef_pos, noisy_socket_pos, obj_pos_rpy
+
     def __getitem__(self, idx, diff_tac=True, diff=True):
+
         file_idx, start_idx = self.indices_per_trajectory[idx]
         file_path = self.all_folders[file_idx]
-
-        # Load data from the file
         data = np.load(file_path)
         tactile_folder = file_path[:-7].replace('obs', 'tactile')
         img_folder = file_path[:-7].replace('obs', 'img')
 
         done = data["done"]
         done_idx = done.nonzero()[0][-1]
-
-        # Mask generation (for varied sequence lengths)
         padding_length = max(0, self.sequence_length - (done_idx - start_idx))
         mask = np.ones(self.sequence_length)
         mask[:padding_length] = 0
 
-        keys = ["eef_pos", "action", "latent", "obs_hist", "noisy_socket_pos",
-                "hand_joints", "plug_hand_quat", "plug_hand_pos",
-                "plug_pos_error", "plug_quat_error"
-                ]
+        first_obs = {key: data[key][0] for key in self.keys}
 
-        data_seq = {key: self.extract_sequence(data, key, start_idx) for key in keys}
+        tactile_input = self._load_and_preprocess_tactile(tactile_folder, start_idx, diff_tac) if self.include_tactile else torch.zeros(1)
+        img_input = self._load_and_preprocess_image(img_folder, start_idx) if self.include_img else torch.zeros(1)
 
-        # Tactile input [T F W H C]
-        if self.include_tactile:
-            tactile_input = [np.load(os.path.join(tactile_folder, f'tactile_{i}.npz'))['tactile'] for i in
-                             range(start_idx, start_idx + self.sequence_length)]
-            if diff_tac:
-                first_tactile = np.load(os.path.join(tactile_folder, f'tactile_1.npz'))['tactile']
-                tactile_input = [(tac - first_tactile) + 1e-6 for tac in tactile_input]
-
-            tactile_input = self.to_torch(np.stack(tactile_input))
-            T, F, W, H, C = tactile_input.shape
-            if self.tactile_transform is not None:
-                tactile_input_reshaped = tactile_input.view(-1, 3, *tactile_input.shape[-2:])
-                if self.tactile_channel == 1:
-                    tactile_input_reshaped = torch.stack([self.to_gray(image) for image in tactile_input_reshaped])
-
-                tactile_input = self.tactile_transform(tactile_input_reshaped)
-                tactile_input = tactile_input.view(T, F, self.tactile_channel, *tactile_input.shape[-2:])
-        else:
-            tactile_input = torch.zeros(1)
-
-        if self.include_img:
-            img_input = np.stack([np.load(os.path.join(img_folder, f'img_{i}.npz'))['img'] for i in
-                                  range(start_idx, start_idx + self.sequence_length)])
-
-            if self.img_transform is not None:
-                img_input = self.img_transform(self.to_torch(img_input))
-        else:
-            img_input = torch.zeros(1)
-
-        eef_pos = data_seq["eef_pos"]
+        data_seq = {key: self.extract_sequence(data, key, start_idx) for key in self.keys}
+        eef_pos, noisy_socket_pos, obj_pos_rpy = self._normalize_data(data_seq, diff, first_obs)
         action = data_seq["action"]
         obs_hist = data_seq["obs_hist"]
-        noisy_socket_pos = data_seq["noisy_socket_pos"][:, :3]
-        euler = Rotation.from_quat(data_seq["plug_hand_quat"]).as_euler('xyz')
-        plug_hand_pos = data_seq["plug_hand_pos"]
-
-        # plug_pos_error = data_seq["plug_pos_error"]
-        # plug_quat_error = data_seq["plug_quat_error"]
-
         latent = data_seq["latent"]
 
-        if diff:
-            euler = euler - Rotation.from_quat(data["plug_hand_quat"][0, :]).as_euler('xyz')
-            plug_hand_pos = plug_hand_pos - data["plug_hand_pos"][0, :]
-
-        # Normalizing
-        if self.normalize_dict is not None:
-            eef_pos = (eef_pos - self.normalize_dict["mean"]["eef_pos"]) / self.normalize_dict["std"]["eef_pos"]
-            noisy_socket_pos = (noisy_socket_pos - self.normalize_dict["mean"]["noisy_socket_pos"][:3]) / self.normalize_dict["std"]["noisy_socket_pos"][:3]
-            if not diff:
-                euler = (euler - self.normalize_dict["mean"]["plug_hand_euler"]) / self.normalize_dict["std"]["plug_hand_euler"]
-                plug_hand_pos = (plug_hand_pos - self.normalize_dict["mean"]["plug_hand_pos"]) / self.normalize_dict["std"]["plug_hand_pos"]
-            else:
-                euler = (euler - self.normalize_dict["mean"]["plug_hand_diff_euler"]) / self.normalize_dict["std"]["plug_hand_diff_euler"]
-                plug_hand_pos = (plug_hand_pos - self.normalize_dict["mean"]["plug_hand_pos_diff"]) / self.normalize_dict["std"]["plug_hand_pos_diff"]
-
-        obj_pos_rpy = np.hstack((plug_hand_pos, euler))
-
-        label = latent
-        shift_action_right = np.concatenate([np.zeros((1, action.shape[-1])), action[:-1, :]], axis=0)
-
-        # Generate and add noise to noisy_socket_pos and obj_pos_rpy
         noisy_socket_pos_noise = np.random.normal(loc=0, scale=0.002, size=noisy_socket_pos.shape)
         obj_pos_rpy_noise = np.random.normal(loc=0, scale=0.002, size=obj_pos_rpy.shape)
-        noisy_socket_pos += noisy_socket_pos_noise
 
-        lin_input = np.concatenate([
-            eef_pos,      # 12
-            noisy_socket_pos + noisy_socket_pos_noise, # 3
-            action, # 6
-            obj_pos_rpy + obj_pos_rpy_noise, # 6
-        ], axis=-1)
+        lin_input = np.concatenate([eef_pos,
+                                    noisy_socket_pos + noisy_socket_pos_noise,
+                                    action,
+                                    obj_pos_rpy + obj_pos_rpy_noise
+                                    ], axis=-1)
 
-        # Convert to torch tensors
-        tensors = [tensor if isinstance(tensor, torch.Tensor) else self.to_torch(tensor) for tensor in [tactile_input,
-                                                                                                        img_input,
-                                                                                                        lin_input,
-                                                                                                        obj_pos_rpy,
-                                                                                                        obs_hist,
-                                                                                                        label,
-                                                                                                        action,
-                                                                                                        mask]]
+        tensors = [self.to_torch(tensor) if not isinstance(tensor, torch.Tensor) else tensor for tensor in
+                   [tactile_input, img_input, lin_input, obj_pos_rpy, obs_hist, latent, action, mask]]
 
         return tuple(tensors)
 
@@ -364,7 +354,7 @@ class TactileDataset(Dataset):
 class TactileTestDataset(Dataset):
     def __init__(self, files,
                  sequence_length=500,
-                 normalize_dict=None,
+                 stats=None,
                  stride=3,
                  img_transform=None,
                  tactile_transform=None,
@@ -375,7 +365,7 @@ class TactileTestDataset(Dataset):
         self.all_folders = files
         self.sequence_length = sequence_length
         self.stride = stride  # sequence_length
-        self.normalize_dict = normalize_dict
+        self.stats = stats
         self.real_data = real_data
         self.tactile_channel = tactile_channel
 
@@ -466,20 +456,20 @@ class TactileTestDataset(Dataset):
             plug_hand_pos = plug_hand_pos - data_dict["plug_hand_pos"][0, :]
 
         # Normalizing
-        if self.normalize_dict is not None:
-            eef_pos = (eef_pos - self.normalize_dict["mean"]["eef_pos"]) / self.normalize_dict["std"]["eef_pos"]
+        if self.stats is not None:
+            eef_pos = (eef_pos - self.stats["mean"]["eef_pos"]) / self.stats["std"]["eef_pos"]
 
             if not diff_pos:
-                euler = (euler - self.normalize_dict["mean"]["plug_hand_euler"]) / self.normalize_dict["std"][
+                euler = (euler - self.stats["mean"]["plug_hand_euler"]) / self.stats["std"][
                     "plug_hand_euler"]
-                plug_hand_pos = (plug_hand_pos - self.normalize_dict["mean"]["plug_hand_pos"]) / \
-                                self.normalize_dict["std"]["plug_hand_pos"]
+                plug_hand_pos = (plug_hand_pos - self.stats["mean"]["plug_hand_pos"]) / \
+                                self.stats["std"]["plug_hand_pos"]
 
             else:
-                euler = (euler - self.normalize_dict["mean"]["plug_hand_diff_euler"]) / self.normalize_dict["std"][
+                euler = (euler - self.stats["mean"]["plug_hand_diff_euler"]) / self.stats["std"][
                     "plug_hand_diff_euler"]
-                plug_hand_pos = (plug_hand_pos - self.normalize_dict["mean"]["plug_hand_pos_diff"]) / \
-                                self.normalize_dict["std"]["plug_hand_pos_diff"]
+                plug_hand_pos = (plug_hand_pos - self.stats["mean"]["plug_hand_pos_diff"]) / \
+                                self.stats["std"]["plug_hand_pos_diff"]
 
         label = np.hstack((plug_hand_pos, euler))
 
@@ -502,12 +492,12 @@ class TactileTestDataset(Dataset):
 
 
 class TactileRealDataset(Dataset):
-    def __init__(self, files, sequence_length=500, full_sequence=False, normalize_dict=None):
+    def __init__(self, files, sequence_length=500, full_sequence=False, stats=None):
 
         self.all_folders = files
         self.sequence_length = sequence_length
         self.full_sequence = full_sequence
-        self.normalize_dict = normalize_dict
+        self.stats = stats
 
         self.to_torch = lambda x: torch.from_numpy(x).float()
 
@@ -545,8 +535,8 @@ class TactileRealDataset(Dataset):
         # ft = data["ft"]
 
         # Normalizing inputs
-        if self.normalize_dict is not None:
-            eef_pos = (eef_pos - self.normalize_dict["mean"]["eef_pos"]) / self.normalize_dict["std"]["eef_pos"]
+        if self.stats is not None:
+            eef_pos = (eef_pos - self.stats["mean"]["eef_pos"]) / self.stats["std"]["eef_pos"]
 
         # output providing a_{t-1} to input
         shift_action_right = np.concatenate([np.zeros((1, action.shape[-1])), action[:-1, :]], axis=0)
