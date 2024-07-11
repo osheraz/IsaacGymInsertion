@@ -801,7 +801,7 @@ class VecTask(Env):
                                 new_scale = og_scale + sample
                             self.gym.set_actor_scale(env, handle, new_scale)
 
-                            if hasattr(self, 'plug_scale') and actor == 'plug' and randomisation_callback is not None:
+                            if hasattr(self, 'plug_scale') and actor == 'plug':
                                 randomisation_callback('scale', new_scale, actor=actor, env_id=env_id)
 
                         continue

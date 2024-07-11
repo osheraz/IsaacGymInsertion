@@ -28,10 +28,10 @@ env:
     desired_subassemblies: [
 #                            'small_triangle',
 #                            'triangle',
-                            'red_round_peg_1_5in',
+#                            'red_round_peg_1_5in',
                             'yellow_round_peg_2in',
-                            'rectangular_peg_hole_32mm_loose',
-                            'square_peg_hole_32mm_loose',
+#                            'rectangular_peg_hole_32mm_loose',
+#                            'square_peg_hole_32mm_loose',
 #                             'round_peg_hole_16mm_loose',
 #                             'rectangular_peg_hole_16mm_loose',
     ]
@@ -47,7 +47,7 @@ randomize:
     domain_randomize: True
     randomization_params:
         # making frequency max_episode_length - 1, for randomization on every episode.
-        frequency: 500   # Define how many simulation steps between generating new randomization
+        frequency: 499   # Define how many simulation steps between generating new randomization
         observations:
             range: [ 0, .002 ] # range for the white noise
             range_correlated: [ 0, .000 ] # range for correlated noise, refreshed with freq `frequency`

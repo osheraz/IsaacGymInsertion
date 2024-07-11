@@ -50,7 +50,7 @@ env:
     numEnvs: ${resolve_default:128,${...num_envs}}
     numObservations: 18 #
     numObsStudent: 9 #
-    numStates: 7 #
+    numStates: 27 #
     numActions: 6 # [position, ori]
     numTargets: 6 # [position, ori]
     action_latency_max: 15
@@ -81,12 +81,16 @@ env:
     actionDelayProbMax: 0.3
     actionLatencyMax: 15
     actionLatencyScheduledSteps: 10_000_000
+    plugObsDelayProb: 0.3
+    maxObjectSkipObs: 2
 
     num_gripper_move_sim_steps: 120  # number of timesteps to reserve for moving gripper before first step of episode
     num_gripper_close_sim_steps: 50  # number of timesteps to reserve for closing gripper onto plug during each reset
     num_gripper_lift_sim_steps: 25  # number of timesteps to reserve for lift after last step of episode
 
-    socket_pos_obs_noise: [ 0.001, 0.001, 0.001 ]
+    socket_priv_obs_noise: [ 0.001, 0.001, 0.001 ]
+    socket_pos_obs_noise: [ 0.005, 0.005, 0.005 ]
+
     socket_rot_obs_noise: [ 0.0, 0.0, 0.0 ]
 
     socket_base_height: 0.003

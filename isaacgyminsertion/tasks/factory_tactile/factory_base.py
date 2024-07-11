@@ -101,7 +101,7 @@ class FactoryBaseTactile(VecTask, FactoryABCBase):
         self.create_envs()  # defined in subclass
         # If randomizing, apply once immediately on startup before the fist sim step
         if self.randomize:
-            self.apply_randomizations(self.randomization_params)
+            self.apply_randomizations(self.randomization_params, randomisation_callback=self.randomisation_callback)
 
     def _create_ground_plane(self):
         """Set ground plane params. Add plane."""
