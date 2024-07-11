@@ -95,27 +95,31 @@ red_round_peg_1_5in:
 triangle:
     triangle_peg:
         urdf_path: 'triangle_peg'
-        diameter: 0.0381
+        width: 0.06391
+        depth: 0.05535
         length: 0.0762
-        density: 5000.0
+        density: 500.0
         friction: 0.5
     red_triangle_hole:
         urdf_path: 'red_triangle_hole'
-        diameter: 0.05105
-        height: 0.01 # actually the hole is 0.0381, but I bury half into the table
+        width: 0.06599
+        depth: 0.05715
+        height: 0.01
         density: 8000.0
         friction: 0.5
 
 small_triangle:
     triangle_peg:
         urdf_path: 'small_triangle_peg'
-        diameter: 0.0381
+        width: 0.04793
+        depth: 0.04151
         length: 0.0762
-        density: 5000.0
+        density: 2000.0
         friction: 0.5
     red_triangle_hole:
         urdf_path: 'small_red_triangle_hole'
-        diameter: 0.05105
+        width: 0.04949
+        depth: 0.04286
         height: 0.01 # actually the hole is 0.0381, but I bury half into the table
         density: 8000.0
         friction: 0.5

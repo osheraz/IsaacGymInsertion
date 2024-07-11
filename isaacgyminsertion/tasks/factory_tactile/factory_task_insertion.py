@@ -124,6 +124,26 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
     def _acquire_task_tensors(self):
         """Acquire tensors."""
+
+        self.act_moving_average_range = self.cfg_task.env.actionsMovingAverage.range
+        self.act_moving_average_scheduled_steps = self.cfg_task.env.actionsMovingAverage.schedule_steps
+        self.act_moving_average_scheduled_freq = self.cfg_task.env.actionsMovingAverage.schedule_freq
+
+        self.act_moving_average_lower = self.act_moving_average_range[0]
+        self.act_moving_average_upper = self.act_moving_average_range[1]
+
+        self.action_delay_prob_max = self.cfg_task.env.actionDelayProbMax
+        self.action_delay_prob = self.action_delay_prob_max * torch.rand(self.num_envs,
+                                                                         dtype=torch.float, device=self.device)
+        self.action_latency_max = self.cfg_task.env.actionLatencyMax
+        self.action_latency_scheduled_steps = self.cfg_task.env.actionLatencyScheduledSteps
+
+        # We have action latency MIN and MAX (declared in _read_cfg() function reading from a config file)
+        self.action_latency_min = 1
+        self.action_latency = torch.randint(0, self.action_latency_min + 1,
+                                            size=(self.cfg["env"]["numEnvs"],), dtype=torch.long, device=self.device)
+
+        self.act_moving_average = self.act_moving_average_upper
         self.force_scale = self.cfg_task.randomize.force_scale
         self.force_prob_range = [0.001, 0.1]
         self.force_decay = 0.99
@@ -166,6 +186,10 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.keypoints_socket = torch.zeros_like(self.keypoints_plug, device=self.device)
 
         self.actions = torch.zeros((self.num_envs, self.num_actions), device=self.device)
+        self.prev_actions_queue = torch.zeros(self.num_envs,
+                                              self.cfg_task.env.action_latency_max + 1,
+                                              self.num_actions, dtype=torch.float, device=self.device)
+
         self.targets = torch.zeros((self.num_envs, self.cfg_task.env.numTargets), device=self.device)
         self.prev_targets = torch.zeros((self.num_envs, self.cfg_task.env.numTargets), dtype=torch.float,
                                         device=self.device)
@@ -223,15 +247,15 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         # state tensors
         self.plug_hand_pos, self.plug_hand_quat = torch.zeros((self.num_envs, 3), device=self.device), \
-                                                  torch.zeros((self.num_envs, 4), device=self.device)
+            torch.zeros((self.num_envs, 4), device=self.device)
         self.plug_pos_error, self.plug_quat_error = torch.zeros((self.num_envs, 3), device=self.device), \
-                                                    torch.zeros((self.num_envs, 4), device=self.device)
+            torch.zeros((self.num_envs, 4), device=self.device)
         self.plug_hand_pos_diff, self.plug_hand_quat_diff = torch.zeros((self.num_envs, 3), device=self.device), \
-                                                            torch.zeros((self.num_envs, 4), device=self.device)
+            torch.zeros((self.num_envs, 4), device=self.device)
         self.plug_hand_pos_init, self.plug_hand_quat_init = torch.zeros((self.num_envs, 3), device=self.device), \
-                                                            torch.zeros((self.num_envs, 4), device=self.device)
+            torch.zeros((self.num_envs, 4), device=self.device)
 
-        self.rigid_physics_params = torch.zeros((self.num_envs, 6), device=self.device, dtype=torch.float)
+        self.rigid_physics_params = torch.zeros((self.num_envs, 13), device=self.device, dtype=torch.float)
         self.finger_normalized_forces = torch.zeros((self.num_envs, 3), device=self.device, dtype=torch.float)
 
         # reward tensor
@@ -441,16 +465,67 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         if queue is not None:
             queue.put((tactile_imgs_list, offset))
 
-    def pre_physics_step(self, actions):
+    def update_action_moving_average(self):
+
+        # scheduling action moving average
+
+        if self.last_step > 0 and self.last_step % self.act_moving_average_scheduled_freq == 0:
+            sched_scaling = 1.0 / self.act_moving_average_scheduled_steps * min(self.last_step,
+                                                                                self.act_moving_average_scheduled_steps)
+            self.act_moving_average = self.act_moving_average_upper + (
+                        self.act_moving_average_lower - self.act_moving_average_upper) * \
+                                      sched_scaling
+
+            print('action moving average: {}'.format(self.act_moving_average))
+            print('last_step: {}'.format(self.last_step),
+                  ' scheduled steps: {}'.format(self.act_moving_average_scheduled_steps))
+
+            self.extras['annealing/action_moving_average_scalar'] = self.act_moving_average
+
+    def apply_action_noise_latency(self):
+
+        # anneal action latency
+        if self.randomize:
+            self.cur_action_latency = 1.0 / self.action_latency_scheduled_steps \
+                                      * min(self.last_step, self.action_latency_scheduled_steps)
+
+            self.cur_action_latency = min(max(int(self.cur_action_latency), self.action_latency_min),
+                                          self.action_latency_max)
+
+            self.extras['annealing/cur_action_latency_max'] = self.cur_action_latency
+
+            self.action_latency = torch.randint(0, self.cur_action_latency + 1,
+                                                size=(self.num_envs,), dtype=torch.long,
+                                                device=self.device)
+
+        # probability of not updating the action this step (on top of the delay)
+        action_delay_mask = (torch.rand(self.num_envs, device=self.device) > self.action_delay_prob).view(-1, 1)
+
+        actions_delayed = \
+            self.prev_actions_queue[
+                torch.arange(self.prev_actions_queue.shape[0]), self.action_latency] * action_delay_mask \
+            + self.prev_actions * ~action_delay_mask
+
+        return actions_delayed
+
+    def pre_physics_step(self, actions, with_delay=False):
         """Reset environments. Apply actions from policy as position/rotation targets, force/torque targets, and/or PD gains."""
 
-        self.prev_actions[:] = self.actions.clone()
         env_ids = self.reset_buf.nonzero(as_tuple=False).squeeze(-1)
 
         if len(env_ids) > 0:
             self.reset_idx(env_ids)
 
+        self.prev_actions[:] = self.actions.clone()
         self.actions = actions.clone().to(self.device)  # shape = (num_envs, num_actions); values = [-1, 1]
+
+        if with_delay:
+            self.update_action_moving_average()
+            # update the actions queue
+            self.prev_actions_queue[:, 1:] = self.prev_actions_queue[:, :-1].detach()
+            self.prev_actions_queue[:, 0, :] = actions
+            actions_delayed = self.apply_action_noise_latency()
+            actions = actions_delayed
         # test actions for whenever we want to see some axis motion
         # self.actions[:, :] = 0.
         # self.actions[:, 0] = 1.
@@ -465,7 +540,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         # Update targets
         self.targets = self.prev_targets + delta_targets
 
-        self._apply_actions_as_ctrl_targets(actions=self.actions,
+        self._apply_actions_as_ctrl_targets(actions=actions,
                                             ctrl_target_gripper_dof_pos=self.ctrl_target_gripper_dof_pos,
                                             do_scale=True)
 
@@ -491,9 +566,6 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         self.progress_buf[:] += 1
         self.randomize_buf[:] += 1
-
-        # In this policy, episode length is constant
-        is_last_step = (self.progress_buf[0] == self.max_episode_length - 1)
 
         update_tactile = False
         if (self.temp_ctr % self.cfg_task.tactile.tactile_freq) == 0:
@@ -545,8 +617,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         eef_pos = torch.cat(self.pose_world_to_robot_base(self.fingertip_centered_pos.clone(),
                                                           self.fingertip_centered_quat.clone(),
-                                                          to_rep='matrix'),
-                            dim=-1)
+                                                          to_rep='rot6d'), dim=-1)
         actions = self.actions.clone()
 
         obs = torch.cat([eef_pos,
@@ -614,7 +685,16 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                                                    socket_friction,
                                                    left_finger_friction,
                                                    right_finger_friction,
-                                                   middle_finger_friction]), 0, 1)
+                                                   middle_finger_friction,
+                                                   self.plug_heights,    # 1
+                                                   self.plug_depths,     # 1
+                                                   self.plug_widths,     # 1
+                                                   self.socket_heights,  # 1
+                                                   self.socket_depths,   # 1
+                                                   self.socket_widths,   # 1
+                                                   self.plug_scale,      # 1
+                                                   ]), 0, 1)
+
         self.rigid_physics_params[...] = physics_params
 
         if self.cfg_task.env.compute_contact_gt:
@@ -637,20 +717,18 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             # socket_pos_wrt_robot[1],  # 4
             # plug_bottom_wrt_robot[0],  # 3
             # plug_bottom_wrt_robot[1],  # 4
-            # self.socket_pos.clone(), # 3
-            # self.socket_quat.clone(), # 4
+            # self.socket_pos.clone(),   # 3
+            # self.socket_quat.clone(),  # 4
             # self.hand_joints,          # 6
-            # plug_hand_pos,  # 3
-            # plug_hand_quat,  # 4py
             # self.plug_hand_pos_diff,   # 3
             # self.plug_hand_quat_diff,  # 4
-            plug_pos_error,  # 3
-            plug_quat_error,  # 4
-            # physics_params,  # 6
-            # finger_contacts,  # 3
+            plug_hand_pos,             # 3
+            plug_hand_quat,            # 4
+            plug_pos_error,            # 3
+            plug_quat_error,           # 4
+            physics_params,            # 6
+            # finger_contacts,         # 3
             # self.plug_pcd.view(self.num_envs, -1),  # 3 * num_points
-            # TODO: add object shapes -- bring diameter encoding where there is multiple objects
-            # self.plug_heights,  # 1
             # TODO: add extrinsics contact (point cloud) -> this will encode the shape (check this)
         ]
 
@@ -1006,11 +1084,20 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         # self._simulate_and_refresh()
 
+    def randomisation_callback(self, param_name, param_val, env_id=None, actor=None):
+        if param_name == "scale" and actor == "plug":
+            self.plug_scale[env_id, 0] = param_val.mean()
+        # elif param_name == "mass" and actor == "plug":
+        #     self.rigid_physics_params[env_id, 1] = np.mean(param_val)
+        # elif param_name == "friction" and actor == "plug":
+        #     self.rigid_physics_params[env_id, 2] = np.mean(param_val)
+
     def reset_idx(self, env_ids):
         """Reset specified environments."""
 
         if self.randomize:
-            self.apply_randomizations(self.randomization_params)
+            self.apply_randomizations(dr_params=self.randomization_params,
+                                      randomisation_callback=self.randomisation_callback)
 
         if self.cfg_task.grasp_at_init:
             self.disable_gravity()
@@ -1210,7 +1297,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
                 if self.cfg_task.data_logger.collect_data:
                     self.data_logger.log_trajectory_data(self.actions,
-                                                  None,
+                                                         None,
                                                          self.timeout_reset_buf.clone(),
                                                          save_trajectory=True)
 
@@ -1374,6 +1461,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.obs_queue[env_ids, ...] = 0.
         self.prev_targets[env_ids] *= 0
         self.prev_actions[env_ids] *= 0
+        self.prev_actions_queue[env_ids] *= 0
 
         self.plug_socket_dist[env_ids, ...] = 0.
         self.rb_forces[env_ids, :, :] = 0.0
@@ -1445,21 +1533,21 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         gripper_dof_pos = 0 * self.gripper_dof_pos.clone()
         gripper_dof_pos[env_ids,
-                        list(self.dof_dict.values()).index(
-                            'base_to_finger_1_1') - 7] = self.cfg_task.env.openhand.base_angle
+        list(self.dof_dict.values()).index(
+            'base_to_finger_1_1') - 7] = self.cfg_task.env.openhand.base_angle
         gripper_dof_pos[env_ids,
-                        list(self.dof_dict.values()).index(
-                            'base_to_finger_2_1') - 7] = -self.cfg_task.env.openhand.base_angle
+        list(self.dof_dict.values()).index(
+            'base_to_finger_2_1') - 7] = -self.cfg_task.env.openhand.base_angle
 
         gripper_dof_pos[env_ids,
-                        list(self.dof_dict.values()).index(
-                            'finger_1_1_to_finger_1_2') - 7] = self.cfg_task.env.openhand.proximal_open
+        list(self.dof_dict.values()).index(
+            'finger_1_1_to_finger_1_2') - 7] = self.cfg_task.env.openhand.proximal_open
         gripper_dof_pos[env_ids,
-                        list(self.dof_dict.values()).index(
-                            'finger_2_1_to_finger_2_2') - 7] = self.cfg_task.env.openhand.proximal_open
+        list(self.dof_dict.values()).index(
+            'finger_2_1_to_finger_2_2') - 7] = self.cfg_task.env.openhand.proximal_open
         gripper_dof_pos[env_ids,
-                        list(self.dof_dict.values()).index(
-                            'base_to_finger_3_2') - 7] = self.cfg_task.env.openhand.proximal_open
+        list(self.dof_dict.values()).index(
+            'base_to_finger_3_2') - 7] = self.cfg_task.env.openhand.proximal_open
 
         self._move_gripper_to_dof_pos(env_ids=env_ids, gripper_dof_pos=gripper_dof_pos, sim_steps=sim_steps)
         self.ctrl_target_gripper_dof_pos = gripper_dof_pos
