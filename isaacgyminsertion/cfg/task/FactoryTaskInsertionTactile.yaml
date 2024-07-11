@@ -53,7 +53,7 @@ env:
     numStates: 7 #
     numActions: 6 # [position, ori]
     numTargets: 6 # [position, ori]
-
+    action_latency_max: 15
     # Should be the same as in EnvPPO
     numObsHist: 1
     numObsStudentHist: 1
@@ -72,6 +72,15 @@ env:
         distal_noise: 0.2
         base_angle: 0.7
         tactile_finger: [ 'finger_1_3', 'finger_2_3', 'finger_3_3' ] # left, right, middle
+
+    actionsMovingAverage:
+      range: [ 0.15, 0.35 ]
+      schedule_steps: 1000000
+      schedule_freq: 500 # schedule every 500 steps for stability
+
+    actionDelayProbMax: 0.3
+    actionLatencyMax: 15
+    actionLatencyScheduledSteps: 10_000_000
 
     num_gripper_move_sim_steps: 120  # number of timesteps to reserve for moving gripper before first step of episode
     num_gripper_close_sim_steps: 50  # number of timesteps to reserve for closing gripper onto plug during each reset

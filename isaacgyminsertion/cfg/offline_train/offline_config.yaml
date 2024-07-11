@@ -86,7 +86,7 @@ model:
   use_tactile: False
   use_lin: True
 
-  model_type: 'simple'
+  model_type: 'tact'
 
   transformer:
     full_sequence: False # if True, it makes sequence length 500

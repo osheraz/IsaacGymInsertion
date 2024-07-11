@@ -523,6 +523,7 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
         self.plug_heights = []
         self.plug_widths = []
         self.plug_depths = []
+        self.plug_scale = []
 
         self.socket_heights = []
         self.socket_widths = []
@@ -648,13 +649,14 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
             self.gym.set_actor_rigid_shape_properties(env_ptr, kuka_handle, kuka_shape_props)
 
             plug_shape_props = self.gym.get_actor_rigid_shape_properties(env_ptr, plug_handle)
-            plug_shape_props[0].friction = self.cfg_env.env.plug_friction  # todo osher changed, WAS 1
+            plug_shape_props[0].friction = self.cfg_env.env.plug_friction
             plug_shape_props[0].rolling_friction = 0.0  # default = 0.0
             plug_shape_props[0].torsion_friction = 0.0  # default = 0.0
             plug_shape_props[0].restitution = 0.0  # default = 0.0
             plug_shape_props[0].compliance = 0.0  # default = 0.0
             plug_shape_props[0].thickness = 0.0  # default = 0.0
             self.gym.set_actor_rigid_shape_properties(env_ptr, plug_handle, plug_shape_props)
+            self.plug_scale.append(self.gym.get_actor_scale(env_ptr, plug_handle))
 
             socket_shape_props = self.gym.get_actor_rigid_shape_properties(env_ptr, socket_handle)
             socket_shape_props[0].friction = self.asset_info_insertion[subassembly][components[1]]['friction']
@@ -664,7 +666,6 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
             socket_shape_props[0].compliance = 0.0  # default = 0.0
             socket_shape_props[0].thickness = 0.0  # default = 0.0
             self.gym.set_actor_rigid_shape_properties(env_ptr, socket_handle, socket_shape_props)
-            # self.gym.set_actor_scale(env_ptr, socket_handle, 5)
 
             table_shape_props = self.gym.get_actor_rigid_shape_properties(env_ptr, table_handle)
             table_shape_props[0].friction = self.cfg_base.env.table_friction
@@ -681,14 +682,18 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
 
             self.plug_heights.append(self.asset_info_insertion[subassembly][components[0]]['length'])
             self.socket_heights.append(self.asset_info_insertion[subassembly][components[1]]['height'])
-            if any('rectangular' in sub for sub in components) or any('square' in sub for sub in components):
-                self.plug_depths.append(self.asset_info_insertion[subassembly][components[0]]['width'])
-                self.plug_widths.append(self.asset_info_insertion[subassembly][components[0]]['depth'])
+            if (any('rectangular' in sub for sub in components) or
+                any('square' in sub for sub in components) or
+                any('triangle' in sub for sub in components)):
+                self.plug_widths.append(self.asset_info_insertion[subassembly][components[0]]['width'])
+                self.plug_depths.append(self.asset_info_insertion[subassembly][components[0]]['depth'])
                 self.socket_widths.append(self.asset_info_insertion[subassembly][components[1]]['width'])
                 self.socket_depths.append(self.asset_info_insertion[subassembly][components[1]]['depth'])
             else:
                 self.plug_widths.append(self.asset_info_insertion[subassembly][components[0]]['diameter'])
                 self.socket_widths.append(self.asset_info_insertion[subassembly][components[1]]['diameter'])
+                self.plug_depths.append(self.asset_info_insertion[subassembly][components[0]]['diameter'])
+                self.socket_depths.append(self.asset_info_insertion[subassembly][components[0]]['diameter'])
 
             self.asset_indices.append(j)
             self.envs.append(env_ptr)

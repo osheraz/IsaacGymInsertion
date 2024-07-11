@@ -623,7 +623,7 @@ class VecTask(Env):
                             highs.append(lo_hi[1])
         return params, names, lows, highs
 
-    def apply_randomizations(self, dr_params):
+    def apply_randomizations(self, dr_params, randomisation_callback=None):
         """Apply domain randomizations to the environment.
 
         Note that currently we can only apply randomizations only on resets, due to current PhysX limitations
@@ -800,6 +800,10 @@ class VecTask(Env):
                             elif attr_randomization_params['operation'] == 'additive':
                                 new_scale = og_scale + sample
                             self.gym.set_actor_scale(env, handle, new_scale)
+
+                            if hasattr(self, 'plug_scale') and actor == 'plug' and randomisation_callback is not None:
+                                randomisation_callback('scale', new_scale, actor=actor, env_id=env_id)
+
                         continue
 
                     prop = param_getters_map[prop_name](env, handle)
