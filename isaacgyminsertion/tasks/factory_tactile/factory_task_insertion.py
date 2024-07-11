@@ -139,6 +139,9 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.action_latency_scheduled_steps = self.cfg_task.env.actionLatencyScheduledSteps
 
         self.plug_obs_delay_prob = self.cfg_task.env.plugObsDelayProb
+        self.scale_pos_prob = self.cfg_task.env.scalePosProb
+        self.scale_rot_prob = self.cfg_task.env.scaleRotProb
+
         self.max_skip_obs = self.cfg_task.env.maxObjectSkipObs
         self.frame = 0
         # We have action latency MIN and MAX (declared in _read_cfg() function reading from a config file)
@@ -1532,13 +1535,56 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         # Interpret actions as target pos displacements and set pos target
         pos_actions = actions[:, 0:3]
         if do_scale:
-            pos_actions = pos_actions @ torch.diag(torch.tensor(self.cfg_task.rl.pos_action_scale, device=self.device))
+            pos_action_scale = torch.tensor(self.cfg_task.rl.pos_action_scale, device=self.device)
+
+            if self.randomize:
+                pos_action_scale = pos_action_scale.unsqueeze(0).repeat(self.num_envs, 1)
+                scale_noise_pos = 2 * (
+                        torch.rand((self.num_envs, 3), dtype=torch.float32, device=self.device)
+                        - 0.5
+                )
+                scale_noise_pos = scale_noise_pos @ torch.diag(
+                    torch.tensor(
+                        self.cfg_task.randomize.scale_noise_pos,
+                        dtype=torch.float32,
+                        device=self.device,
+                    )
+                )
+                scale_pos_envs = torch.randn(self.num_envs, device=self.device) > self.scale_pos_prob
+                pos_action_scale[scale_pos_envs] += scale_noise_pos[scale_pos_envs]
+                pos_action_scale = torch.clamp(pos_action_scale, min=0)
+                pos_actions = pos_actions * pos_action_scale
+            else:
+                pos_actions = pos_actions @ torch.diag(pos_action_scale)
+
         self.ctrl_target_fingertip_centered_pos = self.fingertip_centered_pos + pos_actions
 
         # Interpret actions as target rot (axis-angle) displacements
         rot_actions = actions[:, 3:6]
         if do_scale:
-            rot_actions = rot_actions @ torch.diag(torch.tensor(self.cfg_task.rl.rot_action_scale, device=self.device))
+
+            rot_action_scale = torch.tensor(self.cfg_task.rl.rot_action_scale, device=self.device)
+            if self.randomize:
+                rot_action_scale = rot_action_scale.unsqueeze(0).repeat(self.num_envs, 1)
+
+                scale_noise_rot = 2 * (
+                        torch.rand((self.num_envs, 3), dtype=torch.float32, device=self.device)
+                        - 0.5
+                )
+                scale_noise_rot = scale_noise_rot @ torch.diag(
+                    torch.tensor(
+                        self.cfg_task.randomize.scale_noise_rot,
+                        dtype=torch.float32,
+                        device=self.device,
+                    )
+                )
+                scale_rot_envs = torch.randn(self.num_envs, device=self.device) > self.scale_rot_prob
+                rot_action_scale[scale_rot_envs] += scale_noise_rot[scale_rot_envs]
+                rot_action_scale = torch.clamp(rot_action_scale, min=0)
+
+                rot_actions = rot_actions * rot_action_scale
+            else:
+                rot_actions = rot_actions @ torch.diag(rot_action_scale)
 
         # Convert to quat and set rot target
         angle = torch.norm(rot_actions, p=2, dim=-1)

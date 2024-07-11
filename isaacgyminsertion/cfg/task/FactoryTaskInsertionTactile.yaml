@@ -83,6 +83,8 @@ env:
     actionLatencyScheduledSteps: 10_000_000
     plugObsDelayProb: 0.3
     maxObjectSkipObs: 2
+    scalePosProb: 0.3
+    scaleRotProb: 0.3
 
     num_gripper_move_sim_steps: 120  # number of timesteps to reserve for moving gripper before first step of episode
     num_gripper_close_sim_steps: 50  # number of timesteps to reserve for closing gripper onto plug during each reset
@@ -139,6 +141,8 @@ randomize:
     socket_rot_euler_noise: 0.035  # noise on socket position
     socket_pos_z_noise_bounds: [-0.002, 0.003]  # noise on socket offset from table
 
+    scale_noise_pos: [0.003, 0.003, 0.003]
+    scale_noise_rot: [ 0.03, 0.03, 0.03]
 
     grasp_plug_noise: 0.005 # xyz noise on plug position during grasp
     above_socket_noise: [0.03, 0.03, 0.001]
@@ -169,8 +173,8 @@ rl:
     success_height_thresh: 0.005  # threshold distance below which plug is considered successfully inserted
 
     keypoint_reward_scale: -0.4 # scale on keypoint-based reward
-    action_penalty_scale: -0.002  # scale on action penalty
-    action_delta_scale: -0.02
+    action_penalty_scale: -0.07  # scale on action penalty
+    action_delta_scale: -0.07
     ori_reward_scale: -0.1 # scale on ori-based reward
 
     early_reset_reward_scale: -1.0
