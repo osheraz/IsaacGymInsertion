@@ -50,6 +50,7 @@ from isaacgyminsertion.utils import torch_jit_utils
 import cv2
 from isaacgyminsertion.allsight.tacto_allsight_wrapper.util.util import tensor2im
 from torchvision.utils import save_image
+from collections import defaultdict
 
 torch.set_printoptions(sci_mode=False)
 
@@ -66,8 +67,6 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         self._acquire_task_tensors()
         self.parse_controller_spec()
-
-        self.temp_ctr = 0
 
         if self.viewer is not None:
             self._set_viewer_params()
@@ -122,6 +121,11 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.tact_hist_len = self.cfg_task.env.tactile_history_len
         self.img_hist_len = self.cfg_task.env.img_history_len
 
+        self.depth_process = DepthImageProcessor(cfg=self.cfg_task,
+                                                 dis_noise=self.dis_noise,
+                                                 far_clip=self.far_clip,
+                                                 near_clip=self.near_clip)
+
     def _acquire_task_tensors(self):
         """Acquire tensors."""
 
@@ -137,22 +141,33 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                                                                          dtype=torch.float, device=self.device)
         self.action_latency_max = self.cfg_task.env.actionLatencyMax
         self.action_latency_scheduled_steps = self.cfg_task.env.actionLatencyScheduledSteps
-
-        self.plug_obs_delay_prob = self.cfg_task.env.plugObsDelayProb
-        self.scale_pos_prob = self.cfg_task.env.scalePosProb
-        self.scale_rot_prob = self.cfg_task.env.scaleRotProb
-
-        self.max_skip_obs = self.cfg_task.env.maxObjectSkipObs
-        self.frame = 0
         # We have action latency MIN and MAX (declared in _read_cfg() function reading from a config file)
         self.action_latency_min = 1
         self.action_latency = torch.randint(0, self.action_latency_min + 1,
                                             size=(self.num_envs,), dtype=torch.long, device=self.device)
 
+        self.plug_obs_delay_prob = self.cfg_task.env.plugObsDelayProb
+        self.img_delay_prob = self.cfg_task.env.ImgDelayProb
+        self.tactile_delay_prob = self.cfg_task.env.TactileDelayProb
+        self.scale_pos_prob = self.cfg_task.env.scalePosProb
+        self.scale_rot_prob = self.cfg_task.env.scaleRotProb
+
+        self.max_skip_obs = self.cfg_task.env.maxObjectSkipObs
+        self.max_skip_img = self.cfg_task.env.maxSkipImg
+        self.max_skip_tactile = self.cfg_task.env.maxSkipTactile
+
+        self.frame = 0
+
         # inverse refresh rate for each environment
-        self.plug_pose_refresh_rates = torch.randint(1, self.max_skip_obs+1, size=(self.num_envs,), device=self.device)
-        # offset so not all the environments have it each time
+        self.plug_pose_refresh_rates = torch.randint(1, self.max_skip_obs + 1, size=(self.num_envs,),
+                                                     device=self.device)
         self.plug_pose_refresh_offset = torch.randint(0, self.max_skip_obs, size=(self.num_envs,), device=self.device)
+        self.img_refresh_rates = torch.randint(1, self.max_skip_img + 1, size=(self.num_envs,), device=self.device)
+        self.img_refresh_offset = torch.randint(0, self.max_skip_img, size=(self.num_envs,), device=self.device)
+        self.tactile_refresh_rates = torch.randint(1, self.max_skip_tactile + 1, size=(self.num_envs,),
+                                                   device=self.device)
+        self.tactile_refresh_offset = torch.randint(0, self.max_skip_tactile, size=(self.num_envs,), device=self.device)
+
         # buffer storing object poses which are only refreshed every n steps
         self.obs_plug_pos_freq = self.plug_pos.clone()
         self.obs_plug_quat_freq = self.plug_quat.clone()
@@ -253,8 +268,17 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                 device=self.device,
                 dtype=torch.float,
             )
-            self.image_buf = torch.zeros(self.num_envs, 1 if self.cam_type == 'd' else 3, self.res[1], self.res[0]).to(
-                self.device)
+            self.seg_queue = torch.zeros(
+                (self.num_envs, self.img_hist_len, 1, self.res[1], self.res[0]),
+                device=self.device,
+                dtype=torch.float,
+            )
+            self.image_buf = torch.zeros(self.num_envs, 1 if self.cam_type == 'd' else 3,
+                                         self.res[1], self.res[0]).to(self.device)
+            self.seg_buf = torch.zeros(self.num_envs, 1 if self.cam_type == 'd' else 3,
+                                       self.res[1], self.res[0]).to(self.device)
+
+            self.init_external_cam()
 
         self.plug_socket_dist = torch.zeros((self.num_envs, 3), device=self.device, dtype=torch.float)
 
@@ -283,7 +307,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.ep_success_count = torch.zeros(self.num_envs, dtype=torch.int32, device=self.device)
         self.ep_failure_count = torch.zeros(self.num_envs, dtype=torch.int32, device=self.device)
 
-    def _refresh_task_tensors(self, update_tactile=False):
+    def _refresh_task_tensors(self):
         """Refresh tensors."""
 
         self.refresh_base_tensors()
@@ -394,102 +418,110 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.finger_normalized_forces[:, 2] = (1 - e) * normalize_forces(
             self.middle_finger_force.clone()) + e * self.finger_normalized_forces[:, 2]
 
-        if update_tactile and self.cfg_task.env.tactile:
-            left_allsight_poses = torch.cat((self.left_finger_pos, self.left_finger_quat), dim=-1)
-            right_allsight_poses = torch.cat((self.right_finger_pos, self.right_finger_quat), dim=-1)
-            middle_allsight_poses = torch.cat((self.middle_finger_pos, self.middle_finger_quat), dim=-1)
-            object_poses = torch.cat((self.plug_pos, self.plug_quat), dim=-1)
+    def update_tactile(self, update_freq, update_delay):
 
-            tf = np.eye(4)
-            tf[0:3, 0:3] = euler_angles_to_matrix(
-                euler_angles=torch.tensor([[0, 0, 0]]), convention="XYZ"
-            ).numpy()
+        left_allsight_poses = torch.cat((self.left_finger_pos, self.left_finger_quat), dim=-1)
+        right_allsight_poses = torch.cat((self.right_finger_pos, self.right_finger_quat), dim=-1)
+        middle_allsight_poses = torch.cat((self.middle_finger_pos, self.middle_finger_quat), dim=-1)
+        object_poses = torch.cat((self.plug_pos, self.plug_quat), dim=-1)
 
-            left_finger_poses = xyzquat_to_tf_numpy(left_allsight_poses.cpu().numpy())
+        tf = np.eye(4)
+        tf[0:3, 0:3] = euler_angles_to_matrix(
+            euler_angles=torch.tensor([[0, 0, 0]]), convention="XYZ"
+        ).numpy()
 
-            left_finger_poses = left_finger_poses @ tf
+        left_finger_poses = xyzquat_to_tf_numpy(left_allsight_poses.cpu().numpy())
 
-            right_finger_poses = xyzquat_to_tf_numpy(right_allsight_poses.cpu().numpy())
+        left_finger_poses = left_finger_poses @ tf
 
-            right_finger_poses = right_finger_poses @ tf
+        right_finger_poses = xyzquat_to_tf_numpy(right_allsight_poses.cpu().numpy())
 
-            middle_finger_poses = xyzquat_to_tf_numpy(middle_allsight_poses.cpu().numpy())
+        right_finger_poses = right_finger_poses @ tf
 
-            middle_finger_poses = middle_finger_poses @ tf
+        middle_finger_poses = xyzquat_to_tf_numpy(middle_allsight_poses.cpu().numpy())
 
-            object_pose = xyzquat_to_tf_numpy(object_poses.cpu().numpy())
+        middle_finger_poses = middle_finger_poses @ tf
 
-            self._update_tactile(left_finger_poses, right_finger_poses, middle_finger_poses, object_pose)
+        object_pose = xyzquat_to_tf_numpy(object_poses.cpu().numpy())
 
-    def _update_tactile(self, left_finger_pose, right_finger_pose, middle_finger_pose, object_pose,
-                        offset=None, queue=None):
+        self._render_tactile(left_finger_poses,
+                             right_finger_poses,
+                             middle_finger_poses,
+                             object_pose,
+                             update_freq,
+                             update_delay)
+
+        self.tactile_queue[:, 1:] = self.tactile_queue[:, :-1].clone().detach()
+        self.tactile_queue[:, 0, ...] = self.tactile_imgs
+
+    def _render_tactile(self, left_finger_pose, right_finger_pose, middle_finger_pose, object_pose, update_freq,
+                        update_delay):
 
         tactile_imgs_list, height_maps = [], []  # only for display.
         finger_normalized_forces = self.finger_normalized_forces.clone()
 
         for e in range(self.num_envs):
 
-            self.tactile_handles[e][0].update_pose_given_sim_pose(left_finger_pose[e], object_pose[e])
-            self.tactile_handles[e][1].update_pose_given_sim_pose(right_finger_pose[e], object_pose[e])
-            self.tactile_handles[e][2].update_pose_given_sim_pose(middle_finger_pose[e], object_pose[e])
+            if update_freq[e] and update_delay[e]:
 
-            tactile_imgs_per_env, height_maps_per_env = [], []
+                self.tactile_handles[e][0].update_pose_given_sim_pose(left_finger_pose[e], object_pose[e])
+                self.tactile_handles[e][1].update_pose_given_sim_pose(right_finger_pose[e], object_pose[e])
+                self.tactile_handles[e][2].update_pose_given_sim_pose(middle_finger_pose[e], object_pose[e])
 
-            for n in range(3):
-                if self.cfg_task.env.tactile_wrt_force:
-                    force = 100 * finger_normalized_forces[e, n].cpu().detach().numpy()
-                else:
-                    force = 70
+                tactile_imgs_per_env, height_maps_per_env = [], []
+                # TODO: find a parallel solution
+                for n in range(3):
+                    if self.cfg_task.env.tactile_wrt_force:
+                        force = 100 * finger_normalized_forces[e, n].cpu().detach().numpy()
+                    else:
+                        force = 70
 
-                tactile_img, height_map = self.tactile_handles[e][n].render(object_pose[e], force)
+                    tactile_img, height_map = self.tactile_handles[e][n].render(object_pose[e], force)
 
-                if self.cfg_tactile.sim2real:
-                    # Reducing FPS by half
-                    color_tensor = self.transform(tactile_img).unsqueeze(0).to(self.device)
-                    tactile_img = self.model_G(color_tensor)
-                    tactile_img = tensor2im(tactile_img)
+                    if self.cfg_tactile.sim2real:
+                        # Reducing FPS by half
+                        color_tensor = self.transform(tactile_img).unsqueeze(0).to(self.device)
+                        tactile_img = self.model_G(color_tensor)
+                        tactile_img = tensor2im(tactile_img)
 
-                # Pulled subtract here cuz of the GAN
-                if self.cfg_tactile.diff:
-                    tactile_img = self.tactile_handles[e][n].remove_bg(tactile_img, self.tactile_handles[e][n].bg_img)
-                    tactile_img *= self.tactile_handles[e][n].mask
+                    # Subtract background
+                    if self.cfg_tactile.diff:
+                        tactile_img = self.tactile_handles[e][n].remove_bg(tactile_img,
+                                                                           self.tactile_handles[e][n].bg_img)
+                        tactile_img *= self.tactile_handles[e][n].mask
 
-                tactile_img = np.flipud(tactile_img).copy()
+                    # flip to match real camera
+                    tactile_img = np.flipud(tactile_img).copy()
 
-                # Cutting by half
-                if self.cfg_tactile.crop_roi:
-                    w = tactile_img.shape[0]
-                    tactile_img = tactile_img[:w // 2, :, :]
-                    height_map = height_map[:w // 2]
-                    # h = tactile_img.shape[1]
-                    # tactile_img = tactile_img[:, h // 6:- h // 6, :]
-                    # height_map = height_map[:, h // 6:- h // 6]
+                    # crop region of interest
+                    if self.cfg_tactile.crop_roi:
+                        w = tactile_img.shape[0]
+                        tactile_img = tactile_img[:w // 2, :, :]
+                        height_map = height_map[:w // 2]
 
-                # Resizing to encoder size
-                if tactile_img.shape[:2] != (self.width, self.height):
-                    resized_img = cv2.resize(tactile_img, (self.height, self.width), interpolation=cv2.INTER_AREA)
-                else:
-                    resized_img = tactile_img
+                    # Resizing to encoder size
+                    if tactile_img.shape[:2] != (self.width, self.height):
+                        resized_img = cv2.resize(tactile_img, (self.height, self.width), interpolation=cv2.INTER_AREA)
+                    else:
+                        resized_img = tactile_img
 
-                if self.num_channels == 3:
-                    self.tactile_imgs[e, n] = to_torch(resized_img).permute(2, 0, 1).to(self.device)
-                else:
-                    resized_img = cv2.cvtColor(resized_img.astype('float32'), cv2.COLOR_BGR2GRAY)
-                    self.tactile_imgs[e, n] = to_torch(resized_img).to(self.device)
+                    if self.num_channels == 3:
+                        self.tactile_imgs[e, n] = to_torch(resized_img).permute(2, 0, 1).to(self.device)
+                    else:
+                        resized_img = cv2.cvtColor(resized_img.astype('float32'), cv2.COLOR_BGR2GRAY)
+                        self.tactile_imgs[e, n] = to_torch(resized_img).to(self.device)
 
-                tactile_imgs_per_env.append(tactile_img)
-                height_maps_per_env.append(height_map)
+                    tactile_imgs_per_env.append(tactile_img)
+                    height_maps_per_env.append(height_map)
 
-            height_maps.append(height_maps_per_env)
-            tactile_imgs_list.append(tactile_imgs_per_env)
+                height_maps.append(height_maps_per_env)
+                tactile_imgs_list.append(tactile_imgs_per_env)
+            else:
+                self.tactile_imgs[e] = self.tactile_queue[e, 0, ...].clone()
 
-        if self.cfg_task.env.tactile_display_viz and self.cfg_task.env.tactile:
-            env_to_show = 0
-            self.tactile_handles[env_to_show][0].updateGUI(tactile_imgs_list[env_to_show],
-                                                           height_maps[env_to_show])
-
-        if queue is not None:
-            queue.put((tactile_imgs_list, offset))
+        env_to_show = 0
+        if self.cfg_task.env.tactile_display_viz and update_freq[env_to_show] and update_delay[env_to_show]:
+            self.tactile_handles[env_to_show][0].updateGUI(tactile_imgs_list[env_to_show], height_maps[env_to_show])
 
     def update_action_moving_average(self):
 
@@ -597,12 +629,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.progress_buf[:] += 1
         self.randomize_buf[:] += 1
 
-        update_tactile = False
-        if (self.temp_ctr % self.cfg_task.tactile.tactile_freq) == 0:
-            update_tactile = True
-        self.temp_ctr += 1
-
-        self._refresh_task_tensors(update_tactile=update_tactile)
+        self._refresh_task_tensors()
         self.compute_observations()
         self.compute_reward()
 
@@ -637,10 +664,6 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
     def compute_observations(self):
         """Compute observations."""
 
-        if self.cfg_task.env.tactile:
-            self.tactile_queue[:, 1:] = self.tactile_queue[:, :-1].clone().detach()
-            self.tactile_queue[:, 0, ...] = self.tactile_imgs
-
         # Compute Observation and state at current timestep
         # delta_pos = self.socket_tip - self.fingertip_centered_pos
         noisy_delta_pos = self.noisy_gripper_goal_pos - self.fingertip_centered_pos
@@ -669,17 +692,16 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.plug_socket_dist[:, :] = self.plug_pos - self.socket_pos
 
         if self.randomize:
-            update_freq = torch.remainder(self.frame + self.plug_pose_refresh_offset, self.plug_pose_refresh_rates) == 0
+            # Update the plug observation every update_freq
+            obs_update_freq = torch.remainder(self.frame + self.plug_pose_refresh_offset,
+                                              self.plug_pose_refresh_rates) == 0
+            self.obs_plug_pos_freq[obs_update_freq] = self.plug_pos[obs_update_freq]
+            self.obs_plug_quat_freq[obs_update_freq] = self.plug_quat[obs_update_freq]
 
-            self.obs_plug_pos_freq[update_freq] = self.plug_pos[update_freq]
-            self.obs_plug_quat_freq[update_freq] = self.plug_quat[update_freq]
-
-            # simulate adding delay
+            # Simulate adding delay on top
             update_delay = torch.randn(self.num_envs, device=self.device) > self.plug_obs_delay_prob
             self.obs_plug_pos[update_delay] = self.obs_plug_pos_freq[update_delay]
             self.obs_plug_quat[update_delay] = self.obs_plug_quat_freq[update_delay]
-
-        self.frame += 1
 
         plug_hand_pos, plug_hand_quat = self.pose_world_to_hand_base(self.obs_plug_pos, self.obs_plug_quat)
 
@@ -769,92 +791,103 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             # physics_params,  # 13
             # finger_contacts,         # 3
             # self.plug_pcd.view(self.num_envs, -1),  # 3 * num_points
-            # TODO: add extrinsics contact (point cloud) -> this will encode the shape (check this)
         ]
 
-        self.update_external_cam()
+        if self.cfg_task.env.tactile:
+            tactile_update_freq = torch.remainder(self.frame + self.tactile_refresh_offset,
+                                                  self.tactile_refresh_rates) == 0
+            tactile_update_delay = torch.randn(self.num_envs, device=self.device) > self.tactile_delay_prob
+            self.update_tactile(tactile_update_freq, tactile_update_delay)
+
+        if self.external_cam:
+            img_update_freq = torch.remainder(self.frame + self.img_refresh_offset, self.img_refresh_rates) == 0
+            img_update_delay = torch.randn(self.num_envs, device=self.device) > self.img_delay_prob
+            self.update_external_cam(img_update_freq, img_update_delay)
+
+        self.frame += 1
         self.obs_buf = self.obs_queue.clone()  # torch.cat(obs_tensors, dim=-1)  # shape = (num_envs, num_observations)
         self.obs_student_buf = self.obs_stud_queue.clone()  # shape = (num_envs, num_observations_student)
         self.states_buf = torch.cat(state_tensors, dim=-1)  # shape = (num_envs, num_states)
 
         return self.obs_buf  # shape = (num_envs, num_observations)
 
-    def update_external_cam(self):
+    def init_external_cam(self, with_seg=True):
 
-        if self.external_cam:
-            #             self.gym.step_graphics(self.sim) # ?
-            #             self.gym.fetch_results(self.sim, True) # ?
-            #             self.gym.render_all_camera_sensors(self.sim)
-            #             self.gym.start_access_image_tensors(self.sim)
+        self.gym.render_all_camera_sensors(self.sim)
+        self.gym.start_access_image_tensors(self.sim)
+        self.cam_renders = []
+        self.seg_renders = []
 
-            width, height = self.res
-            self.image_buf = torch.zeros(self.num_envs, 1 if self.cam_type == 'd' else 3, height, width).to(self.device)
+        for i in range(self.num_envs):
+            if self.cam_type == "rgb":
+                im = self.gym.get_camera_image_gpu_tensor(
+                    self.sim,
+                    self.envs[i],
+                    self.camera_handles[i],
+                    gymapi.IMAGE_COLOR,
+                )
+                im = gymtorch.wrap_tensor(im)
 
-            self.gym.render_all_camera_sensors(self.sim)
-            self.gym.start_access_image_tensors(self.sim)
+            elif self.cam_type == "d":
+                im = self.gym.get_camera_image_gpu_tensor(
+                    self.sim,
+                    self.envs[i],
+                    self.camera_handles[i],
+                    gymapi.IMAGE_DEPTH,
+                )
+                im = gymtorch.wrap_tensor(im)
 
-            for i in range(self.num_envs):
-                if self.cam_type == "rgb":
-                    im = self.gym.get_camera_image_gpu_tensor(
-                        self.sim,
-                        self.envs[i],
-                        self.camera_handles[i],
-                        gymapi.IMAGE_COLOR,
-                    )
-                    im = gymtorch.wrap_tensor(im)
+            self.cam_renders.append(im)
 
-                    if self.save_im and False:
-                        trans_im = im.detach().clone()
-                        trans_im = (trans_im[..., :3]).float() / 255
-                        save_image(
-                            trans_im.view((height, width, 3)).permute(2, 0, 1).float(),
-                            "images/im{self.count:05}.png",
-                        )
+            if with_seg:
+                im = self.gym.get_camera_image_gpu_tensor(
+                    self.sim,
+                    self.envs[i],
+                    self.camera_handles[i],
+                    gymapi.IMAGE_SEGMENTATION,
+                )
+                im = gymtorch.wrap_tensor(im)
+                self.seg_renders.append(im)
 
-                    if i == 0 and False:
-                        img = cv2.cvtColor(im.cpu().numpy(), cv2.COLOR_RGB2BGR)
-                        cv2.imshow("Follow camera", img)
-                        cv2.waitKey(1)
+        self.gym.end_access_image_tensors(self.sim)
 
-                elif self.cam_type == "d":
-                    im = self.gym.get_camera_image_gpu_tensor(
-                        self.sim,
-                        self.envs[i],
-                        self.camera_handles[i],
-                        gymapi.IMAGE_DEPTH,
-                    )
-                    im = gymtorch.wrap_tensor(im)
-                    self.image_buf[i] = self.process_depth_image(im)
+    def update_external_cam(self, update_freq, update_delay):
 
-                    if self.save_im and False:
-                        trans_im = im.detach().clone()
-                        trans_im = -1 / trans_im
-                        trans_im = trans_im / torch.max(trans_im)
-                        save_image(
-                            trans_im.view((height, width, 1)).permute(2, 0, 1).float(),
-                            f"images/dim/{self.count:05}.png",
-                        )
+        self.gym.render_all_camera_sensors(self.sim)
+        self.gym.start_access_image_tensors(self.sim)
 
-                    if False and i == 0:
-                        img = self.process_depth_image(im)
-                        img = img.cpu().numpy()
-                        # trans_im = im.detach().clone()
-                        # trans_im = -1 / trans_im
-                        # trans_im = trans_im / torch.max(trans_im)
-                        # print(trans_im.max(), trans_im.min())
-                        # cv2.imshow("test Image", np.expand_dims(trans_im.cpu().detach().numpy(), 0).transpose(1, 2, 0))
+        if self.cam_type == "rgb":
+            self.image_buf = torch.where(update_freq and update_delay,
+                                         torch.stack(self.cam_renders),
+                                         self.image_buf).to(self.device)
 
-                        # img = np.uint8(img.cpu().numpy() * 255)
-                        # cv2.imshow("images2", img)
-                        cv2.imshow("Depth Image", np.expand_dims(img, 0).transpose(1, 2, 0) + 0.5)
-                        print(img.max(), img.min())
+            if self.cfg_task.external_cam.display:
+                img = cv2.cvtColor(self.image_buf[0].cpu().numpy(), cv2.COLOR_RGB2BGR)
+                cv2.imshow("Follow camera", img)
+                cv2.waitKey(1)
 
-                        cv2.waitKey(1)
+        elif self.cam_type == "d":
+            self.image_buf = torch.where(update_freq and update_delay, self.depth_process.process_depth_image(
+                torch.stack(self.cam_renders).unsqueeze(0)), self.image_buf).to(self.device)
 
-            self.gym.end_access_image_tensors(self.sim)
+            self.seg_buf = torch.where(update_freq and update_delay,
+                                       torch.stack(self.seg_renders).unsqueeze(0),
+                                       self.seg_buf).to(self.device)
 
-            self.img_queue[:, 1:] = self.img_queue[:, :-1].clone().detach()
-            self.img_queue[:, 0, ...] = self.image_buf
+            if self.cfg_task.external_cam.display:
+                img = self.image_buf[0].cpu().clone()
+                mask = self.seg_buf[0].cpu().clone()
+                forward_mask = (mask == 1).float()
+
+                img = torch.where(forward_mask > 0.5, img, 0)
+                cv2.imshow("Depth Image", img.numpy().transpose(1, 2, 0) + 0.5)
+
+                cv2.waitKey(1)
+
+        self.gym.end_access_image_tensors(self.sim)
+
+        self.img_queue[:, 1:] = self.img_queue[:, :-1].clone().detach()
+        self.img_queue[:, 0, ...] = self.image_buf
 
     def compute_reward(self):
         """Detect successes and failures. Update reward and reset buffers."""
@@ -1150,7 +1183,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
             self._move_arm_to_desired_pose(env_ids, first_plug_pose,
                                            sim_steps=self.cfg_task.env.num_gripper_move_sim_steps)
-            self._refresh_task_tensors(update_tactile=False)
+            self._refresh_task_tensors()
             self._close_gripper(env_ids)  # torch.arange(self.num_envs)
             self.enable_gravity(-9.81)
         else:
@@ -1161,7 +1194,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self._zero_velocities(env_ids)
         self.refresh_base_tensors()
         self.refresh_env_tensors()
-        self._refresh_task_tensors(update_tactile=True)
+        self._refresh_task_tensors()
 
         # Update init grasp pos
         plug_hand_pos, plug_hand_quat = self.pose_world_to_hand_base(self.plug_pos, self.plug_quat)
@@ -1475,12 +1508,12 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         self._simulate_and_refresh()
 
-    def _simulate_and_refresh(self, update_tactile=False):
+    def _simulate_and_refresh(self):
         """Simulate one step, refresh tensors, and render results."""
 
         self.gym.simulate(self.sim)
         self.render()
-        self._refresh_task_tensors(update_tactile=update_tactile)
+        self._refresh_task_tensors()
 
     def _reset_buffers(self, env_ids):
         """Reset buffers. """
@@ -1850,7 +1883,6 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
     def reset(self):
         self.reset_idx(torch.arange(self.num_envs, device=self.device))
         self.compute_observations()
-        # self._refresh_task_tensors(update_tactile=True)
         super().reset()
         # self.obs_dict['hand_joints'] = self.hand_joints.clone().to(self.rl_device)
         self.obs_dict['priv_info'] = self.obs_dict['states'].clone().to(self.rl_device)
@@ -1865,11 +1897,73 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         return self.obs_dict
 
+    def update_external_cam_old(self, update_freq, update_delay):
+
+        width, height = self.res
+        self.image_buf = torch.zeros(self.num_envs, 1 if self.cam_type == 'd' else 3, height, width).to(self.device)
+
+        self.gym.render_all_camera_sensors(self.sim)
+        self.gym.start_access_image_tensors(self.sim)
+
+        for i in range(self.num_envs):
+            if update_freq[i] and update_delay[i]:
+                if self.cam_type == "rgb":
+                    im = self.gym.get_camera_image_gpu_tensor(
+                        self.sim,
+                        self.envs[i],
+                        self.camera_handles[i],
+                        gymapi.IMAGE_COLOR,
+                    )
+                    im = gymtorch.wrap_tensor(im)
+
+                    if self.save_im and False:
+                        trans_im = im.detach().clone()
+                        trans_im = (trans_im[..., :3]).float() / 255
+                        save_image(
+                            trans_im.view((height, width, 3)).permute(2, 0, 1).float(),
+                            "images/im{self.count:05}.png",
+                        )
+
+                    if i == 0 and self.cfg_task.external_cam.display:
+                        img = cv2.cvtColor(im.cpu().numpy(), cv2.COLOR_RGB2BGR)
+                        cv2.imshow("Follow camera", img)
+                        cv2.waitKey(1)
+
+                elif self.cam_type == "d":
+                    im = self.gym.get_camera_image_gpu_tensor(
+                        self.sim,
+                        self.envs[i],
+                        self.camera_handles[i],
+                        gymapi.IMAGE_DEPTH,
+                    )
+                    im = gymtorch.wrap_tensor(im)
+                    self.image_buf[i] = self.process_depth_image(im)
+
+                    if self.save_im and False:
+                        trans_im = im.detach().clone()
+                        trans_im = -1 / trans_im
+                        trans_im = trans_im / torch.max(trans_im)
+                        save_image(
+                            trans_im.view((height, width, 1)).permute(2, 0, 1).float(),
+                            f"images/dim/{self.count:05}.png",
+                        )
+
+                    if self.cfg_task.external_cam.display and i == 0:
+                        img = self.process_depth_image(im)
+                        img = img.cpu().numpy()
+                        cv2.imshow("Depth Image", np.expand_dims(img, 0).transpose(1, 2, 0) + 0.5)
+
+                        cv2.waitKey(1)
+            else:
+                self.image_buf[i] = self.img_queue[i, 0, ...].clone()
+
+        self.gym.end_access_image_tensors(self.sim)
+
+        self.img_queue[:, 1:] = self.img_queue[:, :-1].clone().detach()
+        self.img_queue[:, 0, ...] = self.image_buf
+
     def process_depth_image(self, depth_image):
         # These operations are replicated on the hardware
-        # self.resize_transform = transforms.Resize((self.cfg.depth.resized[1], self.cfg.depth.resized[0]),
-        #                                                       interpolation=transforms.InterpolationMode.BICUBIC)
-
         depth_image = self.crop_depth_image(depth_image)
         depth_image += self.dis_noise * 2 * (torch.rand(1) - 0.5)[0]
         depth_image = torch.clip(depth_image, -self.far_clip, -self.near_clip)
@@ -1885,4 +1979,3 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
     def crop_depth_image(self, depth_image):
         # crop 30 pixels from the left and right and and 20 pixels from bottom and return croped image
         return depth_image
-        # return depth_image[:-2, 4:-4]

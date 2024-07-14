@@ -9,6 +9,45 @@ import numpy as np
 import functools
 
 
+class DepthImageProcessor:
+    def __init__(self, cfg, dis_noise, far_clip, near_clip):
+        self.cfg = cfg
+        self.dis_noise = dis_noise
+        self.far_clip = far_clip
+        self.near_clip = near_clip
+        # self.resize_transform = transforms.Resize(
+        #     (self.cfg.depth.resized[1], self.cfg.depth.resized[0]),
+        #     interpolation=transforms.InterpolationMode.BICUBIC
+        # )
+    def process_depth_image(self, depth_images):
+        # Ensure the input is in the correct shape
+        if depth_images.dim() == 3:
+            depth_images = depth_images.unsqueeze(0)
+
+        depth_images = self.crop_depth_image(depth_images)
+        noise = self.dis_noise * 2 * (torch.rand(depth_images.shape[0], 1, 1, 1, device=depth_images.device) - 0.5)
+        depth_images += noise
+        depth_images = torch.clip(depth_images, -self.far_clip, -self.near_clip)
+        depth_images = self.normalize_depth_image(depth_images)
+        # depth_images = self.resize_depth_images(depth_images)
+
+        return depth_images.squeeze(0) if depth_images.size(0) == 1 else depth_images
+
+    def normalize_depth_image(self, depth_images):
+        depth_images = depth_images * -1
+        depth_images = (depth_images - self.near_clip) / (self.far_clip - self.near_clip) - 0.5
+        return depth_images
+
+    def crop_depth_image(self, depth_images):
+        # Crop 30 pixels from the left and right and 20 pixels from the bottom and return cropped image
+        return depth_images
+        # return depth_images[:, :, 30:-30, :-20]
+
+    def resize_depth_images(self, depth_images):
+        resized_images = torch.cat([self.resize_transform(img).unsqueeze(0) for img in depth_images])
+        return resized_images
+
+
 class RotationTransformer:
     valid_reps = [
         'axis_angle',

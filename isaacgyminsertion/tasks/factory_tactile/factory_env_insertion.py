@@ -601,7 +601,7 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
             plug_pose.p.z = self.cfg_base.env.table_height
             plug_pose.r = gymapi.Quat(0.0, 0.0, 0.0, 1.0)
 
-            plug_handle = self.gym.create_actor(env_ptr, plug_assets[j], plug_pose, 'plug', i, 0, 0)
+            plug_handle = self.gym.create_actor(env_ptr, plug_assets[j], plug_pose, 'plug', i, 0, 1)
             self.plug_actor_ids_sim.append(actor_count)
             actor_count += 1
 
@@ -611,7 +611,7 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
             socket_pose.p.z = self.cfg_base.env.table_height
             socket_pose.r = gymapi.Quat(0.0, 0.0, 0.0, 1.0)
 
-            socket_handle = self.gym.create_actor(env_ptr, socket_assets[j], socket_pose, 'socket', i, 0, 0)
+            socket_handle = self.gym.create_actor(env_ptr, socket_assets[j], socket_pose, 'socket', i, 0, 2)
             self.socket_actor_ids_sim.append(actor_count)
             actor_count += 1
 

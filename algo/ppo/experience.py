@@ -543,6 +543,7 @@ class SimLogger():
         if self.env.external_cam:
             log_items.update({
                 'img_shape': env.image_buf.shape[1:],
+                'seg_shape': env.seg_buf.shape[1:],
             })
         if self.env.cfg_task.env.tactile:
             log_items.update({
@@ -613,6 +614,7 @@ class SimLogger():
         if self.env.external_cam:
             log_data.update({
                 'img': self.env.image_buf.clone(),
+                'seg': self.env.seg_buf.clone(),
             })
         if self.env.cfg_task.env.tactile:
             log_data.update({

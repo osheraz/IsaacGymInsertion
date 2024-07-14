@@ -35,7 +35,6 @@ tactile: # Pulling from task
   show_detect: False #
   diff: True
   crop_roi: True
-  tactile_freq: 2
 
   # before cropping
   encoder:
@@ -50,7 +49,7 @@ env:
     numEnvs: ${resolve_default:128,${...num_envs}}
     numObservations: 18 #
     numObsStudent: 9 #
-    numStates: 27 #
+    numStates: 14 #
     numActions: 6 # [position, ori]
     numTargets: 6 # [position, ori]
     action_latency_max: 15
@@ -78,11 +77,19 @@ env:
       schedule_steps: 1000000
       schedule_freq: 500 # schedule every 500 steps for stability
 
-    actionDelayProbMax: 0.3
     actionLatencyMax: 15
     actionLatencyScheduledSteps: 10_000_000
+    actionDelayProbMax: 0.3
+
     plugObsDelayProb: 0.3
-    maxObjectSkipObs: 2
+    ImgDelayProb: 0.3
+    TactileDelayProb: 0.3
+
+    # Sim runs at 60 Hz
+    maxObjectSkipObs: 2  # i.e max 30hz
+    maxSkipImg: 4
+    maxSkipTactile: 4
+
     scalePosProb: 0.3
     scaleRotProb: 0.3
 
@@ -123,6 +130,7 @@ external_cam:
   far_clip: 1.0
   near_clip: 0.0
   dis_noise: 0.001
+  display: False
 
 randomize:
     force_scale: 0.0
