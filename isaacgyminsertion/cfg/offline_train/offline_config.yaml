@@ -27,8 +27,8 @@ tactile_crop_h: 32
 train:
   # basic training hyperparameters
   epochs: 50
-  train_batch_size: 64
-  val_batch_size: 64
+  train_batch_size: 128
+  val_batch_size: 128
   learning_rate: 1e-4
   train_test_split: 0.98
   action_regularization: False # propagate gradients for action loss
@@ -42,7 +42,7 @@ train:
   plateau_factor: 0.5
 
   # loss scaling
-  latent_scale: 1.0
+  latent_scale: 0.2
   action_scale: 1.0
 
   # Train params for on screen logging
@@ -55,12 +55,12 @@ train:
   only_test: False
   only_validate: False
 
-  keys: ["eef_pos", "action", "latent", "obs_hist", "noisy_socket_pos",
+  obs_keys: ["eef_pos", "action", "latent", "obs_hist", "noisy_socket_pos",
           "hand_joints", "plug_hand_quat", "plug_hand_pos",
           "plug_pos_error", "plug_quat_error"]
 
   # normalize data
-  normalize_keys: ["eef_pos",
+  normalize_obs_keys: ["eef_pos",
                    "noisy_socket_pos",
                    "action",
                    "plug_hand_quat",

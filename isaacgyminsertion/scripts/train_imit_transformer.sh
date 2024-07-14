@@ -1,7 +1,7 @@
 #!/bin/bash
 GPUS=${1:-0}
 SEED=${2:-42}
-CACHE=${3:-gt_test}
+CACHE=${3:-no_phys_params}
 NUM_ENVS=${4:-1}
 HEADLESS=${5:-True}
 
@@ -27,7 +27,7 @@ offline_training_w_env=True \
 offline_train.train.action_regularization=True \
 offline_train.train.load_checkpoint=True \
 offline_train.train.student_ckpt_path="${student_ckpt_path}" \
-task.env.numStates=7 \
+task.env.numStates=14 \
 task.env.numObservations=18 \
 task.env.tactile=True \
 task.external_cam.external_cam=True \

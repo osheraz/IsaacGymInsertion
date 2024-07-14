@@ -661,6 +661,7 @@ class PPO(object):
         while save_trajectory or (total_dones < total_env_runs):
             # log video during test
             self.log_video()
+            # self.it += 1
             # getting data from data logger
             latent = None
             if offline_test:
@@ -708,7 +709,7 @@ class PPO(object):
             if save_trajectory or offline_test:
                 self.data_logger.log_trajectory_data(action, latent, done, save_trajectory=save_trajectory)
                 total_dones += len(done.nonzero())
-                if total_dones > milestone:
+                if total_dones >= milestone:
                     print('[Test] success rate:', num_success / total_dones)
                     milestone += 100
 

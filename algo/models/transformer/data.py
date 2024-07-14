@@ -54,7 +54,7 @@ def get_last_sequence(input_tensor, progress_buf, sequence_length):
 class DataNormalizer:
     def __init__(self, cfg, file_list, save_path=None):
         self.cfg = cfg
-        self.normalize_keys = self.cfg.train.normalize_keys
+        self.normalize_obs_keys = self.cfg.train.normalize_obs_keys
         self.normalization_path = self.cfg.train.normalize_file if self.cfg.train.load_stats else save_path + '/normalization.pkl'
         self.stats = {"mean": {}, "std": {}}
         self.file_list = file_list
@@ -98,7 +98,7 @@ class DataNormalizer:
 
     def create_normalization_file(self):
         """Create a new normalization file."""
-        for norm_key in self.normalize_keys:
+        for norm_key in self.normalize_obs_keys:
             print(f'Creating new normalization file for {norm_key}')
             data = self.aggregate_data(norm_key)
             # Pass the correction argument here if needed
@@ -177,7 +177,7 @@ class DataNormalizer:
             self.stats['std']["plug_hand_sin_cos_euler"] = np.std(sin_cos_repr, axis=0)
 
         else:
-            # Handle other normalization keys
+            # Handle other normalization obs_keys
             self.stats['mean'][norm_key] = np.mean(data, axis=0)
             self.stats['std'][norm_key] = np.std(data, axis=0)
 
@@ -196,7 +196,7 @@ class DataNormalizer:
 class TactileDataset(Dataset):
     def __init__(self, traj_files, sequence_length=500, full_sequence=False, stats=None, stride=5, tactile_channel=3,
                  img_transform=None, tactile_transform=None, include_img=True, include_lin=True, include_tactile=True,
-                 keys=None):
+                 obs_keys=None):
         """
         Initialize the TactileDataset.
 
@@ -212,7 +212,7 @@ class TactileDataset(Dataset):
             include_img (bool): Whether to include image data.
             include_lin (bool): Whether to include linear data.
             include_tactile (bool): Whether to include tactile data.
-            keys (list): Keys for the data to extract.
+            obs_keys (list): Keys for the data to extract.
         """
 
         self.all_folders = traj_files
@@ -220,7 +220,7 @@ class TactileDataset(Dataset):
         self.stride = stride
         self.full_sequence = full_sequence
         self.stats = stats
-        self.keys = keys
+        self.obs_keys = obs_keys
         self.include_img = include_img
         self.include_lin = include_lin
         self.include_tactile = include_tactile
@@ -325,24 +325,24 @@ class TactileDataset(Dataset):
         mask = np.ones(self.sequence_length)
         mask[:padding_length] = 0
 
-        first_obs = {key: data[key][0] for key in self.keys}
+        first_obs = {key: data[key][0] for key in self.obs_keys}
 
         tactile_input = self._load_and_preprocess_tactile(tactile_folder, start_idx, diff_tac) if self.include_tactile else torch.zeros(1)
         img_input = self._load_and_preprocess_image(img_folder, start_idx) if self.include_img else torch.zeros(1)
 
-        data_seq = {key: self.extract_sequence(data, key, start_idx) for key in self.keys}
+        data_seq = {key: self.extract_sequence(data, key, start_idx) for key in self.obs_keys}
         eef_pos, noisy_socket_pos, obj_pos_rpy = self._normalize_data(data_seq, diff, first_obs)
         action = data_seq["action"]
         obs_hist = data_seq["obs_hist"]
         latent = data_seq["latent"]
 
-        noisy_socket_pos_noise = np.random.normal(loc=0, scale=0.002, size=noisy_socket_pos.shape)
-        obj_pos_rpy_noise = np.random.normal(loc=0, scale=0.002, size=obj_pos_rpy.shape)
+        noisy_socket_pos_noise = 0 * np.random.normal(loc=0, scale=0.002, size=noisy_socket_pos.shape)
+        obj_pos_rpy_noise = 0 * np.random.normal(loc=0, scale=0.002, size=obj_pos_rpy.shape)
 
-        lin_input = np.concatenate([eef_pos,
+        lin_input = np.concatenate([eef_pos,    # 12
                                     noisy_socket_pos + noisy_socket_pos_noise,
-                                    action,
-                                    obj_pos_rpy + obj_pos_rpy_noise
+                                    action, # 6
+                                    obj_pos_rpy + obj_pos_rpy_noise # 6
                                     ], axis=-1)
 
         tensors = [self.to_torch(tensor) if not isinstance(tensor, torch.Tensor) else tensor for tensor in
@@ -414,8 +414,8 @@ class TactileTestDataset(Dataset):
             data_dict["plug_hand_quat"] = data_dict["plug_hand_pos"][:, 3:]
             data_dict["plug_hand_pos"] = data_dict["plug_hand_pos"][:, :3]
 
-        keys = ["eef_pos", "action", "latent", "plug_hand_pos", "plug_hand_quat"]
-        data_seq = {key: self.extract_sequence(data_dict, key, start_idx) for key in keys}
+        obs_keys = ["eef_pos", "action", "latent", "plug_hand_pos", "plug_hand_quat"]
+        data_seq = {key: self.extract_sequence(data_dict, key, start_idx) for key in obs_keys}
 
         tactile_input = [np.load(os.path.join(tactile_folder, f'tactile_{i}.npz'))['tactile'] for i in
                          range(start_idx, start_idx + self.sequence_length)]

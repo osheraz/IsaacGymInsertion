@@ -434,7 +434,7 @@ class Runner:
                                   include_img=self.cfg.model.use_img,
                                   include_lin=self.cfg.model.use_lin,
                                   include_tactile=self.cfg.model.use_tactile,
-                                  keys=self.cfg.train.keys,
+                                  obs_keys=self.cfg.train.obs_keys,
                                   )
 
         train_dl = DataLoader(train_ds,
@@ -455,7 +455,7 @@ class Runner:
                                 include_img=self.cfg.model.use_img,
                                 include_lin=self.cfg.model.use_lin,
                                 include_tactile=self.cfg.model.use_tactile,
-                                keys=self.cfg.train.keys,
+                                obs_keys=self.cfg.train.obs_keys,
                                 )
 
         val_dl = DataLoader(val_ds,

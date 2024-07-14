@@ -1,8 +1,8 @@
 #!/bin/bash
 GPUS=${1:-0}
 SEED=${2:-42}
-CACHE=${3:-gt_test}
-NUM_ENVS=${4:-100}
+CACHE=${3:-no_phys_params}
+NUM_ENVS=${4:-40}
 HEADLESS=${5:-True}
 
 array=( $@ )
@@ -20,9 +20,9 @@ test=True \
 task.data_logger.collect_data=True \
 task.env.numEnvs=${NUM_ENVS} \
 task.env.tactile=False \
-task.external_cam.external_cam=False \
+task.external_cam.external_cam=True \
 train.ppo.priv_info=True \
-task.env.numStates=7 \
+task.env.numStates=14 \
 task.env.numObservations=18 \
 task.data_logger.sub_folder="datastore_${SEED}_${CACHE}" \
 train.algo=PPO \

@@ -766,7 +766,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             plug_hand_quat,  # 4
             plug_pos_error,  # 3
             plug_quat_error,  # 4
-            physics_params,  # 6
+            # physics_params,  # 13
             # finger_contacts,         # 3
             # self.plug_pcd.view(self.num_envs, -1),  # 3 * num_points
             # TODO: add extrinsics contact (point cloud) -> this will encode the shape (check this)
@@ -928,22 +928,21 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         roll, pitch, _ = get_euler_xyz(self.plug_quat.clone())
         roll[roll > np.pi] -= 2 * np.pi
         pitch[pitch > np.pi] -= 2 * np.pi
-        self.degrasp_buf[:] = (torch.abs(roll) > 0.3) | (torch.abs(pitch) > 0.3)
+        self.degrasp_buf[:] = (torch.abs(roll) > 0.4) | (torch.abs(pitch) > 0.4)
 
         # check if object is too far from gripper
-        fingertips_plug_dist = (torch.norm(self.left_finger_pos - self.plug_pos, p=2, dim=-1) > 0.12) | (
-                torch.norm(self.right_finger_pos - self.plug_pos, p=2, dim=-1) > 0.12) | (
-                                       torch.norm(self.middle_finger_pos - self.plug_pos, p=2, dim=-1) > 0.12)
+        # fingertips_plug_dist = (torch.norm(self.left_finger_pos - self.plug_pos, p=2, dim=-1) > 0.2) | (
+        #         torch.norm(self.right_finger_pos - self.plug_pos, p=2, dim=-1) > 0.2) | (
+        #                                torch.norm(self.middle_finger_pos - self.plug_pos, p=2, dim=-1) > 0.2)
         # self.degrasp_buf[:] |= fingertips_plug_dist
 
-        # TODO: Reset at grasping fails
-        if self.cfg_task.data_logger.collect_data or self.cfg_task.data_logger.collect_test_sim:
-            if not self.cfg_task.collect_rotate:
-                self.reset_buf[:] |= self.degrasp_buf[:]
+        if ((self.cfg_task.data_logger.collect_data or self.cfg_task.data_logger.collect_test_sim)
+                and not self.cfg_task.collect_rotate):
+            self.reset_buf[:] |= self.degrasp_buf[:]
 
         # If plug is too far from socket pos
-        self.far_from_goal_buf[:] = torch.norm(self.plug_pos - self.socket_pos, p=2, dim=-1) > 0.2
-        # self.reset_buf[:] |= self.far_from_goal_buf[:]
+        self.far_from_goal_buf[:] = torch.norm(self.plug_pos - self.socket_pos, p=2, dim=-1) > 0.3
+        self.reset_buf[:] |= self.far_from_goal_buf[:]
 
     def _reset_predefined_environment(self, env_ids):
 

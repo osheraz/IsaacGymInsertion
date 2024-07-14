@@ -1,7 +1,7 @@
 #!/bin/bash
 GPUS=${1:-0}
 SEED=${2:-42}
-CACHE=${3:-gt_test}
+CACHE=${3:-no_phys_params}
 NUM_ENVS=${4:-1}
 HEADLESS=${5:-True}
 
@@ -29,7 +29,6 @@ offline_train.model.transformer.load_tact=False \
 offline_train.model.transformer.tact_path="${tact_path}" \
 task.env.tactile=False \
 task.external_cam.external_cam=False \
-task.env.numObsHist=1 \
 task.data_logger.base_folder="${data}" \
 task.data_logger.sub_folder="datastore_${SEED}_${CACHE}" \
 offline_train.train.normalize_file="${path_norm}" \
