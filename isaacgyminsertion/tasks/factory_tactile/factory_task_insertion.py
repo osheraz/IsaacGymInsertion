@@ -275,8 +275,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             )
             self.image_buf = torch.zeros(self.num_envs, 1 if self.cam_type == 'd' else 3,
                                          self.res[1], self.res[0]).to(self.device)
-            self.seg_buf = torch.zeros(self.num_envs, 1 if self.cam_type == 'd' else 3,
-                                       self.res[1], self.res[0]).to(self.device)
+            self.seg_buf = torch.zeros(self.num_envs, self.res[1], self.res[0], dtype=torch.int32).to(self.device)
 
             self.init_external_cam()
 
@@ -855,11 +854,11 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         self.gym.render_all_camera_sensors(self.sim)
         self.gym.start_access_image_tensors(self.sim)
+        update = torch.logical_and(update_freq, update_delay)
 
         if self.cam_type == "rgb":
-            self.image_buf = torch.where(update_freq and update_delay,
-                                         torch.stack(self.cam_renders),
-                                         self.image_buf).to(self.device)
+            processed_images = torch.stack(self.cam_renders).unsqueeze(1)
+            self.image_buf[update] = processed_images[update]
 
             if self.cfg_task.external_cam.display:
                 img = cv2.cvtColor(self.image_buf[0].cpu().numpy(), cv2.COLOR_RGB2BGR)
@@ -867,20 +866,18 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                 cv2.waitKey(1)
 
         elif self.cam_type == "d":
-            self.image_buf = torch.where(update_freq and update_delay, self.depth_process.process_depth_image(
-                torch.stack(self.cam_renders).unsqueeze(0)), self.image_buf).to(self.device)
-
-            self.seg_buf = torch.where(update_freq and update_delay,
-                                       torch.stack(self.seg_renders).unsqueeze(0),
-                                       self.seg_buf).to(self.device)
+            self.image_buf[update] = self.depth_process.process_depth_image(torch.stack(self.cam_renders)
+                                                                            [update].unsqueeze(1))
+            self.seg_buf[update] = torch.stack(self.seg_renders)[update]
 
             if self.cfg_task.external_cam.display:
                 img = self.image_buf[0].cpu().clone()
                 mask = self.seg_buf[0].cpu().clone()
-                forward_mask = (mask == 1).float()
-
-                img = torch.where(forward_mask > 0.5, img, 0)
                 cv2.imshow("Depth Image", img.numpy().transpose(1, 2, 0) + 0.5)
+
+                forward_mask = (mask == 2).float()
+                img = torch.where(forward_mask > 0.5, img, 0)
+                cv2.imshow("Mask Image", img.numpy().transpose(1, 2, 0) + 0.5)
 
                 cv2.waitKey(1)
 
@@ -1184,7 +1181,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             self._move_arm_to_desired_pose(env_ids, first_plug_pose,
                                            sim_steps=self.cfg_task.env.num_gripper_move_sim_steps)
             self._refresh_task_tensors()
-            self._close_gripper(env_ids)  # torch.arange(self.num_envs)
+            self._close_gripper(env_ids)
             self.enable_gravity(-9.81)
         else:
             self._reset_predefined_environment(env_ids)
@@ -1205,7 +1202,6 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             if self.complete_video_frames is None:
                 self.complete_video_frames = []
             else:
-                # print('Saving video')
                 self.complete_video_frames = self.video_frames[:]
             self.video_frames = []
 
@@ -1218,19 +1214,25 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         # Slightly change the external cam pose
         if self.external_cam:
-            for env_id in env_ids:
-                random_pos_error = np.random.normal(0, self.pos_error_std, 3)
-                random_rot_error = np.random.normal(0, self.rot_error_std, 3)
-                perturbed_position = np.array(self.init_camera_pos) + random_pos_error
-                perturbed_rotation = np.array(self.init_camera_rot) + random_rot_error
+            # angles = np.linspace(-np.pi / 4, np.pi / 4, self.num_envs)
+            angles = np.random.normal(loc=0, scale=np.pi / 8, size=self.num_envs)
+            angles = np.clip(angles, -np.pi/4, np.pi/4)
 
-                # self.gym.set_camera_location(self.camera_handles[env_id], self.envs[env_id],
-                #                              gymapi.Vec3(perturbed_position[0],
-                #                                          perturbed_position[1],
-                #                                          perturbed_position[2]),
-                #                              gymapi.Vec3(perturbed_rotation[0],
-                #                                          perturbed_rotation[1],
-                #                                          perturbed_rotation[2]))
+            for env_id in env_ids:
+                radius = np.random.uniform(0.2, 0.4)
+                center_x, center_y, _ = self.plug_grasp_pos[env_id].cpu()
+                angle = angles[env_id]
+
+                x_pos = center_x + radius * np.cos(angle)
+                y_pos = center_y + radius * np.sin(angle)
+                z_pos = self.init_camera_pos[2]
+                perturbed_position = np.array([x_pos, y_pos, z_pos]) + np.random.normal(0, self.pos_error_std, 3)
+
+                roll = self.init_camera_rot[0]
+                pitch = self.init_camera_rot[1]
+                yaw = np.arctan2(center_y - y_pos, center_x - x_pos)
+
+                perturbed_rotation = np.array([roll, pitch, yaw]) + np.random.normal(0, np.deg2rad(self.rot_error_std), 3)
 
                 _, trans = self.make_handle_trans(self.res[0], self.res[1], env_id,
                                                   perturbed_position, perturbed_rotation)
@@ -1549,6 +1551,8 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             self.tactile_imgs[env_ids, ...] = 0.
         if self.external_cam:
             self.img_queue[env_ids] = 0
+            self.image_buf[env_ids] *= 0
+            self.seg_buf[env_ids] *= 0
         if self.cfg_task.env.compute_contact_gt:
             self.gt_extrinsic_contact[env_ids] *= 0
 

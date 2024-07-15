@@ -47,7 +47,7 @@ def matrix2trans(matrix):
     return translation, euler
 
 
-class allsight_renderer:
+class AllSightRenderer:
     def __init__(
             self,
             cfg: DictConfig,
@@ -57,6 +57,7 @@ class allsight_renderer:
             bg_id=None,
             headless=False,
             finger_idx: int = 0,
+            scale=1.08,
     ):
 
         self.render_config = cfg
@@ -64,13 +65,12 @@ class allsight_renderer:
         self.DEBUG = False
 
         self.finger_idx = finger_idx
+        obj_scale = scale
 
         if randomize:
-            bg_id = 12 # random.randint(12, 19)
-            obj_scale = 1.04 # 0.01 * random.randint(115, 130)
+            bg_id = random.randint(12, 19)
         else:
             bg_id = 15
-            obj_scale = 1.0
 
         # Create renderer
         self.zrange = 0.002
@@ -101,16 +101,13 @@ class allsight_renderer:
         if obj_path is not None:
             self.obj_loader = object_loader(obj_path)
             obj_trimesh = trimesh.load(obj_path)
-            obj_trimesh.vertices[:, 0] *= obj_scale  # Scale x
-            obj_trimesh.vertices[:, 1] *= obj_scale  # Scale y
-            # obj_trimesh.apply_scale(obj_scale)
+            obj_trimesh.apply_scale(obj_scale)
             self.obj_mesh = obj_trimesh
             obj_euler = R.from_quat([0.0, 0.0, 0.0, 1.0]).as_euler("xyz", degrees=False)
             self.renderer.add_object(obj_trimesh, "object", orientation=obj_euler)
 
         self.press_depth = 0.001
         self.randomize_light = False
-
 
     def get_background(self, frame="gel"):
         """
@@ -232,7 +229,7 @@ def main(cfg: DictConfig) -> None:
 
     press_depth = 0.000  # in meter
 
-    allsight_render = allsight_renderer(cfg, obj_path, randomize=False)
+    allsight_render = AllSightRenderer(cfg, obj_path, randomize=False)
 
     from PIL import Image
 

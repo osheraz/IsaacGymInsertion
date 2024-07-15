@@ -30,11 +30,11 @@ tactile: # Pulling from task
     height: 128 # 224 # 480 | 224 for the gan
     visualize_gui: True
 
-  with_bg: True # add background reference frame
+  with_bg: False # add background reference frame
   show_depth: False # visualize depth
   show_detect: False #
   diff: True
-  crop_roi: True
+  crop_roi: False
 
   # before cropping
   encoder:
@@ -105,8 +105,8 @@ env:
     socket_base_height: 0.003
     plug_grasp_threshold: 0.01
 
-    tactile: False
-    tactile_display_viz: False
+    tactile: True
+    tactile_display_viz: True
     tactile_wrt_force: False
 
     compute_contact_gt: False
@@ -142,7 +142,7 @@ randomize:
     plug_pos_xy_initial: [0.50, 0.0, 0.0]  # z 0.03  initial XY position of plug on table
     plug_pos_xy_noise: [ 0.01,  0.01] # noise on plug position
     plug_quat_noise: [0.0, 0.0, 0.0, 0.0]
-    plug_pos_z_noise_bounds: [ 0.003, 0.015 ]  # noise on socket offset from table
+    plug_pos_z_noise_bounds: [ 0.005, 0.015 ]  # noise on socket offset from table
 
     socket_pos_xy_initial: [0.5, 0.0, 0.0]  # initial XY position of plug on table # round_hole_2in  width = 0.1016, length = 0.09144
     socket_pos_xy_noise: [0.01, 0.01]  # noise on socket position

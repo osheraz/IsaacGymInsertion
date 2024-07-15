@@ -44,7 +44,7 @@ from isaacgym import gymapi
 from isaacgyminsertion.tasks.factory_tactile.factory_base import FactoryBaseTactile
 from isaacgyminsertion.tasks.factory_tactile.schema.factory_schema_class_env import FactoryABCEnv
 from isaacgyminsertion.tasks.factory_tactile.schema.factory_schema_config_env import FactorySchemaConfigEnv
-from isaacgyminsertion.allsight.experiments.allsight_render import allsight_renderer
+from isaacgyminsertion.allsight.experiments.allsight_render import AllSightRenderer
 import isaacgyminsertion.tasks.factory_tactile.factory_control as fc
 import trimesh
 import open3d as o3d
@@ -581,9 +581,9 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
                 self.gym.begin_aggregate(env_ptr, max_agg_bodies, max_agg_shapes, True)
 
             if self.cfg_env.sim.disable_kuka_collisions:
-                kuka_handle = self.gym.create_actor(env_ptr, kuka_asset, kuka_pose, 'kuka', i + self.num_envs, 0, 0)
+                kuka_handle = self.gym.create_actor(env_ptr, kuka_asset, kuka_pose, 'kuka', i + self.num_envs, 0, 1)
             else:
-                kuka_handle = self.gym.create_actor(env_ptr, kuka_asset, kuka_pose, 'kuka', i, 0, 0)
+                kuka_handle = self.gym.create_actor(env_ptr, kuka_asset, kuka_pose, 'kuka', i, 0, 1)
             self.kuka_actor_ids_sim.append(actor_count)
             actor_count += 1
 
@@ -601,7 +601,7 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
             plug_pose.p.z = self.cfg_base.env.table_height
             plug_pose.r = gymapi.Quat(0.0, 0.0, 0.0, 1.0)
 
-            plug_handle = self.gym.create_actor(env_ptr, plug_assets[j], plug_pose, 'plug', i, 0, 1)
+            plug_handle = self.gym.create_actor(env_ptr, plug_assets[j], plug_pose, 'plug', i, 0, 2)
             self.plug_actor_ids_sim.append(actor_count)
             actor_count += 1
 
@@ -611,7 +611,7 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
             socket_pose.p.z = self.cfg_base.env.table_height
             socket_pose.r = gymapi.Quat(0.0, 0.0, 0.0, 1.0)
 
-            socket_handle = self.gym.create_actor(env_ptr, socket_assets[j], socket_pose, 'socket', i, 0, 2)
+            socket_handle = self.gym.create_actor(env_ptr, socket_assets[j], socket_pose, 'socket', i, 0, 3)
             self.socket_actor_ids_sim.append(actor_count)
             actor_count += 1
 
@@ -683,8 +683,8 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
             self.plug_heights.append(self.asset_info_insertion[subassembly][components[0]]['length'])
             self.socket_heights.append(self.asset_info_insertion[subassembly][components[1]]['height'])
             if (any('rectangular' in sub for sub in components) or
-                any('square' in sub for sub in components) or
-                any('triangle' in sub for sub in components)):
+                    any('square' in sub for sub in components) or
+                    any('triangle' in sub for sub in components)):
                 self.plug_widths.append(self.asset_info_insertion[subassembly][components[0]]['width'])
                 self.plug_depths.append(self.asset_info_insertion[subassembly][components[0]]['depth'])
                 self.socket_widths.append(self.asset_info_insertion[subassembly][components[1]]['width'])
@@ -778,14 +778,18 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
 
             mesh_root = os.path.join(os.path.dirname(__file__), '..', '..', '..', 'assets', 'factory', 'mesh',
                                      'factory_insertion')
+            plug_scale = self.asset_info_insertion[subassembly][components[0]]['scale']
 
             if self.cfg['env']['tactile']:
-                self.tactile_handles.append([allsight_renderer(self.cfg_tactile,
-                                                               os.path.join(mesh_root, plug_file), randomize=True,
-                                                               finger_idx=i) for i in range(len(self.fingertips))])
+                self.tactile_handles.append([AllSightRenderer(self.cfg_tactile,
+                                                              os.path.join(mesh_root, plug_file),
+                                                              randomize=True,
+                                                              finger_idx=i,
+                                                              scale=plug_scale)
+                                             for i in range(len(self.fingertips))])
 
             if self.cfg['env']['compute_contact_gt']:
-                assert 'check this'
+                assert 'Make sure socket pos is constant across all the envs'
                 socket_pos = [0.5, 0, 0.001]
                 if subassembly not in self.subassembly_extrinsic_contact:
                     self.subassembly_extrinsic_contact[subassembly] = ExtrinsicContact(
