@@ -670,11 +670,7 @@ class PPO(object):
                     last_obs = self.get_last_student_obs(self.data_logger.data_logger.get_data(), stats)
                     tactile, img, lin_input, gt_pos_rpy = last_obs
                     # getting the latent data from the student model
-                    if self.full_config.offline_train.model.transformer.full_sequence:
-                        latent = get_latent(tactile, img, lin_input)[self.env_ids,
-                                                                     self.env.progress_buf.view(-1, 1), :].squeeze(1)
-                    else:
-                        latent, out_pos_rpy = get_latent(tactile, img, lin_input, gt_pos_rpy)
+                    latent, out_pos_rpy = get_latent(tactile, img, lin_input, gt_pos_rpy)
 
                     if False:
                         stats_mean = torch.cat([stats["mean"]["plug_hand_pos_diff"],
@@ -716,13 +712,14 @@ class PPO(object):
         print('[LastTest] success rate:', num_success / total_dones)
         return num_success, total_dones
 
-    def get_last_student_obs(self, data, normalize_dict, diff=True, diff_tac=True, display=True):
+    def get_last_student_obs(self, data, normalize_dict, diff=False, diff_tac=True, display=True, obj_id=2):
 
         sequence_length = self.full_config.offline_train.model.transformer.sequence_length
 
         # E, T, F, C, W, H = tactile.shape
         tactile = data["tactile"]
         img = data["img"]
+        seg = data["seg"]
         eef_pos = data['eef_pos']
         noisy_socket_pos = data["noisy_socket_pos"][:, :, :3]
         plug_hand_quat = data["plug_hand_quat"]
@@ -768,7 +765,7 @@ class PPO(object):
             eef_pos,
             noisy_socket_pos,
             action,
-            obj_pos_rpy
+            # obj_pos_rpy
         ], dim=-1)
 
         # Adjust tactile and lin_input based on the sequence length and progress buffer
@@ -778,19 +775,21 @@ class PPO(object):
             tactile_adjusted = tactile_adjusted - tactile[:, 1, ...] + 1e-6
 
         img = get_last_sequence(img, self.env.progress_buf, sequence_length)
+        seg = get_last_sequence(seg, self.env.progress_buf, sequence_length)
+
+        seg = (seg == obj_id).float()
+        img = img * seg
 
         if display:
-            self.display_obs(tactile_adjusted, img)
+            self.display_obs(tactile_adjusted, img, seg)
 
-        if self.full_config.offline_train.model.transformer.full_sequence:
-            return tactile, img, lin_input, obj_pos_rpy
+        return tactile_adjusted, img, seg, lin_input, obj_pos_rpy
 
-        return tactile_adjusted, img, lin_input, obj_pos_rpy
-
-    def display_obs(self, tactile, depth):
+    def display_obs(self, tactile, depth, seg):
 
         tactile = tactile[:,-1:, ...]
         depth = depth[:,-1:, ...]
+        seg = seg[:,-1:, ...]
 
         for t in range(tactile.shape[1]):  # Iterate through the sequence of images
             # Extract the images for all fingers at time step 't' and adjust dimensions for display.
@@ -817,7 +816,12 @@ class PPO(object):
 
             d = depth[0, t].cpu().detach().numpy()
             d = np.transpose(d, (1, 2, 0))
-            cv2.imshow('Depth Sequence', d + 0.5)  # Display the concatenated image
+            cv2.imshow('Depth Sequence', d)  # Display the concatenated image
+
+            d = seg[0, t].cpu().detach().numpy()
+            d = np.transpose(d, (1, 2, 0))
+            cv2.imshow('Seg Sequence', d)  # Display the concatenated image
+
 
             cv2.imshow('Tactile Sequence', concatenated_img + 0.5)  # Display the concatenated image
 

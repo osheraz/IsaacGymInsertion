@@ -1,21 +1,15 @@
 from torch.utils.data import Dataset
 from torchvision import transforms
 from glob import glob
-import matplotlib.pyplot as plt
 import numpy as np
 import torch
-from torch import nn
-from scipy.spatial.transform import Rotation
-import torchvision.transforms.functional as F
 import os
 import pickle
 from scipy.spatial.transform import Rotation
 from pathlib import Path
 from tqdm import tqdm
 import random
-from isaacgyminsertion.tasks.factory_tactile.factory_utils import quat2R, RotationTransformer
-
-import cv2
+from isaacgyminsertion.tasks.factory_tactile.factory_utils import RotationTransformer
 
 
 def get_last_sequence(input_tensor, progress_buf, sequence_length):
@@ -56,7 +50,7 @@ class DataNormalizer:
     def __init__(self, cfg, file_list, save_path=None):
         self.cfg = cfg
         self.normalize_obs_keys = self.cfg.train.normalize_obs_keys
-        self.normalization_path = self.cfg.train.normalize_file if self.cfg.train.load_stats  else save_path + '/normalization.pkl'
+        self.normalization_path = self.cfg.train.normalize_file if self.cfg.train.load_stats else save_path + '/normalization.pkl'
         self.stats = {"mean": {}, "std": {}}
         self.file_list = file_list
         self.remove_failed_trajectories()
@@ -179,8 +173,12 @@ class DataNormalizer:
             self.stats['mean']["plug_hand_sin_cos_euler"] = np.mean(sin_cos_repr, axis=0)
             self.stats['std']["plug_hand_sin_cos_euler"] = np.std(sin_cos_repr, axis=0)
 
-        # elif norm_key == 'eef_pos':
-        #     self.stats['mean']['eef_pos'] self.rot_tf.forward(quat_in_robot_base)
+        elif norm_key == 'eef_pos':
+            eef_pos_rot6d = np.concatenate((data[:, 3:], self.rot_tf.forward(data[:, 3:])), axis=1)
+            self.stats['mean']['eef_pos_rot6d'] = np.mean(eef_pos_rot6d, axis=0)
+            self.stats['std']['eef_pos_rot6d'] = np.std(eef_pos_rot6d, axis=0)
+            self.stats['mean'][norm_key] = np.mean(data, axis=0)
+            self.stats['std'][norm_key] = np.std(data, axis=0)
         else:
             # Handle other normalization obs_keys
             self.stats['mean'][norm_key] = np.mean(data, axis=0)
@@ -199,7 +197,7 @@ class DataNormalizer:
 
 
 class TactileDataset(Dataset):
-    def __init__(self, traj_files, sequence_length=500, stats=None, stride=5, tactile_channel=3,
+    def __init__(self, traj_files, sequence_length=500, stats=None, stride=5,
                  img_transform=None, seg_transform=None, sync_transform=None, tactile_transform=None,
                  include_img=True, include_lin=True, include_tactile=True, include_seg=True, obs_keys=None):
         """
@@ -230,13 +228,6 @@ class TactileDataset(Dataset):
         self.include_seg = include_seg
         self.include_lin = include_lin
         self.include_tactile = include_tactile
-        self.tactile_channel = tactile_channel
-
-        self.to_gray = transforms.Compose([
-            transforms.ToPILImage(),
-            transforms.Grayscale(num_output_channels=1),
-            transforms.ToTensor()
-        ]) if self.tactile_channel == 1 else None
 
         self.to_torch = lambda x: torch.from_numpy(x).float()
         self.img_transform = img_transform
@@ -281,11 +272,7 @@ class TactileDataset(Dataset):
     def _apply_tactile_transform(self, tactile_input):
         T, F, C, W, H = tactile_input.shape
         tactile_input = tactile_input.view(-1, C, W, H)
-
-        # if self.tactile_channel == 1:
-        #     tactile_input_reshaped = torch.stack([self.to_gray(image) for image in tactile_input_reshaped])
         tactile_input = self.tactile_transform(tactile_input)
-
         tactile_input = tactile_input.view(T, F, C, *tactile_input.shape[2:])
         return tactile_input
 
@@ -297,6 +284,7 @@ class TactileDataset(Dataset):
 
         seg_input = np.stack([(m == obj_id).astype(float) for m in seg_input])
         img_input = np.stack([img * m for img, m in zip(img_input, seg_input)])
+
         if self.sync_transform is not None:
             img_input, seg_input = self.sync_transform(self.to_torch(img_input), self.to_torch(seg_input))
         else:
@@ -304,8 +292,13 @@ class TactileDataset(Dataset):
 
         return img_input, seg_input
 
-    def _normalize_data(self, data_seq, diff, first_obs):
-        eef_pos = data_seq["eef_pos"]
+    def _normalize_data(self, data_seq, diff, first_obs, rot6d=False):
+
+        eef_key = "eef_pos_rot6d" if rot6d else 'eef_pos'
+        euler_key = "plug_hand_diff_euler" if diff else "plug_hand_euler"
+        plug_hand_pos_key = "plug_hand_pos_diff" if diff else "plug_hand_pos"
+
+        eef_pos = data_seq[eef_key]
         noisy_socket_pos = data_seq["noisy_socket_pos"][:, :3]
         euler = Rotation.from_quat(data_seq["plug_hand_quat"]).as_euler('xyz')
         plug_hand_pos = data_seq["plug_hand_pos"]
@@ -315,17 +308,16 @@ class TactileDataset(Dataset):
             plug_hand_pos = plug_hand_pos - first_obs["plug_hand_pos"]
 
         if self.stats is not None:
-            eef_pos = (eef_pos - self.stats["mean"]["eef_pos"]) / self.stats["std"]["eef_pos"]
+            eef_pos = (eef_pos - self.stats["mean"][eef_key]) / self.stats["std"][eef_key]
             noisy_socket_pos = (noisy_socket_pos - self.stats["mean"]["noisy_socket_pos"][:3]) / self.stats["std"][
                                                                                                      "noisy_socket_pos"][
                                                                                                  :3]
-            euler_mean_key = "plug_hand_diff_euler" if diff else "plug_hand_euler"
-            plug_hand_pos_mean_key = "plug_hand_pos_diff" if diff else "plug_hand_pos"
-            euler = (euler - self.stats["mean"][euler_mean_key]) / self.stats["std"][euler_mean_key]
-            plug_hand_pos = (plug_hand_pos - self.stats["mean"][plug_hand_pos_mean_key]) / self.stats["std"][
-                plug_hand_pos_mean_key]
+            euler = (euler - self.stats["mean"][euler_key]) / self.stats["std"][euler_key]
+            plug_hand_pos = (plug_hand_pos - self.stats["mean"][plug_hand_pos_key]) / self.stats["std"][
+                plug_hand_pos_key]
 
         obj_pos_rpy = np.hstack((plug_hand_pos, euler))
+
         return eef_pos, noisy_socket_pos, obj_pos_rpy
 
     def __getitem__(self, idx, diff_tac=True, diff=False):
@@ -347,6 +339,7 @@ class TactileDataset(Dataset):
 
         data_seq = {key: self.extract_sequence(data, key, start_idx) for key in self.obs_keys}
         eef_pos, noisy_socket_pos, obj_pos_rpy = self._normalize_data(data_seq, diff, first_obs)
+
         action = data_seq["action"]
         obs_hist = data_seq["obs_hist"]
         latent = data_seq["latent"]
