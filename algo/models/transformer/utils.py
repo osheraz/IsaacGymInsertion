@@ -86,16 +86,19 @@ class ImageTransform:
 
 
 class SyncTransform(nn.Module):
-    def __init__(self, crop_size, img_transform, mask_transform):
+    def __init__(self, crop_size, downsample, img_transform, mask_transform):
         super(SyncTransform, self).__init__()
         self.sync_crop = SyncRandomCrop(crop_size)
+        self.downsample = downsample
         self.img_transform = img_transform
         self.mask_transform = mask_transform
 
     def forward(self, img, mask):
         # Apply synchronized crop
-        img, mask = self.sync_crop(img, mask)
+        img = self.downsample(img)
+        mask = self.downsample(mask)
 
+        img, mask = self.sync_crop(img, mask)
         # Apply the rest of the transformations
         img = self.img_transform(img)
         mask = self.mask_transform(mask)
@@ -105,6 +108,26 @@ class SyncTransform(nn.Module):
 
         return img, mask
 
+class SyncEvalTransform(nn.Module):
+    def __init__(self, crop_size, downsample, img_transform, mask_transform):
+        super(SyncEvalTransform, self).__init__()
+        self.crop_size = crop_size
+        self.downsample = downsample
+        self.img_transform = img_transform
+        self.mask_transform = mask_transform
+
+    def forward(self, img, mask):
+        # Apply synchronized crop
+        img = self.downsample(img)
+        mask = self.downsample(mask)
+
+        img = F.center_crop(img, self.crop_size)
+        mask = F.center_crop(mask, self.crop_size)
+        # Apply the rest of the transformations
+        img = self.img_transform(img)
+        mask = self.mask_transform(mask)
+
+        return img, mask
 
 class TactileTransform:
     def __init__(self, tactile_transform=None):
@@ -167,13 +190,13 @@ def set_seed(seed, torch_deterministic=False, rank=0):
     return seed
 
 
-# Define your transforms
-def define_img_transforms(width, height, crop_width, crop_height,
+def define_tactile_transforms(width, height, crop_width, crop_height,
                           img_patch_size=16, img_gaussian_noise=0.0, img_masking_prob=0.0):
     downsample = transforms.Resize((width, height), interpolation=transforms.InterpolationMode.BILINEAR)
 
     transform = nn.Sequential(
         downsample,
+        transforms.RandomCrop((crop_width, crop_height)),
         v2.RandomErasing(p=0.4, scale=(0.02, 0.1), ratio=(0.3, 3.3), value=-0.5, inplace=False),
         v2.RandomErasing(p=0.4, scale=(0.02, 0.1), ratio=(0.3, 3.3), value=0, inplace=False),
         v2.GaussianBlur(kernel_size=5, sigma=(0.01, 0.1)),
@@ -182,6 +205,7 @@ def define_img_transforms(width, height, crop_width, crop_height,
 
     mask_transform = nn.Sequential(
         downsample,
+        transforms.RandomCrop((crop_width, crop_height)),
         v2.GaussianBlur(kernel_size=5, sigma=(0.01, 0.1)),
         v2.RandomRotation(degrees=5)
     )
@@ -232,12 +256,79 @@ def define_img_transforms(width, height, crop_width, crop_height,
         transforms.CenterCrop((crop_width, crop_height)),
     )
 
-    sync_transform = SyncTransform((crop_width, crop_height), transform, mask_transform)
 
-    return transform, mask_transform, sync_transform, eval_transform
+    return transform, eval_transform
+
+# Define your transforms
+def define_img_transforms(width, height, crop_width, crop_height,
+                          img_patch_size=16, img_gaussian_noise=0.0, img_masking_prob=0.0):
+    downsample = transforms.Resize((width, height), interpolation=transforms.InterpolationMode.BILINEAR)
+
+    transform = nn.Sequential(
+        v2.RandomErasing(p=0.4, scale=(0.02, 0.1), ratio=(0.3, 3.3), value=-0.5, inplace=False),
+        v2.RandomErasing(p=0.4, scale=(0.02, 0.1), ratio=(0.3, 3.3), value=0, inplace=False),
+        v2.GaussianBlur(kernel_size=5, sigma=(0.01, 0.1)),
+        v2.RandomRotation(degrees=5)
+    )
+
+    mask_transform = nn.Sequential(
+        v2.GaussianBlur(kernel_size=5, sigma=(0.01, 0.1)),
+        v2.RandomRotation(degrees=5)
+    )
+
+    # Add gaussian noise to the image
+    if img_gaussian_noise > 0.0:
+        transform = nn.Sequential(
+            transform,
+            GaussianNoise(img_gaussian_noise),
+        )
+        mask_transform = nn.Sequential(
+            mask_transform,
+            GaussianNoise(img_gaussian_noise * 2),
+        )
+
+    def mask_img(x):
+        # Divide the image into patches and randomly mask some of them
+        img_patch = x.unfold(2, img_patch_size, img_patch_size).unfold(
+            3, img_patch_size, img_patch_size
+        )
+        mask = (
+                torch.rand(
+                    (
+                        x.shape[0],
+                        x.shape[-2] // img_patch_size,
+                        x.shape[-1] // img_patch_size,
+                    )
+                )
+                < img_masking_prob
+        )
+        mask = mask.unsqueeze(1).unsqueeze(-1).unsqueeze(-1).expand_as(img_patch)
+        x = x.clone()
+        x.unfold(2, img_patch_size, img_patch_size).unfold(
+            3, img_patch_size, img_patch_size
+        )[mask] = 0
+        return x
+
+    if img_masking_prob > 0.0:
+        transform = lambda x: mask_img(
+            nn.Sequential(
+                transform,
+            )(x)
+        )
+
+    # For evaluation, only center crop and normalize
+    eval_transform = nn.Sequential(
+        downsample,
+        transforms.CenterCrop((crop_width, crop_height)),
+    )
+
+    sync_transform = SyncTransform((crop_width, crop_height), downsample, transform, mask_transform)
+    sync_eval_transform = SyncEvalTransform((crop_width, crop_height), downsample, transform, mask_transform)
+
+    return transform, mask_transform, eval_transform, sync_transform, sync_eval_transform,
 
 
-def define_tactile_transforms(channel, color_jitter, width, height, crop_width,
+def define_transforms(channel, color_jitter, width, height, crop_width,
                               crop_height, img_patch_size, img_gaussian_noise=0.0, img_masking_prob=0.0, ):
     # Use color jitter to augment the image
     if color_jitter:

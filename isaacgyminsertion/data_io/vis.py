@@ -518,7 +518,8 @@ if True:
             img3 = tactile_img[j][2]
 
         depth = depth_img[j]
-        seg = seg_img[j]
+        seg = (seg_img[j] == 2).astype(float)
+
         # depth = np.uint8(depth)
 
         # img1 = np.transpose(img1, (1, 2, 0))

@@ -3,7 +3,8 @@ from torch.utils.data import DataLoader
 from torch import optim
 from algo.models.transformer.tact import MultiModalModel
 from algo.models.models_split import AdaptTConv
-from algo.models.transformer.utils import define_img_transforms, ImageTransform, TactileTransform, SyncCenterReshapeTransform, log_output
+from algo.models.transformer.utils import define_img_transforms, define_tactile_transforms, TactileTransform, \
+    SyncCenterReshapeTransform, log_output
 from algo.models.transformer.tcn import TCN
 
 from tqdm import tqdm
@@ -49,7 +50,7 @@ class Runner:
         self.img_height = self.cfg.img_height
         self.crop_img_width = self.img_width - self.cfg.img_crop_w
         self.crop_img_height = self.img_height - self.cfg.img_crop_h
-        self.img_transform, self.seg_transform, self.sync_transform, self.img_eval_transform = define_img_transforms(
+        self.img_transform, self.seg_transform,  self.img_eval_transform, self.sync_transform, self.sync_eval_transform= define_img_transforms(
             self.img_width,
             self.img_height,
             self.crop_img_width,
@@ -59,7 +60,7 @@ class Runner:
             self.cfg.img_masking_prob
         )
 
-        self.sync_eval_transform = SyncCenterReshapeTransform((self.crop_img_width, self.crop_img_height),
+        self.sync_eval_reshape_transform = SyncCenterReshapeTransform((self.crop_img_width, self.crop_img_height),
                                                               self.img_eval_transform,
                                                               self.img_eval_transform)
 
@@ -71,7 +72,7 @@ class Runner:
         self.tactile_height = self.cfg.tactile_height
         self.crop_tactile_width = self.tactile_width - self.cfg.tactile_crop_w
         self.crop_tactile_height = self.tactile_height - self.cfg.tactile_crop_h
-        self.tactile_transform, _, self.tactile_eval_transform = define_img_transforms(
+        self.tactile_transform, self.tactile_eval_transform = define_tactile_transforms(
             self.tactile_width,
             self.tactile_height,
             self.crop_tactile_width,
@@ -86,9 +87,9 @@ class Runner:
                                          num_channels=self.tactile_channel,
                                          num_lin_features=self.cfg.model.linear.input_size,
                                          num_outputs=self.cfg.model.transformer.output_size,
-                                         tactile_encoder="efficientnet-b0",
-                                         img_encoder="efficientnet-b0",
-                                         seg_encoder="efficientnet-b0",
+                                         tactile_encoder="depth",  # "efficientnet-b0",
+                                         img_encoder="depth",  # "efficientnet-b0",
+                                         seg_encoder="depth",  # "efficientnet-b0",
                                          tactile_encoding_size=self.cfg.model.transformer.tactile_encoding_size,
                                          img_encoding_size=self.cfg.model.transformer.img_encoding_size,
                                          seg_encoding_size=self.cfg.model.transformer.seg_encoding_size,
@@ -97,7 +98,7 @@ class Runner:
                                          mha_ff_dim_factor=self.cfg.model.transformer.dim_factor,
                                          additional_lin=self.cfg.model.tact.output_size if self.cfg.model.transformer.load_tact else 0,
                                          include_img=self.cfg.model.use_img,
-                                         include_seg=self.cfg.model.include_seg,
+                                         include_seg=self.cfg.model.use_seg,
                                          include_lin=self.cfg.model.use_lin,
                                          include_tactile=self.cfg.model.use_tactile)
 
@@ -125,7 +126,6 @@ class Runner:
                                         include_img=self.cfg.model.tact.use_img,
                                         include_lin=self.cfg.model.tact.use_lin,
                                         include_tactile=self.cfg.model.tact.use_tactile)
-
 
         self.loss_fn_mean = torch.nn.MSELoss(reduction='mean')
         self.loss_fn = torch.nn.MSELoss(reduction='none')
@@ -192,7 +192,7 @@ class Runner:
                 'Loss': np.mean(train_loss)
             })
 
-            if (i + 1) % print_every == 0:
+            if (i + 1) % print_every == 0 or (i == len(dl) - 1):
                 print(f'step {i + 1}:', np.mean(train_loss))
                 self._wandb_log({'train/loss': np.mean(train_loss),
                                  'train/latent_loss': np.mean(latent_loss_list)})
@@ -206,7 +206,7 @@ class Runner:
                 latent_loss_list = []
                 action_loss_list = []
 
-            if (i + 1) % eval_every == 0:
+            if (i + 1) % eval_every == 0 or (i == len(dl) - 1):
                 if tac_input.ndim > 2:
                     log_output(tac_input,
                                img_input,
@@ -242,7 +242,8 @@ class Runner:
             val_loss = []
             latent_loss_list, action_loss_list = [], []
             d_pos_rpy = None
-            for i, (tac_input, img_input, seg_input, lin_input, pos_rpy, obs_hist, latent, action) in tqdm(enumerate(dl)):
+            for i, (tac_input, img_input, seg_input, lin_input, pos_rpy, obs_hist, latent, action) in tqdm(
+                    enumerate(dl)):
 
                 tac_input = tac_input.to(self.device)
                 img_input = img_input.to(self.device)
@@ -253,7 +254,8 @@ class Runner:
                 action = action.to(self.device)
 
                 if self.tact is not None:
-                    d_pos_rpy = self.tact(tac_input, img_input, seg_input,  lin_input).unsqueeze(1)
+                    assert NotImplementedError
+                    d_pos_rpy = self.tact(tac_input, img_input, seg_input, lin_input).unsqueeze(1)
 
                 out = self.model(tac_input, img_input, seg_input, lin_input, d_pos_rpy)
 
@@ -313,7 +315,7 @@ class Runner:
                 seg_input = seg_input.to(self.device)
                 # if self.img_transform is not None:
                 #     img_input = ImageTransform(self.img_eval_transform)(img_input).to(self.device)
-                img_input, seg_input = self.sync_eval_transform(img_input, seg_input)
+                img_input, seg_input = self.sync_eval_reshape_transform(img_input, seg_input)
 
             if self.cfg.model.tact.use_lin:
                 lin_input = lin_input.to(self.device)
@@ -407,7 +409,7 @@ class Runner:
                                   tactile_transform=self.tactile_transform,
                                   tactile_channel=self.tactile_channel,
                                   include_img=self.cfg.model.use_img,
-                                  include_seg=self.cfg.mode.use_seg,
+                                  include_seg=self.cfg.model.use_seg,
                                   include_lin=self.cfg.model.use_lin,
                                   include_tactile=self.cfg.model.use_tactile,
                                   obs_keys=self.cfg.train.obs_keys,
@@ -425,9 +427,12 @@ class Runner:
                                 sequence_length=self.sequence_length,
                                 stats=self.stats,
                                 img_transform=self.img_eval_transform,
+                                seg_transform=self.img_eval_transform,
+                                sync_transform=self.sync_eval_transform,
                                 tactile_transform=self.tactile_eval_transform,
                                 tactile_channel=self.tactile_channel,
                                 include_img=self.cfg.model.use_img,
+                                include_seg=self.cfg.model.use_seg,
                                 include_lin=self.cfg.model.use_lin,
                                 include_tactile=self.cfg.model.use_tactile,
                                 obs_keys=self.cfg.train.obs_keys,
@@ -499,7 +504,7 @@ class Runner:
         self.save_folder = save_folder
 
         # Either create new norm or load existing
-        normalizer = DataNormalizer(self.cfg, file_list)
+        normalizer = DataNormalizer(self.cfg, file_list, self.cfg.data_folder)
         normalizer.run()
         self.stats = normalizer.stats
 

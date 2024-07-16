@@ -56,7 +56,7 @@ class DataNormalizer:
     def __init__(self, cfg, file_list, save_path=None):
         self.cfg = cfg
         self.normalize_obs_keys = self.cfg.train.normalize_obs_keys
-        self.normalization_path = self.cfg.train.normalize_file if self.cfg.train.load_stats else save_path + '/normalization.pkl'
+        self.normalization_path = self.cfg.train.normalize_file if self.cfg.train.load_stats  else save_path + '/normalization.pkl'
         self.stats = {"mean": {}, "std": {}}
         self.file_list = file_list
         self.remove_failed_trajectories()
@@ -279,12 +279,14 @@ class TactileDataset(Dataset):
         return tactile_input
 
     def _apply_tactile_transform(self, tactile_input):
-        T, F, W, H, C = tactile_input.shape
-        tactile_input_reshaped = tactile_input.view(-1, 3, W, H)
-        if self.tactile_channel == 1:
-            tactile_input_reshaped = torch.stack([self.to_gray(image) for image in tactile_input_reshaped])
-        tactile_input = self.tactile_transform(tactile_input_reshaped)
-        tactile_input = tactile_input.view(T, F, self.tactile_channel, W, H)
+        T, F, C, W, H = tactile_input.shape
+        tactile_input = tactile_input.view(-1, C, W, H)
+
+        # if self.tactile_channel == 1:
+        #     tactile_input_reshaped = torch.stack([self.to_gray(image) for image in tactile_input_reshaped])
+        tactile_input = self.tactile_transform(tactile_input)
+
+        tactile_input = tactile_input.view(T, F, C, *tactile_input.shape[2:])
         return tactile_input
 
     def _load_and_preprocess_image(self, img_folder, seg_folder, start_idx, obj_id=2):
@@ -295,11 +297,11 @@ class TactileDataset(Dataset):
 
         seg_input = np.stack([(m == obj_id).astype(float) for m in seg_input])
         img_input = np.stack([img * m for img, m in zip(img_input, seg_input)])
-
         if self.sync_transform is not None:
             img_input, seg_input = self.sync_transform(self.to_torch(img_input), self.to_torch(seg_input))
         else:
             assert NotImplementedError
+
         return img_input, seg_input
 
     def _normalize_data(self, data_seq, diff, first_obs):
@@ -326,7 +328,7 @@ class TactileDataset(Dataset):
         obj_pos_rpy = np.hstack((plug_hand_pos, euler))
         return eef_pos, noisy_socket_pos, obj_pos_rpy
 
-    def __getitem__(self, idx, diff_tac=True, diff=True):
+    def __getitem__(self, idx, diff_tac=True, diff=False):
 
         file_idx, start_idx = self.indices_per_trajectory[idx]
         file_path = self.all_folders[file_idx]
@@ -349,12 +351,12 @@ class TactileDataset(Dataset):
         obs_hist = data_seq["obs_hist"]
         latent = data_seq["latent"]
 
-        # noisy_socket_pos_noise = 0 * np.random.normal(loc=0, scale=0.002, size=noisy_socket_pos.shape)
+        noisy_socket_pos_noise = np.random.normal(loc=0, scale=0.002, size=noisy_socket_pos.shape)
         # obj_pos_rpy_noise = 0 * np.random.normal(loc=0, scale=0.002, size=obj_pos_rpy.shape)
 
         lin_input = np.concatenate([eef_pos,  # 12
-                                    # noisy_socket_pos + noisy_socket_pos_noise,
-                                    # action,  # 6
+                                    noisy_socket_pos + noisy_socket_pos_noise,
+                                    action,  # 6
                                     # obj_pos_rpy + obj_pos_rpy_noise  # 6
                                     ], axis=-1)
 

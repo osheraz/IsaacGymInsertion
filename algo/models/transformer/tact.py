@@ -167,10 +167,10 @@ class MultiModalModel(BaseModel):
             tactile_encoder: Optional[str] = "efficientnet-b0",
             img_encoder: Optional[str] = "efficientnet-b0",
             seg_encoder: Optional[str] = "efficientnet-b0",
-            tactile_encoding_size: Optional[int] = 128,
-            img_encoding_size: Optional[int] = 128,
-            seg_encoding_size: Optional[int] = 128,
-            lin_encoding_size: Optional[int] = 128,
+            tactile_encoding_size: Optional[int] = 64,
+            img_encoding_size: Optional[int] = 64,
+            seg_encoding_size: Optional[int] = 64,
+            lin_encoding_size: Optional[int] = 64,
             mha_num_attention_heads: Optional[int] = 2,
             mha_num_attention_layers: Optional[int] = 2,
             mha_ff_dim_factor: Optional[int] = 4,
@@ -207,6 +207,8 @@ class MultiModalModel(BaseModel):
         self.include_seg = include_img
 
         self.tactile_encoder_type = tactile_encoder
+        self.img_encoder_type = img_encoder
+        self.seg_encoder_type = seg_encoder
 
         num_features = 0
 
@@ -359,6 +361,7 @@ class MultiModalModel(BaseModel):
 
         if self.include_seg:
             # img
+            obs_seg = obs_seg.unsqueeze(2)
             B, T, C, W, H = obs_seg.shape
             obs_seg = obs_seg.reshape(B * T, C, W, H)
             if self.seg_encoder_type.split("-")[0] == "efficientnet":

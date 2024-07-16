@@ -5,7 +5,7 @@ output_dir: "/home/roblab20/tactile_tests/datastore_real" # where to save checkp
 
 img_type: "depth" # 1C
 img_color_jitter: False
-img_width: 60 # orig 180
+img_width: 58 # orig 180
 img_height: 104 # orig 320
 img_gaussian_noise: 0.005
 img_masking_prob: 0.0
@@ -14,7 +14,7 @@ img_crop_w: 4
 img_crop_h: 8
 
 tactile_type: 'gray' # 1C
-tactile_gaussian_noise: 0.001
+tactile_gaussian_noise: 0.005
 tactile_masking_prob: 0.0
 tactile_patch_size: 16
 tactile_color_jitter: False
@@ -27,8 +27,8 @@ tactile_crop_h: 8
 train:
   # basic training hyperparameters
   epochs: 50
-  train_batch_size: 128
-  val_batch_size: 128
+  train_batch_size: 64
+  val_batch_size: 64
   learning_rate: 1e-4
   train_test_split: 0.98
   action_regularization: False # propagate gradients for action loss
@@ -68,7 +68,7 @@ train:
 #                    "plug_pos_error",
 #                   "plug_quat_error"
   ]
-  load_stats: True # TODO
+  load_stats: False # TODO
   normalize_file: "/home/roblab20/osher3_workspace/src/isaacgym/python/IsaacGymInsertion/isaacgyminsertion/outputs/gt_test/student/normalization.pkl"
 
   # load student checkpoint
@@ -79,7 +79,7 @@ train:
 model:
   # linear embedding
   linear:
-    input_size: 12
+    input_size: 21
     # TODO: add model layers here
 
   use_img: True
@@ -90,7 +90,7 @@ model:
   model_type: 'tact'
 
   transformer:
-    sequence_length: 30 # ${...task.rl.max_episode_length}
+    sequence_length: 1 # ${...task.rl.max_episode_length}
     num_layers: 4
     num_heads: 4
     dim_factor: 4
