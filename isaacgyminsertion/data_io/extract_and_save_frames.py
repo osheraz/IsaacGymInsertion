@@ -6,11 +6,13 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 def process_file(file_path):
     # Define output folders
     output_img_folder = os.path.join(file_path[:-4], 'img')
+    output_seg_folder = os.path.join(file_path[:-4], 'seg')
     output_tactile_folder = os.path.join(file_path[:-4], 'tactile')
     output_obs_folder = os.path.join(file_path[:-4], 'obs')
 
     # Create directories if they do not exist
     os.makedirs(output_img_folder, exist_ok=True)
+    os.makedirs(output_seg_folder, exist_ok=True)
     os.makedirs(output_obs_folder, exist_ok=True)
     os.makedirs(output_tactile_folder, exist_ok=True)
 
@@ -25,17 +27,24 @@ def process_file(file_path):
         return
 
     # Extract img and tactile sequences if they exist
-    img_sequence = data['img'] if 'img' in data else None
-    tactile_sequence = data['tactile'] if 'tactile' in data else None
+    done_idx = data['done'].nonzero()[-1][0]
+    img_sequence = data['img'][:done_idx, :] if 'img' in data else None
+    seg_sequence = data['seg'][:done_idx, :] if 'seg' in data else None
+    tactile_sequence = data['tactile'][:done_idx, :] if 'tactile' in data else None
 
     # Remove img and tactile from the data dictionary
-    data_dict = {key: data[key] for key in data.files if key not in ['img', 'tactile']}
+    data_dict = {key: data[key][:done_idx+1] for key in data.files if key not in ['img', 'tactile', 'seg']}
 
     # Save each frame in the img sequence if it exists
     if img_sequence is not None:
         for idx, img in enumerate(img_sequence):
             img_filename = os.path.join(output_img_folder, f"img_{idx}.npz")
             np.savez_compressed(img_filename, img=img)
+
+    if seg_sequence is not None:
+        for idx, seg in enumerate(seg_sequence):
+            seg_filename = os.path.join(output_seg_folder, f"seg_{idx}.npz")
+            np.savez_compressed(seg_filename, seg=seg)
 
     # Save each frame in the tactile sequence if it exists
     if tactile_sequence is not None:
@@ -63,7 +72,7 @@ def extract_and_save_frames(file_list):
 # Define the path to the data
 # data_path = "/home/roblab20/tactile_tests/datastore_real"
 # data_path = "/home/osher/tactile_insertion/datastore_42_gt_test"
-data_path = "/home/osher/tactile_insertion/datastore_42_no_phys_params"
+data_path = "/home/osher/tactile_insertion/datastore_12_no_phys_params"
 
 print('Loading trajectories from', data_path)
 

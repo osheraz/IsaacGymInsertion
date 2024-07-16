@@ -310,7 +310,7 @@ class DataLoggerSim():
             if value is None:
                 value = torch.zeros((self.num_envs, self.data_shapes[key]), dtype=torch.float32, device=self.device)
 
-            self.log_data[key][self.env_ids, self.env_step_counter, ...] = value.clone().unsqueeze(1)
+            self.log_data[key][self.env_ids, self.env_step_counter, ...] = value.clone().unsqueeze(1).to(self.log_data[key].dtype)
 
         done = kwargs.get('done', None)
         if done is None:

@@ -26,14 +26,14 @@ env:
     aggregate_mode: True
 
     desired_subassemblies: [
-#                            'small_triangle',
+                            'small_triangle',
 #                            'triangle',
-#                            'red_round_peg_1_5in',
-#                            'yellow_round_peg_2in',
-#                            'rectangular_peg_hole_32mm_loose',
-#                            'square_peg_hole_32mm_loose',
+                            'red_round_peg_1_5in',
+                            'yellow_round_peg_2in',
+                            'rectangular_peg_hole_32mm_loose',
+                            'square_peg_hole_32mm_loose',
 #                             'round_peg_hole_16mm_loose',
-                             'rectangular_peg_hole_16mm_loose',
+#                             'rectangular_peg_hole_16mm_loose',
     ]
 
     plug_lateral_offset: 0.1  # Y-axis offset of plug before initial reset to prevent initial interpenetration with socket

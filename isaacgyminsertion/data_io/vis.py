@@ -11,9 +11,10 @@ from scipy.spatial.transform import Rotation
 # %%
 import yaml
 
-all_paths = glob('/home/osher/tactile_insertion/datastore_42_gt_test/*/*/obs/*.npz')
+# all_paths = glob('/home/osher/tactile_insertion/datastore_42_gt_test/*/*/obs/*.npz')
 # all_paths = glob('/home/roblab20/tactile_diffusion/datastore_real/*/*/obs/*.npz')
 # all_paths = glob('/home/roblab20/tactile_tests/datastore_real/*/*/obs/*.npz')
+all_paths = glob('/home/osher/tactile_insertion/datastore_42_no_phys_params/*/*/obs/*.npz')
 
 print(len(all_paths))
 
@@ -478,6 +479,7 @@ if True:
     print(data.files)
     tactile_folder = path[:-7].replace('obs', 'tactile')
     img_folder = path[:-7].replace('obs', 'img')
+    seg_folder = path[:-7].replace('obs', 'seg')
 
     # tactile_img = data['tactile'][:done_idx, ...]
     tactile_img = np.stack([np.load(os.path.join(tactile_folder, f'tactile_{i}.npz'))['tactile'] for i in
@@ -491,8 +493,11 @@ if True:
 
     plt.figure(figsize=(10, 6))
 
-    # depth_img = np.stack(
-    #     [np.load(os.path.join(img_folder, f'img_{i}.npz'))['img'] for i in range(0, done_idx)])
+    depth_img = np.stack(
+        [np.load(os.path.join(img_folder, f'img_{i}.npz'))['img'] for i in range(0, done_idx)])
+    seg_img = np.stack(
+        [np.load(os.path.join(seg_folder, f'seg_{i}.npz'))['seg'] for i in range(0, done_idx)])
+
     def binarize_image(tensor, threshold=0.55):
         # Apply threshold
         tensor_binarized = (tensor > threshold).astype(np.float32)
@@ -512,7 +517,10 @@ if True:
             img2 = tactile_img[j][1]
             img3 = tactile_img[j][2]
 
-        # depth = depth_img[j]
+        depth = depth_img[j]
+        seg = seg_img[j]
+        # depth = np.uint8(depth)
+
         # img1 = np.transpose(img1, (1, 2, 0))
         # img2 = np.transpose(img2, (1, 2, 0))
         # img3 = np.transpose(img3, (1, 2, 0))
@@ -524,11 +532,13 @@ if True:
 
         # Update and redraw the tactile image
         # depth = np.uint8(depth)
-        # cv2.imshow("Depth Image", depth.transpose(1, 2, 0) + 0.5)
+        cv2.imshow("seg Image", (depth * seg) .transpose(1, 2, 0) + 0.5)
+
+        cv2.imshow("Depth Image", depth.transpose(1, 2, 0) + 0.5)
         cv2.namedWindow('test', cv2.WND_PROP_FULLSCREEN)
         cv2.namedWindow('bin', cv2.WND_PROP_FULLSCREEN)
-        key = cv2.waitKey(30)
-        cv2.imshow('test', img.transpose(1, 2, 0) + 0.5)
+        key = cv2.waitKey(200)
+        cv2.imshow('test', img.transpose(1, 2, 0))
         cv2.imshow('bin', binarize_image(img).transpose(1, 2, 0))
 
         # cv2.waitKey(200) & 0xFF

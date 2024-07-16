@@ -1,8 +1,8 @@
 #!/bin/bash
 GPUS=${1:-0}
-SEED=${2:-42}
+SEED=${2:-12}
 CACHE=${3:-no_phys_params}
-NUM_ENVS=${4:-40}
+NUM_ENVS=${4:-16}
 HEADLESS=${5:-True}
 
 array=( $@ )
@@ -19,7 +19,7 @@ python trainV2.py task=FactoryTaskInsertionTactile headless=${HEADLESS} seed=${S
 test=True \
 task.data_logger.collect_data=True \
 task.env.numEnvs=${NUM_ENVS} \
-task.env.tactile=False \
+task.env.tactile=True \
 task.external_cam.external_cam=True \
 train.ppo.priv_info=True \
 task.env.numStates=14 \
