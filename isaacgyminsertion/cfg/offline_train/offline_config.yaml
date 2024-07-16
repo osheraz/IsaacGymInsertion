@@ -3,25 +3,25 @@ data_folder: "/home/roblab20/tactile_tests/datastore_real" # where is all your d
 output_dir: "/home/roblab20/tactile_tests/datastore_real" # where to save checkpoints and logs
 
 
-img_type: "depth"
+img_type: "depth" # 1C
 img_color_jitter: False
-img_width: 120
-img_height: 160
-img_gaussian_noise: 0.002
+img_width: 60 # orig 180
+img_height: 104 # orig 320
+img_gaussian_noise: 0.005
 img_masking_prob: 0.0
 img_patch_size: 16
-img_crop_w: 0
-img_crop_h: 0
+img_crop_w: 4
+img_crop_h: 8
 
-tactile_type: 'gray' # rgb | gray
+tactile_type: 'gray' # 1C
 tactile_gaussian_noise: 0.001
 tactile_masking_prob: 0.0
 tactile_patch_size: 16
 tactile_color_jitter: False
-tactile_width: 128
-tactile_height: 128
-tactile_crop_w: 10
-tactile_crop_h: 32
+tactile_width: 36  # orig 64
+tactile_height: 72 # orig 128
+tactile_crop_w: 4
+tactile_crop_h: 8
 
 # supervised learning
 train:
@@ -79,36 +79,36 @@ train:
 model:
   # linear embedding
   linear:
-    input_size: 27
+    input_size: 12
     # TODO: add model layers here
 
-  use_img: False
-  use_tactile: False
+  use_img: True
+  use_seg: True
+  use_tactile: True
   use_lin: True
 
   model_type: 'tact'
 
   transformer:
-    full_sequence: False # if True, it makes sequence length 500
     sequence_length: 30 # ${...task.rl.max_episode_length}
     num_layers: 4
     num_heads: 4
     dim_factor: 4
     output_size: 8
-    tactile_encoding_size: 128
-    img_encoding_size: 128
+    tactile_encoding_size: 64
+    img_encoding_size: 64
+    seg_encoding_size: 64
     load_tact: False
     tact_path: "/home/roblab20/osher3_workspace/src/isaacgym/python/IsaacGymInsertion/isaacgyminsertion/outputs/gt_test/tact/checkpoints/model_last.pt"
 
   tact:
-    full_sequence: False # if True, it makes sequence length 500
     sequence_length: 1 # ${...task.rl.max_episode_length}
     num_layers: 4
     num_heads: 4
     dim_factor: 4
     output_size: 6
-    tactile_encoding_size: 128
-    img_encoding_size: 128
+    tactile_encoding_size: 64
+    img_encoding_size: 64
     use_img: False
     use_tactile: False
     use_lin: True

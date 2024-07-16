@@ -3,7 +3,7 @@ from torch.utils.data import DataLoader
 from torch import optim
 from algo.models.transformer.tact import MultiModalModel
 from algo.models.models_split import AdaptTConv
-from algo.models.transformer.utils import define_transforms, ImageTransform, TactileTransform, log_output
+from algo.models.transformer.utils import define_img_transforms, ImageTransform, TactileTransform, SyncCenterReshapeTransform, log_output
 from algo.models.transformer.tcn import TCN
 
 from tqdm import tqdm
@@ -39,8 +39,7 @@ class Runner:
         self.optimizer = None
         self.scheduler = None
         self.tact = None
-        self.full_sequence = self.cfg.model.transformer.full_sequence
-        self.sequence_length = 500 if self.full_sequence else self.cfg.model.transformer.sequence_length
+        self.sequence_length = self.cfg.model.transformer.sequence_length
         self.device = 'cuda:0'
 
         # img
@@ -50,28 +49,29 @@ class Runner:
         self.img_height = self.cfg.img_height
         self.crop_img_width = self.img_width - self.cfg.img_crop_w
         self.crop_img_height = self.img_height - self.cfg.img_crop_h
-        self.img_transform, self.img_downsample, self.img_eval_transform = define_transforms(self.img_channel,
-                                                                                             self.img_color_jitter,
-                                                                                             self.img_width,
-                                                                                             self.img_height,
-                                                                                             self.crop_img_width,
-                                                                                             self.crop_img_height,
-                                                                                             self.cfg.img_patch_size,
-                                                                                             self.cfg.img_gaussian_noise,
-                                                                                             self.cfg.img_masking_prob,
-                                                                                             is_tactile=False)
+        self.img_transform, self.seg_transform, self.sync_transform, self.img_eval_transform = define_img_transforms(
+            self.img_width,
+            self.img_height,
+            self.crop_img_width,
+            self.crop_img_height,
+            self.cfg.img_patch_size,
+            self.cfg.img_gaussian_noise,
+            self.cfg.img_masking_prob
+        )
+
+        self.sync_eval_transform = SyncCenterReshapeTransform((self.crop_img_width, self.crop_img_height),
+                                                              self.img_eval_transform,
+                                                              self.img_eval_transform)
+
         # tactile
         self.num_fingers = num_fingers
         self.tactile_channel = 1 if self.cfg.tactile_type == "gray" else 3
-        self.half_image = True
         self.tactile_color_jitter = self.cfg.tactile_color_jitter
-        self.tactile_width = self.cfg.tactile_width // 2 if self.half_image else self.cfg.tactile_width
+        self.tactile_width = self.cfg.tactile_width
         self.tactile_height = self.cfg.tactile_height
         self.crop_tactile_width = self.tactile_width - self.cfg.tactile_crop_w
         self.crop_tactile_height = self.tactile_height - self.cfg.tactile_crop_h
-        self.tactile_transform, self.tactile_downsample, self.tactile_eval_transform = define_transforms(
-            self.tactile_channel,
-            self.tactile_color_jitter,
+        self.tactile_transform, _, self.tactile_eval_transform = define_img_transforms(
             self.tactile_width,
             self.tactile_height,
             self.crop_tactile_width,
@@ -88,13 +88,16 @@ class Runner:
                                          num_outputs=self.cfg.model.transformer.output_size,
                                          tactile_encoder="efficientnet-b0",
                                          img_encoder="efficientnet-b0",
+                                         seg_encoder="efficientnet-b0",
                                          tactile_encoding_size=self.cfg.model.transformer.tactile_encoding_size,
                                          img_encoding_size=self.cfg.model.transformer.img_encoding_size,
+                                         seg_encoding_size=self.cfg.model.transformer.seg_encoding_size,
                                          mha_num_attention_heads=self.cfg.model.transformer.num_heads,
                                          mha_num_attention_layers=self.cfg.model.transformer.num_layers,
                                          mha_ff_dim_factor=self.cfg.model.transformer.dim_factor,
                                          additional_lin=self.cfg.model.tact.output_size if self.cfg.model.transformer.load_tact else 0,
                                          include_img=self.cfg.model.use_img,
+                                         include_seg=self.cfg.model.include_seg,
                                          include_lin=self.cfg.model.use_lin,
                                          include_tactile=self.cfg.model.use_tactile)
 
@@ -123,8 +126,6 @@ class Runner:
                                         include_lin=self.cfg.model.tact.use_lin,
                                         include_tactile=self.cfg.model.tact.use_tactile)
 
-        self.src_mask = torch.triu(torch.ones(self.sequence_length, self.sequence_length),
-                                   diagonal=1).bool().to(self.device)
 
         self.loss_fn_mean = torch.nn.MSELoss(reduction='mean')
         self.loss_fn = torch.nn.MSELoss(reduction='none')
@@ -150,44 +151,29 @@ class Runner:
         d_pos_rpy = None
         progress_bar = tqdm(enumerate(dl), total=len(dl), desc="Training Progress", unit="batch")
 
-        for i, (tac_input, img_input, lin_input, pos_rpy, obs_hist, latent, action, mask) in progress_bar:
+        for i, (tac_input, img_input, seg_input, lin_input, pos_rpy, obs_hist, latent, action) in progress_bar:
             self.model.train()
 
             tac_input = tac_input.to(self.device)  # [B T F W H C]
             img_input = img_input.to(self.device)
+            seg_input = seg_input.to(self.device)
             lin_input = lin_input.to(self.device)
             latent = latent.to(self.device)
             action = action.to(self.device)
 
-            mask = mask.to(self.device).unsqueeze(-1)
-
             if self.tact is not None:
-                d_pos_rpy = self.tact(tac_input, img_input, lin_input).unsqueeze(1)
+                assert NotImplementedError
+                d_pos_rpy = self.tact(tac_input, img_input, seg_input, lin_input).unsqueeze(1)
 
-            out = self.model(tac_input, img_input, lin_input, d_pos_rpy)
+            out = self.model(tac_input, img_input, seg_input, lin_input, d_pos_rpy)
+            loss_latent = self.loss_fn_mean(out, latent[:, -1, :])
+
             loss_action = torch.zeros(1, device=self.device)
-
-            if self.full_sequence:
-                loss_latent = torch.sum(self.loss_fn(out, latent), dim=-1).unsqueeze(-1)
-                loss_latent = torch.sum(loss_latent * mask) / torch.sum(mask)
-
-                if self.ppo_step is not None:
-                    obs_hist = obs_hist.to(self.device).view(obs_hist.shape[0] * self.sequence_length,
-                                                             obs_hist.shape[-1])
-                    pred_action, _ = self.ppo_step(
-                        {'obs': obs_hist, 'latent': out.view(out.shape[0] * out.shape[1], out.shape[-1])})
-                    loss_action = torch.sum(self.loss_fn(pred_action.view(*action.shape), action), dim=-1).unsqueeze(-1)
-                    loss_action = torch.sum(loss_action * mask) / torch.sum(mask)
-                    action_loss_list.append(loss_action.item())
-
-            else:
-                loss_latent = self.loss_fn_mean(out, latent[:, -1, :])
-
-                if self.ppo_step is not None:
-                    obs_hist = obs_hist[:, -1, :].to(self.device).view(obs_hist.shape[0], obs_hist.shape[-1])
-                    pred_action, _ = self.ppo_step({'obs': obs_hist, 'latent': out})
-                    pred_action = torch.clamp(pred_action, -1, 1)
-                    loss_action = self.loss_fn_mean(pred_action, action[:, -1, :])
+            if self.ppo_step is not None:
+                obs_hist = obs_hist[:, -1, :].to(self.device).view(obs_hist.shape[0], obs_hist.shape[-1])
+                pred_action, _ = self.ppo_step({'obs': obs_hist, 'latent': out})
+                pred_action = torch.clamp(pred_action, -1, 1)
+                loss_action = self.loss_fn_mean(pred_action, action[:, -1, :])
 
             loss = (self.cfg.train.latent_scale * loss_latent) + (self.cfg.train.action_scale * loss_action)
 
@@ -224,6 +210,7 @@ class Runner:
                 if tac_input.ndim > 2:
                     log_output(tac_input,
                                img_input,
+                               seg_input,
                                lin_input,
                                out,
                                latent,
@@ -255,44 +242,30 @@ class Runner:
             val_loss = []
             latent_loss_list, action_loss_list = [], []
             d_pos_rpy = None
-            for i, (tac_input, img_input, lin_input, pos_rpy, obs_hist, latent, action, mask) in tqdm(enumerate(dl)):
+            for i, (tac_input, img_input, seg_input, lin_input, pos_rpy, obs_hist, latent, action) in tqdm(enumerate(dl)):
 
                 tac_input = tac_input.to(self.device)
                 img_input = img_input.to(self.device)
+                seg_input = seg_input.to(self.device)
 
                 lin_input = lin_input.to(self.device)
                 latent = latent.to(self.device)
                 action = action.to(self.device)
-                mask = mask.to(self.device).unsqueeze(-1)
 
                 if self.tact is not None:
-                    d_pos_rpy = self.tact(tac_input, img_input, lin_input).unsqueeze(1)
+                    d_pos_rpy = self.tact(tac_input, img_input, seg_input,  lin_input).unsqueeze(1)
 
-                out = self.model(tac_input, img_input, lin_input, d_pos_rpy)
+                out = self.model(tac_input, img_input, seg_input, lin_input, d_pos_rpy)
 
                 loss_action = torch.zeros(1, device=self.device)
 
-                if self.full_sequence:
-                    loss_latent = torch.sum(self.loss_fn(out, latent), dim=-1).unsqueeze(-1)
-                    loss_latent = torch.sum(loss_latent * mask) / torch.sum(mask)
-                    # loss = loss_latent
-                    if self.ppo_step is not None:
-                        obs_hist = obs_hist.to(self.device).view(obs_hist.shape[0] * self.sequence_length,
-                                                                 obs_hist.shape[-1])
-                        pred_action, _ = self.ppo_step(
-                            {'obs': obs_hist, 'latent': out.view(out.shape[0] * out.shape[1], out.shape[-1])})
-                        loss_action = torch.sum(self.loss_fn(pred_action.view(*action.shape), action),
-                                                dim=-1).unsqueeze(-1)
-                        loss_action = torch.sum(loss_action * mask) / torch.sum(mask)
-                else:
-                    loss_latent = self.loss_fn_mean(out[:, :], latent[:, -1, :])
+                loss_latent = self.loss_fn_mean(out[:, :], latent[:, -1, :])
 
-                    # loss = loss_latent
-                    if self.ppo_step is not None:
-                        obs_hist = obs_hist[:, -1, :].to(self.device).view(obs_hist.shape[0], obs_hist.shape[-1])
-                        pred_action, _ = self.ppo_step({'obs': obs_hist, 'latent': out})
-                        pred_action = torch.clamp(pred_action, -1, 1)
-                        loss_action = self.loss_fn_mean(pred_action, action[:, -1, :])
+                if self.ppo_step is not None:
+                    obs_hist = obs_hist[:, -1, :].to(self.device).view(obs_hist.shape[0], obs_hist.shape[-1])
+                    pred_action, _ = self.ppo_step({'obs': obs_hist, 'latent': out})
+                    pred_action = torch.clamp(pred_action, -1, 1)
+                    loss_action = self.loss_fn_mean(pred_action, action[:, -1, :])
 
                 # TODO: add scaling loss coefficients
                 loss = (self.cfg.train.latent_scale * loss_latent) + (self.cfg.train.action_scale * loss_action)
@@ -312,9 +285,9 @@ class Runner:
             #         'val/action_loss': np.mean(action_loss_list)
             #     })
             if tac_input.ndim > 2:
-
                 log_output(tac_input,
                            img_input,
+                           seg_input,
                            lin_input,
                            out,
                            latent,
@@ -325,7 +298,7 @@ class Runner:
 
         return np.mean(val_loss)
 
-    def get_latent(self, tac_input, img_input, lin_input, gt_label=None, use_gt=False):
+    def get_latent(self, tac_input, img_input, seg_input, lin_input, gt_label=None, use_gt=False):
         self.model.eval()
         d_pos_rpy = None
         with torch.no_grad():
@@ -337,8 +310,10 @@ class Runner:
 
             if self.cfg.model.tact.use_img:
                 img_input = img_input.to(self.device)
-                if self.img_transform is not None:
-                    img_input = ImageTransform(self.img_eval_transform)(img_input).to(self.device)
+                seg_input = seg_input.to(self.device)
+                # if self.img_transform is not None:
+                #     img_input = ImageTransform(self.img_eval_transform)(img_input).to(self.device)
+                img_input, seg_input = self.sync_eval_transform(img_input, seg_input)
 
             if self.cfg.model.tact.use_lin:
                 lin_input = lin_input.to(self.device)
@@ -394,7 +369,6 @@ class Runner:
 
         self.device = device
         self.model = self.model.to(self.device)
-        self.src_mask = self.src_mask.to(self.device)
 
         self.optimizer = optim.AdamW(self.model.parameters(), lr=learning_rate)
 
@@ -425,13 +399,15 @@ class Runner:
 
         # Passing trajectories
         train_ds = TactileDataset(traj_files=training_files,
-                                  full_sequence=self.full_sequence,
                                   sequence_length=self.sequence_length,
                                   stats=self.stats,
                                   img_transform=self.img_transform,
+                                  seg_transform=self.seg_transform,
+                                  sync_transform=self.sync_transform,
                                   tactile_transform=self.tactile_transform,
                                   tactile_channel=self.tactile_channel,
                                   include_img=self.cfg.model.use_img,
+                                  include_seg=self.cfg.mode.use_seg,
                                   include_lin=self.cfg.model.use_lin,
                                   include_tactile=self.cfg.model.use_tactile,
                                   obs_keys=self.cfg.train.obs_keys,
@@ -446,7 +422,6 @@ class Runner:
                               )
 
         val_ds = TactileDataset(traj_files=val_files,
-                                full_sequence=self.full_sequence,
                                 sequence_length=self.sequence_length,
                                 stats=self.stats,
                                 img_transform=self.img_eval_transform,
