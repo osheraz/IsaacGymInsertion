@@ -723,7 +723,7 @@ class PPO(object):
             eef_pos = torch.cat((eef_pos[:, :, :3],
                                       self.rot_tf.forward(eef_pos[:, :, 3:].reshape(*eef_pos.shape[:2], 3, 3))), dim=2)
 
-        noisy_socket_pos = data["noisy_socket_pos"][:, :, :3]
+        socket_pos = data["socket_pos"][:, :, :3]
         plug_hand_quat = data["plug_hand_quat"]
         plug_hand_pos = data["plug_hand_pos"]
         action = data["action"]
@@ -731,7 +731,7 @@ class PPO(object):
         plug_hand_quat = get_last_sequence(plug_hand_quat, self.env.progress_buf, sequence_length)
         plug_hand_pos = get_last_sequence(plug_hand_pos, self.env.progress_buf, sequence_length)
         eef_pos = get_last_sequence(eef_pos, self.env.progress_buf, sequence_length)
-        noisy_socket_pos = get_last_sequence(noisy_socket_pos, self.env.progress_buf, sequence_length)
+        socket_pos = get_last_sequence(socket_pos, self.env.progress_buf, sequence_length)
         action = get_last_sequence(action, self.env.progress_buf, sequence_length)
 
         plug_hand_quat = plug_hand_quat.squeeze(0).cpu().detach().numpy()
@@ -747,13 +747,10 @@ class PPO(object):
 
         if stats is not None:
             eef_pos = (eef_pos - stats["mean"][eef_key]) / stats["std"][eef_key]
-            noisy_socket_pos = (noisy_socket_pos - stats["mean"]["noisy_socket_pos"][:3]) / \
-                               stats["std"]["noisy_socket_pos"][:3]
+            socket_pos = (socket_pos - stats["mean"]["socket_pos"][:3]) / stats["std"]["socket_pos"][:3]
             if not diff:
-                euler = (euler - stats["mean"]["plug_hand_euler"]) / stats["std"][
-                    "plug_hand_euler"]
-                plug_hand_pos = (plug_hand_pos - stats["mean"]["plug_hand_pos"]) / \
-                                stats["std"]["plug_hand_pos"]
+                euler = (euler - stats["mean"]["plug_hand_euler"]) / stats["std"]["plug_hand_euler"]
+                plug_hand_pos = (plug_hand_pos - stats["mean"]["plug_hand_pos"]) / stats["std"]["plug_hand_pos"]
 
             else:
                 euler = (euler - stats["mean"]["plug_hand_diff_euler"]) / stats["std"][
@@ -765,7 +762,7 @@ class PPO(object):
 
         lin_input = torch.cat([
             eef_pos,
-            noisy_socket_pos,
+            socket_pos,
             # action,
             # obj_pos_rpy
         ], dim=-1)

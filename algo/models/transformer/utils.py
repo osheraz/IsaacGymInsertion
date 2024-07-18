@@ -261,15 +261,15 @@ def define_img_transforms(width, height, crop_width, crop_height,
     downsample = transforms.Resize((width, height), interpolation=transforms.InterpolationMode.BILINEAR)
 
     transform = nn.Sequential(
-        v2.RandomErasing(p=0.4, scale=(0.02, 0.1), ratio=(0.3, 3.3), value=-0.5, inplace=False),
-        v2.RandomErasing(p=0.4, scale=(0.02, 0.1), ratio=(0.3, 3.3), value=0, inplace=False),
-        v2.GaussianBlur(kernel_size=5, sigma=(0.01, 0.1)),
-        v2.RandomRotation(degrees=5)
+        # v2.RandomErasing(p=0.4, scale=(0.02, 0.1), ratio=(0.3, 3.3), value=-0.5, inplace=False),
+        # v2.RandomErasing(p=0.4, scale=(0.02, 0.1), ratio=(0.3, 3.3), value=0, inplace=False),
+        # v2.GaussianBlur(kernel_size=3, sigma=(0.01, 0.1)),
+        v2.RandomRotation(degrees=1)
     )
 
     mask_transform = nn.Sequential(
-        v2.GaussianBlur(kernel_size=5, sigma=(0.01, 0.1)),
-        v2.RandomRotation(degrees=5)
+        # v2.GaussianBlur(kernel_size=3, sigma=(0.01, 0.1)),
+        v2.RandomRotation(degrees=1)
     )
 
     # Add gaussian noise to the image
@@ -516,12 +516,12 @@ def mask_img(x, img_patch_size, img_masking_prob):
     return x
 
 
-def log_output(tac_input, img_input, seg_input, lin_input, out, latent, pos_rpy, save_folder, d_pos_rpy=None,
+def log_outpu2t(tac_input, img_input, seg_input, lin_input, out, latent, pos_rpy, save_folder, d_pos_rpy=None,
                session='train'):
     # Selecting the first example from the batch for demonstration
     # tac_input [B T F W H C]
 
-    image_sequence = tac_input[0].cpu().detach().numpy()
+    # image_sequence = tac_input[0].cpu().detach().numpy()
     img_input = img_input[0].cpu().detach().numpy()
     seg_input = seg_input[0].cpu().detach().numpy()
 
@@ -536,16 +536,16 @@ def log_output(tac_input, img_input, seg_input, lin_input, out, latent, pos_rpy,
     fig = plt.figure(figsize=(20, 10))
 
     # Adding subplot for image sequence (adjust as needed)
-    ax1 = fig.add_subplot(2, 2, 1)
-    concat_images = []
-    # image_sequence [T F W H C]
-    for finger_idx in range(image_sequence.shape[1]):
-        finger_sequence = [np.transpose(img, (1, 2, 0)) for img in image_sequence[:, finger_idx, ...]]
-        finger_sequence = np.hstack(finger_sequence)
-        concat_images.append(finger_sequence)
-
-    ax1.imshow(np.vstack(concat_images) + 0.5)  # Adjust based on image normalization
-    ax1.set_title('Input Tactile Sequence')
+    # ax1 = fig.add_subplot(2, 2, 1)
+    # concat_images = []
+    # # image_sequence [T F W H C]
+    # for finger_idx in range(image_sequence.shape[1]):
+    #     finger_sequence = [np.transpose(img, (1, 2, 0)) for img in image_sequence[:, finger_idx, ...]]
+    #     finger_sequence = np.hstack(finger_sequence)
+    #     concat_images.append(finger_sequence)
+    #
+    # ax1.imshow(np.vstack(concat_images) + 0.5)  # Adjust based on image normalization
+    # ax1.set_title('Input Tactile Sequence')
 
     # Adding subplot for linear features (adjust as needed)
     # ax2 = fig.add_subplot(2, 2, 2)
@@ -618,4 +618,55 @@ def log_output(tac_input, img_input, seg_input, lin_input, out, latent, pos_rpy,
     # Saving the figure
     plt.savefig(f'{save_folder}/{session}_example.png')
     # Clean up plt to free memory
+    plt.close(fig)
+
+
+
+def plot_image_sequence(ax, sequence, title):
+    if sequence is not None:
+        if sequence.ndim == 4 and sequence.shape[0] > 1:
+            concat_sequence = []
+            for t in range(sequence.shape[0]):
+                img = sequence[t]
+                img = np.transpose(img, (1, 2, 0))  # Convert from [W, H, C] to [H, W, C]
+                concat_sequence.append(img)
+            concat_sequence = np.hstack(concat_sequence)
+        else:
+            img = sequence[0] if sequence.ndim == 4 else sequence
+            img = np.transpose(img, (1, 2, 0))  # Convert from [W, H, C] to [H, W, C]
+            concat_sequence = img
+        ax.imshow(concat_sequence)
+        ax.set_title(title)
+
+def plot_bar_comparison(ax, predicted, true, title):
+    width = 0.35
+    indices = np.arange(len(predicted))
+    ax.bar(indices - width / 2, predicted, width, label='Predicted')
+    ax.bar(indices + width / 2, true, width, label='True Label')
+    ax.set_title(title)
+    ax.legend()
+
+def log_output(tac_input, img_input, seg_input, lin_input, out, latent, pos_rpy, save_folder, d_pos_rpy=None, session='train'):
+    img_input = img_input[0].cpu().detach().numpy() if img_input is not None else None
+    seg_input = seg_input[0].unsqueeze(1).cpu().detach().numpy() if seg_input is not None else None
+    linear_features = lin_input[0].cpu().detach().numpy() if lin_input is not None else None
+    d_pos_rpy = d_pos_rpy[0, -1, :].cpu().detach().numpy() if d_pos_rpy is not None else None
+    pos_rpy = pos_rpy[0, -1, :].cpu().detach().numpy() if pos_rpy is not None else None
+    predicted_output = out[0].cpu().detach().numpy() if out is not None else None
+    true_label = latent[0, -1, :].cpu().detach().numpy() if latent is not None else None
+
+    fig = plt.figure(figsize=(20, 10))
+
+    ax2 = fig.add_subplot(2, 2, 2)
+    plot_image_sequence(ax2, seg_input, 'Input Seg Sequence')
+
+    ax3 = fig.add_subplot(2, 2, 3)
+    plot_image_sequence(ax3, img_input, 'Input Image Sequence')
+
+    if predicted_output is not None and true_label is not None:
+        ax4 = fig.add_subplot(2, 2, 4)
+        plot_bar_comparison(ax4, predicted_output, true_label, 'Model Output vs. True Label')
+
+    plt.tight_layout()
+    plt.savefig(f'{save_folder}/{session}_example.png')
     plt.close(fig)

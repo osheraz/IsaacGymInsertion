@@ -13,8 +13,8 @@ import yaml
 
 # all_paths = glob('/home/osher/tactile_insertion/datastore_42_gt_test/*/*/obs/*.npz')
 # all_paths = glob('/home/roblab20/tactile_diffusion/datastore_real/*/*/obs/*.npz')
-all_paths = glob('/home/roblab20/tactile_tests/second/*/*/obs/*.npz')
-# all_paths = glob('/home/osher/tactile_insertion/datastore_42_no_phys_params/*/*/obs/*.npz')
+# all_paths = glob('/home/roblab20/tactile_tests/second/*/*/obs/*.npz')
+all_paths = glob('/home/osher/tactile_insertion/datastore_42_no_phys_params/*/*/obs/*.npz')
 
 print(len(all_paths))
 
@@ -449,7 +449,7 @@ if False:
     plt.scatter(data['socket_pos'][1:done_idx, 0], data['socket_pos'][1:done_idx, 1], color='r', s=35)
     plt.show()
 
-if True:
+if False:
     import cv2
     import numpy as np
     from tqdm import tqdm
@@ -539,9 +539,9 @@ if True:
         # cv2.imshow('bin', binarize_image(img).transpose(1, 2, 0))
 
         # cv2.waitKey(200) & 0xFF
-cv2.destroyAllWindows()
+    cv2.destroyAllWindows()
 
-if False:
+if True:
     fig = plt.figure(figsize=(18, 10))
     ax = fig.add_subplot(111)
     a = []
@@ -556,14 +556,14 @@ if False:
         # label = Rotation.from_quat(data["plug_hand_pos"][:done_idx, 3:]).as_euler('xyz', degrees=True)  # data["latent"] #
 
         label = Rotation.from_quat(data["plug_hand_quat"][:done_idx, :]).as_euler('xyz', degrees=True)  # data["latent"] #
-        to_plot = label - label[0, :]
+        to_plot = label - 0 * label[0, :]
 
         if i == 0:
             a = to_plot
         else:
             a = np.vstack((a, to_plot))
 
-        plt.plot(to_plot[:,], 'o')
+        plt.plot(to_plot[:,2], 'o')
 
         # plt.plot(sin_cos_representation[:,2:4], 'ko')
         # plt.plot(sin_cos_representation[:,4:6], 'go')

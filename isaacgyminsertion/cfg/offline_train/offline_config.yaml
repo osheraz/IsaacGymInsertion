@@ -27,8 +27,8 @@ tactile_crop_h: 8
 train:
   # basic training hyperparameters
   epochs: 50
-  train_batch_size: 64
-  val_batch_size: 64
+  train_batch_size: 32
+  val_batch_size: 32
   learning_rate: 1e-4
   train_test_split: 0.98
   action_regularization: False # propagate gradients for action loss
@@ -80,7 +80,7 @@ train:
 model:
   # linear embedding
   linear:
-    input_size: 12
+    input_size: 9
     # TODO: add model layers here
 
   use_img: True
@@ -95,7 +95,7 @@ model:
     num_layers: 4
     num_heads: 4
     dim_factor: 4
-    output_size: 8
+    output_size: 6
     tactile_encoding_size: 64
     img_encoding_size: 64
     seg_encoding_size: 64

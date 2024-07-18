@@ -124,7 +124,6 @@ def run(cfg: DictConfig):
         else:
             # Test transformer (trained offline)
             print("Loading Teacher model from", cfg.train.load_path)
-            print("Loading Student model from", cfg.offline_train.train.student_ckpt_path)
 
             from algo.models.transformer.runner import Runner as TransformerRunner 
             agent = PPO(envs, output_dif, full_config=cfg)

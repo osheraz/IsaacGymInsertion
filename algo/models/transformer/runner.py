@@ -207,8 +207,8 @@ class Runner:
                 action_loss_list = []
 
             if (i + 1) % eval_every == 0 or (i == len(dl) - 1):
-                if tac_input.ndim > 2:
-                    log_output(tac_input,
+
+                log_output(tac_input,
                                img_input,
                                seg_input,
                                lin_input,
@@ -286,8 +286,8 @@ class Runner:
             #     self._wandb_log({
             #         'val/action_loss': np.mean(action_loss_list)
             #     })
-            if tac_input.ndim > 2:
-                log_output(tac_input,
+
+            log_output(tac_input,
                            img_input,
                            seg_input,
                            lin_input,
@@ -447,6 +447,7 @@ class Runner:
 
         # training
         for epoch in range(epochs):
+            self.validate(val_dl)
 
             if self.cfg.train.only_validate:
                 self.validate(val_dl)

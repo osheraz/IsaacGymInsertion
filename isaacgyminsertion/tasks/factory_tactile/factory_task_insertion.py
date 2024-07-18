@@ -1215,10 +1215,10 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         if self.external_cam:
             # angles = np.linspace(-np.pi / 4, np.pi / 4, self.num_envs)
             angles = np.random.normal(loc=0, scale=np.pi / 8, size=self.num_envs)
-            angles = np.clip(angles, -np.pi/4, np.pi/4)
+            angles = np.clip(angles, -np.pi/8, np.pi/8)
 
             for env_id in env_ids:
-                radius = np.random.uniform(0.2, 0.4)
+                radius = np.random.uniform(0.2, 0.3)
                 center_x, center_y, _ = self.plug_grasp_pos[env_id].cpu()
                 angle = angles[env_id]
 

@@ -55,6 +55,7 @@ class DataNormalizer:
         self.file_list = file_list
         self.remove_failed_trajectories()
         self.rot_tf = RotationTransformer(from_rep='matrix', to_rep='rotation_6d')
+        self.rot_tf_from_quat = RotationTransformer()
 
     def ensure_directory_exists(self, path):
         """Ensure the directory for the given path exists."""
@@ -139,12 +140,6 @@ class DataNormalizer:
                 diff_euler = euler - euler[0, :]
                 self.stats['mean']["plug_hand_diff_euler"] = np.mean(diff_euler, axis=0)
                 self.stats['std']["plug_hand_diff_euler"] = np.std(diff_euler, axis=0)
-
-                sin_cos_repr = np.hstack((np.sin(euler[:, 0:1]), np.cos(euler[:, 0:1]),
-                                          np.sin(euler[:, 1:2]), np.cos(euler[:, 1:2])))
-
-                self.stats['mean']["plug_hand_sin_cos_euler"] = np.mean(sin_cos_repr, axis=0)
-                self.stats['std']["plug_hand_sin_cos_euler"] = np.std(sin_cos_repr, axis=0)
             else:  # Only position data
                 pos = data
                 diff_pos = pos - pos[0, :]
@@ -167,11 +162,9 @@ class DataNormalizer:
             self.stats['mean']["plug_hand_diff_euler"] = np.mean(diff_euler, axis=0)
             self.stats['std']["plug_hand_diff_euler"] = np.std(diff_euler, axis=0)
 
-            sin_cos_repr = np.hstack((np.sin(euler[:, 0:1]), np.cos(euler[:, 0:1]),
-                                      np.sin(euler[:, 1:2]), np.cos(euler[:, 1:2])))
-
-            self.stats['mean']["plug_hand_sin_cos_euler"] = np.mean(sin_cos_repr, axis=0)
-            self.stats['std']["plug_hand_sin_cos_euler"] = np.std(sin_cos_repr, axis=0)
+            rot6d = self.rot_tf_from_quat.forward(data)
+            self.stats['mean']["plug_hand_rot6d"] = np.mean(rot6d, axis=0)
+            self.stats['std']["plug_hand_rot6d"] = np.std(rot6d, axis=0)
 
         elif norm_key == 'eef_pos':
             eef_pos_rot6d = np.concatenate((data[:, :3],
@@ -284,9 +277,11 @@ class TactileDataset(Dataset):
         seg_input = [np.load(os.path.join(seg_folder, f'seg_{i}.npz'))['seg'] for i in
                      range(start_idx, start_idx + self.sequence_length)]
 
-        seg_input = np.stack([(m == obj_id).astype(float).astype(float) for m in seg_input])
-        img_input = np.stack([img * m for img, m in zip(img_input, seg_input)])
+        seg_input = np.stack([(m == obj_id ).astype(float).astype(float) for m in seg_input])
+        # img_input = np.stack([img * m for img, m in zip(img_input, seg_input)])
+        img_input = np.stack(img_input)
 
+        # img_input = np.stack([img + 0.5 * (img * m != 0).astype(float) for img, m in zip(img_input, seg_input)])
         if self.sync_transform is not None:
             img_input, seg_input = self.sync_transform(self.to_torch(img_input), self.to_torch(seg_input))
         else:
@@ -315,9 +310,7 @@ class TactileDataset(Dataset):
 
         if self.stats is not None:
             eef_pos = (eef_pos - self.stats["mean"][eef_key]) / self.stats["std"][eef_key]
-            socket_pos = (socket_pos - self.stats["mean"]["socket_pos"][:3]) / self.stats["std"][
-                                                                                                     "socket_pos"][
-                                                                                                 :3]
+            socket_pos = (socket_pos - self.stats["mean"]["socket_pos"][:3]) / self.stats["std"]["socket_pos"][:3]
             euler = (euler - self.stats["mean"][euler_key]) / self.stats["std"][euler_key]
             plug_hand_pos = (plug_hand_pos - self.stats["mean"][plug_hand_pos_key]) / self.stats["std"][
                 plug_hand_pos_key]
@@ -344,19 +337,19 @@ class TactileDataset(Dataset):
             torch.zeros(1), torch.zeros(1))
 
         data_seq = {key: self.extract_sequence(data, key, start_idx) for key in self.obs_keys}
-        eef_pos, noisy_socket_pos, obj_pos_rpy = self._normalize_data(data_seq, diff, first_obs)
+        eef_pos, socket_pos, obj_pos_rpy = self._normalize_data(data_seq, diff, first_obs)
 
         action = data_seq["action"]
         obs_hist = data_seq["obs_hist"]
-        latent = data_seq["latent"]
+        latent = obj_pos_rpy # data_seq["latent"]
 
         # noisy_socket_pos_noise = np.random.normal(loc=0, scale=0.002, size=noisy_socket_pos.shape)
         # obj_pos_rpy_noise = 0 * np.random.normal(loc=0, scale=0.002, size=obj_pos_rpy.shape)
 
-        lin_input = np.concatenate([eef_pos,  # 12
-                                    noisy_socket_pos,
+        lin_input = np.concatenate([eef_pos,  # 9
+                                    # socket_pos,
                                     # action,  # 6
-                                    # obj_pos_rpy + obj_pos_rpy_noise  # 6
+                                    # obj_pos_rpy # 6
                                     ], axis=-1)
 
         tensors = [self.to_torch(tensor) if not isinstance(tensor, torch.Tensor) else tensor for tensor in
