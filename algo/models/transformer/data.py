@@ -1,20 +1,15 @@
 from torch.utils.data import Dataset
 from torchvision import transforms
 from glob import glob
-import matplotlib.pyplot as plt
 import numpy as np
 import torch
-from torch import nn
-from scipy.spatial.transform import Rotation
-import torchvision.transforms.functional as F
-
 import os
 import pickle
 from scipy.spatial.transform import Rotation
 from pathlib import Path
 from tqdm import tqdm
 import random
-import cv2
+from isaacgyminsertion.tasks.factory_tactile.factory_utils import RotationTransformer
 
 
 def get_last_sequence(input_tensor, progress_buf, sequence_length):
@@ -59,6 +54,7 @@ class DataNormalizer:
         self.stats = {"mean": {}, "std": {}}
         self.file_list = file_list
         self.remove_failed_trajectories()
+        self.rot_tf = RotationTransformer(from_rep='matrix', to_rep='rotation_6d')
 
     def ensure_directory_exists(self, path):
         """Ensure the directory for the given path exists."""
@@ -158,6 +154,7 @@ class DataNormalizer:
                 self.stats['std']["plug_hand_pos_diff"] = np.std(diff_pos, axis=0)
 
         elif norm_key == 'plug_hand_quat':
+
             self.stats['mean'][norm_key] = np.mean(data, axis=0)
             self.stats['std'][norm_key] = np.std(data, axis=0)
 
@@ -176,6 +173,12 @@ class DataNormalizer:
             self.stats['mean']["plug_hand_sin_cos_euler"] = np.mean(sin_cos_repr, axis=0)
             self.stats['std']["plug_hand_sin_cos_euler"] = np.std(sin_cos_repr, axis=0)
 
+        elif norm_key == 'eef_pos':
+            eef_pos_rot6d = np.concatenate((data[:, 3:], self.rot_tf.forward(data[:, 3:])), axis=1)
+            self.stats['mean']['eef_pos_rot6d'] = np.mean(eef_pos_rot6d, axis=0)
+            self.stats['std']['eef_pos_rot6d'] = np.std(eef_pos_rot6d, axis=0)
+            self.stats['mean'][norm_key] = np.mean(data, axis=0)
+            self.stats['std'][norm_key] = np.std(data, axis=0)
         else:
             # Handle other normalization obs_keys
             self.stats['mean'][norm_key] = np.mean(data, axis=0)
@@ -194,9 +197,9 @@ class DataNormalizer:
 
 
 class TactileDataset(Dataset):
-    def __init__(self, traj_files, sequence_length=500, full_sequence=False, stats=None, stride=5, tactile_channel=3,
-                 img_transform=None, tactile_transform=None, include_img=True, include_lin=True, include_tactile=True,
-                 obs_keys=None):
+    def __init__(self, traj_files, sequence_length=500, stats=None, stride=5,
+                 img_transform=None, seg_transform=None, sync_transform=None, tactile_transform=None,
+                 include_img=True, include_lin=True, include_tactile=True, include_seg=True, obs_keys=None):
         """
         Initialize the TactileDataset.
 
@@ -218,22 +221,18 @@ class TactileDataset(Dataset):
         self.all_folders = traj_files
         self.sequence_length = sequence_length
         self.stride = stride
-        self.full_sequence = full_sequence
         self.stats = stats
         self.obs_keys = obs_keys
+
         self.include_img = include_img
+        self.include_seg = include_seg
         self.include_lin = include_lin
         self.include_tactile = include_tactile
-        self.tactile_channel = tactile_channel
-
-        self.to_gray = transforms.Compose([
-            transforms.ToPILImage(),
-            transforms.Grayscale(num_output_channels=1),
-            transforms.ToTensor()
-        ]) if self.tactile_channel == 1 else None
 
         self.to_torch = lambda x: torch.from_numpy(x).float()
         self.img_transform = img_transform
+        self.seg_transform = seg_transform
+        self.sync_transform = sync_transform
         self.tactile_transform = tactile_transform
         self.indices_per_trajectory = self._generate_indices()
 
@@ -246,13 +245,9 @@ class TactileDataset(Dataset):
             done = data["done"]
             done_idx = done.nonzero()[0][-1]
             total_len = done_idx
-            if self.full_sequence:
-                assert total_len == self.sequence_length, f"Sequence length mismatch in {file}."
-                indices.append((file_idx, 0))
-            else:
-                if total_len >= self.sequence_length:
-                    num_subsequences = (total_len - self.sequence_length) // self.stride + 1
-                    indices.extend([(file_idx, i * self.stride) for i in range(num_subsequences)])
+            if total_len >= self.sequence_length:
+                num_subsequences = (total_len - self.sequence_length) // self.stride + 1
+                indices.extend([(file_idx, i * self.stride) for i in range(num_subsequences)])
         return indices
 
     def __len__(self):
@@ -275,23 +270,35 @@ class TactileDataset(Dataset):
         return tactile_input
 
     def _apply_tactile_transform(self, tactile_input):
-        T, F, W, H, C = tactile_input.shape
-        tactile_input_reshaped = tactile_input.view(-1, 3, W, H)
-        if self.tactile_channel == 1:
-            tactile_input_reshaped = torch.stack([self.to_gray(image) for image in tactile_input_reshaped])
-        tactile_input = self.tactile_transform(tactile_input_reshaped)
-        tactile_input = tactile_input.view(T, F, self.tactile_channel, W, H)
+        T, F, C, W, H = tactile_input.shape
+        tactile_input = tactile_input.view(-1, C, W, H)
+        tactile_input = self.tactile_transform(tactile_input)
+        tactile_input = tactile_input.view(T, F, C, *tactile_input.shape[2:])
         return tactile_input
 
-    def _load_and_preprocess_image(self, img_folder, start_idx):
-        img_input = np.stack([np.load(os.path.join(img_folder, f'img_{i}.npz'))['img'] for i in
-                              range(start_idx, start_idx + self.sequence_length)])
-        if self.img_transform is not None:
-            img_input = self.img_transform(self.to_torch(img_input))
-        return img_input
+    def _load_and_preprocess_image(self, img_folder, seg_folder, start_idx, obj_id=2):
+        img_input = [np.load(os.path.join(img_folder, f'img_{i}.npz'))['img'] for i in
+                     range(start_idx, start_idx + self.sequence_length)]
+        seg_input = [np.load(os.path.join(seg_folder, f'seg_{i}.npz'))['seg'] for i in
+                     range(start_idx, start_idx + self.sequence_length)]
 
-    def _normalize_data(self, data_seq, diff, first_obs):
-        eef_pos = data_seq["eef_pos"]
+        seg_input = np.stack([(m == obj_id).astype(float) for m in seg_input])
+        img_input = np.stack([img * m for img, m in zip(img_input, seg_input)])
+
+        if self.sync_transform is not None:
+            img_input, seg_input = self.sync_transform(self.to_torch(img_input), self.to_torch(seg_input))
+        else:
+            assert NotImplementedError
+
+        return img_input, seg_input
+
+    def _normalize_data(self, data_seq, diff, first_obs, rot6d=False):
+
+        eef_key = "eef_pos_rot6d" if rot6d else 'eef_pos'
+        euler_key = "plug_hand_diff_euler" if diff else "plug_hand_euler"
+        plug_hand_pos_key = "plug_hand_pos_diff" if diff else "plug_hand_pos"
+
+        eef_pos = data_seq[eef_key]
         noisy_socket_pos = data_seq["noisy_socket_pos"][:, :3]
         euler = Rotation.from_quat(data_seq["plug_hand_quat"]).as_euler('xyz')
         plug_hand_pos = data_seq["plug_hand_pos"]
@@ -301,52 +308,53 @@ class TactileDataset(Dataset):
             plug_hand_pos = plug_hand_pos - first_obs["plug_hand_pos"]
 
         if self.stats is not None:
-            eef_pos = (eef_pos - self.stats["mean"]["eef_pos"]) / self.stats["std"]["eef_pos"]
-            noisy_socket_pos = (noisy_socket_pos - self.stats["mean"]["noisy_socket_pos"][:3]) / self.stats["std"]["noisy_socket_pos"][:3]
-            euler_mean_key = "plug_hand_diff_euler" if diff else "plug_hand_euler"
-            plug_hand_pos_mean_key = "plug_hand_pos_diff" if diff else "plug_hand_pos"
-            euler = (euler - self.stats["mean"][euler_mean_key]) / self.stats["std"][euler_mean_key]
-            plug_hand_pos = (plug_hand_pos - self.stats["mean"][plug_hand_pos_mean_key]) / self.stats["std"][plug_hand_pos_mean_key]
+            eef_pos = (eef_pos - self.stats["mean"][eef_key]) / self.stats["std"][eef_key]
+            noisy_socket_pos = (noisy_socket_pos - self.stats["mean"]["noisy_socket_pos"][:3]) / self.stats["std"][
+                                                                                                     "noisy_socket_pos"][
+                                                                                                 :3]
+            euler = (euler - self.stats["mean"][euler_key]) / self.stats["std"][euler_key]
+            plug_hand_pos = (plug_hand_pos - self.stats["mean"][plug_hand_pos_key]) / self.stats["std"][
+                plug_hand_pos_key]
 
         obj_pos_rpy = np.hstack((plug_hand_pos, euler))
+
         return eef_pos, noisy_socket_pos, obj_pos_rpy
 
-    def __getitem__(self, idx, diff_tac=True, diff=True):
+    def __getitem__(self, idx, diff_tac=True, diff=False):
 
         file_idx, start_idx = self.indices_per_trajectory[idx]
         file_path = self.all_folders[file_idx]
         data = np.load(file_path)
         tactile_folder = file_path[:-7].replace('obs', 'tactile')
         img_folder = file_path[:-7].replace('obs', 'img')
-
-        done = data["done"]
-        done_idx = done.nonzero()[0][-1]
-        padding_length = max(0, self.sequence_length - (done_idx - start_idx))
-        mask = np.ones(self.sequence_length)
-        mask[:padding_length] = 0
+        seg_folder = file_path[:-7].replace('obs', 'seg')
 
         first_obs = {key: data[key][0] for key in self.obs_keys}
 
-        tactile_input = self._load_and_preprocess_tactile(tactile_folder, start_idx, diff_tac) if self.include_tactile else torch.zeros(1)
-        img_input = self._load_and_preprocess_image(img_folder, start_idx) if self.include_img else torch.zeros(1)
+        tactile_input = self._load_and_preprocess_tactile(tactile_folder, start_idx,
+                                                          diff_tac) if self.include_tactile else torch.zeros(1)
+        img_input, seg_input = self._load_and_preprocess_image(img_folder, seg_folder,
+                                                               start_idx) if self.include_img else (
+            torch.zeros(1), torch.zeros(1))
 
         data_seq = {key: self.extract_sequence(data, key, start_idx) for key in self.obs_keys}
         eef_pos, noisy_socket_pos, obj_pos_rpy = self._normalize_data(data_seq, diff, first_obs)
+
         action = data_seq["action"]
         obs_hist = data_seq["obs_hist"]
         latent = data_seq["latent"]
 
-        noisy_socket_pos_noise = 0 * np.random.normal(loc=0, scale=0.002, size=noisy_socket_pos.shape)
-        obj_pos_rpy_noise = 0 * np.random.normal(loc=0, scale=0.002, size=obj_pos_rpy.shape)
+        noisy_socket_pos_noise = np.random.normal(loc=0, scale=0.002, size=noisy_socket_pos.shape)
+        # obj_pos_rpy_noise = 0 * np.random.normal(loc=0, scale=0.002, size=obj_pos_rpy.shape)
 
-        lin_input = np.concatenate([eef_pos,    # 12
+        lin_input = np.concatenate([eef_pos,  # 12
                                     noisy_socket_pos + noisy_socket_pos_noise,
-                                    action, # 6
-                                    obj_pos_rpy + obj_pos_rpy_noise # 6
+                                    action,  # 6
+                                    # obj_pos_rpy + obj_pos_rpy_noise  # 6
                                     ], axis=-1)
 
         tensors = [self.to_torch(tensor) if not isinstance(tensor, torch.Tensor) else tensor for tensor in
-                   [tactile_input, img_input, lin_input, obj_pos_rpy, obs_hist, latent, action, mask]]
+                   [tactile_input, img_input, seg_input, lin_input, obj_pos_rpy, obs_hist, latent, action]]
 
         return tuple(tensors)
 

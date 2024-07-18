@@ -515,7 +515,10 @@ if True:
         img1 = tactile_img[j][0] - tactile_img[0][0]
         img2 = tactile_img[j][1] - tactile_img[0][1]
         img3 = tactile_img[j][2] - tactile_img[0][2]
+        depth = depth_img[j]
+        seg = (seg_img[j] == 2).astype(float)
 
+        # depth = np.uint8(depth)
         depth = depth_img[j]
         if seg:
             seg = seg_img[j]

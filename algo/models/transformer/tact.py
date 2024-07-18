@@ -6,15 +6,49 @@ import torch.nn.functional as F
 import math
 from typing import List, Dict, Optional, Tuple, Callable
 
+class DepthOnlyFCBackbone32x64(nn.Module):
+    def __init__(self, latent_dim, output_activation=None, num_channel=1):
+        super().__init__()
+
+        self.num_channel = num_channel
+        activation = nn.ELU()
+        self.image_compression = nn.Sequential(
+            # [1, 32, 64]
+            nn.Conv2d(in_channels=self.num_channel, out_channels=32, kernel_size=5),
+            # [32, 28, 60]
+            nn.MaxPool2d(kernel_size=2, stride=2),
+            # [32, 14, 30]
+            activation,
+            nn.Conv2d(in_channels=32, out_channels=64, kernel_size=3),
+            # [64, 12, 28]
+            activation,
+            nn.Flatten(),
+            # Calculate the flattened size: 64 * 12 * 28 = 21,504
+            nn.Linear(64 * 12 * 28, 128),
+            activation,
+            nn.Linear(128, latent_dim)
+        )
+
+        if output_activation == "tanh":
+            self.output_activation = nn.Tanh()
+        else:
+            self.output_activation = activation
+
+    def forward(self, images: torch.Tensor):
+        images_compressed = self.image_compression(images)
+        latent = self.output_activation(images_compressed)
+
+        return latent
+
 class DepthOnlyFCBackbone54x96(nn.Module):
     def __init__(self, latent_dim, output_activation=None, num_channel=1):
         super().__init__()
 
-        self.num_frames = num_channel
+        self.num_channel = num_channel
         activation = nn.ELU()
         self.image_compression = nn.Sequential(
             # [1, 54, 96]
-            nn.Conv2d(in_channels=self.num_frames, out_channels=32, kernel_size=5),
+            nn.Conv2d(in_channels=self.num_channel, out_channels=32, kernel_size=5),
             # [32, 50, 92]
             nn.MaxPool2d(kernel_size=2, stride=2),
             # [32, 25, 46]
@@ -132,14 +166,17 @@ class MultiModalModel(BaseModel):
             share_encoding: Optional[bool] = True,
             tactile_encoder: Optional[str] = "efficientnet-b0",
             img_encoder: Optional[str] = "efficientnet-b0",
-            tactile_encoding_size: Optional[int] = 128,
-            img_encoding_size: Optional[int] = 128,
-            lin_encoding_size: Optional[int] = 128,
+            seg_encoder: Optional[str] = "efficientnet-b0",
+            tactile_encoding_size: Optional[int] = 64,
+            img_encoding_size: Optional[int] = 64,
+            seg_encoding_size: Optional[int] = 64,
+            lin_encoding_size: Optional[int] = 64,
             mha_num_attention_heads: Optional[int] = 2,
             mha_num_attention_layers: Optional[int] = 2,
             mha_ff_dim_factor: Optional[int] = 4,
             include_lin: Optional[bool] = True,
             include_img: Optional[bool] = True,
+            include_seg: Optional[bool] = True,
             include_tactile: Optional[bool] = True,
             additional_lin: Optional[int] = 0,
     ) -> None:
@@ -156,6 +193,7 @@ class MultiModalModel(BaseModel):
 
         self.tactile_encoding_size = tactile_encoding_size
         self.img_encoding_size = img_encoding_size
+        self.seg_encoding_size = seg_encoding_size
         self.additional_lin = additional_lin
         if additional_lin:
             num_lin_features += additional_lin
@@ -166,7 +204,11 @@ class MultiModalModel(BaseModel):
         self.include_lin = include_lin
         self.include_tactile = include_tactile
         self.include_img = include_img
+        self.include_seg = include_img
+
         self.tactile_encoder_type = tactile_encoder
+        self.img_encoder_type = img_encoder
+        self.seg_encoder_type = seg_encoder
 
         num_features = 0
 
@@ -176,15 +218,15 @@ class MultiModalModel(BaseModel):
                 self.tactile_encoder = replace_bn_with_gn(self.tactile_encoder)
                 self.num_tactile_features = self.tactile_encoder._fc.in_features
             elif tactile_encoder == 'depth':
-                self.tactile_encoder = DepthOnlyFCBackbone54x96(latent_dim=self.tactile_encoding_size, num_channel=num_channels)
+                self.tactile_encoder = DepthOnlyFCBackbone32x64(latent_dim=self.tactile_encoding_size, num_channel=num_channels)
                 self.num_tactile_features = self.tactile_encoding_size
             else:
                 raise NotImplementedError
 
             if self.num_tactile_features != self.tactile_encoding_size:
-                self.compress_obs_enc = nn.Linear(self.num_tactile_features, self.tactile_encoding_size)
+                self.compress_tac_enc = nn.Linear(self.num_tactile_features, self.tactile_encoding_size)
             else:
-                self.compress_obs_enc = nn.Identity()
+                self.compress_tac_enc = nn.Identity()
 
             num_features += 3
 
@@ -193,13 +235,34 @@ class MultiModalModel(BaseModel):
                 self.img_encoder = EfficientNet.from_name(img_encoder, in_channels=1)  # depth
                 self.img_encoder = replace_bn_with_gn(self.img_encoder)
                 self.num_img_features = self.img_encoder._fc.in_features
+            elif img_encoder == 'depth':
+                self.img_encoder = DepthOnlyFCBackbone54x96(latent_dim=self.img_encoding_size, num_channel=num_channels)
+                self.num_img_features = self.img_encoding_size
             else:
                 raise NotImplementedError
 
             if self.num_img_features != self.img_encoding_size:
-                self.compress_obs_enc = nn.Linear(self.num_img_features, self.img_encoding_size)
+                self.compress_img_enc = nn.Linear(self.num_img_features, self.img_encoding_size)
             else:
-                self.compress_obs_enc = nn.Identity()
+                self.compress_img_enc = nn.Identity()
+
+            num_features += 1
+
+        if include_seg:
+            if seg_encoder.split("-")[0] == "efficientnet":
+                self.seg_encoder = EfficientNet.from_name(seg_encoder, in_channels=1)  # depth
+                self.seg_encoder = replace_bn_with_gn(self.seg_encoder)
+                self.num_seg_features = self.seg_encoder._fc.in_features
+            elif seg_encoder == 'depth':
+                self.seg_encoder = DepthOnlyFCBackbone54x96(latent_dim=self.seg_encoding_size, num_channel=num_channels)
+                self.num_seg_features = self.seg_encoding_size
+            else:
+                raise NotImplementedError
+
+            if self.num_seg_features != self.seg_encoding_size:
+                self.compress_seg_enc = nn.Linear(self.num_seg_features, self.seg_encoding_size)
+            else:
+                self.compress_seg_enc = nn.Identity()
 
             num_features += 1
 
@@ -224,7 +287,7 @@ class MultiModalModel(BaseModel):
         )
 
     def forward(
-            self, obs_tactile: torch.tensor, obs_img: torch.tensor,
+            self, obs_tactile: torch.tensor, obs_img: torch.tensor, obs_seg: torch.tensor,
             lin_input: torch.tensor = None, add_lin_input: torch.tensor = None) -> torch.Tensor:
 
         tokens_list = []
@@ -248,7 +311,7 @@ class MultiModalModel(BaseModel):
                             tactile_encoding = tactile_encoding.flatten(start_dim=1)
                             tactile_encoding = self.tactile_encoder._dropout(tactile_encoding)
                         # currently, the size is [batch_size, self.context_size, self.tactile_encoding_size]
-                        tactile_encoding = self.compress_obs_enc(tactile_encoding)
+                        tactile_encoding = self.compress_tac_enc(tactile_encoding)
                         # currently, the size is [batch_size*(self.context_size), self.tactile_encoding_size]
                         # reshape the tactile_encoding to [context, batch, encoding_size], note that the order is flipped
                         tactile_encoding = tactile_encoding.reshape((self.context_size, -1, self.tactile_encoding_size))
@@ -272,21 +335,57 @@ class MultiModalModel(BaseModel):
         if self.include_img:
             # img
             B, T, C, W, H = obs_img.shape
-            obs_img = obs_img.reshape(B*T, C, W, H)
-            img_encoding = self.img_encoder.extract_features(obs_img)
-            # currently the size is [batch_size*(self.context_size), 1280, H/32, W/32]
-            img_encoding = self.img_encoder._avg_pooling(img_encoding)
-            # currently the size is [batch_size*(self.context_size), 1280, 1, 1]
-            if self.img_encoder._global_params.include_top:
-                img_encoding = img_encoding.flatten(start_dim=1)
-                img_encoding = self.img_encoder._dropout(img_encoding)
-            # currently, the size is [batch_size, self.context_size, self.img_encoding_size]
-            img_encoding = self.compress_obs_enc(img_encoding)
-            # currently, the size is [batch_size*(self.context_size), self.img_encoding_size]
-            # reshape the img_encoding to [context + 1, batch, encoding_size], note that the order is flipped
-            img_encoding = img_encoding.reshape((self.context_size, -1, self.img_encoding_size))
-            img_encoding = torch.transpose(img_encoding, 0, 1)
+            obs_img = obs_img.reshape(B * T, C, W, H)
+            if self.img_encoder_type.split("-")[0] == "efficientnet":
+                img_encoding = self.img_encoder.extract_features(obs_img)
+                # currently the size is [batch_size*(self.context_size), 1280, H/32, W/32]
+                img_encoding = self.img_encoder._avg_pooling(img_encoding)
+                # currently the size is [batch_size*(self.context_size), 1280, 1, 1]
+                if self.img_encoder._global_params.include_top:
+                    img_encoding = img_encoding.flatten(start_dim=1)
+                    img_encoding = self.img_encoder._dropout(img_encoding)
+                # currently, the size is [batch_size, self.context_size, self.img_encoding_size]
+                img_encoding = self.compress_img_enc(img_encoding)
+                # currently, the size is [batch_size*(self.context_size), self.img_encoding_size]
+                # reshape the img_encoding to [context + 1, batch, encoding_size], note that the order is flipped
+                img_encoding = img_encoding.reshape((self.context_size, -1, self.img_encoding_size))
+                img_encoding = torch.transpose(img_encoding, 0, 1)
+
+            elif self.img_encoder_type == "depth":
+                # get the observation encoding
+                img_encoding = self.img_encoder(obs_img)
+                img_encoding = img_encoding.reshape((self.context_size, -1, self.img_encoding_size))
+                img_encoding = torch.transpose(img_encoding, 0, 1)
+
             tokens_list.append(img_encoding)
+
+        if self.include_seg:
+            # img
+            obs_seg = obs_seg.unsqueeze(2)
+            B, T, C, W, H = obs_seg.shape
+            obs_seg = obs_seg.reshape(B * T, C, W, H)
+            if self.seg_encoder_type.split("-")[0] == "efficientnet":
+                seg_encoding = self.seg_encoder.extract_features(obs_seg)
+                # currently the size is [batch_size*(self.context_size), 1280, H/32, W/32]
+                seg_encoding = self.seg_encoder._avg_pooling(seg_encoding)
+                # currently the size is [batch_size*(self.context_size), 1280, 1, 1]
+                if self.seg_encoder._global_params.include_top:
+                    seg_encoding = seg_encoding.flatten(start_dim=1)
+                    seg_encoding = self.seg_encoder._dropout(seg_encoding)
+                # currently, the size is [batch_size, self.context_size, self.seg_encoding_size]
+                seg_encoding = self.compress_seg_enc(seg_encoding)
+                # currently, the size is [batch_size*(self.context_size), self.seg_encoding_size]
+                # reshape the seg_encoding to [context + 1, batch, encoding_size], note that the order is flipped
+                seg_encoding = seg_encoding.reshape((self.context_size, -1, self.seg_encoding_size))
+                seg_encoding = torch.transpose(seg_encoding, 0, 1)
+
+            elif self.seg_encoder_type == "depth":
+                # get the observation encoding
+                seg_encoding = self.seg_encoder(obs_seg)
+                seg_encoding = seg_encoding.reshape((self.context_size, -1, self.seg_encoding_size))
+                seg_encoding = torch.transpose(seg_encoding, 0, 1)
+
+            tokens_list.append(seg_encoding)
 
         # currently, the size of lin_encoding is [batch_size, num_lin_features]
         if self.include_lin:
