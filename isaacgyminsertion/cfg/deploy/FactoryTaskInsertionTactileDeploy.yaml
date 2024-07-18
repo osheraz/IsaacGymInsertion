@@ -18,8 +18,8 @@ tactile_display_viz: True
 
 data_logger:
     # for data collection
-    collect_data: True
-    total_trajectories: 5
+    collect_data: False
+    total_trajectories: 1
     base_folder: "/home/roblab20/tactile_tests"
     sub_folder: "datastore_real"
 
@@ -27,8 +27,8 @@ data_logger:
 # actually, we should write different config for each observation we test
 rl:
     max_episode_length: 1000
-    pos_action_scale: [0.005, 0.005, 0.004]
-    rot_action_scale: [0.01, 0.01, 0.01]
+    pos_action_scale: [0.009, 0.009, 0.004]
+    rot_action_scale: [0.02, 0.02, 0.02]
     clamp_rot: ${...task.rl.clamp_rot}
     clamp_rot_thresh: ${...task.rl.clamp_rot_thresh}
 
@@ -77,29 +77,9 @@ ppo:
   ft_input_dim: 6
 
 
-network:
-  mlp:
-    units: [512, 256, 128]
-  priv_mlp:
-    units: [256, 128, 8]
-  ft_mlp:
-    units: [128, 64, 16]
-  obs_mlp:
-    units: [1024, 512, 128, 32]
-  tactile_mlp:
-    units: [300, 128, 32]
-  merge_mlp:
-    units: [128, 64, 8]
-  contact_mlp:
-    units: [ 128, 64, 8]
-  tactile_encoder:
-    num_channels: ${....task.tactile.encoder.num_channels}
-    tactile_seq_length: ${....task.env.tactile_history_len}
-    img_width: ${....task.tactile.encoder.width}
-    img_height: ${....task.tactile.encoder.height}
-
 common_poses:
-  socket_pos: [0.4978153018206522, 0.0050583096104704385, 0.001] # [0.5005785990398001, -0.0012649703391055273, 0.0
+#  socket_pos: [0.4978153018206522, 0.0012649703391055273, 0.001] # [0.5005785990398001, -0.0012649703391055273, 0.0 0050583096104704385
+  socket_pos: [0.5028532612790371, 0.001704983755619459, 0.001]
   joints_above_socket: [-0.01306919673345508, 0.46035625642851, -3.115810324760627, -1.5234410615555438, -0.012022574425053278, -1.1572361716453639, 1.5847205313963213, 0.0]
   joints_above_plug: [-0.4343525190442179, 0.3393440474185589, -3.118461501625801, -1.762369221913092, -0.010365555594806786, -1.0404064904168955, 1.172501677329807]
 

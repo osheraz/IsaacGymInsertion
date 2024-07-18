@@ -1177,7 +1177,6 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             first_plug_pose = self.plug_grasp_pos.clone()
 
             first_plug_pose[env_ids, :2] += plug_pos_noise[:, :2] * 0
-
             self._move_arm_to_desired_pose(env_ids, first_plug_pose,
                                            sim_steps=self.cfg_task.env.num_gripper_move_sim_steps)
             self._refresh_task_tensors()

@@ -657,7 +657,7 @@ class RealLogger():
             'obs_hist_shape': env.full_config.task.env.numObservations,
             'obs_hist_stud_shape': env.full_config.task.env.numObsStudent,
             'contact_shape': env.full_config.task.env.num_points,
-            'latent_shape': env.deploy_config.network.merge_mlp.units[-1],
+            'latent_shape': 8, # env.deploy_config.network.merge_mlp.units[-1],
             'ft_shape': env.ft_data.shape[-1],
             'priv_obs_shape': env.full_config.train.ppo.priv_info_dim,
             'plug_pos_error_shape': POS_SIZE + QUAT_SIZE,

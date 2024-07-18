@@ -88,6 +88,7 @@ class ExperimentEnv:
 
     def get_info_for_control(self):
         pos, quat = self.arm.get_ee_pose()
+
         joints = self.arm.get_joint_values()
         jacob = self.arm.get_jacobian_matrix().tolist()
 
@@ -146,7 +147,7 @@ class ExperimentEnv:
                 # added delta_x/delta_y to approximately center the object
                 ee_pos[0] = obj_pos[0] - 0.02
                 ee_pos[1] = obj_pos[1] - 0.01
-                ee_pos[2] = obj_pos[2] - 0.015
+                ee_pos[2] = obj_pos[2] - 0.01
 
                 # Orientation is different due to moveit orientation, kinova/orientation ( -0.707,0.707,0,0 ~ 0.707,-0.707,0,0)
                 ee_target = geometry_msgs.msg.Pose()

@@ -6,29 +6,17 @@
 # Licensed under The MIT License [see LICENSE for details]
 # --------------------------------------------------------
 
+import cv2
+import hydra
+import numpy as np
 import rospy
-# from algo.models.models import ActorCritic
+import torch
+
+import isaacgyminsertion.tasks.factory_tactile.factory_control as fc
 from algo.models.models_split import ActorCriticSplit as ActorCritic
 from algo.models.running_mean_std import RunningMeanStd
-import torch
-import os
-import hydra
-import cv2
+from isaacgyminsertion.tasks.factory_tactile.factory_utils import quat2R, RotationTransformer
 from isaacgyminsertion.utils import torch_jit_utils
-import isaacgyminsertion.tasks.factory_tactile.factory_control as fc
-from isaacgyminsertion.tasks.factory_tactile.factory_utils import quat2R
-from time import time
-import numpy as np
-import omegaconf
-from matplotlib import pyplot as plt
-
-from scipy.spatial.transform import Rotation as R
-import json
-import trimesh
-import open3d as o3d
-from matplotlib import pyplot as plt
-# from tf.transformations import quaternion_matrix, identity_matrix, quaternion_from_matrix
-from tqdm import tqdm
 
 
 def to_torch(x, dtype=torch.float, device='cuda:0', requires_grad=False):
@@ -148,6 +136,8 @@ class HardwarePlayer:
         # self.asset_info_insertion = self.asset_info_insertion['']['']['']['']['']['']['']['']['']['assets']['factory'][
         #     'yaml']
         self.asset_info_insertion = self.asset_info_insertion['']['']['']['']['']['']['assets']['factory']['yaml']
+        self.rot_tf = RotationTransformer()
+        self.rot_tf_back = RotationTransformer(to_rep='quaternion', from_rep='rotation_6d',)
 
         self.extrinsic_contact = None
 
@@ -203,7 +193,7 @@ class HardwarePlayer:
             self.plug_width = self.asset_info_insertion[subassembly][components[0]]['diameter']
             self.socket_width = self.asset_info_insertion[subassembly][components[1]]['diameter']
 
-    def _pose_world_to_hand_base(self, pos, quat, as_matrix=True):
+    def _pose_world_to_hand_base(self, pos, quat, to_rep=None):
         """Convert pose from world frame to robot base frame."""
 
         info = self.env.get_info_for_control()
@@ -212,15 +202,30 @@ class HardwarePlayer:
         self.fingertip_centered_pos = torch.tensor(ee_pose[:3], device=self.device, dtype=torch.float).unsqueeze(0)
         self.fingertip_centered_quat = torch.tensor(ee_pose[3:], device=self.device, dtype=torch.float).unsqueeze(0)
 
+        torch_pi = torch.tensor(
+            np.pi,
+            dtype=torch.float32,
+            device=self.device
+        )
+        rotation_quat_x = torch_jit_utils.quat_from_angle_axis(torch_pi,
+                          torch.tensor([1, 0, 0], dtype=torch.float32, device=self.device)).repeat((self.num_envs, 1))
+        rotation_quat_z = torch_jit_utils.quat_from_angle_axis(-torch_pi * 0.5,
+                          torch.tensor([0, 0, 1], dtype=torch.float32, device=self.device)).repeat((self.num_envs, 1))
+
+        q_rotated = torch_jit_utils.quat_mul(rotation_quat_x, self.fingertip_centered_quat.clone())
+        q_rotated = torch_jit_utils.quat_mul(rotation_quat_z, q_rotated)
+
         robot_base_transform_inv = torch_jit_utils.tf_inverse(
-            self.fingertip_centered_quat.clone(), self.fingertip_centered_pos.clone()
+            q_rotated, self.fingertip_centered_pos.clone()
         )
         quat_in_robot_base, pos_in_robot_base = torch_jit_utils.tf_combine(
             robot_base_transform_inv[0], robot_base_transform_inv[1], quat, pos
         )
 
-        if as_matrix:
-            return pos_in_robot_base, quat2R(quat_in_robot_base).reshape(1, -1)
+        if to_rep == 'matrix':
+            return pos_in_robot_base, quat2R(quat_in_robot_base).reshape(self.num_envs, -1)
+        elif to_rep == 'rot6d':
+            return pos_in_robot_base, self.rot_tf.forward(quat_in_robot_base)
         else:
             return pos_in_robot_base, quat_in_robot_base
 
@@ -313,7 +318,7 @@ class HardwarePlayer:
         )
         self.socket_obs_pos_noise = socket_obs_pos_noise @ torch.diag(
             torch.tensor(
-                self.full_config.task.env.socket_pos_obs_noise,
+                self.deploy_config.env.socket_pos_obs_noise,
                 dtype=torch.float32,
                 device=self.device,
             )
@@ -337,7 +342,7 @@ class HardwarePlayer:
         )
         socket_obs_rot_noise = socket_obs_rot_noise @ torch.diag(
             torch.tensor(
-                self.full_config.task.env.socket_rot_obs_noise,
+                self.deploy_config.env.socket_rot_obs_noise,
                 dtype=torch.float32,
                 device=self.device,
             )
@@ -379,8 +384,7 @@ class HardwarePlayer:
             rot_error_type='quat')
 
         self.plug_hand_pos, self.plug_hand_quat = self._pose_world_to_hand_base(self.plug_pos,
-                                                                                self.plug_quat,
-                                                                                as_matrix=False)
+                                                                                self.plug_quat)
         if self.gt_contacts_info:
             self.contacts[0, :] = torch.tensor(self.env.tracker.extrinsic_contact).to(self.device)
 
@@ -400,10 +404,10 @@ class HardwarePlayer:
         self.fingertip_centered_pos = torch.tensor(ee_pose[:3], device=self.device, dtype=torch.float).unsqueeze(0)
         self.fingertip_centered_quat = torch.tensor(ee_pose[3:], device=self.device, dtype=torch.float).unsqueeze(0)
 
-        # TODO added noise
+        # eef_pos = torch.cat((self.fingertip_centered_pos,
+        #                      quat2R(self.fingertip_centered_quat).reshape(1, -1)), dim=-1)
         eef_pos = torch.cat((self.fingertip_centered_pos,
-                             quat2R(self.fingertip_centered_quat).reshape(1, -1)), dim=-1)
-
+                             self.rot_tf.forward(self.fingertip_centered_quat)), dim=-1)
         # Cutting by half
         if self.cfg_tactile.crop_roi:
             w = left.shape[0]
@@ -424,17 +428,10 @@ class HardwarePlayer:
             self.tactile_imgs[0, 0] = to_torch(left).permute(2, 0, 1).to(self.device)
             self.tactile_imgs[0, 1] = to_torch(right).permute(2, 0, 1).to(self.device)
             self.tactile_imgs[0, 2] = to_torch(bottom).permute(2, 0, 1).to(self.device)
-
-            # self.tactile_imgs[0, 0] = torch_jit_utils.rgb_transform(left).to(self.device)
-            # self.tactile_imgs[0, 1] = torch_jit_utils.rgb_transform(right).to(self.device)
-            # self.tactile_imgs[0, 2] = torch_jit_utils.rgb_transform(bottom).to(self.device)
         else:
-            self.tactile_imgs[0, 0] = to_torch(
-                cv2.cvtColor(left.astype('float32'), cv2.COLOR_BGR2GRAY)).to(self.device)
-            self.tactile_imgs[0, 1] = to_torch(
-                cv2.cvtColor(right.astype('float32'), cv2.COLOR_BGR2GRAY)).to(self.device)
-            self.tactile_imgs[0, 2] = to_torch(
-                cv2.cvtColor(bottom.astype('float32'), cv2.COLOR_BGR2GRAY)).to(self.device)
+            self.tactile_imgs[0, 0] = to_torch(cv2.cvtColor(left.astype('float32'), cv2.COLOR_BGR2GRAY)).to(self.device)
+            self.tactile_imgs[0, 1] = to_torch(cv2.cvtColor(right.astype('float32'), cv2.COLOR_BGR2GRAY)).to(self.device)
+            self.tactile_imgs[0, 2] = to_torch(cv2.cvtColor(bottom.astype('float32'), cv2.COLOR_BGR2GRAY)).to(self.device)
 
         self.tactile_queue[:, 1:] = self.tactile_queue[:, :-1].clone().detach()
         self.tactile_queue[:, 0, :] = self.tactile_imgs
@@ -447,7 +444,7 @@ class HardwarePlayer:
         obs = torch.cat([eef_pos,
                          self.actions,
                          # self.noisy_gripper_goal_pos.clone(),
-                         # noisy_delta_pos
+                         noisy_delta_pos
                          ], dim=-1)
 
         self.obs_queue[:, :-self.num_observations] = self.obs_queue[:, self.num_observations:]
@@ -470,9 +467,9 @@ class HardwarePlayer:
             self._update_plug_pose()
 
             state_tensors = [
-                # self.plug_hand_pos,  # 3
-                # self.plug_hand_quat,  # 4
-                self.plug_pos_error, # + self.socket_obs_pos_noise,  # 3
+                self.plug_hand_pos,  # 3
+                self.plug_hand_quat,  # 4
+                self.plug_pos_error,  # # 3
                 self.plug_quat_error,  # 4
             ]
 
@@ -485,7 +482,7 @@ class HardwarePlayer:
         plug_socket_xy_distance = torch.norm(self.plug_pos_error[:, :2])
 
         is_very_close_xy = plug_socket_xy_distance < 0.005
-        is_bellow_surface = -self.plug_pos_error[:, 2] < 0.005
+        is_bellow_surface = -self.plug_pos_error[:, 2] < 0.007
 
         self.inserted = is_very_close_xy & is_bellow_surface
         is_too_far = (plug_socket_xy_distance > 0.08) | (self.fingertip_centered_pos[:, 2] > 0.125)

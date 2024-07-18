@@ -13,8 +13,8 @@ import yaml
 
 # all_paths = glob('/home/osher/tactile_insertion/datastore_42_gt_test/*/*/obs/*.npz')
 # all_paths = glob('/home/roblab20/tactile_diffusion/datastore_real/*/*/obs/*.npz')
-# all_paths = glob('/home/roblab20/tactile_tests/datastore_real/*/*/obs/*.npz')
-all_paths = glob('/home/osher/tactile_insertion/datastore_42_no_phys_params/*/*/obs/*.npz')
+all_paths = glob('/home/roblab20/tactile_tests/second/*/*/obs/*.npz')
+# all_paths = glob('/home/osher/tactile_insertion/datastore_42_no_phys_params/*/*/obs/*.npz')
 
 print(len(all_paths))
 
@@ -457,6 +457,7 @@ if True:
     fig = plt.figure(figsize=(18, 10))
     ax = fig.add_subplot(111)
     done_idx = 0
+
     while done_idx == 0:
         path = random.sample(all_paths, 1)[0]
         # path = '/home/roblab20/tactile_diffusion/datastore_real/1/2024-06-14_12-56-02/obs/obs.npz'
@@ -476,6 +477,7 @@ if True:
     from mpl_toolkits.mplot3d import Axes3D
     import numpy as np
 
+    seg = False
     print(data.files)
     tactile_folder = path[:-7].replace('obs', 'tactile')
     img_folder = path[:-7].replace('obs', 'img')
@@ -495,10 +497,11 @@ if True:
 
     depth_img = np.stack(
         [np.load(os.path.join(img_folder, f'img_{i}.npz'))['img'] for i in range(0, done_idx)])
-    seg_img = np.stack(
-        [np.load(os.path.join(seg_folder, f'seg_{i}.npz'))['seg'] for i in range(0, done_idx)])
+    if seg:
+        seg_img = np.stack(
+            [np.load(os.path.join(seg_folder, f'seg_{i}.npz'))['seg'] for i in range(0, done_idx)])
 
-    def binarize_image(tensor, threshold=0.55):
+    def binarize_image(tensor, threshold=0.01):
         # Apply threshold
         tensor_binarized = (tensor > threshold).astype(np.float32)
         return tensor_binarized
@@ -508,40 +511,32 @@ if True:
     print(tactile_img.max(), tactile_img.min())
 
     for j in tqdm(range(0, done_idx)):
-        if j == 0:
-            img1 = tactile_img[j][0]
-            img2 = tactile_img[j][1]
-            img3 = tactile_img[j][2]
-        else:
-            img1 = tactile_img[j][0]
-            img2 = tactile_img[j][1]
-            img3 = tactile_img[j][2]
+
+        img1 = tactile_img[j][0] - tactile_img[0][0]
+        img2 = tactile_img[j][1] - tactile_img[0][1]
+        img3 = tactile_img[j][2] - tactile_img[0][2]
 
         depth = depth_img[j]
-        seg = seg_img[j]
-        # depth = np.uint8(depth)
+        if seg:
+            seg = seg_img[j]
 
-        # img1 = np.transpose(img1, (1, 2, 0))
-        # img2 = np.transpose(img2, (1, 2, 0))
-        # img3 = np.transpose(img3, (1, 2, 0))
+        img = np.concatenate((img1, img2, img3), axis=2)
+        img = img * binarize_image(img)
+        dis_img = 10 * img.transpose(1, 2, 0) + 0.4
 
-        # img1 = reverse_normalize(img1)
-        # img2 = reverse_normalize(img2)
-        # img3 = reverse_normalize(img3)
-        img = np.concatenate((img1, img2, img3), axis=1)
-
+        # img = np.hstack((img, binarize_image(img)))
         # Update and redraw the tactile image
         # depth = np.uint8(depth)
-        cv2.imshow("seg Image", (depth * seg) .transpose(1, 2, 0) + 0.5)
+        # cv2.imshow("seg Image", (depth * seg) .transpose(1, 2, 0) + 0.5)
 
-        cv2.imshow("Depth Image", depth.transpose(1, 2, 0) + 0.5)
-        cv2.namedWindow('test', cv2.WND_PROP_FULLSCREEN)
-        cv2.namedWindow('bin', cv2.WND_PROP_FULLSCREEN)
-        key = cv2.waitKey(200)
-        cv2.imshow('test', img.transpose(1, 2, 0))
-        cv2.imshow('bin', binarize_image(img).transpose(1, 2, 0))
+        # cv2.imshow("Depth Image", depth.transpose(1, 2, 0) + 0.5)
+        # cv2.namedWindow('test', cv2.WND_PROP_FULLSCREEN)
+        key = cv2.waitKey(100)
+        cv2.imshow('test', dis_img)
+        # cv2.imshow('bin', binarize_image(img).transpose(1, 2, 0))
 
         # cv2.waitKey(200) & 0xFF
+cv2.destroyAllWindows()
 
 if False:
     fig = plt.figure(figsize=(18, 10))

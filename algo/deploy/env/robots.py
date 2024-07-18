@@ -211,7 +211,8 @@ class RobotWithFtEnv():
                        gripper_pose.orientation.y,
                        gripper_pose.orientation.z,
                        gripper_pose.orientation.w]
-
+                if rot[0] > 0:
+                    rot = [-q for q in rot]
             return [x, y, z], rot
         else:
             self.move_manipulator.ee_pose()

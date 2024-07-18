@@ -52,7 +52,9 @@ warnings.filterwarnings("ignore", category=DeprecationWarning)
 @hydra.main(config_name="config", config_path="./cfg")
 def main(config: DictConfig):
 
-    config.checkpoint = f'outputs/gt_test/stage1_nn/last.pth'
+    # config.checkpoint = f'outputs/gt_test/stage1_nn/last.pth'
+    config.checkpoint = f'outputs/no_phys_params/stage1_nn/last.pth'
+
     if config.checkpoint:
         config.checkpoint = to_absolute_path(config.checkpoint)
 
