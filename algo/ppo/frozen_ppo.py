@@ -24,6 +24,7 @@ import torch
 import torch.distributed as dist
 import numpy as np
 import matplotlib
+from isaacgyminsertion.tasks.factory_tactile.factory_utils import RotationTransformer
 
 # matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
@@ -121,6 +122,8 @@ class PPO(object):
             # "physics_mlp_units": self.network_config.physics_mlp.units,
             # 'body_mlp_units': self.network_config.body_mlp.units,
         }
+
+        self.rot_tf = RotationTransformer(from_rep='matrix', to_rep='rotation_6d')
 
         self.model = ActorCritic(net_config)
         self.model.to(self.device)
@@ -621,7 +624,7 @@ class PPO(object):
         self.storage.data_dict['values'] = values
         self.storage.data_dict['returns'] = returns
 
-    def test(self, get_latent=None, normalize_dict=None, milestone=100):
+    def test(self, get_latent=None, obs_stats=None, milestone=100):
         # this will test either the student or the teacher model.
 
         self.set_eval()
@@ -632,14 +635,11 @@ class PPO(object):
         offline_test = self.full_config.offline_training_w_env
 
         # convert normalizing measures to torch and add to device
-        if normalize_dict is not None:
+        if obs_stats is not None:
             stats = {
-                'mean': {},
-                'std': {}
+                'mean': {key: torch.tensor(value, device=self.device) for key, value in obs_stats['mean'].items()},
+                'std': {key: torch.tensor(value, device=self.device) for key, value in obs_stats['std'].items()}
             }
-            for key in normalize_dict['mean'].keys():
-                stats['mean'][key] = torch.tensor(normalize_dict['mean'][key], device=self.device)
-                stats['std'][key] = torch.tensor(normalize_dict['std'][key], device=self.device)
 
         # reset all envs
         self.obs = self.env.reset()
@@ -651,7 +651,6 @@ class PPO(object):
             else:
                 self.data_logger.data_logger.reset()
             if not save_trajectory:
-                # record initial data for latent inference (not needed if recording trajectory data, TODO: check why?)
                 self.data_logger.log_trajectory_data(action, latent, done, save_trajectory=save_trajectory)
 
         self.env_ids = torch.arange(self.env.num_envs).view(-1, 1)
@@ -661,16 +660,14 @@ class PPO(object):
         while save_trajectory or (total_dones < total_env_runs):
             # log video during test
             self.log_video()
-            # self.it += 1
-            # getting data from data logger
             latent = None
             if offline_test:
                 if get_latent is not None:
                     # Making data for the latent prediction from student model
                     last_obs = self.get_last_student_obs(self.data_logger.data_logger.get_data(), stats)
-                    tactile, img, lin_input, gt_pos_rpy = last_obs
+                    tactile, img, seg, lin_input, gt_pos_rpy = last_obs
                     # getting the latent data from the student model
-                    latent, out_pos_rpy = get_latent(tactile, img, lin_input, gt_pos_rpy)
+                    latent, out_pos_rpy = get_latent(tactile, img, seg, lin_input, gt_pos_rpy)
 
                     if False:
                         stats_mean = torch.cat([stats["mean"]["plug_hand_pos_diff"],
@@ -712,15 +709,20 @@ class PPO(object):
         print('[LastTest] success rate:', num_success / total_dones)
         return num_success, total_dones
 
-    def get_last_student_obs(self, data, normalize_dict, diff=False, diff_tac=True, display=True, obj_id=2):
+    def get_last_student_obs(self, data, stats, diff=False, diff_tac=True, display=True, rot6d=True, obj_id=2):
 
         sequence_length = self.full_config.offline_train.model.transformer.sequence_length
+        eef_key = "eef_pos_rot6d" if rot6d else 'eef_pos'
 
         # E, T, F, C, W, H = tactile.shape
         tactile = data["tactile"]
         img = data["img"]
         seg = data["seg"]
-        eef_pos = data['eef_pos']
+        eef_pos = data["eef_pos"]
+        if eef_key == "eef_pos_rot6d":
+            eef_pos = torch.cat((eef_pos[:, :, :3],
+                                      self.rot_tf.forward(eef_pos[:, :, 3:].reshape(*eef_pos.shape[:2], 3, 3))), dim=2)
+
         noisy_socket_pos = data["noisy_socket_pos"][:, :, :3]
         plug_hand_quat = data["plug_hand_quat"]
         plug_hand_pos = data["plug_hand_pos"]
@@ -743,28 +745,28 @@ class PPO(object):
             euler = euler - first_euler
             plug_hand_pos = plug_hand_pos - data["plug_hand_pos"][:, 0, :]
 
-        if normalize_dict is not None:
-            eef_pos = (eef_pos - normalize_dict["mean"]["eef_pos"]) / normalize_dict["std"]["eef_pos"]
-            noisy_socket_pos = (noisy_socket_pos - normalize_dict["mean"]["noisy_socket_pos"][:3]) / \
-                               normalize_dict["std"]["noisy_socket_pos"][:3]
+        if stats is not None:
+            eef_pos = (eef_pos - stats["mean"][eef_key]) / stats["std"][eef_key]
+            noisy_socket_pos = (noisy_socket_pos - stats["mean"]["noisy_socket_pos"][:3]) / \
+                               stats["std"]["noisy_socket_pos"][:3]
             if not diff:
-                euler = (euler - normalize_dict["mean"]["plug_hand_euler"]) / normalize_dict["std"][
+                euler = (euler - stats["mean"]["plug_hand_euler"]) / stats["std"][
                     "plug_hand_euler"]
-                plug_hand_pos = (plug_hand_pos - normalize_dict["mean"]["plug_hand_pos"]) / \
-                                normalize_dict["std"]["plug_hand_pos"]
+                plug_hand_pos = (plug_hand_pos - stats["mean"]["plug_hand_pos"]) / \
+                                stats["std"]["plug_hand_pos"]
 
             else:
-                euler = (euler - normalize_dict["mean"]["plug_hand_diff_euler"]) / normalize_dict["std"][
+                euler = (euler - stats["mean"]["plug_hand_diff_euler"]) / stats["std"][
                     "plug_hand_diff_euler"]
-                plug_hand_pos = (plug_hand_pos - normalize_dict["mean"]["plug_hand_pos_diff"]) / \
-                                normalize_dict["std"]["plug_hand_pos_diff"]
+                plug_hand_pos = (plug_hand_pos - stats["mean"]["plug_hand_pos_diff"]) / \
+                                stats["std"]["plug_hand_pos_diff"]
 
         obj_pos_rpy = torch.cat([plug_hand_pos, euler], dim=-1).to(self.device).float()
 
         lin_input = torch.cat([
             eef_pos,
             noisy_socket_pos,
-            action,
+            # action,
             # obj_pos_rpy
         ], dim=-1)
 
@@ -778,7 +780,7 @@ class PPO(object):
         seg = get_last_sequence(seg, self.env.progress_buf, sequence_length)
 
         seg = (seg == obj_id).float()
-        img = img * seg
+        img = img * seg.unsqueeze(2)
 
         if display:
             self.display_obs(tactile_adjusted, img, seg)
@@ -787,9 +789,9 @@ class PPO(object):
 
     def display_obs(self, tactile, depth, seg):
 
-        tactile = tactile[:,-1:, ...]
-        depth = depth[:,-1:, ...]
-        seg = seg[:,-1:, ...]
+        tactile = tactile[:, -1:, ...]
+        depth = depth[:, -1:, ...]
+        seg = seg[:, -1:, ...]
 
         for t in range(tactile.shape[1]):  # Iterate through the sequence of images
             # Extract the images for all fingers at time step 't' and adjust dimensions for display.
@@ -800,14 +802,8 @@ class PPO(object):
             for f in range(fingers_images.shape[0]):
                 img = fingers_images[f]
                 img = img.cpu().detach()
-                # Move tensor to CPU and detach from its computation history
-                # Inverse normalize the image
-                # img = transforms.functional.normalize(
-                #     img, [-0.5 / 0.5] * img.shape[0], [1 / 0.5] * img.shape[0], inplace=False)
                 img = img.numpy()  # Convert to numpy
                 img = np.transpose(img, (1, 2, 0))  # Reorder dimensions to [W, H, C]
-                # Scale the image data to [0, 255] and convert to uint8
-                # img = (img * 255).astype(np.uint8)
                 if img.shape[2] == 1:  # If grayscale, convert to BGR for consistent OpenCV display
                     img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
                 imgs.append(img)
@@ -816,12 +812,11 @@ class PPO(object):
 
             d = depth[0, t].cpu().detach().numpy()
             d = np.transpose(d, (1, 2, 0))
-            cv2.imshow('Depth Sequence', d)  # Display the concatenated image
+            cv2.imshow('Depth Sequence', d + 0.5)  # Display the concatenated image
 
-            d = seg[0, t].cpu().detach().numpy()
+            d = seg[t].cpu().detach().numpy()
             d = np.transpose(d, (1, 2, 0))
             cv2.imshow('Seg Sequence', d)  # Display the concatenated image
-
 
             cv2.imshow('Tactile Sequence', concatenated_img + 0.5)  # Display the concatenated image
 

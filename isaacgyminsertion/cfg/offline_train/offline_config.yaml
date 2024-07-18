@@ -42,7 +42,7 @@ train:
   plateau_factor: 0.5
 
   # loss scaling
-  latent_scale: 0.2
+  latent_scale: 1.0
   action_scale: 1.0
 
   # Train params for on screen logging
@@ -55,7 +55,7 @@ train:
   only_test: False
   only_validate: False
 
-  obs_keys: ["eef_pos", "action", "latent", "obs_hist", "noisy_socket_pos",
+  obs_keys: ["eef_pos", "action", "latent", "obs_hist", "noisy_socket_pos", "socket_pos",
           "hand_joints", "plug_hand_quat", "plug_hand_pos",
           "plug_pos_error", "plug_quat_error"]
 
@@ -65,6 +65,7 @@ train:
                    "action",
                    "plug_hand_quat",
                    "plug_hand_pos",
+                       "socket_pos"
 #                    "plug_pos_error",
 #                   "plug_quat_error"
   ]
@@ -79,18 +80,18 @@ train:
 model:
   # linear embedding
   linear:
-    input_size: 21
+    input_size: 12
     # TODO: add model layers here
 
   use_img: True
   use_seg: True
-  use_tactile: True
+  use_tactile: False
   use_lin: True
 
   model_type: 'tact'
 
   transformer:
-    sequence_length: 1 # ${...task.rl.max_episode_length}
+    sequence_length: 1
     num_layers: 4
     num_heads: 4
     dim_factor: 4

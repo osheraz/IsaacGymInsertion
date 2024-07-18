@@ -12,10 +12,9 @@ import torchvision.transforms.functional as F
 class SyncCenterReshapeTransform(nn.Module):
     def __init__(self, crop_size, img_transform, mask_transform):
         super(SyncCenterReshapeTransform, self).__init__()
-        self.sync_crop = SyncRandomCrop(crop_size)
-        self.img_transform = ImageTransform(img_transform)
-        self.mask_transform = ImageTransform(mask_transform)
-
+        self.img_transform = img_transform # ImageTransform(img_transform)
+        self.mask_transform = mask_transform # ImageTransform(mask_transform)
+        self.crop_size = crop_size
     def forward(self, img, mask):
         # Reshape img and mask to [B * T, C, H, W]
         B, T, C, H, W = img.shape
@@ -32,10 +31,7 @@ class SyncCenterReshapeTransform(nn.Module):
 
         # Reshape back to [B, T, C, H, W]
         img = img.view(B, T, C, *img.shape[2:])
-        mask = mask.view(B, T, C, *mask.shape[2:])
-
-        # Reset the crop parameters for the next image-mask pair
-        self.sync_crop.reset()
+        mask = mask.view(B, T, *mask.shape[2:])
 
         return img, mask
 

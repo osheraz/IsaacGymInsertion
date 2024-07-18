@@ -303,21 +303,22 @@ class Runner:
     def get_latent(self, tac_input, img_input, seg_input, lin_input, gt_label=None, use_gt=False):
         self.model.eval()
         d_pos_rpy = None
+
         with torch.no_grad():
 
-            if self.cfg.model.tact.use_tactile:
+            if self.cfg.model.use_tactile:
                 tac_input = tac_input.to(self.device)
                 if self.tactile_transform is not None:
-                    tac_input = TactileTransform(self.tactile_transform)(tac_input).to(self.device)
+                    tac_input = TactileTransform(self.tactile_eval_transform)(tac_input).to(self.device)
 
-            if self.cfg.model.tact.use_img:
+            if self.cfg.model.use_img:
                 img_input = img_input.to(self.device)
                 seg_input = seg_input.to(self.device)
                 # if self.img_transform is not None:
                 #     img_input = ImageTransform(self.img_eval_transform)(img_input).to(self.device)
                 img_input, seg_input = self.sync_eval_reshape_transform(img_input, seg_input)
 
-            if self.cfg.model.tact.use_lin:
+            if self.cfg.model.use_lin:
                 lin_input = lin_input.to(self.device)
 
             if self.tact is not None:
@@ -328,7 +329,7 @@ class Runner:
                 else:
                     out = self.model(tac_input, img_input, lin_input, d_pos_rpy)
             else:
-                out = self.model(tac_input, img_input, lin_input)
+                out = self.model(tac_input, img_input, seg_input, lin_input)
 
         return out, d_pos_rpy
 

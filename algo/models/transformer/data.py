@@ -174,7 +174,8 @@ class DataNormalizer:
             self.stats['std']["plug_hand_sin_cos_euler"] = np.std(sin_cos_repr, axis=0)
 
         elif norm_key == 'eef_pos':
-            eef_pos_rot6d = np.concatenate((data[:, 3:], self.rot_tf.forward(data[:, 3:])), axis=1)
+            eef_pos_rot6d = np.concatenate((data[:, :3],
+                                            self.rot_tf.forward(data[:, 3:].reshape(data.shape[0], 3, 3))), axis=1)
             self.stats['mean']['eef_pos_rot6d'] = np.mean(eef_pos_rot6d, axis=0)
             self.stats['std']['eef_pos_rot6d'] = np.std(eef_pos_rot6d, axis=0)
             self.stats['mean'][norm_key] = np.mean(data, axis=0)
@@ -217,6 +218,7 @@ class TactileDataset(Dataset):
             include_tactile (bool): Whether to include tactile data.
             obs_keys (list): Keys for the data to extract.
         """
+        self.rot_tf = RotationTransformer(from_rep='matrix', to_rep='rotation_6d')
 
         self.all_folders = traj_files
         self.sequence_length = sequence_length
@@ -282,7 +284,7 @@ class TactileDataset(Dataset):
         seg_input = [np.load(os.path.join(seg_folder, f'seg_{i}.npz'))['seg'] for i in
                      range(start_idx, start_idx + self.sequence_length)]
 
-        seg_input = np.stack([(m == obj_id).astype(float) for m in seg_input])
+        seg_input = np.stack([(m == obj_id).astype(float).astype(float) for m in seg_input])
         img_input = np.stack([img * m for img, m in zip(img_input, seg_input)])
 
         if self.sync_transform is not None:
@@ -292,14 +294,18 @@ class TactileDataset(Dataset):
 
         return img_input, seg_input
 
-    def _normalize_data(self, data_seq, diff, first_obs, rot6d=False):
+    def _normalize_data(self, data_seq, diff, first_obs, rot6d=True):
 
         eef_key = "eef_pos_rot6d" if rot6d else 'eef_pos'
         euler_key = "plug_hand_diff_euler" if diff else "plug_hand_euler"
         plug_hand_pos_key = "plug_hand_pos_diff" if diff else "plug_hand_pos"
 
-        eef_pos = data_seq[eef_key]
-        noisy_socket_pos = data_seq["noisy_socket_pos"][:, :3]
+        eef_pos = data_seq["eef_pos"]
+        if eef_key == "eef_pos_rot6d":
+            eef_pos = np.concatenate(
+                (eef_pos[:, :3], self.rot_tf.forward(eef_pos[:, 3:].reshape(eef_pos.shape[0], 3, 3))), axis=1)
+
+        socket_pos = data_seq["socket_pos"][:, :3]
         euler = Rotation.from_quat(data_seq["plug_hand_quat"]).as_euler('xyz')
         plug_hand_pos = data_seq["plug_hand_pos"]
 
@@ -309,8 +315,8 @@ class TactileDataset(Dataset):
 
         if self.stats is not None:
             eef_pos = (eef_pos - self.stats["mean"][eef_key]) / self.stats["std"][eef_key]
-            noisy_socket_pos = (noisy_socket_pos - self.stats["mean"]["noisy_socket_pos"][:3]) / self.stats["std"][
-                                                                                                     "noisy_socket_pos"][
+            socket_pos = (socket_pos - self.stats["mean"]["socket_pos"][:3]) / self.stats["std"][
+                                                                                                     "socket_pos"][
                                                                                                  :3]
             euler = (euler - self.stats["mean"][euler_key]) / self.stats["std"][euler_key]
             plug_hand_pos = (plug_hand_pos - self.stats["mean"][plug_hand_pos_key]) / self.stats["std"][
@@ -318,7 +324,7 @@ class TactileDataset(Dataset):
 
         obj_pos_rpy = np.hstack((plug_hand_pos, euler))
 
-        return eef_pos, noisy_socket_pos, obj_pos_rpy
+        return eef_pos, socket_pos, obj_pos_rpy
 
     def __getitem__(self, idx, diff_tac=True, diff=False):
 
@@ -344,12 +350,12 @@ class TactileDataset(Dataset):
         obs_hist = data_seq["obs_hist"]
         latent = data_seq["latent"]
 
-        noisy_socket_pos_noise = np.random.normal(loc=0, scale=0.002, size=noisy_socket_pos.shape)
+        # noisy_socket_pos_noise = np.random.normal(loc=0, scale=0.002, size=noisy_socket_pos.shape)
         # obj_pos_rpy_noise = 0 * np.random.normal(loc=0, scale=0.002, size=obj_pos_rpy.shape)
 
         lin_input = np.concatenate([eef_pos,  # 12
-                                    noisy_socket_pos + noisy_socket_pos_noise,
-                                    action,  # 6
+                                    noisy_socket_pos,
+                                    # action,  # 6
                                     # obj_pos_rpy + obj_pos_rpy_noise  # 6
                                     ], axis=-1)
 
@@ -617,7 +623,7 @@ class TactileRealDataset(Dataset):
 
 # # for tests
 if __name__ == "__main__":
-    files = glob("/common/users/dm1487/inhand_manipulation_data_store/*/*/*.npz")
+    files = glob("/common/users/oa345/inhand_manipulation_data_store/*/*/*.npz")
     ds = TactileDataset(files, sequence_length=100, full_sequence=False)
 
     cnn_input, lin_input, obs_hist, latent, action, mask = next(iter(ds))
