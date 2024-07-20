@@ -238,7 +238,7 @@ class PPO(object):
         self.writer.add_scalar('info/e_clip', self.e_clip, self.agent_steps)
         self.writer.add_scalar('info/kl', torch.mean(kls).item(), self.agent_steps)
         self.writer.add_scalar("info/grad_norms", torch.mean(grad_norms).item(), self.agent_steps)
-        self.writer.add_scalar("info/returns_list", torch.mean(returns_list).item(), self.agent_steps)
+        self.writer.add_scalar("info/returns_list", torch.mean(torch.stack(returns_list)).item(), self.agent_steps)
 
         # wandb.log({
         #     'losses/actor_loss': torch.mean(torch.stack(a_losses)).item(),

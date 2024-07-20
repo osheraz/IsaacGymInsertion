@@ -14,7 +14,7 @@ EXTRA_ARGS_SLUG=${EXTRA_ARGS// /_}
 echo extra "${EXTRA_ARGS}"
 
 #CUDA_VISIBLE_DEVICES=${GPUS} \
-torchrun --standalone --nnodes=1 --nproc_per_node=4 \
+torchrun --standalone --nnodes=1 --nproc_per_node=3 \
 train.py task=FactoryTaskInsertionTactile headless=${HEADLESS} seed=${SEED} \
 multi_gpu=True \
 task.env.numEnvs=${NUM_ENVS} \
