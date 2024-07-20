@@ -40,13 +40,12 @@ import warnings
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 
-# @hydra.main(config_name="config", config_path="./cfg")
-def run(cfg: DictConfig, config_path: Optional[str] = None):
-
-    if config_path is not None:
-        assert cfg is None
-        cfg = OmegaConf.load(config_path)
-
+@hydra.main(config_name="config", config_path="./cfg")
+def run(cfg: DictConfig):  # , config_path: Optional[str] = None
+    #
+    # if config_path is not None:
+    #     assert cfg is None
+    #     cfg = OmegaConf.load(config_path)
     if cfg.checkpoint:
         cfg.checkpoint = to_absolute_path(cfg.checkpoint)
 
@@ -56,7 +55,6 @@ def run(cfg: DictConfig, config_path: Optional[str] = None):
     # global rank of the GPU
     if cfg.train.ppo.multi_gpu:
         rank = int(os.getenv("LOCAL_RANK", "0"))
-        # torchrun --standalone --nnodes=1 --nproc_per_node=2 train.py
         cfg.sim_device = f"cuda:{rank}"
         cfg.rl_device = f"cuda:{rank}"
         cfg.graphics_device_id = int(rank)
@@ -143,10 +141,10 @@ def run(cfg: DictConfig, config_path: Optional[str] = None):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "config_path", type=argparse.FileType("r"), help="Path to hydra config."
-    )
-    args = parser.parse_args()
+    # parser = argparse.ArgumentParser()
+    # parser.add_argument(
+    #     "config_path", type=argparse.FileType("r"), help="Path to hydra config."
+    # )
+    # args = parser.parse_args()
 
-    run(None, args.config_path)
+    run() # None, args.config_path

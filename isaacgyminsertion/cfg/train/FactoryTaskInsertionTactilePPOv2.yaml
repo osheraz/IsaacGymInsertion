@@ -28,7 +28,7 @@ network:
 
 ppo:
   output_name: 'debug'
-  multi_gpu: False
+  multi_gpu: ${...multi_gpu}
   normalize_input: True
   normalize_value: True
   value_bootstrap: True # for "value" based bootstrap, no connection to GAE (logically we may be seeing reduced variance during training)

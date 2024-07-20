@@ -305,6 +305,82 @@ class PPO(object):
         _t = time.time()
         _last_t = time.time()
         self.obs = self.env.reset()
+        self.agent_steps = (
+            self.batch_size if not self.multi_gpu else self.batch_size * self.rank_size
+        )
+        if self.multi_gpu:
+            torch.cuda.set_device(self.rank)
+            print("====================broadcasting parameters")
+            model_params = [self.model.state_dict()]
+            dist.broadcast_object_list(model_params, 0)
+            self.model.load_state_dict(model_params[0])
+        while self.agent_steps < self.max_agent_steps:
+            self.epoch_num += 1
+            a_losses, c_losses, b_losses, entropies, kls, grad_norms, returns_list = self.train_epoch()
+            self.storage.data_dict = None
+            (
+                a_losses,
+                b_losses,
+                c_losses,
+                entropies,
+                kls,
+                grad_norms,
+            ) = multi_gpu_aggregate_stats(
+                [a_losses, b_losses, c_losses, entropies, kls, grad_norms]
+            )
+            mean_rewards, mean_lengths, mean_success = multi_gpu_aggregate_stats(
+                [
+                    torch.Tensor([self.episode_rewards.get_mean()])
+                    .float()
+                    .to(self.device),
+                    torch.Tensor([self.episode_lengths.get_mean()])
+                    .float()
+                    .to(self.device),
+                    torch.Tensor([self.episode_success.get_mean()])
+                    .float()
+                    .to(self.device),
+                ]
+            )
+            for k, v in self.extra_info.items():
+                if type(v) is not torch.Tensor:
+                    v = torch.Tensor([v]).float().to(self.device)
+                self.extra_info[k] = multi_gpu_aggregate_stats(v[None].to(self.device))
+
+            if not self.multi_gpu or (self.multi_gpu and self.rank == 0):
+                all_fps = self.agent_steps / (time.time() - _t)
+                last_fps = self.batch_size / (time.time() - _last_t)
+                _last_t = time.time()
+                info_string = f'Agent Steps: {int(self.agent_steps // 1e6):04}M | FPS: {all_fps:.1f} | ' \
+                              f'Last FPS: {last_fps:.1f} | ' \
+                              f'Collect Time: {self.data_collect_time / 60:.1f} min | ' \
+                              f'Train RL Time: {self.rl_train_time / 60:.1f} min | ' \
+                              f'Priv info: {self.full_config.train.ppo.priv_info} | ' \
+                              f'Extrinsic Contact: {self.full_config.task.env.compute_contact_gt}'
+                #   f'Mean Reward: {self.best_rewards:.2f} | ' \
+                print(info_string)
+                # self.write_stats(a_losses, c_losses, b_losses, entropies, kls, grad_norms, returns_list)
+                mean_rewards = self.episode_rewards.get_mean()
+                mean_lengths = self.episode_lengths.get_mean()
+                mean_success = self.episode_success.get_mean()
+                self.writer.add_scalar('episode_rewards/step', mean_rewards, self.agent_steps)
+                self.writer.add_scalar('episode_lengths/step', mean_lengths, self.agent_steps)
+                self.writer.add_scalar('mean_success/step', mean_success, self.agent_steps)
+
+                checkpoint_name = f'ep_{self.epoch_num}_step_{int(self.agent_steps // 1e6):04}M_reward_{mean_rewards:.2f}'
+
+                if self.save_freq > 0:
+                    if self.epoch_num % self.save_freq == 0:
+                        self.save(os.path.join(self.nn_dir, checkpoint_name))
+                        self.save(os.path.join(self.nn_dir, 'last'))
+                self.best_rewards = mean_rewards
+                self.success_rate = mean_success
+
+        print('max steps achieved')
+
+    def train_single(self):
+        _t = time.time()
+        _last_t = time.time()
+        self.obs = self.env.reset()
         self.agent_steps = self.batch_size
 
         while self.agent_steps < self.max_agent_steps:
@@ -378,6 +454,148 @@ class PPO(object):
         return action, latent
 
     def train_epoch(self):
+        # collect minibatch data
+        _t = time.time()
+        self.set_eval()
+        self.play_steps()  # collect data
+        self.data_collect_time += (time.time() - _t)
+        # update network
+        _t = time.time()
+        self.set_train()
+        a_losses, b_losses, c_losses = [], [], []
+        entropies, kls, grad_norms = [], [], []
+        returns_list = []
+        continue_training = True
+        for _ in range(0, self.mini_epochs_num):
+            ep_kls = []
+            approx_kl_divs = []
+
+            for i in range(len(self.storage)):
+                value_preds, old_action_log_probs, advantage, old_mu, old_sigma, \
+                    returns, actions, obs, priv_info, contacts = self.storage[i]
+
+                obs = self.running_mean_std(obs)
+                priv_info = self.priv_mean_std(priv_info)
+
+                batch_dict = {
+                    'prev_actions': actions,
+                    'obs': obs,
+                    'priv_info': priv_info,
+                    'contacts': contacts,
+                    # 'tactile_hist': tactile_hist
+                }
+                res_dict = self.model(batch_dict)
+                action_log_probs = res_dict['prev_neglogp']
+                values = res_dict['values']
+                entropy = res_dict['entropy']
+                mu = res_dict['mus']
+                sigma = res_dict['sigmas']
+
+                # actor loss
+                ratio = torch.exp(old_action_log_probs - action_log_probs)
+                surr1 = advantage * ratio
+                surr2 = advantage * torch.clamp(ratio, 1.0 - self.e_clip, 1.0 + self.e_clip)
+                a_loss = torch.max(-surr1, -surr2)
+                # critic loss
+                value_pred_clipped = value_preds + (values - value_preds).clamp(-self.e_clip, self.e_clip)
+                value_losses = (values - returns) ** 2
+                value_losses_clipped = (value_pred_clipped - returns) ** 2
+                c_loss = torch.max(value_losses, value_losses_clipped)
+                # bounded loss
+                if self.bounds_loss_coef > 0:
+                    soft_bound = 1.1
+                    mu_loss_high = torch.clamp_max(mu - soft_bound, 0.0) ** 2
+                    mu_loss_low = torch.clamp_max(-mu + soft_bound, 0.0) ** 2
+                    b_loss = (mu_loss_low + mu_loss_high).sum(axis=-1)
+                else:
+                    b_loss = 0
+                a_loss, c_loss, entropy, b_loss = [torch.mean(loss) for loss in [a_loss, c_loss, entropy, b_loss]]
+
+                rl_loss = a_loss + 0.5 * c_loss * self.critic_coef - entropy * self.entropy_coef + b_loss * self.bounds_loss_coef
+                loss = rl_loss
+
+                with torch.no_grad():
+                    kl_dist = policy_kl(mu.detach(), sigma.detach(), old_mu, old_sigma)
+                    log_ratio = action_log_probs - old_action_log_probs
+                    approx_kl_div = torch.mean((torch.exp(log_ratio) - 1) - log_ratio).cpu().numpy()
+                    approx_kl_divs.append(approx_kl_div)
+
+                kl = kl_dist
+                ep_kls.append(kl)
+                entropies.append(entropy)
+
+                # print(returns[0], kl_dist)
+
+                # if approx_kl_div > (1.5 * self.kl_threshold):
+                #     continue_training = False
+                #     print(f"Early stopping at step due to reaching max kl: {approx_kl_div:.2f}")
+                #     break
+
+                self.optimizer.zero_grad()
+                loss.backward()
+
+                if self.multi_gpu:
+                    # batch all_reduce ops: see https://github.com/entity-neural-network/incubator/pull/220
+                    all_grads_list = []
+                    for param in self.model.parameters():
+                        if param.grad is not None:
+                            all_grads_list.append(param.grad.view(-1))
+                    all_grads = torch.cat(all_grads_list)
+                    dist.all_reduce(all_grads, op=dist.ReduceOp.SUM)
+                    offset = 0
+                    for param in self.model.parameters():
+                        if param.grad is not None:
+                            param.grad.data.copy_(
+                                all_grads[offset : offset + param.numel()].view_as(
+                                    param.grad.data
+                                )
+                                / self.rank_size
+                            )
+                            offset += param.numel()
+
+                grad_norms.append(torch.norm(
+                    torch.cat([p.reshape(-1) for p in self.model.parameters()])))
+
+                if self.truncate_grads:
+                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.grad_norm)
+                self.optimizer.step()
+
+                a_losses.append(a_loss)
+                c_losses.append(c_loss)
+                returns_list.append(returns)
+                if self.bounds_loss_coef is not None:
+                    b_losses.append(b_loss)
+
+                self.storage.update_mu_sigma(mu.detach(), sigma.detach())
+
+                del loss
+                del res_dict
+                torch.cuda.empty_cache()
+
+            av_kls = torch.mean(torch.stack(ep_kls))
+            if self.multi_gpu:
+                dist.all_reduce(av_kls, op=dist.ReduceOp.SUM)
+                av_kls /= self.rank_size
+            kls.append(av_kls)
+
+            self.last_lr = self.scheduler.update(self.last_lr, av_kls.item())
+            if self.multi_gpu:
+                lr_tensor = torch.tensor([self.last_lr], device=self.device)
+                dist.broadcast(lr_tensor, 0)
+                lr = lr_tensor.item()
+                for param_group in self.optimizer.param_groups:
+                    param_group["lr"] = lr
+            else:
+                for param_group in self.optimizer.param_groups:
+                    param_group["lr"] = self.last_lr
+
+            if not continue_training:
+                break
+
+        self.rl_train_time += (time.time() - _t)
+        return a_losses, c_losses, b_losses, entropies, kls, grad_norms, returns_list
+
+    def train_epoch_single(self):
         # collect minibatch data
         _t = time.time()
         self.set_eval()
@@ -610,7 +828,12 @@ class PPO(object):
         res_dict = self.model_act(self.obs)
         last_values = res_dict['values']
 
-        self.agent_steps += self.batch_size
+        # self.agent_steps += self.batch_size
+        self.agent_steps = (
+            (self.agent_steps + self.batch_size)
+            if not self.multi_gpu
+            else self.agent_steps + self.batch_size * self.rank_size
+        )
         self.storage.computer_return(last_values, self.gamma, self.tau)
         self.storage.prepare_training()
 
