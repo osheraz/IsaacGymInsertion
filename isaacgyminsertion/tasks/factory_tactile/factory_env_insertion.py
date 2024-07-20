@@ -542,10 +542,13 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
 
         # Create wrist and fingertip force sensors
         sensor_pose = gymapi.Transform()
-        # for ft_handle in self.fingertip_handles:
-        #     self.gym.create_asset_force_sensor(kuka_asset, ft_handle, sensor_pose)
-        wrist_ft_handle = self.gym.find_asset_rigid_body_index(kuka_asset, 'iiwa7_link_7')
-        self.gym.create_asset_force_sensor(kuka_asset, wrist_ft_handle, sensor_pose)
+        for ft_handle in self.fingertip_handles:
+            sensor_options = gymapi.ForceSensorProperties()
+            sensor_options.enable_forward_dynamics_forces = False  # for example gravity
+            sensor_options.enable_constraint_solver_forces = True  # for example contacts
+            self.gym.create_asset_force_sensor(kuka_asset, ft_handle, sensor_pose, sensor_options)
+        # wrist_ft_handle = self.gym.find_asset_rigid_body_index(kuka_asset, 'iiwa7_link_7')
+        # self.gym.create_asset_force_sensor(kuka_asset, wrist_ft_handle, sensor_pose)
 
         self.init_camera_pos = (self.cfg_env.external_cam.x_init,
                                 self.cfg_env.external_cam.y_init,
