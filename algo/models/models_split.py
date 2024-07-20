@@ -111,7 +111,8 @@ class ActorCriticSplit(nn.Module):
             if self.contact_info:
                 self.contact_mlp_units = kwargs['contacts_mlp_units']
 
-                self.contact_ae = ContactAE(input_size=kwargs["num_contact_points"] * 1, embedding_size=self.contact_mlp_units[-1])
+                self.contact_ae = ContactAE(input_size=kwargs["num_contact_points"],
+                                            embedding_size=self.contact_mlp_units[-1])
                 if not self.only_contact:
                     mlp_input_shape += self.contact_mlp_units[-1]
 
@@ -129,8 +130,8 @@ class ActorCriticSplit(nn.Module):
                         units=self.obs_units, input_size=kwargs["student_obs_input_shape"])
 
                 if self.tactile_info:
-                    path_checkpoint, root_dir = None, None
                     if False:  # kwargs['tactile_pretrained']
+                        path_checkpoint, root_dir = None, None
                         # we should think about decoupling this problem and pretraining a decoder
                         import os
                         current_file = os.path.abspath(__file__)
@@ -194,7 +195,7 @@ class ActorCriticSplit(nn.Module):
     def act(self, obs_dict):
         # used specifically to collection samples during training
         # it contains exploration so needs to sample from distribution
-        mu, logstd, value, _, _ = self._actor_critic(obs_dict)
+        mu, logstd, value, _, _ = self.actor_critic(obs_dict)
         sigma = torch.exp(logstd)
         distr = torch.distributions.Normal(mu, sigma)
         selected_action = distr.sample()
@@ -210,15 +211,15 @@ class ActorCriticSplit(nn.Module):
     @torch.no_grad()
     def act_inference(self, obs_dict):
         # used for testing
-        mu, logstd, value, latent, _ = self._actor_critic(obs_dict)
+        mu, logstd, value, latent, _ = self.actor_critic(obs_dict)
         return mu, latent
 
     def bc_act(self, obs_dict):
         # used for testing
-        mu, logstd, value, latent, _ = self._actor_critic(obs_dict)
+        mu, logstd, value, latent, _ = self.actor_critic(obs_dict)
         return mu, latent
 
-    def _actor_critic(self, obs_dict, display=False):
+    def actor_critic(self, obs_dict, display=False):
 
         obs = obs_dict['obs']
         extrin, extrin_gt = None, None
@@ -333,7 +334,7 @@ class ActorCriticSplit(nn.Module):
 
     def forward(self, input_dict):
         prev_actions = input_dict.get('prev_actions', None)
-        mu, logstd, value, extrin, extrin_gt = self._actor_critic(input_dict)
+        mu, logstd, value, extrin, extrin_gt = self.actor_critic(input_dict)
         sigma = torch.exp(logstd)
         distr = torch.distributions.Normal(mu, sigma)
         entropy = distr.entropy().sum(dim=-1)

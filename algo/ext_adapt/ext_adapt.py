@@ -18,7 +18,7 @@ import numpy as np
 from termcolor import cprint
 
 from algo.ppo.experience import ExperienceBuffer
-from algo.models.models import ActorCritic
+from algo.models.models_split import ActorCriticSplit as ActorCritic
 from algo.models.running_mean_std import RunningMeanStd
 from isaacgyminsertion.utils.misc import AverageScalarMeter
 from tensorboardX import SummaryWriter
@@ -217,8 +217,7 @@ class ExtrinsicAdapt(object):
                 'student_obs': self.running_mean_std_stud(obs_dict['student_obs']),
                 'tactile_hist': obs_dict['tactile_hist'],
             }
-            mu, _, _, e, e_gt = self.model._actor_critic(input_dict)
-            # loss = ((e - e_gt.detach()) ** 2).mean()
+            mu, _, _, e, e_gt = self.model.actor_critic(input_dict)
             loss = loss_fn(e, e_gt.detach())
             self.optim.zero_grad()
             loss.backward()
@@ -226,7 +225,7 @@ class ExtrinsicAdapt(object):
 
             mu = mu.detach()
             mu = torch.clamp(mu, -1.0, 1.0)
-            obs_dict, r, done, info = self.env.step(mu) # online
+            obs_dict, r, done, info = self.env.step(mu)  # online
             self.agent_steps += self.batch_size
 
             # ---- statistics
