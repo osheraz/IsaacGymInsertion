@@ -16,7 +16,7 @@ C=outputs/${CACHE}/stage1_nn/last.pth
 echo extra "${EXTRA_ARGS}"
 
 CUDA_VISIBLE_DEVICES=${GPUS} \
-python trainV2.py task=FactoryTaskInsertionTactile headless=${HEADLESS} seed=${SEED} \
+python train.py task=FactoryTaskInsertionTactile headless=${HEADLESS} seed=${SEED} \
 task.env.numEnvs=${NUM_ENVS} \
 offline_training=False \
 offline_training_w_env=False \

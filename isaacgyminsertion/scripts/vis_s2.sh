@@ -5,7 +5,7 @@ CACHE=${3:-11-21-23}
 NUM_ENVS=${4:-1}
 
 CUDA_VISIBLE_DEVICES=${GPUS} \
-python trainV2.py task=FactoryTaskInsertionTactile headless=False pipeline=gpu seed=${SEED} \
+python train.py task=FactoryTaskInsertionTactile headless=False pipeline=gpu seed=${SEED} \
 task.env.numEnvs=${NUM_ENVS} test=True \
 train.algo=ExtrinsicAdapt \
 task.env.tactile=True \

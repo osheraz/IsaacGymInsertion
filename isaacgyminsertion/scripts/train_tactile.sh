@@ -19,7 +19,7 @@ output_dir=outputs/${CACHE}
 path_norm=${data_folder}/normalization.pkl
 
 CUDA_VISIBLE_DEVICES=${GPUS} \
-python trainV2.py task=FactoryTaskInsertionTactile headless=${HEADLESS} seed=${SEED} \
+python train.py task=FactoryTaskInsertionTactile headless=${HEADLESS} seed=${SEED} \
 task.env.numEnvs=${NUM_ENVS} \
 train_tactile=True \
 task.data_logger.base_folder="${data}" \

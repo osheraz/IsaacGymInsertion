@@ -211,8 +211,8 @@ class FactoryBaseTactile(VecTask, FactoryABCBase):
         self.dof_vel = self.dof_state.view(self.num_envs, self.num_dofs, 2)[..., 1]
         self.dof_force_view = self.dof_force.view(self.num_envs, self.num_dofs, 1)[..., 0]
         self.contact_force = self.contact_force.view(self.num_envs, self.num_bodies, 3)[..., 0:3]
-        # self.ft_sensor_tensor = self.ft_sensors.view(self.num_envs, (len(self.fingertip_handles) + 1) * 6)
-        self.ft_sensor_tensor = self.ft_sensors.view(self.num_envs, 1 * 6)
+        self.ft_sensor_tensor = self.ft_sensors.view(self.num_envs, (len(self.fingertip_handles)) * 6)
+        # self.ft_sensor_tensor = self.ft_sensors.view(self.num_envs, 1 * 6)
 
         self.arm_dof_pos = self.dof_pos[:, 0:7]
         self.arm_dof_vel = self.dof_vel[:, 0:7]

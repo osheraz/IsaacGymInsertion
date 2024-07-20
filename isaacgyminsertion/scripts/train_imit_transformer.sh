@@ -20,7 +20,7 @@ output_dir=outputs/${CACHE}
 student_ckpt_path=/home/${USER}/osher3_workspace/src/isaacgym/python/IsaacGymInsertion/isaacgyminsertion/outputs/${CACHE}/student/checkpoints/model_last.pt
 
 CUDA_VISIBLE_DEVICES=${GPUS} \
-python trainV2.py task=FactoryTaskInsertionTactile headless=${HEADLESS} seed=${SEED} \
+python train.py task=FactoryTaskInsertionTactile headless=${HEADLESS} seed=${SEED} \
 task.env.numEnvs=${NUM_ENVS} \
 test=True \
 offline_training_w_env=True \

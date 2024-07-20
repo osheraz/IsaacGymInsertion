@@ -1,6 +1,6 @@
 #!/bin/bash
 
-python trainV2.py task=FactoryTaskInsertionTactile headless=True pipeline=gpu \
+python train.py task=FactoryTaskInsertionTactile headless=True pipeline=gpu \
 task.env.numEnvs=2 \
 task.sim.substeps=5 \
 task.env.numObsHist=1 \

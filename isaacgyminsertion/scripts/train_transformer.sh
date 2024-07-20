@@ -21,7 +21,7 @@ student_ckpt_path=/home/${USER}/tactile_insertion/datastore_${SEED}_${CACHE}/tac
 tact_path=/home/${USER}/osher3_workspace/src/isaacgym/python/IsaacGymInsertion/isaacgyminsertion/outputs/${CACHE}/tact/checkpoints/model_last.pt
 
 CUDA_VISIBLE_DEVICES=${GPUS} \
-python trainV2.py task=FactoryTaskInsertionTactile headless=${HEADLESS} seed=${SEED} \
+python train.py task=FactoryTaskInsertionTactile headless=${HEADLESS} seed=${SEED} \
 task.env.numEnvs=${NUM_ENVS} \
 offline_training=True \
 offline_train.train.student_ckpt_path="${student_ckpt_path}" \

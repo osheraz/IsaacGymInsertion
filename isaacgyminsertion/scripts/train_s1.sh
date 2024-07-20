@@ -2,8 +2,11 @@
 GPUS=${1:-0}
 SEED=${2:-42}
 CACHE=${3:-test}
-NUM_ENVS=${4:-4096}
+NUM_ENVS=${4:-5}
 HEADLESS=${5:-True}
+
+# LAUNCHER="basic"
+LAUNCHER="faircluster"
 
 array=( $@ )
 len=${#array[@]}
@@ -14,8 +17,9 @@ EXTRA_ARGS_SLUG=${EXTRA_ARGS// /_}
 echo extra "${EXTRA_ARGS}"
 
 CUDA_VISIBLE_DEVICES=${GPUS} \
-python trainV2.py task=FactoryTaskInsertionTactile headless=${HEADLESS} seed=${SEED} \
+python train_multi_gpu.py -m task=FactoryTaskInsertionTactile headless=${HEADLESS} seed=${SEED} \
 task.env.numEnvs=${NUM_ENVS} \
+launcher=${LAUNCHER}
 task.env.tactile=False \
 task.env.tactile_display_viz=False \
 task.env.smooth_force=True \

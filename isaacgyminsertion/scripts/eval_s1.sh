@@ -14,7 +14,7 @@ echo extra "${EXTRA_ARGS}"
 
 C=outputs/${CACHE}/stage1_nn/last.pth
 CUDA_VISIBLE_DEVICES=${GPUS} \
-python trainV2.py task=FactoryTaskInsertionTactile headless=${HEADLESS} seed=${SEED} \
+python train.py task=FactoryTaskInsertionTactile headless=${HEADLESS} seed=${SEED} \
 test=True \
 task.env.numEnvs=${NUM_ENVS} \
 task.env.numStates=14 \

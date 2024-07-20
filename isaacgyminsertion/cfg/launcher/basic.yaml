@@ -1,0 +1,9 @@
+# @package _global_
+defaults: 
+  - override /hydra/launcher: basic
+  - _self_
+
+hydra:
+  sweep:
+    dir: ""
+    # dir: /checkpoint/${user}/gum/${task.name}/${now:%Y-%m-%d}/${now:%H-%M-%S}

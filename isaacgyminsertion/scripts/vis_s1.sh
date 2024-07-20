@@ -2,7 +2,7 @@
 CACHE=$1
 
 C=outputs/test/last.pth
-python trainV2.py task=FactoryTaskInsertionTactile headless=False pipeline=gpu \
+python train.py task=FactoryTaskInsertionTactile headless=False pipeline=gpu \
 task.env.numEnvs=2 test=True \
 task.tactile.tacto.width=224 \
 task.tactile.tacto.height=224 \

@@ -15,7 +15,7 @@ echo extra "${EXTRA_ARGS}"
 model_to_load=outputs/${CACHE}/stage1_nn/last.pth
 
 CUDA_VISIBLE_DEVICES=${GPUS} \
-python trainV2.py task=FactoryTaskInsertionTactile headless=${HEADLESS} seed=${SEED} \
+python train.py task=FactoryTaskInsertionTactile headless=${HEADLESS} seed=${SEED} \
 test=False \
 task.collect_rotate=True \
 task.data_logger.collect_data=True \
