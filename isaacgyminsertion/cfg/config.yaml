@@ -72,7 +72,6 @@ defaults:
   - hydra/job_logging: disabled
   - pbt: no_pbt
   - offline_train: offline_config
-#  - launcher: basic
   - diffusion_train: diffusion_config
 
 # set the directory where the output files get saved

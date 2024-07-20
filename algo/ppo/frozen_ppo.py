@@ -118,9 +118,7 @@ class PPO(object):
             "shared_parameters": self.ppo_config.shared_parameters,
             "merge_units": self.network_config.merge_mlp.units,
             "hand_mlp_units": self.network_config.hand_mlp.units,
-            "hand_info": self.hand_info
-            # "physics_mlp_units": self.network_config.physics_mlp.units,
-            # 'body_mlp_units': self.network_config.body_mlp.units,
+            "hand_info": self.hand_info,
         }
 
         self.rot_tf = RotationTransformer(from_rep='matrix', to_rep='rotation_6d')
@@ -231,16 +229,16 @@ class PPO(object):
         self.writer.add_scalar('performance/RLTrainFPS', self.agent_steps / self.rl_train_time, self.agent_steps)
         self.writer.add_scalar('performance/EnvStepFPS', self.agent_steps / self.data_collect_time, self.agent_steps)
 
-        self.writer.add_scalar('losses/actor_loss', torch.mean(torch.stack(a_losses)).item(), self.agent_steps)
-        self.writer.add_scalar('losses/bounds_loss', torch.mean(torch.stack(b_losses)).item(), self.agent_steps)
-        self.writer.add_scalar('losses/critic_loss', torch.mean(torch.stack(c_losses)).item(), self.agent_steps)
-        self.writer.add_scalar('losses/entropy', torch.mean(torch.stack(entropies)).item(), self.agent_steps)
+        self.writer.add_scalar('losses/actor_loss', torch.mean(a_losses).item(), self.agent_steps)
+        self.writer.add_scalar('losses/bounds_loss', torch.mean(b_losses).item(), self.agent_steps)
+        self.writer.add_scalar('losses/critic_loss', torch.mean(c_losses).item(), self.agent_steps)
+        self.writer.add_scalar('losses/entropy', torch.mean(entropies).item(), self.agent_steps)
 
         self.writer.add_scalar('info/last_lr', self.last_lr, self.agent_steps)
         self.writer.add_scalar('info/e_clip', self.e_clip, self.agent_steps)
-        self.writer.add_scalar('info/kl', torch.mean(torch.stack(kls)).item(), self.agent_steps)
-        self.writer.add_scalar("info/grad_norms", torch.mean(torch.stack(grad_norms)).item(), self.agent_steps)
-        self.writer.add_scalar("info/returns_list", torch.mean(torch.stack(returns_list)).item(), self.agent_steps)
+        self.writer.add_scalar('info/kl', torch.mean(kls).item(), self.agent_steps)
+        self.writer.add_scalar("info/grad_norms", torch.mean(grad_norms).item(), self.agent_steps)
+        self.writer.add_scalar("info/returns_list", torch.mean(returns_list).item(), self.agent_steps)
 
         # wandb.log({
         #     'losses/actor_loss': torch.mean(torch.stack(a_losses)).item(),
@@ -305,12 +303,10 @@ class PPO(object):
         _t = time.time()
         _last_t = time.time()
         self.obs = self.env.reset()
-        self.agent_steps = (
-            self.batch_size if not self.multi_gpu else self.batch_size * self.rank_size
-        )
+        self.agent_steps = (self.batch_size if not self.multi_gpu else self.batch_size * self.rank_size)
         if self.multi_gpu:
             torch.cuda.set_device(self.rank)
-            print("====================broadcasting parameters")
+            print("====================> broadcasting parameters")
             model_params = [self.model.state_dict()]
             dist.broadcast_object_list(model_params, 0)
             self.model.load_state_dict(model_params[0])
@@ -318,28 +314,13 @@ class PPO(object):
             self.epoch_num += 1
             a_losses, c_losses, b_losses, entropies, kls, grad_norms, returns_list = self.train_epoch()
             self.storage.data_dict = None
-            (
-                a_losses,
-                b_losses,
-                c_losses,
-                entropies,
-                kls,
-                grad_norms,
-            ) = multi_gpu_aggregate_stats(
-                [a_losses, b_losses, c_losses, entropies, kls, grad_norms]
-            )
+            agg_stats = multi_gpu_aggregate_stats([a_losses, b_losses, c_losses, entropies, kls, grad_norms])
+            a_losses, b_losses, c_losses, entropies, kls, grad_norms = agg_stats
             mean_rewards, mean_lengths, mean_success = multi_gpu_aggregate_stats(
-                [
-                    torch.Tensor([self.episode_rewards.get_mean()])
-                    .float()
-                    .to(self.device),
-                    torch.Tensor([self.episode_lengths.get_mean()])
-                    .float()
-                    .to(self.device),
-                    torch.Tensor([self.episode_success.get_mean()])
-                    .float()
-                    .to(self.device),
-                ]
+                [torch.Tensor([self.episode_rewards.get_mean()]).float().to(self.device),
+                 torch.Tensor([self.episode_lengths.get_mean()]).float().to(self.device),
+                 torch.Tensor([self.episode_success.get_mean()]).float().to(self.device),
+                 ]
             )
             for k, v in self.extra_info.items():
                 if type(v) is not torch.Tensor:
@@ -354,14 +335,11 @@ class PPO(object):
                               f'Last FPS: {last_fps:.1f} | ' \
                               f'Collect Time: {self.data_collect_time / 60:.1f} min | ' \
                               f'Train RL Time: {self.rl_train_time / 60:.1f} min | ' \
+                              f"Current Best: {self.best_rewards:.2f}" \
                               f'Priv info: {self.full_config.train.ppo.priv_info} | ' \
                               f'Extrinsic Contact: {self.full_config.task.env.compute_contact_gt}'
-                #   f'Mean Reward: {self.best_rewards:.2f} | ' \
                 print(info_string)
-                # self.write_stats(a_losses, c_losses, b_losses, entropies, kls, grad_norms, returns_list)
-                mean_rewards = self.episode_rewards.get_mean()
-                mean_lengths = self.episode_lengths.get_mean()
-                mean_success = self.episode_success.get_mean()
+                self.write_stats(a_losses, c_losses, b_losses, entropies, kls, grad_norms, returns_list)
                 self.writer.add_scalar('episode_rewards/step', mean_rewards, self.agent_steps)
                 self.writer.add_scalar('episode_lengths/step', mean_lengths, self.agent_steps)
                 self.writer.add_scalar('mean_success/step', mean_success, self.agent_steps)
@@ -372,49 +350,24 @@ class PPO(object):
                     if self.epoch_num % self.save_freq == 0:
                         self.save(os.path.join(self.nn_dir, checkpoint_name))
                         self.save(os.path.join(self.nn_dir, 'last'))
-                self.best_rewards = mean_rewards
+                if (
+                        mean_rewards > self.best_rewards
+                        and self.agent_steps >= self.save_best_after
+                        and mean_rewards != 0.0
+                ):
+                    print(f"save current best reward: {mean_rewards:.2f}")
+                    # remove previous best file
+                    prev_best_ckpt = os.path.join(
+                        self.nn_dir, f"best_reward_{self.best_rewards:.2f}.pth"
+                    )
+                    if os.path.exists(prev_best_ckpt):
+                        os.remove(prev_best_ckpt)
+                    self.best_rewards = mean_rewards
+                    self.save(
+                        os.path.join(self.nn_dir, f"best_reward_{mean_rewards:.2f}")
+                    )
                 self.success_rate = mean_success
 
-        print('max steps achieved')
-
-    def train_single(self):
-        _t = time.time()
-        _last_t = time.time()
-        self.obs = self.env.reset()
-        self.agent_steps = self.batch_size
-
-        while self.agent_steps < self.max_agent_steps:
-            self.epoch_num += 1
-            a_losses, c_losses, b_losses, entropies, kls, grad_norms, returns_list = self.train_epoch()
-            self.storage.data_dict = None
-
-            all_fps = self.agent_steps / (time.time() - _t)
-            last_fps = self.batch_size / (time.time() - _last_t)
-            _last_t = time.time()
-            info_string = f'Agent Steps: {int(self.agent_steps // 1e6):04}M | FPS: {all_fps:.1f} | ' \
-                          f'Last FPS: {last_fps:.1f} | ' \
-                          f'Collect Time: {self.data_collect_time / 60:.1f} min | ' \
-                          f'Train RL Time: {self.rl_train_time / 60:.1f} min | ' \
-                          f'Priv info: {self.full_config.train.ppo.priv_info} | ' \
-                          f'Extrinsic Contact: {self.full_config.task.env.compute_contact_gt}'
-            #   f'Mean Reward: {self.best_rewards:.2f} | ' \
-            print(info_string)
-            self.write_stats(a_losses, c_losses, b_losses, entropies, kls, grad_norms, returns_list)
-            mean_rewards = self.episode_rewards.get_mean()
-            mean_lengths = self.episode_lengths.get_mean()
-            mean_success = self.episode_success.get_mean()
-            self.writer.add_scalar('episode_rewards/step', mean_rewards, self.agent_steps)
-            self.writer.add_scalar('episode_lengths/step', mean_lengths, self.agent_steps)
-            self.writer.add_scalar('mean_success/step', mean_success, self.agent_steps)
-
-            checkpoint_name = f'ep_{self.epoch_num}_step_{int(self.agent_steps // 1e6):04}M_reward_{mean_rewards:.2f}'
-
-            if self.save_freq > 0:
-                if self.epoch_num % self.save_freq == 0:
-                    self.save(os.path.join(self.nn_dir, checkpoint_name))
-                    self.save(os.path.join(self.nn_dir, 'last'))
-            self.best_rewards = mean_rewards
-            self.success_rate = mean_success
         print('max steps achieved')
 
     def save(self, name):
@@ -465,14 +418,14 @@ class PPO(object):
         a_losses, b_losses, c_losses = [], [], []
         entropies, kls, grad_norms = [], [], []
         returns_list = []
-        continue_training = True
+        # continue_training = True
         for _ in range(0, self.mini_epochs_num):
             ep_kls = []
             approx_kl_divs = []
 
             for i in range(len(self.storage)):
                 value_preds, old_action_log_probs, advantage, old_mu, old_sigma, \
-                    returns, actions, obs, priv_info, contacts = self.storage[i]
+                returns, actions, obs, priv_info, contacts = self.storage[i]
 
                 obs = self.running_mean_std(obs)
                 priv_info = self.priv_mean_std(priv_info)
@@ -546,7 +499,7 @@ class PPO(object):
                     for param in self.model.parameters():
                         if param.grad is not None:
                             param.grad.data.copy_(
-                                all_grads[offset : offset + param.numel()].view_as(
+                                all_grads[offset: offset + param.numel()].view_as(
                                     param.grad.data
                                 )
                                 / self.rank_size
@@ -579,6 +532,7 @@ class PPO(object):
             kls.append(av_kls)
 
             self.last_lr = self.scheduler.update(self.last_lr, av_kls.item())
+
             if self.multi_gpu:
                 lr_tensor = torch.tensor([self.last_lr], device=self.device)
                 dist.broadcast(lr_tensor, 0)
@@ -589,190 +543,11 @@ class PPO(object):
                 for param_group in self.optimizer.param_groups:
                     param_group["lr"] = self.last_lr
 
-            if not continue_training:
-                break
+            # if not continue_training:
+            #     break
 
         self.rl_train_time += (time.time() - _t)
         return a_losses, c_losses, b_losses, entropies, kls, grad_norms, returns_list
-
-    def train_epoch_single(self):
-        # collect minibatch data
-        _t = time.time()
-        self.set_eval()
-        self.play_steps()  # collect data
-        self.data_collect_time += (time.time() - _t)
-        # update network
-        _t = time.time()
-        self.set_train()
-        a_losses, b_losses, c_losses = [], [], []
-        entropies, kls, grad_norms = [], [], []
-        returns_list = []
-        continue_training = True
-        for _ in range(0, self.mini_epochs_num):
-            ep_kls = []
-            approx_kl_divs = []
-
-            for i in range(len(self.storage)):
-                value_preds, old_action_log_probs, advantage, old_mu, old_sigma, \
-                    returns, actions, obs, priv_info, contacts = self.storage[i]
-
-                obs = self.running_mean_std(obs)
-                priv_info = self.priv_mean_std(priv_info)
-
-                batch_dict = {
-                    'prev_actions': actions,
-                    'obs': obs,
-                    'priv_info': priv_info,
-                    'contacts': contacts,
-                    # 'tactile_hist': tactile_hist
-                }
-                res_dict = self.model(batch_dict)
-                action_log_probs = res_dict['prev_neglogp']
-                values = res_dict['values']
-                entropy = res_dict['entropy']
-                mu = res_dict['mus']
-                sigma = res_dict['sigmas']
-
-                # actor loss
-                ratio = torch.exp(old_action_log_probs - action_log_probs)
-                surr1 = advantage * ratio
-                surr2 = advantage * torch.clamp(ratio, 1.0 - self.e_clip, 1.0 + self.e_clip)
-                a_loss = torch.max(-surr1, -surr2)
-                # critic loss
-                value_pred_clipped = value_preds + (values - value_preds).clamp(-self.e_clip, self.e_clip)
-                value_losses = (values - returns) ** 2
-                value_losses_clipped = (value_pred_clipped - returns) ** 2
-                c_loss = torch.max(value_losses, value_losses_clipped)
-                # bounded loss
-                if self.bounds_loss_coef > 0:
-                    soft_bound = 1.1
-                    mu_loss_high = torch.clamp_max(mu - soft_bound, 0.0) ** 2
-                    mu_loss_low = torch.clamp_max(-mu + soft_bound, 0.0) ** 2
-                    b_loss = (mu_loss_low + mu_loss_high).sum(axis=-1)
-                else:
-                    b_loss = 0
-                a_loss, c_loss, entropy, b_loss = [torch.mean(loss) for loss in [a_loss, c_loss, entropy, b_loss]]
-
-                rl_loss = a_loss + 0.5 * c_loss * self.critic_coef - entropy * self.entropy_coef + b_loss * self.bounds_loss_coef
-                loss = rl_loss
-
-                with torch.no_grad():
-                    kl_dist = policy_kl(mu.detach(), sigma.detach(), old_mu, old_sigma)
-                    log_ratio = action_log_probs - old_action_log_probs
-                    approx_kl_div = torch.mean((torch.exp(log_ratio) - 1) - log_ratio).cpu().numpy()
-                    approx_kl_divs.append(approx_kl_div)
-
-                kl = kl_dist
-                ep_kls.append(kl)
-                entropies.append(entropy)
-
-                # print(returns[0], kl_dist)
-
-                if approx_kl_div > (1.5 * self.kl_threshold):
-                    continue_training = False
-                    print(f"Early stopping at step due to reaching max kl: {approx_kl_div:.2f}")
-                    break
-
-                self.optimizer.zero_grad()
-                loss.backward()
-                grad_norms.append(torch.norm(
-                    torch.cat([p.reshape(-1) for p in self.model.parameters()])))
-
-                if self.truncate_grads:
-                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.grad_norm)
-                self.optimizer.step()
-
-                a_losses.append(a_loss)
-                c_losses.append(c_loss)
-                returns_list.append(returns)
-                if self.bounds_loss_coef is not None:
-                    b_losses.append(b_loss)
-
-                self.storage.update_mu_sigma(mu.detach(), sigma.detach())
-
-                del loss
-                del res_dict
-                torch.cuda.empty_cache()
-
-            av_kls = torch.mean(torch.stack(ep_kls))
-            # self.last_lr = self.scheduler.update(self.last_lr, av_kls.item())
-            for param_group in self.optimizer.param_groups:
-                param_group['lr'] = self.last_lr
-            kls.append(av_kls)
-
-            if not continue_training:
-                break
-
-        self.rl_train_time += (time.time() - _t)
-        return a_losses, c_losses, b_losses, entropies, kls, grad_norms, returns_list
-
-    # TODO move all of this logging to an utils\misc folder
-    def _write_video(self, frames, ft_frames, output_loc, frame_rate):
-        writer = imageio.get_writer(output_loc, mode='I', fps=frame_rate)
-        for i in range(len(frames)):
-            frame = np.uint8(frames[i])
-            x, y = 30, 100
-            for item in ft_frames[i].tolist():
-                cv2.putText(frame, str(round(item, 3)), (x, y), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2,
-                            cv2.LINE_AA)
-                y += 30  # Move down to the next line
-            frame = np.uint8(frame)
-            writer.append_data(frame)
-        writer.close()
-
-    def _write_ft(self, data, output_loc):
-        import matplotlib.pyplot as plt
-        plt.figure(figsize=(8, 6))
-        plt.plot(np.array(data)[:, :3])
-        plt.xlabel('time')
-        # plt.ylim([-0.25, 0.25])
-        plt.ylabel('force')
-        plt.savefig(f'{output_loc}_force.png')
-        plt.close()
-        # plt.figure(figsize=(8, 6))
-        # plt.plot(np.array(data)[:, 3:])
-        # plt.xlabel('time')
-        # plt.ylabel('torque')
-        # plt.savefig(f'{output_loc}_torque.png')
-        # plt.close()
-
-    def log_video(self):
-        if self.it == 0:
-            self.env.start_recording()
-            self.last_recording_it = self.it
-            self.env.start_recording_ft()
-            self.last_recording_it_ft = self.it
-            return
-
-        frames = self.env.get_complete_frames()
-        ft_frames = self.env.get_ft_frames()
-        if len(frames) > 0:
-            self.env.pause_recording()
-            self.env.pause_recording_ft()
-
-            if len(frames) < 20:
-                self.env.start_recording()
-                self.last_recording_it = self.it
-                self.env.start_recording_ft()
-                self.last_recording_it_ft = self.it
-                return
-            video_dir = os.path.join(self.output_dir, 'videos1')
-            if not os.path.exists(video_dir):
-                os.makedirs(video_dir)
-            self._write_video(frames, ft_frames, f"{video_dir}/{self.it:05d}.mp4", frame_rate=30)
-            print(f"LOGGING VIDEO {self.it:05d}.mp4")
-
-            ft_dir = os.path.join(self.output_dir, 'ft')
-            if not os.path.exists(ft_dir):
-                os.makedirs(ft_dir)
-            self._write_ft(ft_frames, f"{ft_dir}/{self.it:05d}")
-            # self.create_line_and_image_animation(frames, ft_frames, f"{ft_dir}/{self.it:05d}_line.mp4")
-
-            self.env.start_recording()
-            self.last_recording_it = self.it
-
-            self.env.start_recording_ft()
-            self.last_recording_it_ft = self.it
 
     def play_steps(self):
 
@@ -932,6 +707,69 @@ class PPO(object):
         print('[LastTest] success rate:', num_success / total_dones)
         return num_success, total_dones
 
+    #### Misc, should be moved
+
+    def _write_video(self, frames, ft_frames, output_loc, frame_rate):
+        writer = imageio.get_writer(output_loc, mode='I', fps=frame_rate)
+        for i in range(len(frames)):
+            frame = np.uint8(frames[i])
+            x, y = 30, 100
+            for item in ft_frames[i].tolist():
+                cv2.putText(frame, str(round(item, 3)), (x, y), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2,
+                            cv2.LINE_AA)
+                y += 30  # Move down to the next line
+            frame = np.uint8(frame)
+            writer.append_data(frame)
+        writer.close()
+
+    def _write_ft(self, data, output_loc):
+        import matplotlib.pyplot as plt
+        plt.figure(figsize=(8, 6))
+        plt.plot(np.array(data)[:, :3])
+        plt.xlabel('time')
+        # plt.ylim([-0.25, 0.25])
+        plt.ylabel('force')
+        plt.savefig(f'{output_loc}_force.png')
+        plt.close()
+
+    def log_video(self):
+        if self.it == 0:
+            self.env.start_recording()
+            self.last_recording_it = self.it
+            self.env.start_recording_ft()
+            self.last_recording_it_ft = self.it
+            return
+
+        frames = self.env.get_complete_frames()
+        ft_frames = self.env.get_ft_frames()
+        if len(frames) > 0:
+            self.env.pause_recording()
+            self.env.pause_recording_ft()
+
+            if len(frames) < 20:
+                self.env.start_recording()
+                self.last_recording_it = self.it
+                self.env.start_recording_ft()
+                self.last_recording_it_ft = self.it
+                return
+            video_dir = os.path.join(self.output_dir, 'videos1')
+            if not os.path.exists(video_dir):
+                os.makedirs(video_dir)
+            self._write_video(frames, ft_frames, f"{video_dir}/{self.it:05d}.mp4", frame_rate=30)
+            print(f"LOGGING VIDEO {self.it:05d}.mp4")
+
+            ft_dir = os.path.join(self.output_dir, 'ft')
+            if not os.path.exists(ft_dir):
+                os.makedirs(ft_dir)
+            self._write_ft(ft_frames, f"{ft_dir}/{self.it:05d}")
+            # self.create_line_and_image_animation(frames, ft_frames, f"{ft_dir}/{self.it:05d}_line.mp4")
+
+            self.env.start_recording()
+            self.last_recording_it = self.it
+
+            self.env.start_recording_ft()
+            self.last_recording_it_ft = self.it
+
     def get_last_student_obs(self, data, stats, diff=False, diff_tac=True, display=True, rot6d=True, obj_id=2):
 
         sequence_length = self.full_config.offline_train.model.transformer.sequence_length
@@ -944,7 +782,7 @@ class PPO(object):
         eef_pos = data["eef_pos"]
         if eef_key == "eef_pos_rot6d":
             eef_pos = torch.cat((eef_pos[:, :, :3],
-                                      self.rot_tf.forward(eef_pos[:, :, 3:].reshape(*eef_pos.shape[:2], 3, 3))), dim=2)
+                                 self.rot_tf.forward(eef_pos[:, :, 3:].reshape(*eef_pos.shape[:2], 3, 3))), dim=2)
 
         socket_pos = data["socket_pos"][:, :, :3]
         plug_hand_quat = data["plug_hand_quat"]

@@ -218,7 +218,7 @@ class ActorCriticSplit(nn.Module):
         mu, logstd, value, latent, _ = self._actor_critic(obs_dict)
         return mu, latent
 
-    def _actor_critic(self, obs_dict, display=True):
+    def _actor_critic(self, obs_dict, display=False):
 
         obs = obs_dict['obs']
         extrin, extrin_gt = None, None
@@ -272,7 +272,6 @@ class ActorCriticSplit(nn.Module):
                         extrin = extrin_obs
 
                     # During supervised training, pass to priv_mlp -> extrin has gt label
-                    # TODO, move to new implt using encoders
                     with torch.no_grad():
                         if 'priv_info' in obs_dict:
                             if self.contact_info:
@@ -284,10 +283,6 @@ class ActorCriticSplit(nn.Module):
                         else:
                             # In case we are evaluating stage2
                             extrin_gt = extrin
-
-                    # extrin_gt = self.env_mlp(obs_dict['priv_info']) if 'priv_info' in obs_dict else extrin
-                    # extrin_gt = torch.tanh(extrin_gt)
-                    # extrin = torch.tanh(extrin)
 
                     # Applying action with student model
                     obs = torch.cat([obs, extrin_gt], dim=-1)
