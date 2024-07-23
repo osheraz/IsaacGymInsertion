@@ -97,8 +97,8 @@ env:
     num_gripper_close_sim_steps: 50  # number of timesteps to reserve for closing gripper onto plug during each reset
     num_gripper_lift_sim_steps: 25  # number of timesteps to reserve for lift after last step of episode
 
-    socket_priv_obs_noise: [ 0.001, 0.001, 0.001 ]
-    socket_pos_obs_noise: [ 0.005, 0.005, 0.005 ]
+    socket_priv_obs_noise: [ 0.000, 0.000, 0.000 ]
+    socket_pos_obs_noise: [ 0.002, 0.002, 0.002 ]
 
     socket_rot_obs_noise: [ 0.0, 0.0, 0.0 ]
 
@@ -145,9 +145,9 @@ randomize:
     plug_pos_z_noise_bounds: [ 0.005, 0.015 ]  # noise on socket offset from table
 
     socket_pos_xy_initial: [0.5, 0.0, 0.0]  # initial XY position of plug on table # round_hole_2in  width = 0.1016, length = 0.09144
-    socket_pos_xy_noise: [0.01, 0.01]  # noise on socket position
-    socket_rot_euler_noise: 0.035  # noise on socket position
-    socket_pos_z_noise_bounds: [-0.002, 0.003]  # noise on socket offset from table
+    socket_pos_xy_noise: [0.001, 0.001]  # noise on socket position
+    socket_rot_euler_noise: 0.001  # noise on socket position
+    socket_pos_z_noise_bounds: [0.000, 0.000]  # noise on socket offset from table
 
     scale_noise_pos: [0.003, 0.003, 0.003]
     scale_noise_rot: [ 0.03, 0.03, 0.03]

@@ -9,8 +9,87 @@ from scipy.spatial.transform import Rotation
 from pathlib import Path
 from tqdm import tqdm
 import random
-from isaacgyminsertion.tasks.factory_tactile.factory_utils import RotationTransformer
+from typing import Union
+import functools
+import pytorch3d.transforms as pt
 
+class RotationTransformer:
+    valid_reps = [
+        'axis_angle',
+        'euler_angles',
+        'quaternion',
+        'rotation_6d',
+        'matrix'
+    ]
+
+    def __init__(self,
+                 from_rep='quaternion',
+                 to_rep='rotation_6d',
+                 from_convention=None,
+                 to_convention=None):
+        """
+        Valid representations
+
+        Always use matrix as intermediate representation.
+        """
+        assert from_rep != to_rep
+        assert from_rep in self.valid_reps
+        assert to_rep in self.valid_reps
+        if from_rep == 'euler_angles':
+            assert from_convention is not None
+        if to_rep == 'euler_angles':
+            assert to_convention is not None
+
+        forward_funcs = list()
+        inverse_funcs = list()
+
+        if from_rep != 'matrix':
+            funcs = [
+                getattr(pt, f'{from_rep}_to_matrix'),
+                getattr(pt, f'matrix_to_{from_rep}')
+            ]
+            if from_convention is not None:
+                funcs = [functools.partial(func, convention=from_convention)
+                         for func in funcs]
+            forward_funcs.append(funcs[0])
+            inverse_funcs.append(funcs[1])
+
+        if to_rep != 'matrix':
+            funcs = [
+                getattr(pt, f'matrix_to_{to_rep}'),
+                getattr(pt, f'{to_rep}_to_matrix')
+            ]
+            if to_convention is not None:
+                funcs = [functools.partial(func, convention=to_convention)
+                         for func in funcs]
+            forward_funcs.append(funcs[0])
+            inverse_funcs.append(funcs[1])
+
+        inverse_funcs = inverse_funcs[::-1]
+
+        self.forward_funcs = forward_funcs
+        self.inverse_funcs = inverse_funcs
+
+    @staticmethod
+    def _apply_funcs(x: Union[np.ndarray, torch.Tensor], funcs: list) -> Union[np.ndarray, torch.Tensor]:
+        x_ = x
+        if isinstance(x, np.ndarray):
+            x_ = torch.from_numpy(x)
+        x_: torch.Tensor
+        for func in funcs:
+            x_ = func(x_)
+        y = x_
+        if isinstance(x, np.ndarray):
+            y = x_.numpy()
+        return y
+
+    def forward(self, x: Union[np.ndarray, torch.Tensor]
+                ) -> Union[np.ndarray, torch.Tensor]:
+        return self._apply_funcs(x, self.forward_funcs)
+
+    def inverse(self, x: Union[np.ndarray, torch.Tensor]
+                ) -> Union[np.ndarray, torch.Tensor]:
+        return self._apply_funcs(x, self.inverse_funcs)
 
 def get_last_sequence(input_tensor, progress_buf, sequence_length):
     """
@@ -224,7 +303,6 @@ class TactileDataset(Dataset):
         self.include_lin = include_lin
         self.include_tactile = include_tactile
 
-        self.to_torch = lambda x: torch.from_numpy(x).float()
         self.img_transform = img_transform
         self.seg_transform = seg_transform
         self.sync_transform = sync_transform
@@ -232,6 +310,10 @@ class TactileDataset(Dataset):
         self.indices_per_trajectory = self._generate_indices()
 
         print('Total sub trajectories:', len(self.indices_per_trajectory))
+
+    def to_torch(self, x):
+
+        return torch.from_numpy(x).float()
 
     def _generate_indices(self):
         indices = []
@@ -277,11 +359,9 @@ class TactileDataset(Dataset):
         seg_input = [np.load(os.path.join(seg_folder, f'seg_{i}.npz'))['seg'] for i in
                      range(start_idx, start_idx + self.sequence_length)]
 
-        seg_input = np.stack([(m == obj_id ).astype(float).astype(float) for m in seg_input])
-        # img_input = np.stack([img * m for img, m in zip(img_input, seg_input)])
-        img_input = np.stack(img_input)
-
-        # img_input = np.stack([img + 0.5 * (img * m != 0).astype(float) for img, m in zip(img_input, seg_input)])
+        seg_input = np.stack([((m == obj_id) | (m == 3)).astype(float).astype(float) for m in seg_input])
+        img_input = np.stack([img * m for img, m in zip(img_input, seg_input)])
+        img_input = np.stack([img + 0.5 * (img * m != 0).astype(float) for img, m in zip(img_input, seg_input)])
         if self.sync_transform is not None:
             img_input, seg_input = self.sync_transform(self.to_torch(img_input), self.to_torch(seg_input))
         else:
@@ -332,24 +412,23 @@ class TactileDataset(Dataset):
 
         tactile_input = self._load_and_preprocess_tactile(tactile_folder, start_idx,
                                                           diff_tac) if self.include_tactile else torch.zeros(1)
-        img_input, seg_input = self._load_and_preprocess_image(img_folder, seg_folder,
-                                                               start_idx) if self.include_img else (
-            torch.zeros(1), torch.zeros(1))
+        img_input, seg_input = self._load_and_preprocess_image(img_folder, seg_folder, start_idx) if self.include_img else (torch.zeros(1), torch.zeros(1))
 
         data_seq = {key: self.extract_sequence(data, key, start_idx) for key in self.obs_keys}
         eef_pos, socket_pos, obj_pos_rpy = self._normalize_data(data_seq, diff, first_obs)
 
         action = data_seq["action"]
         obs_hist = data_seq["obs_hist"]
-        latent = obj_pos_rpy # data_seq["latent"]
+        latent = data_seq["latent"]
 
         # noisy_socket_pos_noise = np.random.normal(loc=0, scale=0.002, size=noisy_socket_pos.shape)
         # obj_pos_rpy_noise = 0 * np.random.normal(loc=0, scale=0.002, size=obj_pos_rpy.shape)
+        shift_action_right = np.concatenate([np.zeros((1, action.shape[-1])), action[:-1, :]], axis=0)
 
         lin_input = np.concatenate([eef_pos,  # 9
-                                    # socket_pos,
-                                    # action,  # 6
-                                    # obj_pos_rpy # 6
+                                    socket_pos,      # 3
+                                    # action,        # 6
+                                    # obj_pos_rpy    # 6
                                     ], axis=-1)
 
         tensors = [self.to_torch(tensor) if not isinstance(tensor, torch.Tensor) else tensor for tensor in
@@ -383,7 +462,6 @@ class TactileTestDataset(Dataset):
                 transforms.ToTensor()  # Convert PIL Image back to tensor
             ])
 
-        self.to_torch = lambda x: torch.from_numpy(x).float()
 
         self.img_transform = img_transform
         self.tactile_transform = tactile_transform
@@ -400,6 +478,9 @@ class TactileTestDataset(Dataset):
                 self.indices_per_trajectory.extend(
                     [(file_idx, self.stride + i * self.stride) for i in range(num_subsequences)])
         print('Total sub trajectories:', len(self.indices_per_trajectory))
+
+    def to_torch(self, x):
+        return torch.from_numpy(x).float()
 
     def __len__(self):
         return int((len(self.indices_per_trajectory)))

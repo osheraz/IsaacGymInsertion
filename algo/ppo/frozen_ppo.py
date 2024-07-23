@@ -184,9 +184,9 @@ class PPO(object):
         self.last_recording_it = 0
         self.last_recording_it_ft = 0
 
-        self.episode_rewards = AverageScalarMeter(2000)
-        self.episode_lengths = AverageScalarMeter(2000)
-        self.episode_success = AverageScalarMeter(2000)
+        self.episode_rewards = AverageScalarMeter(100)
+        self.episode_lengths = AverageScalarMeter(100)
+        self.episode_success = AverageScalarMeter(100)
 
         self.obs = None
         self.epoch_num = 0
@@ -306,7 +306,7 @@ class PPO(object):
         self.agent_steps = (self.batch_size if not self.multi_gpu else self.batch_size * self.rank_size)
         if self.multi_gpu:
             torch.cuda.set_device(self.rank)
-            print("====================> broadcasting parameters")
+            print("====================> broadcasting parameters, rank:", self.rank)
             model_params = [self.model.state_dict()]
             dist.broadcast_object_list(model_params, 0)
             self.model.load_state_dict(model_params[0])
@@ -314,18 +314,21 @@ class PPO(object):
             self.epoch_num += 1
             a_losses, c_losses, b_losses, entropies, kls, grad_norms, returns_list = self.train_epoch()
             self.storage.data_dict = None
-            agg_stats = multi_gpu_aggregate_stats([a_losses, b_losses, c_losses, entropies, kls, grad_norms])
-            a_losses, b_losses, c_losses, entropies, kls, grad_norms = agg_stats
-            mean_rewards, mean_lengths, mean_success = multi_gpu_aggregate_stats(
-                [torch.Tensor([self.episode_rewards.get_mean()]).float().to(self.device),
-                 torch.Tensor([self.episode_lengths.get_mean()]).float().to(self.device),
-                 torch.Tensor([self.episode_success.get_mean()]).float().to(self.device),
-                 ]
-            )
-            for k, v in self.extra_info.items():
-                if type(v) is not torch.Tensor:
-                    v = torch.Tensor([v]).float().to(self.device)
-                self.extra_info[k] = multi_gpu_aggregate_stats(v[None].to(self.device))
+            if self.multi_gpu:
+                agg_stats = multi_gpu_aggregate_stats([a_losses, b_losses, c_losses, entropies, kls, grad_norms])
+                a_losses, b_losses, c_losses, entropies, kls, grad_norms = agg_stats
+                mean_rewards, mean_lengths, mean_success = multi_gpu_aggregate_stats(
+                    [torch.Tensor([self.episode_rewards.get_mean()]).float().to(self.device),
+                     torch.Tensor([self.episode_lengths.get_mean()]).float().to(self.device),
+                     torch.Tensor([self.episode_success.get_mean()]).float().to(self.device),])
+                for k, v in self.extra_info.items():
+                    if type(v) is not torch.Tensor:
+                        v = torch.Tensor([v]).float().to(self.device)
+                    self.extra_info[k] = multi_gpu_aggregate_stats(v[None].to(self.device))
+            else:
+                mean_rewards = self.episode_rewards.get_mean()
+                mean_lengths = self.episode_lengths.get_mean()
+                mean_success = self.episode_success.get_mean()
 
             if not self.multi_gpu or (self.multi_gpu and self.rank == 0):
                 all_fps = self.agent_steps / (time.time() - _t)
@@ -335,37 +338,28 @@ class PPO(object):
                               f'Last FPS: {last_fps:.1f} | ' \
                               f'Collect Time: {self.data_collect_time / 60:.1f} min | ' \
                               f'Train RL Time: {self.rl_train_time / 60:.1f} min | ' \
-                              f"Current Best: {self.best_rewards:.2f}" \
+                              f"Current Best: {self.best_rewards:.2f} | " \
                               f'Priv info: {self.full_config.train.ppo.priv_info} | ' \
-                              f'Extrinsic Contact: {self.full_config.task.env.compute_contact_gt}'
+                              f'Ext Contact: {self.full_config.task.env.compute_contact_gt}'
+
                 print(info_string)
                 self.write_stats(a_losses, c_losses, b_losses, entropies, kls, grad_norms, returns_list)
                 self.writer.add_scalar('episode_rewards/step', mean_rewards, self.agent_steps)
                 self.writer.add_scalar('episode_lengths/step', mean_lengths, self.agent_steps)
                 self.writer.add_scalar('mean_success/step', mean_success, self.agent_steps)
 
-                checkpoint_name = f'ep_{self.epoch_num}_step_{int(self.agent_steps // 1e6):04}M_reward_{mean_rewards:.2f}'
-
                 if self.save_freq > 0:
                     if self.epoch_num % self.save_freq == 0:
-                        self.save(os.path.join(self.nn_dir, checkpoint_name))
-                        self.save(os.path.join(self.nn_dir, 'last'))
-                if (
-                        mean_rewards > self.best_rewards
-                        and self.agent_steps >= self.save_best_after
-                        and mean_rewards != 0.0
-                ):
+                        # checkpoint_name = f'ep_{self.epoch_num}_step_{int(self.agent_steps // 1e6):04}M_reward_{mean_rewards:.2f}'
+                        # self.save(os.path.join(self.nn_dir, checkpoint_name))
+                        self.save(os.path.join(self.nn_dir, 'last.pth'))
+                if mean_rewards > self.best_rewards and self.agent_steps >= self.save_best_after and mean_rewards != 0.0:
                     print(f"save current best reward: {mean_rewards:.2f}")
-                    # remove previous best file
-                    prev_best_ckpt = os.path.join(
-                        self.nn_dir, f"best_reward_{self.best_rewards:.2f}.pth"
-                    )
+                    prev_best_ckpt = os.path.join(self.nn_dir, f"best_reward_{self.best_rewards:.2f}.pth")
                     if os.path.exists(prev_best_ckpt):
                         os.remove(prev_best_ckpt)
                     self.best_rewards = mean_rewards
-                    self.save(
-                        os.path.join(self.nn_dir, f"best_reward_{mean_rewards:.2f}")
-                    )
+                    self.save(os.path.join(self.nn_dir, f"best_reward_{mean_rewards:.2f}"))
                 self.success_rate = mean_success
 
         print('max steps achieved')
@@ -418,7 +412,7 @@ class PPO(object):
         a_losses, b_losses, c_losses = [], [], []
         entropies, kls, grad_norms = [], [], []
         returns_list = []
-        # continue_training = True
+        continue_training = True
         for _ in range(0, self.mini_epochs_num):
             ep_kls = []
             approx_kl_divs = []
@@ -531,7 +525,7 @@ class PPO(object):
                 av_kls /= self.rank_size
             kls.append(av_kls)
 
-            self.last_lr = self.scheduler.update(self.last_lr, av_kls.item())
+            # self.last_lr = self.scheduler.update(self.last_lr, av_kls.item())
 
             if self.multi_gpu:
                 lr_tensor = torch.tensor([self.last_lr], device=self.device)
@@ -552,8 +546,9 @@ class PPO(object):
     def play_steps(self):
 
         for n in range(self.horizon_length):
-            self.log_video()
-            self.it += 1
+            if not self.multi_gpu or (self.multi_gpu and self.rank == 0):
+                self.log_video()
+                self.it += 1
 
             res_dict = self.model_act(self.obs)
             self.storage.update_data('obses', n, self.obs['obs'])
@@ -622,7 +617,7 @@ class PPO(object):
         self.storage.data_dict['values'] = values
         self.storage.data_dict['returns'] = returns
 
-    def test(self, get_latent=None, obs_stats=None, milestone=100):
+    def test(self, get_latent=None, obs_stats=None, milestone=100, rma=True):
         # this will test either the student or the teacher model.
 
         self.set_eval()
@@ -657,7 +652,7 @@ class PPO(object):
 
         while save_trajectory or (total_dones < total_env_runs):
             # log video during test
-            self.log_video()
+            # self.log_video()
             latent = None
             if offline_test:
                 if get_latent is not None:
@@ -665,7 +660,7 @@ class PPO(object):
                     last_obs = self.get_last_student_obs(self.data_logger.data_logger.get_data(), stats)
                     tactile, img, seg, lin_input, gt_pos_rpy = last_obs
                     # getting the latent data from the student model
-                    latent, out_pos_rpy = get_latent(tactile, img, seg, lin_input, gt_pos_rpy)
+                    out, out_pos_rpy = get_latent(tactile, img, seg, lin_input, gt_pos_rpy)
 
                     if False:
                         stats_mean = torch.cat([stats["mean"]["plug_hand_pos_diff"],
@@ -692,6 +687,7 @@ class PPO(object):
             }
             action, latent = self.model.act_inference(obs_dict)
             action = torch.clamp(action, -1.0, 1.0)
+
             self.obs, r, done, info = self.env.step(action)
 
             num_success += self.env.success_reset_buf[done.nonzero()].sum()
@@ -733,6 +729,7 @@ class PPO(object):
         plt.close()
 
     def log_video(self):
+
         if self.it == 0:
             self.env.start_recording()
             self.last_recording_it = self.it
@@ -770,7 +767,7 @@ class PPO(object):
             self.env.start_recording_ft()
             self.last_recording_it_ft = self.it
 
-    def get_last_student_obs(self, data, stats, diff=False, diff_tac=True, display=True, rot6d=True, obj_id=2):
+    def get_last_student_obs(self, data, stats, diff=False, diff_tac=True, display=False, rot6d=True, obj_id=2):
 
         sequence_length = self.full_config.offline_train.model.transformer.sequence_length
         eef_key = "eef_pos_rot6d" if rot6d else 'eef_pos'
@@ -825,7 +822,7 @@ class PPO(object):
             eef_pos,
             socket_pos,
             # action,
-            # obj_pos_rpy
+            obj_pos_rpy
         ], dim=-1)
 
         # Adjust tactile and lin_input based on the sequence length and progress buffer
@@ -839,6 +836,7 @@ class PPO(object):
 
         seg = (seg == obj_id).float()
         img = img * seg.unsqueeze(2)
+        img += 0.5 * (img * seg.unsqueeze(2) != 0).float()
 
         if display:
             self.display_obs(tactile_adjusted, img, seg)

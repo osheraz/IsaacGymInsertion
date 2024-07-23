@@ -12,9 +12,10 @@ import torchvision.transforms.functional as F
 class SyncCenterReshapeTransform(nn.Module):
     def __init__(self, crop_size, img_transform, mask_transform):
         super(SyncCenterReshapeTransform, self).__init__()
-        self.img_transform = img_transform # ImageTransform(img_transform)
-        self.mask_transform = mask_transform # ImageTransform(mask_transform)
+        self.img_transform = img_transform  # ImageTransform(img_transform)
+        self.mask_transform = mask_transform  # ImageTransform(mask_transform)
         self.crop_size = crop_size
+
     def forward(self, img, mask):
         # Reshape img and mask to [B * T, C, H, W]
         B, T, C, H, W = img.shape
@@ -104,6 +105,7 @@ class SyncTransform(nn.Module):
 
         return img, mask
 
+
 class SyncEvalTransform(nn.Module):
     def __init__(self, crop_size, downsample, img_transform, mask_transform):
         super(SyncEvalTransform, self).__init__()
@@ -124,6 +126,7 @@ class SyncEvalTransform(nn.Module):
         mask = self.mask_transform(mask)
 
         return img, mask
+
 
 class TactileTransform:
     def __init__(self, tactile_transform=None):
@@ -187,7 +190,7 @@ def set_seed(seed, torch_deterministic=False, rank=0):
 
 
 def define_tactile_transforms(width, height, crop_width, crop_height,
-                          img_patch_size=16, img_gaussian_noise=0.0, img_masking_prob=0.0):
+                              img_patch_size=16, img_gaussian_noise=0.0, img_masking_prob=0.0):
     downsample = transforms.Resize((width, height), interpolation=transforms.InterpolationMode.BILINEAR)
 
     transform = nn.Sequential(
@@ -252,8 +255,8 @@ def define_tactile_transforms(width, height, crop_width, crop_height,
         transforms.CenterCrop((crop_width, crop_height)),
     )
 
-
     return transform, eval_transform
+
 
 # Define your transforms
 def define_img_transforms(width, height, crop_width, crop_height,
@@ -325,7 +328,7 @@ def define_img_transforms(width, height, crop_width, crop_height,
 
 
 def define_transforms(channel, color_jitter, width, height, crop_width,
-                              crop_height, img_patch_size, img_gaussian_noise=0.0, img_masking_prob=0.0, ):
+                      crop_height, img_patch_size, img_gaussian_noise=0.0, img_masking_prob=0.0, ):
     # Use color jitter to augment the image
     if color_jitter:
         if channel == 3:
@@ -517,7 +520,7 @@ def mask_img(x, img_patch_size, img_masking_prob):
 
 
 def log_outpu2t(tac_input, img_input, seg_input, lin_input, out, latent, pos_rpy, save_folder, d_pos_rpy=None,
-               session='train'):
+                session='train'):
     # Selecting the first example from the batch for demonstration
     # tac_input [B T F W H C]
 
@@ -621,7 +624,6 @@ def log_outpu2t(tac_input, img_input, seg_input, lin_input, out, latent, pos_rpy
     plt.close(fig)
 
 
-
 def plot_image_sequence(ax, sequence, title):
     if sequence is not None:
         if sequence.ndim == 4 and sequence.shape[0] > 1:
@@ -638,6 +640,7 @@ def plot_image_sequence(ax, sequence, title):
         ax.imshow(concat_sequence)
         ax.set_title(title)
 
+
 def plot_bar_comparison(ax, predicted, true, title):
     width = 0.35
     indices = np.arange(len(predicted))
@@ -646,27 +649,34 @@ def plot_bar_comparison(ax, predicted, true, title):
     ax.set_title(title)
     ax.legend()
 
-def log_output(tac_input, img_input, seg_input, lin_input, out, latent, pos_rpy, save_folder, d_pos_rpy=None, session='train'):
-    img_input = img_input[0].cpu().detach().numpy() if img_input is not None else None
-    seg_input = seg_input[0].unsqueeze(1).cpu().detach().numpy() if seg_input is not None else None
+
+def log_output(tac_input, img_input, seg_input, lin_input, out, latent, pos_rpy, save_folder, d_pos_rpy=None,
+               session='train', fig=plt.figure(figsize=(20, 10))):
+    img_input = img_input[0].cpu().detach().numpy() if img_input.ndim > 2 else None
+    seg_input = seg_input[0].unsqueeze(1).cpu().detach().numpy() if seg_input.ndim > 2 else None
     linear_features = lin_input[0].cpu().detach().numpy() if lin_input is not None else None
     d_pos_rpy = d_pos_rpy[0, -1, :].cpu().detach().numpy() if d_pos_rpy is not None else None
     pos_rpy = pos_rpy[0, -1, :].cpu().detach().numpy() if pos_rpy is not None else None
     predicted_output = out[0].cpu().detach().numpy() if out is not None else None
     true_label = latent[0, -1, :].cpu().detach().numpy() if latent is not None else None
+    tac_input = tac_input[0].cpu().detach().numpy() if tac_input.ndim > 2 else None
 
-    fig = plt.figure(figsize=(20, 10))
 
-    ax2 = fig.add_subplot(2, 2, 2)
-    plot_image_sequence(ax2, seg_input, 'Input Seg Sequence')
+    if tac_input is not None:
+        ax1 = fig.add_subplot(2, 2, 1)
+        plot_image_sequence(ax1, tac_input, 'Input Tactile Sequence')
 
-    ax3 = fig.add_subplot(2, 2, 3)
-    plot_image_sequence(ax3, img_input, 'Input Image Sequence')
+    if seg_input is not None:
+        ax2 = fig.add_subplot(2, 2, 2)
+        plot_image_sequence(ax2, seg_input, 'Input Seg Sequence')
+
+    if img_input is not None:
+        ax3 = fig.add_subplot(2, 2, 3)
+        plot_image_sequence(ax3, img_input, 'Input Image Sequence')
 
     if predicted_output is not None and true_label is not None:
         ax4 = fig.add_subplot(2, 2, 4)
         plot_bar_comparison(ax4, predicted_output, true_label, 'Model Output vs. True Label')
 
-    plt.tight_layout()
-    plt.savefig(f'{save_folder}/{session}_example.png')
-    plt.close(fig)
+    fig.savefig(f'{save_folder}/{session}_example.png')
+

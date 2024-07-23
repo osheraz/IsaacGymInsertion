@@ -852,6 +852,8 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
     def update_external_cam(self, update_freq, update_delay):
 
+        self.gym.step_graphics(self.sim)  # ?
+        self.gym.fetch_results(self.sim, True)  # ?
         self.gym.render_all_camera_sensors(self.sim)
         self.gym.start_access_image_tensors(self.sim)
         update = torch.logical_and(update_freq, update_delay)

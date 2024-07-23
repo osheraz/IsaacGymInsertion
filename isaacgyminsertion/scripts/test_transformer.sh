@@ -27,6 +27,7 @@ offline_training=False \
 test=True \
 offline_training_w_env=True \
 offline_train.train.load_checkpoint=True \
+offline_train.multi_gpu=False \
 offline_train.train.student_ckpt_path="${student_ckpt_path}" \
 offline_train.train.only_test=True \
 offline_train.model.transformer.load_tact=False \

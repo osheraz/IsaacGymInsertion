@@ -27,76 +27,50 @@ class Runner:
                  cfg=None,
                  agent=None,
                  action_regularization=False,
-                 num_fingers=3,
-
                  ):
 
         self.task_cfg = cfg
         self.cfg = cfg.offline_train
         self.agent = agent
         self.to_torch = lambda x: torch.from_numpy(x).float()
-
+        self.only_bc = self.cfg.only_bc
         self.ppo_step = agent.play_latent_step if ((agent is not None) and (action_regularization)) else None
         self.optimizer = None
         self.scheduler = None
         self.tact = None
         self.sequence_length = self.cfg.model.transformer.sequence_length
-        self.device = 'cuda:0'
 
-        # img
-        self.img_channel = 1 if self.cfg.img_type == "depth" else 3
-        self.img_color_jitter = self.cfg.img_color_jitter
-        self.img_width = self.cfg.img_width
-        self.img_height = self.cfg.img_height
-        self.crop_img_width = self.img_width - self.cfg.img_crop_w
-        self.crop_img_height = self.img_height - self.cfg.img_crop_h
-        self.img_transform, self.seg_transform,  self.img_eval_transform, self.sync_transform, self.sync_eval_transform= define_img_transforms(
-            self.img_width,
-            self.img_height,
-            self.crop_img_width,
-            self.crop_img_height,
-            self.cfg.img_patch_size,
-            self.cfg.img_gaussian_noise,
-            self.cfg.img_masking_prob
-        )
+        self._init_transforms()
 
-        self.sync_eval_reshape_transform = SyncCenterReshapeTransform((self.crop_img_width, self.crop_img_height),
-                                                              self.img_eval_transform,
-                                                              self.img_eval_transform)
+        self._init_model()
 
-        # tactile
-        self.num_fingers = num_fingers
-        self.tactile_channel = 1 if self.cfg.tactile_type == "gray" else 3
-        self.tactile_color_jitter = self.cfg.tactile_color_jitter
-        self.tactile_width = self.cfg.tactile_width
-        self.tactile_height = self.cfg.tactile_height
-        self.crop_tactile_width = self.tactile_width - self.cfg.tactile_crop_w
-        self.crop_tactile_height = self.tactile_height - self.cfg.tactile_crop_h
-        self.tactile_transform, self.tactile_eval_transform = define_tactile_transforms(
-            self.tactile_width,
-            self.tactile_height,
-            self.crop_tactile_width,
-            self.crop_tactile_height,
-            self.cfg.tactile_patch_size,
-            self.cfg.tactile_gaussian_noise,
-            self.cfg.tactile_masking_prob
-        )
+        self.loss_fn_mean = torch.nn.MSELoss(reduction='mean')
+        self.loss_fn = torch.nn.MSELoss(reduction='none')
+
+        self.fig = plt.figure(figsize=(20, 15))
+        self.ax1 = self.fig.add_subplot(2, 2, 1)
+
+        self.out_fig = plt.figure(figsize=(20, 15))
+        self.train_loss, self.val_loss = [], []
+
+    def _init_model(self):
 
         if self.cfg.model.model_type == 'tact':
+            add_lin = self.cfg.model.tact.output_size if self.cfg.model.transformer.load_tact else 0
             self.model = MultiModalModel(context_size=self.sequence_length,
                                          num_channels=self.tactile_channel,
                                          num_lin_features=self.cfg.model.linear.input_size,
                                          num_outputs=self.cfg.model.transformer.output_size,
                                          tactile_encoder="depth",  # "efficientnet-b0",
-                                         img_encoder="depth",  # "efficientnet-b0",
-                                         seg_encoder="depth",  # "efficientnet-b0",
+                                         img_encoder="efficientnet-b0",  # "efficientnet-b0",
+                                         seg_encoder="efficientnet-b0",  # "efficientnet-b0",
                                          tactile_encoding_size=self.cfg.model.transformer.tactile_encoding_size,
                                          img_encoding_size=self.cfg.model.transformer.img_encoding_size,
                                          seg_encoding_size=self.cfg.model.transformer.seg_encoding_size,
                                          mha_num_attention_heads=self.cfg.model.transformer.num_heads,
                                          mha_num_attention_layers=self.cfg.model.transformer.num_layers,
                                          mha_ff_dim_factor=self.cfg.model.transformer.dim_factor,
-                                         additional_lin=self.cfg.model.tact.output_size if self.cfg.model.transformer.load_tact else 0,
+                                         additional_lin=add_lin,
                                          include_img=self.cfg.model.use_img,
                                          include_seg=self.cfg.model.use_seg,
                                          include_lin=self.cfg.model.use_lin,
@@ -127,11 +101,46 @@ class Runner:
                                         include_lin=self.cfg.model.tact.use_lin,
                                         include_tactile=self.cfg.model.tact.use_tactile)
 
-        self.loss_fn_mean = torch.nn.MSELoss(reduction='mean')
-        self.loss_fn = torch.nn.MSELoss(reduction='none')
+    def _init_transforms(self):
 
-        self.fig = plt.figure(figsize=(20, 15))
-        self.train_loss, self.val_loss = [], []
+        # img
+        self.img_channel = 1 if self.cfg.img_type == "depth" else 3
+        self.img_color_jitter = self.cfg.img_color_jitter
+        self.img_width = self.cfg.img_width
+        self.img_height = self.cfg.img_height
+        self.crop_img_width = self.img_width - self.cfg.img_crop_w
+        self.crop_img_height = self.img_height - self.cfg.img_crop_h
+        self.img_transform, self.seg_transform, self.img_eval_transform, self.sync_transform, self.sync_eval_transform = define_img_transforms(
+            self.img_width,
+            self.img_height,
+            self.crop_img_width,
+            self.crop_img_height,
+            self.cfg.img_patch_size,
+            self.cfg.img_gaussian_noise,
+            self.cfg.img_masking_prob
+        )
+
+        self.sync_eval_reshape_transform = SyncCenterReshapeTransform((self.crop_img_width, self.crop_img_height),
+                                                                      self.img_eval_transform,
+                                                                      self.img_eval_transform)
+
+        # tactile
+        self.num_fingers = 3
+        self.tactile_channel = 1 if self.cfg.tactile_type == "gray" else 3
+        self.tactile_color_jitter = self.cfg.tactile_color_jitter
+        self.tactile_width = self.cfg.tactile_width
+        self.tactile_height = self.cfg.tactile_height
+        self.crop_tactile_width = self.tactile_width - self.cfg.tactile_crop_w
+        self.crop_tactile_height = self.tactile_height - self.cfg.tactile_crop_h
+        self.tactile_transform, self.tactile_eval_transform = define_tactile_transforms(
+            self.tactile_width,
+            self.tactile_height,
+            self.crop_tactile_width,
+            self.crop_tactile_height,
+            self.cfg.tactile_patch_size,
+            self.cfg.tactile_gaussian_noise,
+            self.cfg.tactile_masking_prob
+        )
 
     def train(self, dl, val_dl, ckpt_path, print_every=50, eval_every=250, test_every=500):
         """
@@ -165,10 +174,16 @@ class Runner:
                 assert NotImplementedError
                 d_pos_rpy = self.tact(tac_input, img_input, seg_input, lin_input).unsqueeze(1)
 
-            out = self.model(tac_input, img_input, seg_input, lin_input, d_pos_rpy)
-            loss_latent = self.loss_fn_mean(out, latent[:, -1, :])
+            if self.only_bc:
+                out = self.model(tac_input, img_input, seg_input, lin_input, d_pos_rpy)
+                out = torch.clamp(out, -1, 1)
+                loss_latent = self.loss_fn_mean(out, action[:, -1, :])
+            else:
+                out = self.model(tac_input, img_input, seg_input, lin_input, d_pos_rpy)
+                loss_latent = self.loss_fn_mean(out, latent[:, -1, :])
 
             loss_action = torch.zeros(1, device=self.device)
+
             if self.ppo_step is not None:
                 obs_hist = obs_hist[:, -1, :].to(self.device).view(obs_hist.shape[0], obs_hist.shape[-1])
                 pred_action, _ = self.ppo_step({'obs': obs_hist, 'latent': out})
@@ -179,6 +194,7 @@ class Runner:
 
             self.optimizer.zero_grad()
             loss.backward()
+            torch.nn.utils.clip_grad_norm_(self.model.parameters(), 0.5)
             self.optimizer.step()
 
             train_loss.append(loss.item())
@@ -199,32 +215,33 @@ class Runner:
                 if self.ppo_step is not None:
                     self._wandb_log({'train/action_loss': np.mean(action_loss_list)})
 
-                self.fig.clf()
                 self.train_loss.append(np.mean(train_loss))
-                plt.plot(self.train_loss, '-ro', linewidth=3, label='train loss')
+                self.ax1.plot(self.train_loss, '-ro', linewidth=3, label='train loss')
                 train_loss = []
                 latent_loss_list = []
                 action_loss_list = []
 
             if (i + 1) % eval_every == 0 or (i == len(dl) - 1):
-
-                log_output(tac_input,
-                               img_input,
-                               seg_input,
-                               lin_input,
-                               out,
-                               latent,
-                               pos_rpy,
-                               self.save_folder,
-                               d_pos_rpy,
-                               'train')
-
                 val_loss = self.validate(val_dl)
                 print(f'validation loss: {val_loss}')
                 self.val_loss.append(val_loss)
-                plt.plot(self.val_loss, '-ko', linewidth=3, label='val loss')
-                plt.legend()
+                self.ax1.plot(self.val_loss, '-ko', linewidth=3, label='val loss')
+                self.ax1.legend()
                 self.fig.savefig(f'{self.save_folder}/train_val_comp.png', dpi=200, bbox_inches='tight')
+                self.fig.clf()
+
+                log_output(tac_input,
+                           img_input,
+                           seg_input,
+                           lin_input,
+                           out,
+                           action if self.only_bc else latent,
+                           pos_rpy,
+                           self.save_folder,
+                           d_pos_rpy,
+                           'train',
+                           self.out_fig)
+
                 self.model.train()
 
             # if (i + 1) % test_every == 0:
@@ -257,11 +274,15 @@ class Runner:
                     assert NotImplementedError
                     d_pos_rpy = self.tact(tac_input, img_input, seg_input, lin_input).unsqueeze(1)
 
-                out = self.model(tac_input, img_input, seg_input, lin_input, d_pos_rpy)
+                if self.only_bc:
+                    out = self.model(tac_input, img_input, seg_input, lin_input, d_pos_rpy)
+                    out = torch.clamp(out, -1, 1)
+                    loss_latent = self.loss_fn_mean(out, action[:, -1, :])
+                else:
+                    out = self.model(tac_input, img_input, seg_input, lin_input, d_pos_rpy)
+                    loss_latent = self.loss_fn_mean(out, latent[:, -1, :])
 
                 loss_action = torch.zeros(1, device=self.device)
-
-                loss_latent = self.loss_fn_mean(out[:, :], latent[:, -1, :])
 
                 if self.ppo_step is not None:
                     obs_hist = obs_hist[:, -1, :].to(self.device).view(obs_hist.shape[0], obs_hist.shape[-1])
@@ -288,15 +309,16 @@ class Runner:
             #     })
 
             log_output(tac_input,
-                           img_input,
-                           seg_input,
-                           lin_input,
-                           out,
-                           latent,
-                           pos_rpy,
-                           self.save_folder,
-                           d_pos_rpy,
-                           'valid')
+                       img_input,
+                       seg_input,
+                       lin_input,
+                       out,
+                       action if self.only_bc else latent,
+                       pos_rpy,
+                       self.save_folder,
+                       d_pos_rpy,
+                       'valid',
+                       self.out_fig)
 
         return np.mean(val_loss)
 
@@ -360,8 +382,8 @@ class Runner:
         self.tact.to(device)
 
     def run_train(self, file_list, save_folder, epochs=100, train_test_split=0.9, train_batch_size=32,
-                  val_batch_size=32,
-                  learning_rate=1e-4, device='cuda:0', print_every=50, eval_every=250, test_every=500):
+                  val_batch_size=32, learning_rate=1e-4, device='cuda:0', print_every=50, eval_every=250,
+                  test_every=500):
 
         random.shuffle(file_list)
         print('# trajectories:', len(file_list))
@@ -369,9 +391,6 @@ class Runner:
         ckpt_path = f'{save_folder}/checkpoints'
         if not os.path.exists(ckpt_path):
             os.makedirs(f'{ckpt_path}')
-
-        self.device = device
-        self.model = self.model.to(self.device)
 
         self.optimizer = optim.AdamW(self.model.parameters(), lr=learning_rate)
 
@@ -440,7 +459,7 @@ class Runner:
         val_dl = DataLoader(val_ds,
                             batch_size=val_batch_size,
                             shuffle=True,
-                            num_workers=12,
+                            num_workers=16,
                             pin_memory=True,
                             persistent_workers=True,
                             )
@@ -463,7 +482,8 @@ class Runner:
                     else:
                         self.scheduler.step()
                 print('Saving the model')
-                torch.save(self.model.state_dict(), f'{ckpt_path}/model_last.pt')  # {epoch}.pt')
+                raw_model = self.model.module if hasattr(self.model, "module") else self.model
+                torch.save(raw_model.state_dict(), f'{ckpt_path}/model_last.pt')  # {epoch}.pt')
 
     def _wandb_log(self, data):
         if self.cfg.wandb.wandb_enabled:
@@ -471,7 +491,36 @@ class Runner:
 
     def run(self):
 
-        device = 'cuda:0'
+        # Device management
+        if torch.cuda.is_available() and self.cfg.multi_gpu:
+            torch.multiprocessing.set_start_method("spawn", force=True)
+
+            available_gpus = list(range(torch.cuda.device_count()))
+            print("Available GPU IDs:", available_gpus)
+
+            os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
+
+            # Check if gpu_ids are valid and meet the memory requirement
+            valid_gpu_ids = []
+            for gpu_id in self.cfg.gpu_ids:
+                if gpu_id in available_gpus:
+                    memory_usage = get_gpu_memory_usage(gpu_id)
+                    if memory_usage <= 0.25:
+                        valid_gpu_ids.append(gpu_id)
+            print(valid_gpu_ids)
+            if not valid_gpu_ids:
+                print("No valid gpu. Exit!")
+                exit()
+            else:
+                os.environ["CUDA_VISIBLE_DEVICES"] = ",".join([str(x) for x in valid_gpu_ids])
+                print("Using cuda devices:", os.environ["CUDA_VISIBLE_DEVICES"])
+
+                first_gpu_id = valid_gpu_ids[0] if valid_gpu_ids else 0
+                device = torch.device(f"cuda:{first_gpu_id}")
+        else:
+            device = 'cuda:0'
+
+        self.device = device
 
         # Load student checkpoint.
         if self.cfg.train.load_checkpoint:
@@ -526,4 +575,19 @@ class Runner:
         with open(os.path.join(save_folder, f"train_config.yaml"), "w") as f:
             f.write(OmegaConf.to_yaml(self.cfg))
 
+        if self.cfg.multi_gpu and len(self.cfg.gpu_ids) > 1:
+            self.model = torch.nn.DataParallel(self.model, device_ids=self.cfg.gpu_ids)
+
+        self.model = self.model.to(device)
+
         self.run_train(file_list, save_folder, device=device, **train_config)
+
+
+def get_gpu_memory_usage(device_id):
+    """
+    Returns the memory usage of the specified GPU in terms of total memory
+    and allocated memory as a percentage.
+    """
+    total_memory = torch.cuda.get_device_properties(device_id).total_memory
+    allocated_memory = torch.cuda.memory_allocated(device_id)
+    return allocated_memory / total_memory

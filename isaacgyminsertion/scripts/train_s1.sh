@@ -2,7 +2,7 @@
 GPUS=${1:-0}
 SEED=${2:-42}
 CACHE=${3:-test}
-NUM_ENVS=${4:-3096}
+NUM_ENVS=${4:-4096}
 HEADLESS=${5:-True}
 
 array=( $@ )
