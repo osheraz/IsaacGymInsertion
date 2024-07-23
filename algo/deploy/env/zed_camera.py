@@ -11,7 +11,7 @@ import cv2
 
 class ZedCameraSubscriber:
 
-    def __init__(self, topic='/zedm/zed_node/depth/depth_registered', display=True):
+    def __init__(self, topic='/zedm/zed_node/depth/depth_registered', with_seg=True, display=True):
         """
         Finger Device class for a single Finger
         :param serial: Finger device serial
@@ -25,11 +25,17 @@ class ZedCameraSubscriber:
         self.dis_noise = 0.00
         self.display = display
         self.init_success = False
+        self.with_seg = with_seg
+
+        if with_seg:
+            from algo.deploy.env.seg_camera import SegCameraSubscriber
+            self.seg = SegCameraSubscriber()
 
         self._topic_name = rospy.get_param('~topic_name', '{}'.format(topic))
         rospy.loginfo("(topic_name) Subscribing to Images to topic  %s", self._topic_name)
         self._image_subscriber = rospy.Subscriber(self._topic_name, Image, self.image_callback, queue_size=2)
         self._check_camera_ready()
+
 
     def _check_camera_ready(self):
 
@@ -55,18 +61,23 @@ class ZedCameraSubscriber:
         except Exception as e:
             print(e)
         else:
+
             frame = cv2.resize(frame, (self.w, self.h), interpolation=cv2.INTER_AREA)
             frame = numpy.expand_dims(frame, axis=0)
             frame = self.process_depth_image(frame)
             self.last_frame = frame
 
+            if self.with_seg:
+                mask = self.seg.get_frame()
+                frame *= numpy.expand_dims(mask, axis=0)
+
             if self.display:
-                cv2.imshow("Depth Image", frame.transpose(1, 2, 0) + 0.5)
+                cv2.imshow("Depth Image", self.last_frame.transpose(1, 2, 0) + 0.5)
                 key = cv2.waitKey(1)
 
     def get_frame(self):
 
-        return self.last_frame
+        return self.last_frame, self.seg.get_frame()
 
     def process_depth_image(self, depth_image):
         # These operations are replicated on the hardware

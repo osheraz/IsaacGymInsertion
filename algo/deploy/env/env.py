@@ -77,8 +77,9 @@ class ExperimentEnv:
             obs['frames'] = (left, right, bottom)
 
         if self.with_zed:
-            img = self.zed.get_frame()
+            img, seg = self.zed.get_frame()
             obs['img'] = img
+            obs['seg'] = seg
 
         return obs
 
@@ -99,8 +100,8 @@ class ExperimentEnv:
 
     def get_img(self):
 
-        img = self.zed.get_frame()
-        return img
+        img, seg = self.zed.get_frame()
+        return img, seg
 
     def get_frames(self):
         left, right, bottom = self.tactile.get_frames()
