@@ -226,9 +226,9 @@ class Runner:
                 print(f'validation loss: {val_loss}')
                 self.val_loss.append(val_loss)
                 self.ax1.plot(self.val_loss, '-ko', linewidth=3, label='val loss')
-                self.ax1.legend()
+                # self.ax1.legend()
                 self.fig.savefig(f'{self.save_folder}/train_val_comp.png', dpi=200, bbox_inches='tight')
-                self.fig.clf()
+                # self.fig.clf()
 
                 log_output(tac_input,
                            img_input,
@@ -240,7 +240,7 @@ class Runner:
                            self.save_folder,
                            d_pos_rpy,
                            'train',
-                           self.out_fig)
+                           )
 
                 self.model.train()
 
@@ -318,7 +318,7 @@ class Runner:
                        self.save_folder,
                        d_pos_rpy,
                        'valid',
-                       self.out_fig)
+                       )
 
         return np.mean(val_loss)
 

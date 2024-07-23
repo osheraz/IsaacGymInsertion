@@ -3,7 +3,7 @@ data_folder: "/home/roblab20/tactile_tests/datastore_real" # where is all your d
 output_dir: "/home/roblab20/tactile_tests/datastore_real" # where to save checkpoints and logs
 
 only_bc: True
-multi_gpu: True
+multi_gpu: False
 gpu_ids: [1, 2]
 img_type: "depth" # 1C
 img_color_jitter: False
@@ -29,8 +29,8 @@ tactile_crop_h: 8
 train:
   # basic training hyperparameters
   epochs: 50
-  train_batch_size: 64
-  val_batch_size: 64
+  train_batch_size: 32
+  val_batch_size: 32
   learning_rate: 1e-4
   train_test_split: 0.98
   action_regularization: False # propagate gradients for action loss
