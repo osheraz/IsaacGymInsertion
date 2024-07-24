@@ -36,9 +36,9 @@ class MLP(nn.Module):
         return self.mlp(x)
     
 
-class FTAdaptTConv(nn.Module):
+class AdaptTConv(nn.Module):
     def __init__(self, ft_dim=6 * 5, ft_out_dim=32):
-        super(FTAdaptTConv, self).__init__()
+        super(AdaptTConv, self).__init__()
         self.channel_transform = nn.Sequential(
             nn.Linear(ft_dim, 32),
             nn.ReLU(inplace=True),

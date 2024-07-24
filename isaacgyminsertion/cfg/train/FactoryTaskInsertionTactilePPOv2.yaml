@@ -9,16 +9,6 @@ network:
     units: [256, 128, 8]
   contact_mlp:
     units: [ 128, 64, 8]
-  ft_mlp:
-    units: [128, 64, 8]
-  obs_mlp:
-    units: [512, 128, 32]
-  tactile_mlp:
-    units: [300, 128, 32]
-  merge_mlp:
-    units: [128, 64, 8]
-  hand_mlp:
-    units: [128, 64, 8]
 
   tactile_encoder:
     num_channels: ${....task.tactile.encoder.num_channels}
@@ -60,12 +50,11 @@ ppo:
 
   # rma setting
   priv_info: True
-  extrin_adapt: False
   tactile_info: False
-  ft_info: False
+  img_info: False
+  seg_info: False
   obs_info: False
-  hand_info: False
-  only_contact: False # use only extrinsic for teacher
+  only_contact: False
   split_latent: False
 
   ft_seq_length: ${...task.env.ft_history_len}

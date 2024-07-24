@@ -269,7 +269,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                 dtype=torch.float,
             )
             self.seg_queue = torch.zeros(
-                (self.num_envs, self.img_hist_len, 1, self.res[1], self.res[0]),
+                (self.num_envs, self.img_hist_len, self.res[1], self.res[0]),
                 device=self.device,
                 dtype=torch.float,
             )
@@ -278,8 +278,6 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             self.seg_buf = torch.zeros(self.num_envs, self.res[1], self.res[0], dtype=torch.int32).to(self.device)
 
             self.init_external_cam()
-
-        self.plug_socket_dist = torch.zeros((self.num_envs, 3), device=self.device, dtype=torch.float)
 
         # reset tensors
         self.timeout_reset_buf = torch.zeros_like(self.reset_buf)
@@ -680,16 +678,14 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.obs_queue[:, :-self.num_observations] = self.obs_queue[:, self.num_observations:]
         self.obs_queue[:, -self.num_observations:] = obs
 
-        obs_tensors_student = torch.cat([self.hand_joints,  # 6
-                                         actions[:, -3:],  # 3
+        obs_tensors_student = torch.cat([eef_pos,  # 6
+                                         self.socket_pos,  # 3
                                          ], dim=-1)
 
         self.obs_stud_queue[:, :-self.num_obs_stud] = self.obs_stud_queue[:, self.num_obs_stud:]
         self.obs_stud_queue[:, -self.num_obs_stud:] = obs_tensors_student
 
         # Define state (for teacher)
-        self.plug_socket_dist[:, :] = self.plug_pos - self.socket_pos
-
         if self.randomize:
             # Update the plug observation every update_freq
             obs_update_freq = torch.remainder(self.frame + self.plug_pose_refresh_offset,
@@ -852,8 +848,8 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
     def update_external_cam(self, update_freq, update_delay):
 
-        self.gym.step_graphics(self.sim)  # ?
-        self.gym.fetch_results(self.sim, True)  # ?
+        self.gym.step_graphics(self.sim)
+        self.gym.fetch_results(self.sim, True)
         self.gym.render_all_camera_sensors(self.sim)
         self.gym.start_access_image_tensors(self.sim)
         update = torch.logical_and(update_freq, update_delay)
@@ -887,6 +883,9 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         self.img_queue[:, 1:] = self.img_queue[:, :-1].clone().detach()
         self.img_queue[:, 0, ...] = self.image_buf
+
+        self.seg_queue[:, 1:] = self.seg_queue[:, :-1].clone().detach()
+        self.seg_queue[:, 0, ...] = self.seg_buf
 
     def compute_reward(self):
         """Detect successes and failures. Update reward and reset buffers."""
@@ -946,7 +945,10 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.success_reset_buf[:] = self._check_plug_inserted_in_socket()
 
         # if we are collecting data, reset at insertion
-        if self.cfg_task.data_logger.collect_data or self.cfg_task.data_logger.collect_test_sim:
+        if (self.cfg_task.data_logger.collect_data or
+                self.cfg_task.data_logger.collect_test_sim or
+                self.cfg_task.adapt):
+
             self.reset_buf[:] |= self.success_reset_buf[:]
 
         # If max episode length has been reached
@@ -1217,11 +1219,11 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         if self.external_cam:
             # angles = np.linspace(-np.pi / 4, np.pi / 4, self.num_envs)
             angles = np.random.normal(loc=0, scale=np.pi / 8, size=self.num_envs)
-            angles = np.clip(angles, -np.pi/8, np.pi/8)
+            angles = np.clip(angles, 0.03, 0.03)
 
             for env_id in env_ids:
-                radius = np.random.uniform(0.2, 0.3)
-                center_x, center_y, _ = self.plug_grasp_pos[env_id].cpu()
+                radius = np.random.uniform(0.295, 0.3)
+                center_x, center_y, _ = self.socket_pos[env_id].cpu()
                 angle = angles[env_id]
 
                 x_pos = center_x + radius * np.cos(angle)
@@ -1233,10 +1235,11 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                 pitch = self.init_camera_rot[1]
                 yaw = np.arctan2(center_y - y_pos, center_x - x_pos)
 
-                perturbed_rotation = np.array([roll, pitch, yaw]) + np.random.normal(0, np.deg2rad(self.rot_error_std), 3)
+                perturbed_rotation = np.array([roll, pitch, yaw]) + np.random.normal(0, np.deg2rad(self.rot_error_std),
+                                                                                     3)
 
-                _, trans = self.make_handle_trans(self.res[0], self.res[1], env_id,
-                                                  perturbed_position, perturbed_rotation)
+                _, trans = self.make_handle_trans(self.res[0], self.res[1], env_id, perturbed_position,
+                                                  perturbed_rotation)
 
                 self.gym.attach_camera_to_body(
                     self.camera_handles[env_id],
@@ -1538,7 +1541,6 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.prev_actions[env_ids] *= 0
         self.prev_actions_queue[env_ids] *= 0
 
-        self.plug_socket_dist[env_ids, ...] = 0.
         self.rb_forces[env_ids, :, :] = 0.0
 
         # object pose is represented with respect to the wrist
@@ -1554,6 +1556,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             self.img_queue[env_ids] = 0
             self.image_buf[env_ids] *= 0
             self.seg_buf[env_ids] *= 0
+            self.seg_queue[env_ids] *= 0
         if self.cfg_task.env.compute_contact_gt:
             self.gt_extrinsic_contact[env_ids] *= 0
 
@@ -1872,16 +1875,17 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
     def step(self, actions):
         super().step(actions)
-        # self.obs_dict['hand_joints'] = self.hand_joints.clone().to(self.rl_device)
+
         self.obs_dict['priv_info'] = self.obs_dict['states'].clone().to(self.rl_device)
         self.obs_dict['student_obs'] = self.obs_student_buf.clone().to(self.rl_device)
 
         if self.cfg_task.env.tactile:
-            self.obs_dict['tactile_hist'] = self.tactile_queue.clone().to(self.rl_device)
+            self.obs_dict['tactile'] = self.tactile_queue.clone().to(self.rl_device)
         if self.cfg_task.env.compute_contact_gt:
             self.obs_dict['contacts'] = self.contact_points_hist.clone().to(self.rl_device)
         if self.external_cam:
-            self.obs_dict['img_hist'] = self.img_queue.clone().to(self.rl_device)
+            self.obs_dict['img'] = self.img_queue.clone().to(self.rl_device)
+            self.obs_dict['seg'] = self.seg_queue.clone().to(self.rl_device)
 
         return self.obs_dict, self.rew_buf, self.reset_buf, self.extras
 
@@ -1889,16 +1893,17 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.reset_idx(torch.arange(self.num_envs, device=self.device))
         self.compute_observations()
         super().reset()
-        # self.obs_dict['hand_joints'] = self.hand_joints.clone().to(self.rl_device)
+
         self.obs_dict['priv_info'] = self.obs_dict['states'].clone().to(self.rl_device)
         self.obs_dict['student_obs'] = self.obs_student_buf.clone().to(self.rl_device)
 
         if self.cfg_task.env.tactile:
-            self.obs_dict['tactile_hist'] = self.tactile_queue.clone().to(self.rl_device)
+            self.obs_dict['tactile'] = self.tactile_queue.clone().to(self.rl_device)
         if self.cfg_task.env.compute_contact_gt:
             self.obs_dict['contacts'] = self.contact_points_hist.clone().to(self.rl_device)
         if self.external_cam:
-            self.obs_dict['img_hist'] = self.img_queue.clone().to(self.rl_device)
+            self.obs_dict['img'] = self.img_queue.clone().to(self.rl_device)
+            self.obs_dict['seg'] = self.seg_queue.clone().to(self.rl_device)
 
         return self.obs_dict
 

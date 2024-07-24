@@ -45,7 +45,7 @@ train:
 
   # loss scaling
   latent_scale: 1.0
-  action_scale: 0.0
+  action_scale: 2.0
 
   # Train params for on screen logging
   print_every: 1000
@@ -58,20 +58,18 @@ train:
   only_validate: False
 
   obs_keys: ["eef_pos", "action", "latent", "obs_hist", "noisy_socket_pos", "socket_pos",
-          "hand_joints", "plug_hand_quat", "plug_hand_pos",
-          "plug_pos_error", "plug_quat_error"]
+             "hand_joints", "plug_hand_quat", "plug_hand_pos", "plug_pos_error", "plug_quat_error"]
 
-  # normalize data
   normalize_obs_keys: ["eef_pos",
-                   "noisy_socket_pos",
-                   "action",
-                   "plug_hand_quat",
-                   "plug_hand_pos",
+                       "noisy_socket_pos",
+                       "action",
+                       "plug_hand_quat",
+                       "plug_hand_pos",
                        "socket_pos"
-#                    "plug_pos_error",
-#                   "plug_quat_error"
+#                       "plug_pos_error",
+#                       "plug_quat_error"
   ]
-  load_stats: False # TODO
+  load_stats: False
   normalize_file: "/home/roblab20/osher3_workspace/src/isaacgym/python/IsaacGymInsertion/isaacgyminsertion/outputs/gt_test/student/normalization.pkl"
 
   # load student checkpoint
@@ -83,7 +81,6 @@ model:
   # linear embedding
   linear:
     input_size: 12
-    # TODO: add model layers here
 
   use_img: True
   use_seg: True

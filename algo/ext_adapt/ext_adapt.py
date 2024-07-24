@@ -13,17 +13,30 @@
 
 import os
 import time
+import cv2
 import torch
 import numpy as np
 from termcolor import cprint
 
 from algo.ppo.experience import ExperienceBuffer
+from algo.models.transformer.runner import Runner as Student
 from algo.models.models_split import ActorCriticSplit as ActorCritic
 from algo.models.running_mean_std import RunningMeanStd
 from isaacgyminsertion.utils.misc import AverageScalarMeter
 from tensorboardX import SummaryWriter
 import torch.distributed as dist
 import imageio
+import pickle
+
+
+# torch.autograd.set_detect_anomaly(True)
+
+def replace_nan_with_zero(tensor):
+    nan_mask = torch.isnan(tensor)
+    if nan_mask.any():
+        print(f'NaN found at tensor')
+        tensor[nan_mask] = 0.0
+    return tensor
 
 
 class ExtrinsicAdapt(object):
@@ -40,84 +53,65 @@ class ExtrinsicAdapt(object):
             self.rank = -1
             self.device = full_config["rl_device"]
         # ------
+        self.only_bc = False
+
         self.full_config = full_config
         self.task_config = full_config.task
         self.network_config = full_config.train.network
+        self.train_config = full_config.offline_train
         self.ppo_config = full_config.train.ppo
         # ---- build environment ----
         self.env = env
         self.num_actors = self.ppo_config['num_actors']
         self.obs_shape = (self.task_config.env.numObservations * self.task_config.env.numObsHist,)
-        # self.obs_shape = (self.task_config.env.numObservations,)
+
         self.actions_num = self.task_config.env.numActions
-        # ---- Tactile Info ---
+        # ---- Obs Info (student)----
+        self.obs_info = self.ppo_config["obs_info"]
         self.tactile_info = self.ppo_config["tactile_info"]
-        self.tactile_seq_length = self.network_config.tactile_decoder.tactile_seq_length
-        self.mlp_tactile_info_dim = self.network_config.tactile_mlp.units[0]
-        self.tactile_input_dim = (self.network_config.tactile_decoder.img_width,
-                                  self.network_config.tactile_decoder.img_height,
-                                  self.network_config.tactile_decoder.num_channels)
-        self.mlp_tactile_info_dim = self.network_config.tactile_mlp.units[0]
-        # ---- ft Info ---
-        self.ft_info = self.ppo_config["ft_info"]
-        self.ft_seq_length = self.ppo_config["ft_seq_length"]
-        self.ft_input_dim = self.ppo_config["ft_input_dim"]
-        self.ft_info_dim = self.ft_input_dim * self.ft_seq_length
-        # ---- Priv Info ----
+        self.img_info = self.ppo_config["img_info"]
+        self.seg_info = self.ppo_config["seg_info"]
         self.priv_info = self.ppo_config['priv_info']
         self.priv_info_dim = self.ppo_config['priv_info_dim']
-        self.extrin_adapt = self.ppo_config['extrin_adapt']
         self.gt_contacts_info = self.ppo_config['compute_contact_gt']
         self.num_contacts_points = self.ppo_config['num_points']
-        self.priv_info_embed_dim = self.network_config.priv_mlp.units[-1]
-        # ---- Obs Info (student)----co
-        self.obs_info = self.ppo_config["obs_info"]
-        self.student_obs_input_shape = self.ppo_config['student_obs_input_shape']
+
         # ---- Model ----
-        net_config = {
+        agent_config = {
             'actor_units': self.network_config.mlp.units,
             'actions_num': self.actions_num,
             'priv_mlp_units': self.network_config.priv_mlp.units,
             'input_shape': self.obs_shape,
-            'extrin_adapt': self.extrin_adapt,
             'priv_info_dim': self.priv_info_dim,
             'priv_info': self.priv_info,
-            "ft_input_shape": self.ft_info_dim,
-            "ft_info": self.ft_info,
-            "ft_units": self.network_config.ft_mlp.units,
-            "obs_units": self.network_config.obs_mlp.units,
-            "obs_info": self.obs_info,
-            'student_obs_input_shape': self.student_obs_input_shape,
             "gt_contacts_info": self.gt_contacts_info,
+            "only_contact": self.ppo_config['only_contact'],
             "contacts_mlp_units": self.network_config.contact_mlp.units,
             "num_contact_points": self.num_contacts_points,
-
-            "tactile_info": self.tactile_info,
-            "mlp_tactile_input_shape": self.mlp_tactile_info_dim,
-            'tactile_input_dim': self.tactile_input_dim,
-            "mlp_tactile_units": self.network_config.tactile_mlp.units,
-            'tactile_seq_length': self.tactile_seq_length,
-            "tactile_decoder_embed_dim": self.network_config.tactile_mlp.units[0],
             "shared_parameters": self.ppo_config.shared_parameters,
-
-            "merge_units": self.network_config.merge_mlp.units
         }
 
-        self.model = ActorCritic(net_config)
-        self.model.to(self.device)
-        self.model.eval()
+        self.agent = ActorCritic(agent_config)
+        self.agent.to(self.device)
+        self.agent.eval()
 
         self.running_mean_std = RunningMeanStd(self.obs_shape).to(self.device)
         self.running_mean_std.eval()
-        self.priv_mean_std = RunningMeanStd(self.priv_info_dim).to(self.device)
+        self.priv_mean_std = RunningMeanStd((self.priv_info_dim,)).to(self.device)
         self.priv_mean_std.eval()
 
-        # Currently ft is not supported
-        self.ft_mean_std = RunningMeanStd((self.ft_seq_length, 6)).to(self.device)
-        self.ft_mean_std.train()
-        self.running_mean_std_stud = RunningMeanStd((self.student_obs_input_shape,)).to(self.device)
-        self.running_mean_std_stud.train()
-        # tactile is already normalized in task.
+        student_cfg = self.full_config
+        student_cfg.offline_train.model.use_tactile = self.tactile_info
+        student_cfg.offline_train.model.use_seg = self.seg_info
+        student_cfg.offline_train.model.use_lin = self.obs_info
+        student_cfg.offline_train.model.use_img = self.img_info
+
+        self.stud_obs_mean_std = RunningMeanStd((student_cfg.offline_train.model.linear.input_size,)).to(self.device)
+        self.stud_obs_mean_std.train()
+
+        self.student = Student(student_cfg)
+
+        self.stats = None
 
         # ---- Output Dir ----
         self.output_dir = output_dir
@@ -134,24 +128,20 @@ class ExtrinsicAdapt(object):
         self.mean_eps_length = AverageScalarMeter(window_size=50)
         self.mean_eps_success = AverageScalarMeter(window_size=50)
 
+        self.latent_scale = self.train_config.train.latent_scale
+        self.action_scale = self.train_config.train.action_scale
+
         self.best_rewards = -10000
         self.agent_steps = 0
 
         # ---- Optim ----
-        print('Training the following layers:')
-        adapt_params = []
-        for name, p in self.model.named_parameters():
-            if 'tactile_decoder' in name or 'tactile_mlp' in name or 'obs_mlp' in name or 'merge_mlp' in name or 'tactile_decoder_m' in name:
-                adapt_params.append(p)
-                print(name)
-            else:
-                p.requires_grad = False
+        # TODO should we retrain the policy?
+        for name, p in self.agent.named_parameters():
+            p.requires_grad = False
 
-        self.optim = torch.optim.Adam(adapt_params, lr=0.001)
+        self.optim = torch.optim.Adam(self.student.model.parameters(), lr=1e-4)
+
         # ---- Training Misc
-        self.internal_counter = 0
-        self.latent_loss_stat = 0
-        self.loss_stat_cnt = 0
         batch_size = self.num_actors
         self.step_reward = torch.zeros(batch_size, dtype=torch.float32, device=self.device)
         self.step_length = torch.zeros(batch_size, dtype=torch.float32, device=self.device)
@@ -170,11 +160,46 @@ class ExtrinsicAdapt(object):
             self.data_logger = SimLogger(env=self.env)
 
     def set_eval(self):
-        self.model.eval()
+        self.agent.eval()
         self.running_mean_std.eval()
         self.priv_mean_std.eval()
-        # self.ft_mean_std.eval()
-        self.running_mean_std_stud.eval()
+
+    def set_student_eval(self):
+
+        self.student.model.eval()
+        if self.train_config.model.transformer.load_tact:
+            self.student.tact.eval()
+        if self.stud_obs_mean_std:
+            self.stud_obs_mean_std.eval()
+
+    def process_obs(self, obs, obj_id=2, socket_id=3):
+
+        student_obs = obs['student_obs'] if 'student_obs' in obs else None
+        tactile = obs['tactile'] if 'tactile' in obs else None
+        img = obs['img'] if 'img' in obs else None
+        seg = obs['seg'] if 'seg' in obs else None
+
+        seg = ((seg == obj_id) | (seg == socket_id)).float()
+        img = img * seg.unsqueeze(2)
+
+        eef_pos = student_obs[:, :9]
+        socket_pos = student_obs[:, 9:]
+
+        if student_obs is not None:
+            if self.stats is not None:
+                eef_pos = (eef_pos - self.stats["mean"]['eef_pos_rot6d']) / self.stats["std"]['eef_pos_rot6d']
+                socket_pos = (socket_pos - self.stats["mean"]["socket_pos"][:3]) / self.stats["std"]["socket_pos"][:3]
+                student_obs = torch.cat([eef_pos, socket_pos], dim=-1)
+            else:
+                student_obs = self.stud_obs_mean_std(student_obs)
+
+        student_dict = {
+            'student_obs': student_obs if 'student_obs' in obs else None,
+            'tactile': tactile,
+            'img': img,
+            'seg': seg,
+        }
+        return student_dict
 
     def test(self):
 
@@ -185,47 +210,95 @@ class ExtrinsicAdapt(object):
                 self.data_logger.data_logger.reset()
 
         self.set_eval()
+        self.set_student_eval()
+
         obs_dict = self.env.reset()
 
         while True:
 
+            prep_obs = self.process_obs(obs_dict)
+
+            student_dict = {
+                'student_obs': prep_obs['student_obs'] if 'student_obs' in prep_obs else None,
+                'tactile': prep_obs['tactile'] if 'tactile' in prep_obs else None,
+                'img': prep_obs['img'] if 'img' in prep_obs else None,
+                'seg': prep_obs['seg'] if 'seg' in prep_obs else None,
+            }
+
+            # student pass
+            latent, _ = self.student.predict(student_dict, requires_grad=True)
+
             input_dict = {
                 'obs': self.running_mean_std(obs_dict['obs']),
-                'priv_info': self.priv_mean_std(obs_dict['priv_info']),
-                'contacts': obs_dict['contacts'].detach(),
-                'tactile_hist': obs_dict['tactile_hist'].detach(),
-                'student_obs': self.running_mean_std_stud(obs_dict['student_obs'].detach()),
+                'latent': latent,
             }
-            mu, latent = self.model.act_inference(input_dict)
+
+            mu, latent = self.agent.act_inference(input_dict)
             mu = torch.clamp(mu, -1.0, 1.0)
             obs_dict, r, done, info = self.env.step(mu)
             if self.env.cfg_task.data_logger.collect_data:
                 self.data_logger.log_trajectory_data(mu, latent, done)
 
     def train(self):
+
         _t = time.time()
         _last_t = time.time()
-        loss_fn = torch.nn.MSELoss()
+        loss_latent_fn = torch.nn.MSELoss()
+        loss_action_fn = torch.nn.MSELoss()
+
         obs_dict = self.env.reset()
         self.agent_steps += self.batch_size
+
         while self.agent_steps <= 1e9:
             self.log_video()
             self.it += 1
-            input_dict = {
+
+            # teacher pass
+            mu_gt, e_gt = self.agent.act_inference({
                 'obs': self.running_mean_std(obs_dict['obs']),
                 'priv_info': self.priv_mean_std(obs_dict['priv_info']),
-                'student_obs': self.running_mean_std_stud(obs_dict['student_obs']),
-                'tactile_hist': obs_dict['tactile_hist'],
+            })
+
+            prep_obs = self.process_obs(obs_dict)
+
+            student_dict = {
+                'student_obs': prep_obs['student_obs'] if 'student_obs' in prep_obs else None,
+                'tactile': prep_obs['tactile'] if 'tactile' in prep_obs else None,
+                'img': prep_obs['img'] if 'img' in prep_obs else None,
+                'seg': prep_obs['seg'] if 'seg' in prep_obs else None,
             }
-            mu, _, _, e, e_gt = self.model.actor_critic(input_dict)
-            loss = loss_fn(e, e_gt.detach())
+
+            # student pass
+            latent, _ = self.student.predict(student_dict, requires_grad=True)
+            if not self.only_bc:
+                # act with student latent
+                mu, _ = self.agent.act_with_grad({
+                    'obs': self.running_mean_std(obs_dict['obs']),
+                    'latent': latent
+                })
+
+                loss_latent = loss_latent_fn(latent, e_gt.detach())
+            else:
+                # pure behaviour cloning output
+                mu = latent
+                loss_latent = 0
+            loss_action = loss_action_fn(mu, mu_gt.detach())
+
             self.optim.zero_grad()
+            loss = (self.action_scale * loss_action) + (self.latent_scale * loss_latent)
             loss.backward()
+            torch.nn.utils.clip_grad_norm_(self.student.model.parameters(), 0.5)
+
+            for param in self.student.model.parameters():
+                if param.grad is not None:
+                    param.grad = replace_nan_with_zero(param.grad)
             self.optim.step()
 
             mu = mu.detach()
             mu = torch.clamp(mu, -1.0, 1.0)
+
             obs_dict, r, done, info = self.env.step(mu)  # online
+
             self.agent_steps += self.batch_size
 
             # ---- statistics
@@ -241,14 +314,14 @@ class ExtrinsicAdapt(object):
 
             self.log_tensorboard()
 
-            if self.agent_steps % 500 == 0:
+            if self.agent_steps % 1e3 == 0:
                 self.save(os.path.join(self.nn_dir, f'last'))
             if self.agent_steps % 1e4 == 0:
                 self.save(os.path.join(self.nn_dir, f'{self.agent_steps // 1e4}0k'))
 
             mean_rewards = self.mean_eps_reward.get_mean()
-            self.best_rewards = mean_rewards
             if mean_rewards > self.best_rewards:
+                self.best_rewards = mean_rewards
                 self.save(os.path.join(self.nn_dir, f'best'))
                 cprint('saved new best')
                 # self.best_rewards = mean_rewards
@@ -256,10 +329,10 @@ class ExtrinsicAdapt(object):
             all_fps = self.agent_steps / (time.time() - _t)
             last_fps = self.batch_size / (time.time() - _last_t)
             _last_t = time.time()
-            info_string = f'Agent Steps: {int(self.agent_steps // 1e6):04}M | FPS: {all_fps:.1f} | ' \
+            info_string = f'ExtAdapt: Agent Steps: {int(self.agent_steps // 1e6):04}M | FPS: {all_fps:.1f} | ' \
                           f'Last FPS: {last_fps:.1f} | ' \
-                          f'Mean Best: {self.best_rewards:.2f} | ' \
-                          f'GAN: {self.ppo_config.sim2real}'
+                          f'Best Reward: {self.best_rewards:.2f} | ' \
+                          f'Cur Reward: {mean_rewards:.2f} | ' \
 
             cprint(info_string)
 
@@ -273,44 +346,69 @@ class ExtrinsicAdapt(object):
         # TODO
         pass
 
-    def restore_train(self, fn):
+    def restore_train(self, fn, with_student=True):
         checkpoint = torch.load(fn)
+        cprint('Restoring train with teacher')
         cprint('careful, using non-strict matching', 'red', attrs=['bold'])
-        self.model.load_state_dict(checkpoint['model'], strict=False)
+        self.agent.load_state_dict(checkpoint['model'], strict=False)
         self.running_mean_std.load_state_dict(checkpoint['running_mean_std'])
         self.priv_mean_std.load_state_dict(checkpoint['priv_mean_std'])
+        self.set_eval()
+
+        if with_student:
+            self.restore_student()
+
+    def restore_student(self, from_offline=True):
+
+        if from_offline:
+            self.student.load_model(self.train_config.train.student_ckpt_path)
+            if self.train_config.model.transformer.load_tact:
+                self.student.load_tact_model(self.train_config.model.transformer.tact_path)
+            self.stats = {'mean': {}, 'std': {}}
+            stats = pickle.load(open(self.train_config.train.normalize_file, "rb"))
+            for key in stats['mean'].keys():
+                self.stats['mean'][key] = torch.tensor(stats['mean'][key], device=self.device)
+                self.stats['std'][key] = torch.tensor(stats['std'][key], device=self.device)
+        else:
+            assert NotImplementedError
+            checkpoint = torch.load(self.train_config.train.normalize_file)
+            self.stud_obs_mean_std.load_state_dict(checkpoint['stud_obs_mean_std'])
 
     def restore_test(self, fn):
-        if not fn:
-            return
+
         checkpoint = torch.load(fn)
         self.running_mean_std.load_state_dict(checkpoint['running_mean_std'])
-        self.model.load_state_dict(checkpoint['model'])
-        # self.ft_mean_std.load_state_dict(checkpoint['ft_mean_std'])
+        self.agent.load_state_dict(checkpoint['model'])
         self.priv_mean_std.load_state_dict(checkpoint['priv_mean_std'])
-        self.running_mean_std_stud.load_state_dict(checkpoint['running_mean_std_stud'])
+
+        self.restore_student()
+        self.set_eval()
 
     def save(self, name):
         weights = {
-            'model': self.model.state_dict(),
+            'model': self.agent.state_dict(),
         }
         if self.running_mean_std:
             weights['running_mean_std'] = self.running_mean_std.state_dict()
-        if self.running_mean_std_stud:
-            weights['running_mean_std_stud'] = self.running_mean_std_stud.state_dict()
         if self.priv_mean_std:
             weights['priv_mean_std'] = self.priv_mean_std.state_dict()
-        if self.ft_mean_std:
-            weights['ft_mean_std'] = self.ft_mean_std.state_dict()
+
         torch.save(weights, f'{name}.pth')
 
+        stud_weights = {
+            'student': self.student.model.state_dict()
+        }
+        if self.stud_obs_mean_std:
+            stud_weights['stud_obs_mean_std'] = self.stud_obs_mean_std.state_dict()
+
+        torch.save(stud_weights, f'{name}_stud.pth')
+
     def log_video(self):
+
         if self.it == 0:
             self.env.start_recording()
-            print("START RECORDING")
             self.last_recording_it = self.it
             self.env.start_recording_ft()
-            print("START FT RECORDING")
             self.last_recording_it_ft = self.it
             return
 
@@ -322,17 +420,15 @@ class ExtrinsicAdapt(object):
 
             if len(frames) < 20:
                 self.env.start_recording()
-                print("START RECORDING")
                 self.last_recording_it = self.it
                 self.env.start_recording_ft()
-                print("START FT RECORDING")
                 self.last_recording_it_ft = self.it
                 return
             video_dir = os.path.join(self.output_dir, 'videos1')
             if not os.path.exists(video_dir):
                 os.makedirs(video_dir)
-            self._write_video(frames, f"{video_dir}/{self.it:05d}.mp4", frame_rate=30)
-            print("LOGGING VIDEO")
+            self._write_video(frames, ft_frames, f"{video_dir}/{self.it:05d}.mp4", frame_rate=30)
+            print(f"LOGGING VIDEO {self.it:05d}.mp4")
 
             ft_dir = os.path.join(self.output_dir, 'ft')
             if not os.path.exists(ft_dir):
@@ -340,43 +436,31 @@ class ExtrinsicAdapt(object):
             self._write_ft(ft_frames, f"{ft_dir}/{self.it:05d}")
             # self.create_line_and_image_animation(frames, ft_frames, f"{ft_dir}/{self.it:05d}_line.mp4")
 
-            print("LOGGING FT")
-
             self.env.start_recording()
-            print("START RECORDING")
             self.last_recording_it = self.it
 
             self.env.start_recording_ft()
-            print("START FT RECORDING")
             self.last_recording_it_ft = self.it
 
-    def _write_video(self, frames, output_loc, frame_rate):
+    def _write_video(self, frames, ft_frames, output_loc, frame_rate):
         writer = imageio.get_writer(output_loc, mode='I', fps=frame_rate)
-        # out = cv2.VideoWriter(output_loc, self.fourcc, frame_rate, (240, 360))
         for i in range(len(frames)):
             frame = np.uint8(frames[i])
+            x, y = 30, 100
+            for item in ft_frames[i].tolist():
+                cv2.putText(frame, str(round(item, 3)), (x, y), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2,
+                            cv2.LINE_AA)
+                y += 30  # Move down to the next line
+            frame = np.uint8(frame)
             writer.append_data(frame)
-            # cv2.imshow('frame', frames[i])
-            # cv2.waitKey(0)
-            # out.write(frames[i])
         writer.close()
-        # out.release()
-        # cv2.destroyAllWindows()
 
     def _write_ft(self, data, output_loc):
-        # todo convert it to gif with same rate as video
-        # todo split into 2 plot, 1 for the fore a
         import matplotlib.pyplot as plt
         plt.figure(figsize=(8, 6))
         plt.plot(np.array(data)[:, :3])
         plt.xlabel('time')
-        plt.ylim([-0.25, 0.25])
+        # plt.ylim([-0.25, 0.25])
         plt.ylabel('force')
         plt.savefig(f'{output_loc}_force.png')
-        plt.close()
-        plt.figure(figsize=(8, 6))
-        plt.plot(np.array(data)[:, 3:])
-        plt.xlabel('time')
-        plt.ylabel('torque')
-        plt.savefig(f'{output_loc}_torque.png')
         plt.close()

@@ -21,8 +21,6 @@ task.env.numStates=14 \
 task.env.numObservations=18 \
 train.algo=PPO \
 train.ppo.priv_info=True \
-train.ppo.extrin_adapt=False \
-train.ppo.tactile_info=False \
 train.ppo.output_name="${CACHE}" \
 checkpoint="${C}" \
 ${EXTRA_ARGS}

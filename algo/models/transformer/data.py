@@ -12,6 +12,7 @@ import random
 from typing import Union
 import functools
 import pytorch3d.transforms as pt
+from algo.models.running_mean_std import RunningMeanStd
 
 class RotationTransformer:
     valid_reps = [
@@ -291,7 +292,6 @@ class TactileDataset(Dataset):
             obs_keys (list): Keys for the data to extract.
         """
         self.rot_tf = RotationTransformer(from_rep='matrix', to_rep='rotation_6d')
-
         self.all_folders = traj_files
         self.sequence_length = sequence_length
         self.stride = stride

@@ -64,61 +64,29 @@ class PPO(object):
         self.env = env
         self.num_actors = self.ppo_config['num_actors']
         self.actions_num = self.task_config.env.numActions
-        # self.observation_space = self.env.observation_space
-        # self.obs_shape = self.observation_space.shape
         self.obs_shape = (self.task_config.env.numObservations * self.task_config.env.numObsHist,)
-        # print("OBS", self.obs_shape)
 
         # ---- Tactile Info ---
-        self.tactile_info = self.ppo_config["tactile_info"]
-        self.tactile_seq_length = self.network_config.tactile_encoder.tactile_seq_length
-        self.tactile_input_dim = [self.network_config.tactile_encoder.img_width,
-                                  self.network_config.tactile_encoder.img_height,
-                                  self.network_config.tactile_encoder.num_channels]
-        if self.task_config.tactile.crop_roi:
-            self.tactile_input_dim[0] = self.tactile_input_dim[0] // 2
-            self.tactile_input_dim[1] = self.tactile_input_dim[1] - self.tactile_input_dim[1] // 3
-
-        self.mlp_tactile_info_dim = self.network_config.tactile_mlp.units[0]
-        self.tactile_hist_dim = (self.network_config.tactile_encoder.tactile_seq_length, 3, *self.tactile_input_dim)
-
         # ---- Priv Info ----
         self.priv_info = self.ppo_config['priv_info']
         self.priv_info_dim = self.ppo_config['priv_info_dim']
-        self.extrin_adapt = self.ppo_config['extrin_adapt']
         self.gt_contacts_info = self.ppo_config['compute_contact_gt']
         self.only_contact = self.ppo_config['only_contact']
         self.num_contacts_points = self.ppo_config['num_points']
         self.priv_info_embed_dim = self.network_config.priv_mlp.units[-1]
-        # ---- Obs Info (student)----
-        self.obs_info = self.ppo_config["obs_info"]
-        # ---- Hand Info (joints)----
-        self.hand_info = self.ppo_config["hand_info"]
         # ---- Model ----
         net_config = {
             'actor_units': self.network_config.mlp.units,
             'actions_num': self.actions_num,
             'input_shape': self.obs_shape,
             'priv_mlp_units': self.network_config.priv_mlp.units,
-            'extrin_adapt': self.extrin_adapt,
             'priv_info_dim': self.priv_info_dim,
             'priv_info': self.priv_info,
-            "obs_units": self.network_config.obs_mlp.units,
-            "obs_info": self.obs_info,
             "gt_contacts_info": self.gt_contacts_info,
             "only_contact": self.only_contact,
             "contacts_mlp_units": self.network_config.contact_mlp.units,
             "num_contact_points": self.num_contacts_points,
-            "tactile_info": self.tactile_info,
-            "mlp_tactile_input_shape": self.mlp_tactile_info_dim,
-            "mlp_tactile_units": self.network_config.tactile_mlp.units,
-            'tactile_input_dim': self.tactile_input_dim,
-            'tactile_seq_length': self.tactile_seq_length,
-            "tactile_encoder_embed_dim": self.network_config.tactile_mlp.units[0],
             "shared_parameters": self.ppo_config.shared_parameters,
-            "merge_units": self.network_config.merge_mlp.units,
-            "hand_mlp_units": self.network_config.hand_mlp.units,
-            "hand_info": self.hand_info,
         }
 
         self.rot_tf = RotationTransformer(from_rep='matrix', to_rep='rotation_6d')
@@ -229,15 +197,24 @@ class PPO(object):
         self.writer.add_scalar('performance/RLTrainFPS', self.agent_steps / self.rl_train_time, self.agent_steps)
         self.writer.add_scalar('performance/EnvStepFPS', self.agent_steps / self.data_collect_time, self.agent_steps)
 
-        self.writer.add_scalar('losses/actor_loss', torch.mean(a_losses).item(), self.agent_steps)
-        self.writer.add_scalar('losses/bounds_loss', torch.mean(b_losses).item(), self.agent_steps)
-        self.writer.add_scalar('losses/critic_loss', torch.mean(c_losses).item(), self.agent_steps)
-        self.writer.add_scalar('losses/entropy', torch.mean(entropies).item(), self.agent_steps)
+        if not self.multi_gpu:
+            self.writer.add_scalar('losses/actor_loss', torch.mean(torch.stack(a_losses)).item(), self.agent_steps)
+            self.writer.add_scalar('losses/bounds_loss', torch.mean(torch.stack(b_losses)).item(), self.agent_steps)
+            self.writer.add_scalar('losses/critic_loss', torch.mean(torch.stack(c_losses)).item(), self.agent_steps)
+            self.writer.add_scalar('losses/entropy', torch.mean(torch.stack(entropies)).item(), self.agent_steps)
+            self.writer.add_scalar('info/kl', torch.mean(torch.stack(kls)).item(), self.agent_steps)
+            self.writer.add_scalar("info/grad_norms", torch.mean(torch.stack(grad_norms)).item(), self.agent_steps)
+        else:
+            self.writer.add_scalar('losses/actor_loss', torch.mean(a_losses).item(), self.agent_steps)
+            self.writer.add_scalar('losses/bounds_loss', torch.mean(b_losses).item(), self.agent_steps)
+            self.writer.add_scalar('losses/critic_loss', torch.mean(c_losses).item(), self.agent_steps)
+            self.writer.add_scalar('losses/entropy', torch.mean(entropies).item(), self.agent_steps)
+            self.writer.add_scalar('info/kl', torch.mean(kls).item(), self.agent_steps)
+            self.writer.add_scalar("info/grad_norms", torch.mean(grad_norms).item(), self.agent_steps)
 
         self.writer.add_scalar('info/last_lr', self.last_lr, self.agent_steps)
         self.writer.add_scalar('info/e_clip', self.e_clip, self.agent_steps)
-        self.writer.add_scalar('info/kl', torch.mean(kls).item(), self.agent_steps)
-        self.writer.add_scalar("info/grad_norms", torch.mean(grad_norms).item(), self.agent_steps)
+
         self.writer.add_scalar("info/returns_list", torch.mean(torch.stack(returns_list)).item(), self.agent_steps)
 
         # wandb.log({
@@ -292,7 +269,6 @@ class PPO(object):
         if 'contacts' in obs_dict and self.gt_contacts_info:
             input_dict['contacts'] = obs_dict['contacts']
 
-        # if 'tactile_hist' in obs_dict and self.tactile_info:
         #     input_dict['tactile_hist'] = obs_dict['tactile_hist']
 
         res_dict = self.model.act(input_dict)
@@ -397,7 +373,7 @@ class PPO(object):
             'obs': processed_obs,
             'latent': obs_dict['latent'],
         }
-        action, latent = self.model.bc_act(input_dict)
+        action, latent = self.model.act_with_grad(input_dict)
         return action, latent
 
     def train_epoch(self):
@@ -429,7 +405,6 @@ class PPO(object):
                     'obs': obs,
                     'priv_info': priv_info,
                     'contacts': contacts,
-                    # 'tactile_hist': tactile_hist
                 }
                 res_dict = self.model(batch_dict)
                 action_log_probs = res_dict['prev_neglogp']
@@ -617,7 +592,7 @@ class PPO(object):
         self.storage.data_dict['values'] = values
         self.storage.data_dict['returns'] = returns
 
-    def test(self, get_latent=None, obs_stats=None, milestone=100, rma=True):
+    def test(self, predict=None, obs_stats=None, milestone=100):
         # this will test either the student or the teacher model.
 
         self.set_eval()
@@ -653,31 +628,14 @@ class PPO(object):
         while save_trajectory or (total_dones < total_env_runs):
             # log video during test
             # self.log_video()
+
             latent = None
             if offline_test:
-                if get_latent is not None:
+
+                if predict is not None:
                     # Making data for the latent prediction from student model
-                    last_obs = self.get_last_student_obs(self.data_logger.data_logger.get_data(), stats)
-                    tactile, img, seg, lin_input, gt_pos_rpy = last_obs
-                    # getting the latent data from the student model
-                    out, out_pos_rpy = get_latent(tactile, img, seg, lin_input, gt_pos_rpy)
-
-                    if False:
-                        stats_mean = torch.cat([stats["mean"]["plug_hand_pos_diff"],
-                                                stats['mean']['plug_hand_diff_euler']], dim=-1)
-                        stats_std = torch.cat([stats["std"]["plug_hand_pos_diff"],
-                                               stats['std']['plug_hand_diff_euler']], dim=-1)
-
-                        out_pos_rpy = out_pos_rpy[0] * stats_std + stats_mean
-                        gt_pos_rpy = gt_pos_rpy[0] * stats_std + stats_mean
-
-                        plt.scatter(list(range(out_pos_rpy.shape[-1])),
-                                    out_pos_rpy.clone().detach().cpu().numpy()[0, :],
-                                    color='r')
-                        plt.scatter(list(range(gt_pos_rpy.shape[-1])), gt_pos_rpy.clone().cpu().numpy()[0, :],
-                                    color='b')
-                        plt.pause(0.0001)
-                        plt.cla()
+                    last_obs_dict = self.get_last_student_obs(self.data_logger.data_logger.get_data(), stats)
+                    latent, out_pos_rpy = predict(last_obs_dict)
 
             obs_dict = {
                 'obs': self.running_mean_std(self.obs['obs']),
@@ -685,6 +643,7 @@ class PPO(object):
                 'contacts': self.obs['contacts'] if 'contacts' in self.obs else None,
                 'latent': latent,
             }
+
             action, latent = self.model.act_inference(obs_dict)
             action = torch.clamp(action, -1.0, 1.0)
 
@@ -818,14 +777,14 @@ class PPO(object):
 
         obj_pos_rpy = torch.cat([plug_hand_pos, euler], dim=-1).to(self.device).float()
 
-        lin_input = torch.cat([
+        student_obs = torch.cat([
             eef_pos,
             socket_pos,
             # action,
-            obj_pos_rpy
+            # obj_pos_rpy
         ], dim=-1)
 
-        # Adjust tactile and lin_input based on the sequence length and progress buffer
+        # Adjust tactile and student_obs based on the sequence length and progress buffer
         tactile_adjusted = get_last_sequence(tactile, self.env.progress_buf, sequence_length)
 
         if diff_tac:
@@ -836,12 +795,18 @@ class PPO(object):
 
         seg = (seg == obj_id).float()
         img = img * seg.unsqueeze(2)
-        img += 0.5 * (img * seg.unsqueeze(2) != 0).float()
+        # img += 0.5 * (img * seg.unsqueeze(2) != 0).float()
 
         if display:
             self.display_obs(tactile_adjusted, img, seg)
 
-        return tactile_adjusted, img, seg, lin_input, obj_pos_rpy
+        out_dict = {'tactile': tactile_adjusted,
+                    'img': img,
+                    'seg': seg,
+                    'student_obs': student_obs,
+                    'gt_obj_pos_rpy': obj_pos_rpy}
+
+        return out_dict
 
     def display_obs(self, tactile, depth, seg):
 

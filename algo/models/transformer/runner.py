@@ -2,7 +2,7 @@ from algo.models.transformer.data import TactileDataset, DataNormalizer
 from torch.utils.data import DataLoader
 from torch import optim
 from algo.models.transformer.tact import MultiModalModel
-from algo.models.models_split import AdaptTConv
+from algo.models.models import AdaptTConv
 from algo.models.transformer.utils import define_img_transforms, define_tactile_transforms, TactileTransform, \
     SyncCenterReshapeTransform, log_output
 from algo.models.transformer.tcn import TCN
@@ -40,18 +40,40 @@ class Runner:
         self.tact = None
         self.sequence_length = self.cfg.model.transformer.sequence_length
 
+        # Device management
+        if torch.cuda.is_available() and self.cfg.multi_gpu:
+            torch.multiprocessing.set_start_method("spawn", force=True)
+
+            available_gpus = list(range(torch.cuda.device_count()))
+            print("Available GPU IDs:", available_gpus)
+
+            os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
+
+            # Check if gpu_ids are valid and meet the memory requirement
+            valid_gpu_ids = []
+            for gpu_id in self.cfg.gpu_ids:
+                if gpu_id in available_gpus:
+                    memory_usage = get_gpu_memory_usage(gpu_id)
+                    if memory_usage <= 0.25:
+                        valid_gpu_ids.append(gpu_id)
+            print(valid_gpu_ids)
+            if not valid_gpu_ids:
+                print("No valid gpu. Exit!")
+                exit()
+            else:
+                os.environ["CUDA_VISIBLE_DEVICES"] = ",".join([str(x) for x in valid_gpu_ids])
+                print("Using cuda devices:", os.environ["CUDA_VISIBLE_DEVICES"])
+
+                first_gpu_id = valid_gpu_ids[0] if valid_gpu_ids else 0
+                device = torch.device(f"cuda:{first_gpu_id}")
+        else:
+            device = 'cuda:0'
+
+        self.device = device
+
         self._init_transforms()
 
         self._init_model()
-
-        self.loss_fn_mean = torch.nn.MSELoss(reduction='mean')
-        self.loss_fn = torch.nn.MSELoss(reduction='none')
-
-        self.fig = plt.figure(figsize=(20, 15))
-        self.ax1 = self.fig.add_subplot(2, 2, 1)
-
-        self.out_fig = plt.figure(figsize=(20, 15))
-        self.train_loss, self.val_loss = [], []
 
     def _init_model(self):
 
@@ -101,6 +123,10 @@ class Runner:
                                         include_lin=self.cfg.model.tact.use_lin,
                                         include_tactile=self.cfg.model.tact.use_tactile)
 
+            self.tact.to(self.device)
+
+        self.model.to(self.device)
+
     def _init_transforms(self):
 
         # img
@@ -120,7 +146,8 @@ class Runner:
             self.cfg.img_masking_prob
         )
 
-        self.sync_eval_reshape_transform = SyncCenterReshapeTransform((self.crop_img_width, self.crop_img_height),
+        self.sync_eval_reshape_transform = SyncCenterReshapeTransform((self.crop_img_width,
+                                                                       self.crop_img_height),
                                                                       self.img_eval_transform,
                                                                       self.img_eval_transform)
 
@@ -160,26 +187,27 @@ class Runner:
         d_pos_rpy = None
         progress_bar = tqdm(enumerate(dl), total=len(dl), desc="Training Progress", unit="batch")
 
-        for i, (tac_input, img_input, seg_input, lin_input, pos_rpy, obs_hist, latent, action) in progress_bar:
+        for i, (tactile, img, seg, stud_obs, pos_rpy, obs_hist, latent, action) in progress_bar:
+
             self.model.train()
 
-            tac_input = tac_input.to(self.device)  # [B T F W H C]
-            img_input = img_input.to(self.device)
-            seg_input = seg_input.to(self.device)
-            lin_input = lin_input.to(self.device)
+            tactile = tactile.to(self.device)  # [B T F W H C]
+            img = img.to(self.device)
+            seg = seg.to(self.device)
+            stud_obs = stud_obs.to(self.device)
             latent = latent.to(self.device)
             action = action.to(self.device)
 
             if self.tact is not None:
                 assert NotImplementedError
-                d_pos_rpy = self.tact(tac_input, img_input, seg_input, lin_input).unsqueeze(1)
+                d_pos_rpy = self.tact(tactile, img, seg, stud_obs).unsqueeze(1)
 
             if self.only_bc:
-                out = self.model(tac_input, img_input, seg_input, lin_input, d_pos_rpy)
+                out = self.model(tactile, img, seg, stud_obs, d_pos_rpy)
                 out = torch.clamp(out, -1, 1)
                 loss_latent = self.loss_fn_mean(out, action[:, -1, :])
             else:
-                out = self.model(tac_input, img_input, seg_input, lin_input, d_pos_rpy)
+                out = self.model(tactile, img, seg, stud_obs, d_pos_rpy)
                 loss_latent = self.loss_fn_mean(out, latent[:, -1, :])
 
             loss_action = torch.zeros(1, device=self.device)
@@ -230,10 +258,10 @@ class Runner:
                 self.fig.savefig(f'{self.save_folder}/train_val_comp.png', dpi=200, bbox_inches='tight')
                 # self.fig.clf()
 
-                log_output(tac_input,
-                           img_input,
-                           seg_input,
-                           lin_input,
+                log_output(tactile,
+                           img,
+                           seg,
+                           stud_obs,
                            out,
                            action if self.only_bc else latent,
                            pos_rpy,
@@ -259,27 +287,26 @@ class Runner:
             val_loss = []
             latent_loss_list, action_loss_list = [], []
             d_pos_rpy = None
-            for i, (tac_input, img_input, seg_input, lin_input, pos_rpy, obs_hist, latent, action) in tqdm(
-                    enumerate(dl)):
+            for i, (tactile, img, seg, stud_obs, pos_rpy, obs_hist, latent, action) in tqdm(enumerate(dl)):
 
-                tac_input = tac_input.to(self.device)
-                img_input = img_input.to(self.device)
-                seg_input = seg_input.to(self.device)
+                tactile = tactile.to(self.device)
+                img = img.to(self.device)
+                seg = seg.to(self.device)
 
-                lin_input = lin_input.to(self.device)
+                stud_obs = stud_obs.to(self.device)
                 latent = latent.to(self.device)
                 action = action.to(self.device)
 
                 if self.tact is not None:
                     assert NotImplementedError
-                    d_pos_rpy = self.tact(tac_input, img_input, seg_input, lin_input).unsqueeze(1)
+                    d_pos_rpy = self.tact(tactile, img, seg, stud_obs).unsqueeze(1)
 
                 if self.only_bc:
-                    out = self.model(tac_input, img_input, seg_input, lin_input, d_pos_rpy)
+                    out = self.model(tactile, img, seg, stud_obs, d_pos_rpy)
                     out = torch.clamp(out, -1, 1)
                     loss_latent = self.loss_fn_mean(out, action[:, -1, :])
                 else:
-                    out = self.model(tac_input, img_input, seg_input, lin_input, d_pos_rpy)
+                    out = self.model(tactile, img, seg, stud_obs, d_pos_rpy)
                     loss_latent = self.loss_fn_mean(out, latent[:, -1, :])
 
                 loss_action = torch.zeros(1, device=self.device)
@@ -308,10 +335,10 @@ class Runner:
             #         'val/action_loss': np.mean(action_loss_list)
             #     })
 
-            log_output(tac_input,
-                       img_input,
-                       seg_input,
-                       lin_input,
+            log_output(tactile,
+                       img,
+                       seg,
+                       stud_obs,
                        out,
                        action if self.only_bc else latent,
                        pos_rpy,
@@ -322,43 +349,52 @@ class Runner:
 
         return np.mean(val_loss)
 
-    def get_latent(self, tac_input, img_input, seg_input, lin_input, gt_label=None, use_gt=False):
-        self.model.eval()
+    def predict(self, obs_dict, requires_grad=False):
+
+        if not requires_grad:
+            self.model.eval()
+            with torch.no_grad():
+                return self._predict_forward(obs_dict)
+        else:
+            return self._predict_forward(obs_dict)
+
+    def _predict_forward(self, obs_dict):
+
+        tactile = obs_dict['tactile'] if 'tactile' in obs_dict else None
+        img = obs_dict['img'] if 'img' in obs_dict else None
+        seg = obs_dict['seg'] if 'seg' in obs_dict else None
+        student_obs = obs_dict['student_obs'] if 'student_obs' in obs_dict else None
+
         d_pos_rpy = None
 
-        with torch.no_grad():
+        if self.cfg.model.use_tactile:
+            tactile = tactile.to(self.device)
+            if self.tactile_transform is not None:
+                tactile = TactileTransform(self.tactile_eval_transform)(tactile).to(self.device)
 
-            if self.cfg.model.use_tactile:
-                tac_input = tac_input.to(self.device)
-                if self.tactile_transform is not None:
-                    tac_input = TactileTransform(self.tactile_eval_transform)(tac_input).to(self.device)
+        if self.cfg.model.use_img:
+            img = img.to(self.device)
+            seg = seg.to(self.device)
+            # if self.img_transform is not None:
+            #     img = ImageTransform(self.img_eval_transform)(img).to(self.device)
+            img, seg = self.sync_eval_reshape_transform(img, seg)
 
-            if self.cfg.model.use_img:
-                img_input = img_input.to(self.device)
-                seg_input = seg_input.to(self.device)
-                # if self.img_transform is not None:
-                #     img_input = ImageTransform(self.img_eval_transform)(img_input).to(self.device)
-                img_input, seg_input = self.sync_eval_reshape_transform(img_input, seg_input)
+        if self.cfg.model.use_lin:
+            student_obs = student_obs.to(self.device)
 
-            if self.cfg.model.use_lin:
-                lin_input = lin_input.to(self.device)
-
-            if self.tact is not None:
-                d_pos_rpy = self.tact(tac_input, img_input, lin_input).unsqueeze(1)
-
-                if gt_label is not None and use_gt:
-                    out = self.model(tac_input, img_input, lin_input, gt_label.to(dtype=torch.float32))
-                else:
-                    out = self.model(tac_input, img_input, lin_input, d_pos_rpy)
-            else:
-                out = self.model(tac_input, img_input, seg_input, lin_input)
+        if self.tact is not None:
+            d_pos_rpy = self.tact(tactile, img, student_obs).unsqueeze(1)
+            out = self.model(tactile, img, student_obs, d_pos_rpy)
+        else:
+            out = self.model(tactile, img, seg, student_obs)
 
         return out, d_pos_rpy
 
     def test(self):
+
         with torch.inference_mode():
             stats = self.stats.copy()
-            num_success, total_trials = self.agent.test(self.get_latent, stats)
+            num_success, total_trials = self.agent.test(self.predict, stats)
             if total_trials > 0:
                 print(f'{num_success}/{total_trials}, success rate on :', num_success / total_trials)
                 self._wandb_log({
@@ -491,45 +527,23 @@ class Runner:
 
     def run(self):
 
-        # Device management
-        if torch.cuda.is_available() and self.cfg.multi_gpu:
-            torch.multiprocessing.set_start_method("spawn", force=True)
+        self.loss_fn_mean = torch.nn.MSELoss(reduction='mean')
+        self.loss_fn = torch.nn.MSELoss(reduction='none')
 
-            available_gpus = list(range(torch.cuda.device_count()))
-            print("Available GPU IDs:", available_gpus)
+        self.fig = plt.figure(figsize=(20, 15))
+        self.ax1 = self.fig.add_subplot(2, 2, 1)
 
-            os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
-
-            # Check if gpu_ids are valid and meet the memory requirement
-            valid_gpu_ids = []
-            for gpu_id in self.cfg.gpu_ids:
-                if gpu_id in available_gpus:
-                    memory_usage = get_gpu_memory_usage(gpu_id)
-                    if memory_usage <= 0.25:
-                        valid_gpu_ids.append(gpu_id)
-            print(valid_gpu_ids)
-            if not valid_gpu_ids:
-                print("No valid gpu. Exit!")
-                exit()
-            else:
-                os.environ["CUDA_VISIBLE_DEVICES"] = ",".join([str(x) for x in valid_gpu_ids])
-                print("Using cuda devices:", os.environ["CUDA_VISIBLE_DEVICES"])
-
-                first_gpu_id = valid_gpu_ids[0] if valid_gpu_ids else 0
-                device = torch.device(f"cuda:{first_gpu_id}")
-        else:
-            device = 'cuda:0'
-
-        self.device = device
+        self.out_fig = plt.figure(figsize=(20, 15))
+        self.train_loss, self.val_loss = [], []
 
         # Load student checkpoint.
         if self.cfg.train.load_checkpoint:
             model_path = self.cfg.train.student_ckpt_path
-            self.load_model(model_path, device=device)
+            self.load_model(model_path, device=self.device)
 
         if self.cfg.model.transformer.load_tact:
             tact_path = self.cfg.model.transformer.tact_path
-            self.load_tact_model(tact_path, device=device)
+            self.load_tact_model(tact_path, device=self.device)
 
         train_config = {
             "epochs": self.cfg.train.epochs,
@@ -578,9 +592,9 @@ class Runner:
         if self.cfg.multi_gpu and len(self.cfg.gpu_ids) > 1:
             self.model = torch.nn.DataParallel(self.model, device_ids=self.cfg.gpu_ids)
 
-        self.model = self.model.to(device)
+        self.model = self.model.to(self.device)
 
-        self.run_train(file_list, save_folder, device=device, **train_config)
+        self.run_train(file_list, save_folder, device=self.device, **train_config)
 
 
 def get_gpu_memory_usage(device_id):

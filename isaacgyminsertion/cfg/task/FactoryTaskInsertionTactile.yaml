@@ -10,6 +10,7 @@ physics_engine: ${..physics_engine}
 
 grasp_at_init: True
 collect_rotate: False
+adapt: False
 
 grasp_logger:
     total_grasp: 1000
@@ -48,7 +49,7 @@ tactile: # Pulling from task
 env:
     numEnvs: ${resolve_default:128,${...num_envs}}
     numObservations: 18 #
-    numObsStudent: 9 #
+    numObsStudent: 12 #
     numStates: 14 #
     numActions: 6 # [position, ori]
     numTargets: 6 # [position, ori]

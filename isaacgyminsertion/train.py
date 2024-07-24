@@ -38,7 +38,9 @@ from isaacgyminsertion.utils.utils import set_np_formatting, set_seed
 import warnings
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
-
+warnings.filterwarnings("ignore", category=UserWarning, module='torchvision')
+warnings.filterwarnings("ignore", category=UserWarning, module='hydra')
+warnings.filterwarnings("ignore", category=ImportWarning)
 
 @hydra.main(config_name="config", config_path="./cfg")
 def run(cfg: DictConfig):  # , config_path: Optional[str] = None
@@ -112,22 +114,18 @@ def run(cfg: DictConfig):  # , config_path: Optional[str] = None
         assert cfg.train.load_path
         print("Loading Teacher model from", cfg.train.load_path)
         agent.restore_test(cfg.train.load_path)
+        agent.set_eval()
 
         if not cfg.offline_training_w_env:
-            # Test teacher\student
+            # Testing teacher in sim
             num_success, total_trials = agent.test()
             print(f"Success rate: {num_success / total_trials}")
 
-        else:
-            # Test offline trained student
-            from algo.models.transformer.runner import Runner as Runner
-            agent = PPO(envs, output_dif, full_config=cfg)
-            agent.restore_test(cfg.train.load_path)
-            agent.set_eval()
-
+        if cfg.offline_training_w_env:
+            # Test offline trained student with offline teacher pass
+            from algo.models.transformer.runner import Runner
             runner = Runner(cfg, agent, action_regularization=cfg.offline_train.train.action_regularization)
             runner.run()
-
     else:
         if rank <= 0:
             date = str(datetime.now().strftime("%m%d%H"))
