@@ -26,7 +26,6 @@ task.env.numStates=14 \
 task.env.numObservations=18 \
 task.data_logger.sub_folder="datastore_${SEED}_${CACHE}" \
 train.algo=PPO \
-train.ppo.extrin_adapt=False \
 train.ppo.output_name="${CACHE}" \
 checkpoint="${model_to_load}" \
 ${EXTRA_ARGS}

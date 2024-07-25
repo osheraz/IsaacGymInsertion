@@ -359,7 +359,7 @@ class TactileDataset(Dataset):
         seg_input = [np.load(os.path.join(seg_folder, f'seg_{i}.npz'))['seg'] for i in
                      range(start_idx, start_idx + self.sequence_length)]
 
-        seg_input = np.stack([((m == obj_id) | (m == 3)).astype(float).astype(float) for m in seg_input])
+        seg_input = np.stack([((m == obj_id) | (m == 3)).astype(float) for m in seg_input])
         img_input = np.stack([img * m for img, m in zip(img_input, seg_input)])
         # img_input = np.stack([img + 0.5 * (img * m != 0).astype(float) for img, m in zip(img_input, seg_input)])
         if self.sync_transform is not None:

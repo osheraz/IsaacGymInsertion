@@ -651,7 +651,7 @@ def plot_bar_comparison(ax, predicted, true, title):
 
 
 def log_output(tac_input, img_input, seg_input, lin_input, out, latent, pos_rpy, save_folder, d_pos_rpy=None,
-               session='train', fig=plt.figure(figsize=(20, 10))):
+               session='train'):
     img_input = img_input[0].cpu().detach().numpy() if img_input.ndim > 2 else None
     seg_input = seg_input[0].unsqueeze(1).cpu().detach().numpy() if seg_input.ndim > 2 else None
     linear_features = lin_input[0].cpu().detach().numpy() if lin_input is not None else None
@@ -661,6 +661,7 @@ def log_output(tac_input, img_input, seg_input, lin_input, out, latent, pos_rpy,
     true_label = latent[0, -1, :].cpu().detach().numpy() if latent is not None else None
     tac_input = tac_input[0].cpu().detach().numpy() if tac_input.ndim > 2 else None
 
+    fig = plt.figure(figsize=(20, 10))
 
     if tac_input is not None:
         ax1 = fig.add_subplot(2, 2, 1)

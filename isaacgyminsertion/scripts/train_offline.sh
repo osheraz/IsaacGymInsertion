@@ -1,5 +1,4 @@
 #!/bin/bash
-GPUS=${1:-0}
 SEED=${2:-42}
 CACHE=${3:-no_phys_params}
 NUM_ENVS=${4:-1}
@@ -20,10 +19,13 @@ path_norm=${data_folder}/normalization.pkl
 student_ckpt_path=/home/${USER}/tactile_insertion/datastore_${SEED}_${CACHE}/tac+eef/checkpoints/model_2.pt
 tact_path=/home/${USER}/osher3_workspace/src/isaacgym/python/IsaacGymInsertion/isaacgyminsertion/outputs/${CACHE}/tact/checkpoints/model_last.pt
 
-#CUDA_VISIBLE_DEVICES=${GPUS} \
 python train_supervised.py task=FactoryTaskInsertionTactile headless=${HEADLESS} seed=${SEED} \
 task.env.numEnvs=${NUM_ENVS} \
 offline_training=True \
+offline_train.only_bc=True \
+offline_train.multi_gpu=False \
+offline_train.gpu_ids=[1,2] \
+offline_train.only_bc=True \
 offline_train.train.student_ckpt_path="${student_ckpt_path}" \
 offline_train.model.transformer.load_tact=False \
 offline_train.model.transformer.tact_path="${tact_path}" \

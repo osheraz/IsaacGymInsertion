@@ -25,6 +25,8 @@ python train.py task=FactoryTaskInsertionTactile headless=${HEADLESS} seed=${SEE
 task.env.numEnvs=${NUM_ENVS} \
 offline_training=False \
 test=True \
+offline_train.only_bc=True \
+offline_train.gpu_ids=["${GPUS}"] \
 offline_training_w_env=True \
 offline_train.train.load_checkpoint=True \
 offline_train.multi_gpu=False \

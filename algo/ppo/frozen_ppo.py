@@ -592,11 +592,8 @@ class PPO(object):
         self.storage.data_dict['values'] = values
         self.storage.data_dict['returns'] = returns
 
-    def test(self, predict=None, obs_stats=None, milestone=100):
-        # this will test either the student or the teacher model.
-
+    def old_test(self, predict=None, obs_stats=None, milestone=100):
         self.set_eval()
-
         action, latent, done = None, None, None
 
         save_trajectory = self.env.cfg_task.data_logger.collect_data
@@ -663,6 +660,53 @@ class PPO(object):
         return num_success, total_dones
 
     #### Misc, should be moved
+    def test(self, predict=None, obs_stats=None, milestone=100):
+        # this will test either the student or the teacher model.
+
+        self.set_eval()
+
+        save_trajectory = self.env.cfg_task.data_logger.collect_data
+
+        # reset all envs
+        self.obs = self.env.reset()
+
+        # logging initial data only if one of the above is true
+        if save_trajectory:
+            if self.data_logger.data_logger is None:
+                self.data_logger.data_logger = self.data_logger.data_logger_init(None)
+            else:
+                self.data_logger.data_logger.reset()
+
+        self.env_ids = torch.arange(self.env.num_envs).view(-1, 1)
+        total_dones, num_success = 0, 0
+        total_env_runs = self.full_config.offline_train.train.test_episodes
+
+        while save_trajectory or (total_dones < total_env_runs):
+            # log video during test
+            # self.log_video()
+
+            obs_dict = {
+                'obs': self.running_mean_std(self.obs['obs']),
+                'priv_info': self.priv_mean_std(self.obs['priv_info']),
+            }
+
+            action, latent = self.model.act_inference(obs_dict)
+            action = torch.clamp(action, -1.0, 1.0)
+
+            self.obs, r, done, info = self.env.step(action)
+
+            num_success += self.env.success_reset_buf[done.nonzero()].sum()
+
+            # logging data
+            if save_trajectory:
+                self.data_logger.log_trajectory_data(action, None, done, save_trajectory=save_trajectory)
+                total_dones += len(done.nonzero())
+                if total_dones >= milestone:
+                    print('[Test] success rate:', num_success / total_dones)
+                    milestone += 100
+
+        print('[LastTest] success rate:', num_success / total_dones)
+        return num_success, total_dones
 
     def _write_video(self, frames, ft_frames, output_loc, frame_rate):
         writer = imageio.get_writer(output_loc, mode='I', fps=frame_rate)
@@ -751,6 +795,8 @@ class PPO(object):
         socket_pos = get_last_sequence(socket_pos, self.env.progress_buf, sequence_length)
         action = get_last_sequence(action, self.env.progress_buf, sequence_length)
 
+        print(eef_pos)
+
         plug_hand_quat = plug_hand_quat.squeeze(0).cpu().detach().numpy()
 
         euler = torch.tensor(Rotation.from_quat(plug_hand_quat + 1e-6).as_euler('xyz'), device=self.device).unsqueeze(0)
@@ -793,7 +839,7 @@ class PPO(object):
         img = get_last_sequence(img, self.env.progress_buf, sequence_length)
         seg = get_last_sequence(seg, self.env.progress_buf, sequence_length)
 
-        seg = (seg == obj_id).float()
+        seg = ((seg == obj_id) | (seg == 3)).float()
         img = img * seg.unsqueeze(2)
         # img += 0.5 * (img * seg.unsqueeze(2) != 0).float()
 

@@ -10,7 +10,7 @@ physics_engine: ${..physics_engine}
 
 grasp_at_init: True
 collect_rotate: False
-adapt: False
+reset_at_success: False
 
 grasp_logger:
     total_grasp: 1000

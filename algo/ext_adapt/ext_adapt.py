@@ -53,13 +53,14 @@ class ExtrinsicAdapt(object):
             self.rank = -1
             self.device = full_config["rl_device"]
         # ------
-        self.only_bc = False
 
         self.full_config = full_config
         self.task_config = full_config.task
         self.network_config = full_config.train.network
         self.train_config = full_config.offline_train
         self.ppo_config = full_config.train.ppo
+        self.only_bc = self.train_config.only_bc
+
         # ---- build environment ----
         self.env = env
         self.num_actors = self.ppo_config['num_actors']
@@ -172,7 +173,7 @@ class ExtrinsicAdapt(object):
         if self.stud_obs_mean_std:
             self.stud_obs_mean_std.eval()
 
-    def process_obs(self, obs, obj_id=2, socket_id=3):
+    def process_obs(self, obs, obj_id=2, socket_id=3, display=True):
 
         student_obs = obs['student_obs'] if 'student_obs' in obs else None
         tactile = obs['tactile'] if 'tactile' in obs else None
@@ -187,6 +188,7 @@ class ExtrinsicAdapt(object):
 
         if student_obs is not None:
             if self.stats is not None:
+
                 eef_pos = (eef_pos - self.stats["mean"]['eef_pos_rot6d']) / self.stats["std"]['eef_pos_rot6d']
                 socket_pos = (socket_pos - self.stats["mean"]["socket_pos"][:3]) / self.stats["std"]["socket_pos"][:3]
                 student_obs = torch.cat([eef_pos, socket_pos], dim=-1)
@@ -194,12 +196,34 @@ class ExtrinsicAdapt(object):
                 student_obs = self.stud_obs_mean_std(student_obs)
 
         student_dict = {
-            'student_obs': student_obs if 'student_obs' in obs else None,
+            'student_obs': student_obs,
             'tactile': tactile,
             'img': img,
             'seg': seg,
         }
+
+        if display:
+            self.display_obs(img, seg)
+
         return student_dict
+
+    def display_obs(self, depth, seg):
+
+        depth = depth[:, -1:, ...]
+        seg = seg[:, -1:, ...]
+
+        for t in range(depth.shape[1]):  # Iterate through the sequence of images
+            # Extract the images for all fingers at time step 't' and adjust dimensions for display.
+
+            d = depth[0, t].cpu().detach().numpy()
+            d = np.transpose(d, (1, 2, 0))
+            cv2.imshow('Depth Sequence', d + 0.5)  # Display the concatenated image
+
+            d = seg[t].cpu().detach().numpy()
+            d = np.transpose(d, (1, 2, 0))
+            cv2.imshow('Seg Sequence', d)  # Display the concatenated image
+
+            cv2.waitKey(1)
 
     def test(self):
 
@@ -213,6 +237,7 @@ class ExtrinsicAdapt(object):
         self.set_student_eval()
 
         obs_dict = self.env.reset()
+        total_dones, num_success = 0, 0
 
         while True:
 
@@ -226,18 +251,29 @@ class ExtrinsicAdapt(object):
             }
 
             # student pass
-            latent, _ = self.student.predict(student_dict, requires_grad=True)
+            latent, _ = self.student.predict(student_dict, requires_grad=False)
 
-            input_dict = {
-                'obs': self.running_mean_std(obs_dict['obs']),
-                'latent': latent,
-            }
+            if not self.only_bc:
+                input_dict = {
+                    'obs': self.running_mean_std(obs_dict['obs']),
+                    'latent': latent,
+                }
 
-            mu, latent = self.agent.act_inference(input_dict)
+                mu, latent = self.agent.act_inference(input_dict)
+            else:
+                mu = latent
+
             mu = torch.clamp(mu, -1.0, 1.0)
+
             obs_dict, r, done, info = self.env.step(mu)
+
             if self.env.cfg_task.data_logger.collect_data:
                 self.data_logger.log_trajectory_data(mu, latent, done)
+
+            if self.env.progress_buf[0] == self.env.max_episode_length - 1:
+                num_success += self.env.success_reset_buf[done.nonzero()].sum()
+                total_dones += len(done.nonzero())
+                print('[Test] success rate:', num_success / total_dones)
 
     def train(self):
 
@@ -270,6 +306,7 @@ class ExtrinsicAdapt(object):
 
             # student pass
             latent, _ = self.student.predict(student_dict, requires_grad=True)
+
             if not self.only_bc:
                 # act with student latent
                 mu, _ = self.agent.act_with_grad({
@@ -346,7 +383,7 @@ class ExtrinsicAdapt(object):
         # TODO
         pass
 
-    def restore_train(self, fn, with_student=True):
+    def restore_train(self, fn, with_student=False):
         checkpoint = torch.load(fn)
         cprint('Restoring train with teacher')
         cprint('careful, using non-strict matching', 'red', attrs=['bold'])
@@ -356,12 +393,15 @@ class ExtrinsicAdapt(object):
         self.set_eval()
 
         if with_student:
-            self.restore_student()
+            self.restore_student(fn)
 
-    def restore_student(self, from_offline=True):
+    def restore_student(self, fn, from_offline=False):
 
         if from_offline:
-            self.student.load_model(self.train_config.train.student_ckpt_path)
+            cprint(f'Using offline stats from: {self.train_config.train.normalize_file}', 'red', attrs=['bold'])
+            cprint(f'Restoring student from: {self.train_config.train.student_ckpt_path}', 'red', attrs=['bold'])
+            checkpoint = torch.load(self.train_config.train.student_ckpt_path, map_location=self.device)
+            self.student.model.load_state_dict(checkpoint)
             if self.train_config.model.transformer.load_tact:
                 self.student.load_tact_model(self.train_config.model.transformer.tact_path)
             self.stats = {'mean': {}, 'std': {}}
@@ -370,19 +410,23 @@ class ExtrinsicAdapt(object):
                 self.stats['mean'][key] = torch.tensor(stats['mean'][key], device=self.device)
                 self.stats['std'][key] = torch.tensor(stats['std'][key], device=self.device)
         else:
-            assert NotImplementedError
-            checkpoint = torch.load(self.train_config.train.normalize_file)
+            cprint(f'Restoring student from: {fn}', 'blue', attrs=['bold'])
+            checkpoint = torch.load(fn)
             self.stud_obs_mean_std.load_state_dict(checkpoint['stud_obs_mean_std'])
+            self.student.model.load_state_dict(checkpoint['student'])
 
     def restore_test(self, fn):
-
+        # load teacher for gt label, should act with student
         checkpoint = torch.load(fn)
         self.running_mean_std.load_state_dict(checkpoint['running_mean_std'])
         self.agent.load_state_dict(checkpoint['model'])
         self.priv_mean_std.load_state_dict(checkpoint['priv_mean_std'])
 
-        self.restore_student()
+        stud_fn = fn.replace('stage1_nn/last.pth', 'stage2_nn/last_stud.pth')
+
+        self.restore_student(stud_fn, from_offline=self.train_config.from_offline)
         self.set_eval()
+        self.set_student_eval()
 
     def save(self, name):
         weights = {

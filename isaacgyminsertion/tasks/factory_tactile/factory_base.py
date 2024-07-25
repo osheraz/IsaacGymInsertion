@@ -71,6 +71,7 @@ class FactoryBaseTactile(VecTask, FactoryABCBase):
         self.complete_video_frames = None
         self.video_frames = []
         self.rot_tf = RotationTransformer()
+        self.stud_tf = RotationTransformer(from_rep='matrix', to_rep='rotation_6d')
 
     def _get_base_yaml_params(self):
         """Initialize instance variables from YAML files."""

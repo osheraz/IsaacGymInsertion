@@ -678,7 +678,14 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.obs_queue[:, :-self.num_observations] = self.obs_queue[:, self.num_observations:]
         self.obs_queue[:, -self.num_observations:] = obs
 
-        obs_tensors_student = torch.cat([eef_pos,  # 6
+        eef_stud = torch.cat(self.pose_world_to_robot_base(self.fingertip_centered_pos.clone(),
+                                                          self.fingertip_centered_quat.clone(),
+                                                          to_rep='matrix'), dim=-1)
+        # fix bug
+        eef_stud = torch.cat((self.fingertip_centered_pos,
+                             self.stud_tf.forward(eef_stud[:, 3:].reshape(eef_stud.shape[0], 3, 3))), dim=1)
+
+        obs_tensors_student = torch.cat([eef_stud,  # 6
                                          self.socket_pos,  # 3
                                          ], dim=-1)
 
@@ -947,7 +954,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         # if we are collecting data, reset at insertion
         if (self.cfg_task.data_logger.collect_data or
                 self.cfg_task.data_logger.collect_test_sim or
-                self.cfg_task.adapt):
+                self.cfg_task.reset_at_success):
 
             self.reset_buf[:] |= self.success_reset_buf[:]
 

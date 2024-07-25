@@ -1,39 +1,42 @@
 #!/bin/bash
 GPUS=${1:-0}
 SEED=${2:-42}
-CACHE=${3:-s2_w_noise}
-NUM_ENVS=${4:-12}
+CACHE=${3:-no_phys_params}
+NUM_ENVS=${4:-1}
 HEADLESS=${5:-True}
 
 array=( $@ )
 len=${#array[@]}
 EXTRA_ARGS=${array[@]:3:$len}
-EXTRA_ARGS_SLUG=${EXTRA_ARGS// /_}
 
 echo extra "${EXTRA_ARGS}"
+
+model_to_load=outputs/${CACHE}/stage1_nn/last.pth
+student_ckpt_path=/home/${USER}/osher3_workspace/src/isaacgym/python/IsaacGymInsertion/isaacgyminsertion/outputs/${CACHE}/student/checkpoints/model_last.pt
+data_folder=/home/${USER}/tactile_insertion/datastore_${SEED}_${CACHE}
+path_norm=/${data_folder}/normalization.pkl
 
 CUDA_VISIBLE_DEVICES=${GPUS} \
 python train.py task=FactoryTaskInsertionTactile headless=${HEADLESS} seed=${SEED} \
 task.env.numEnvs=${NUM_ENVS} \
+multi_gpu=False \
+offline_train.from_offline=True \
+offline_train.only_bc=True \
+task.reset_at_success=False \
 test=True \
-offline_training=False \
-offline_training_w_env=False \
 train.algo=ExtrinsicAdapt \
-task.env.tactile=True \
-task.env.tactile_history_len=5 \
-task.tactile.tacto.width=224 \
-task.tactile.tacto.height=224 \
-task.tactile.decoder.width=224 \
-task.tactile.decoder.height=224 \
-task.env.tactile_wrt_force=True \
-task.tactile.decoder.num_channels=1 \
-task.tactile.half_image=True \
-task.env.smooth_force=True \
-train.ppo.tactile_info=True \
+train.ppo.priv_info=True \
+train.ppo.tactile_info=False \
 train.ppo.obs_info=True \
+train.ppo.img_info=True \
+train.ppo.seg_info=True \
+task.env.tactile=False \
+task.external_cam.external_cam=True \
 task.data_logger.collect_data=False \
-task.data_logger.base_folder="/common/users/dm1487/inhand_manipulation_data_store" \
+offline_train.gpu_ids=["${GPUS}"] \
+offline_train.train.normalize_file="${path_norm}" \
+offline_train.train.student_ckpt_path="${student_ckpt_path}" \
 task.data_logger.sub_folder="datastore_${SEED}_${CACHE}" \
-train.ppo.priv_info=True train.ppo.extrin_adapt=True \
 train.ppo.output_name="${CACHE}" \
-checkpoint=outputs/"${CACHE}"/stage2_nn/last.pth
+checkpoint="${model_to_load}" \
+${EXTRA_ARGS}

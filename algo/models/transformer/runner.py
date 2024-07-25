@@ -67,7 +67,7 @@ class Runner:
                 first_gpu_id = valid_gpu_ids[0] if valid_gpu_ids else 0
                 device = torch.device(f"cuda:{first_gpu_id}")
         else:
-            device = 'cuda:0'
+            device = f'cuda:{self.cfg.gpu_ids[0]}'
 
         self.device = device
 
@@ -77,12 +77,14 @@ class Runner:
 
     def _init_model(self):
 
+        out_size = self.cfg.model.transformer.output_size
+        out_size = out_size - 2 if self.only_bc else out_size
         if self.cfg.model.model_type == 'tact':
             add_lin = self.cfg.model.tact.output_size if self.cfg.model.transformer.load_tact else 0
             self.model = MultiModalModel(context_size=self.sequence_length,
                                          num_channels=self.tactile_channel,
                                          num_lin_features=self.cfg.model.linear.input_size,
-                                         num_outputs=self.cfg.model.transformer.output_size,
+                                         num_outputs=out_size,
                                          tactile_encoder="depth",  # "efficientnet-b0",
                                          img_encoder="efficientnet-b0",  # "efficientnet-b0",
                                          seg_encoder="efficientnet-b0",  # "efficientnet-b0",
@@ -100,10 +102,10 @@ class Runner:
 
         elif self.cfg.model.model_type == 'simple':
             self.model = AdaptTConv(ft_dim=self.cfg.model.linear.input_size,
-                                    ft_out_dim=self.cfg.model.transformer.output_size)
+                                    ft_out_dim=out_size)
         elif self.cfg.model.model_type == 'tcn':
             self.model = TCN(input_size=self.cfg.model.linear.input_size,
-                             output_size=self.cfg.model.transformer.output_size,
+                             output_size=out_size,
                              num_channels=[128] * 3,
                              kernel_size=5,
                              dropout=0).to(self.device)
@@ -405,7 +407,7 @@ class Runner:
 
     def load_model(self, model_path, device='cuda:0'):
         print('Loading Multimodal model:', model_path)
-        self.model.load_state_dict(torch.load(model_path))
+        self.model.load_state_dict(torch.load(model_path, map_location=device))
         # self.model.eval()
         self.device = device
         self.model.to(device)
@@ -532,8 +534,6 @@ class Runner:
 
         self.fig = plt.figure(figsize=(20, 15))
         self.ax1 = self.fig.add_subplot(2, 2, 1)
-
-        self.out_fig = plt.figure(figsize=(20, 15))
         self.train_loss, self.val_loss = [], []
 
         # Load student checkpoint.
