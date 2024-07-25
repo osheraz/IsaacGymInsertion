@@ -3,7 +3,7 @@ GPUS=${1:-0}
 SEED=${2:-42}
 CACHE=${3:-no_phys_params}
 NUM_ENVS=${4:-1}
-HEADLESS=${5:-True}
+HEADLESS=${5:-False}
 
 array=( $@ )
 len=${#array[@]}
@@ -22,7 +22,7 @@ task.env.numEnvs=${NUM_ENVS} \
 multi_gpu=False \
 offline_train.from_offline=True \
 offline_train.only_bc=True \
-task.reset_at_success=False \
+task.reset_at_success=True \
 test=True \
 train.algo=ExtrinsicAdapt \
 train.ppo.priv_info=True \

@@ -11,7 +11,7 @@ import cv2
 
 class ZedCameraSubscriber:
 
-    def __init__(self, topic='/zedm/zed_node/depth/depth_registered', with_seg=True, display=True):
+    def __init__(self, topic='/zedm/zed_node/depth/depth_registered', with_seg=True, display=False):
         """
         Finger Device class for a single Finger
         :param serial: Finger device serial

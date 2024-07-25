@@ -16,9 +16,6 @@ class SegCameraSubscriber:
 
     def __init__(self, topic='/zedm/zed_node/rgb/image_rect_color', display=False, device='cuda:0'):
         """
-        Finger Device class for a single Finger
-        :param serial: Finger device serial
-        :param name: Human friendly identifier name for the device
         """
         self.last_frame = None
         self.w = 320
