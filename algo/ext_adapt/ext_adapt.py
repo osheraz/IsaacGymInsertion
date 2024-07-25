@@ -173,7 +173,7 @@ class ExtrinsicAdapt(object):
         if self.stud_obs_mean_std:
             self.stud_obs_mean_std.eval()
 
-    def process_obs(self, obs, obj_id=2, socket_id=3, display=True):
+    def process_obs(self, obs, obj_id=2, socket_id=3, display=False):
 
         student_obs = obs['student_obs'] if 'student_obs' in obs else None
         tactile = obs['tactile'] if 'tactile' in obs else None
@@ -183,11 +183,12 @@ class ExtrinsicAdapt(object):
         seg = ((seg == obj_id) | (seg == socket_id)).float()
         img = img * seg.unsqueeze(2)
 
-        eef_pos = student_obs[:, :9]
-        socket_pos = student_obs[:, 9:]
-
         if student_obs is not None:
             if self.stats is not None:
+
+                eef_pos = student_obs[:, :9]
+                socket_pos = student_obs[:, 9:12]
+                # action = student_obs[:, 12:]
 
                 eef_pos = (eef_pos - self.stats["mean"]['eef_pos_rot6d']) / self.stats["std"]['eef_pos_rot6d']
                 socket_pos = (socket_pos - self.stats["mean"]["socket_pos"][:3]) / self.stats["std"]["socket_pos"][:3]

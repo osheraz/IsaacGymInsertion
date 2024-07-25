@@ -687,6 +687,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         obs_tensors_student = torch.cat([eef_stud,  # 6
                                          self.socket_pos,  # 3
+                                         # actions,
                                          ], dim=-1)
 
         self.obs_stud_queue[:, :-self.num_obs_stud] = self.obs_stud_queue[:, self.num_obs_stud:]

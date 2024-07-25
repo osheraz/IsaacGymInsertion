@@ -427,7 +427,7 @@ class TactileDataset(Dataset):
 
         lin_input = np.concatenate([eef_pos,  # 9
                                     socket_pos,      # 3
-                                    # action,        # 6
+                                    # shift_action_right,  # 6
                                     # obj_pos_rpy    # 6
                                     ], axis=-1)
 

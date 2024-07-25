@@ -26,12 +26,12 @@ env:
     aggregate_mode: True
 
     desired_subassemblies: [
-                            'small_triangle',
+#                            'small_triangle',
 #                            'triangle',
                             'red_round_peg_1_5in',
                             'yellow_round_peg_2in',
-                            'rectangular_peg_hole_32mm_loose',
-                            'square_peg_hole_32mm_loose',
+#                            'rectangular_peg_hole_32mm_loose',
+#                            'square_peg_hole_32mm_loose',
 #                             'round_peg_hole_16mm_loose',
 #                             'rectangular_peg_hole_16mm_loose',
     ]
@@ -138,7 +138,7 @@ randomize:
                         operation: "scaling"
                         distribution: "uniform"
 #                scale:
-#                    range: [ 0.97, 1.1 ]
+#                    range: [ 1.0, 1.2 ]
 #                    operation: "scaling"
 #                    distribution: "uniform"
 #                    setup_only: True # Property will only be randomized once before simulation is started. See Domain Randomization Documentation for more info.
