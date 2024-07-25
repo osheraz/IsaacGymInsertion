@@ -1009,9 +1009,9 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         self._reset_kuka(env_ids, new_pose=kuka_dof_pos)
 
-        for _, v in self.all_rendering_camera.items():
+        # for _, v in self.all_rendering_camera.items():
             # env_id = v[0], camera_1 = v[1], camera_2 = v[2]
-            self.init_plug_pos_cam[v[0], :] = plug_pos[v[0], :]
+            # self.init_plug_pos_cam[v[0], :] = plug_pos[v[0], :]
 
         object_pose = {
             'socket_pose': socket_pos,
@@ -1194,6 +1194,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             self._close_gripper(env_ids)
             self.enable_gravity(-9.81)
         else:
+            self.disable_gravity()
             self._reset_predefined_environment(env_ids)
             self._close_gripper(env_ids)
             self.enable_gravity(-9.81)

@@ -391,7 +391,7 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
         for subassembly in self.cfg_env.env.desired_subassemblies:
             self._initialize_grasp_poses(subassembly)
 
-    def _initialize_grasp_poses(self, subassembly, with_noise=False):
+    def _initialize_grasp_poses(self, subassembly, with_noise=True):
 
         try:
             sf = subassembly + '_noise' if with_noise else subassembly
