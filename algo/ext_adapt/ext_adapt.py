@@ -34,7 +34,7 @@ import pickle
 def replace_nan_with_zero(tensor):
     nan_mask = torch.isnan(tensor)
     if nan_mask.any():
-        print(f'NaN found at tensor')
+        # print(f'NaN found at tensor')
         tensor[nan_mask] = 0.0
     return tensor
 
@@ -319,7 +319,8 @@ class ExtrinsicAdapt(object):
             else:
                 # pure behaviour cloning output
                 mu = latent
-                loss_latent = 0
+                loss_latent = torch.zeros(1, device=self.device)
+
             loss_action = loss_action_fn(mu, mu_gt.detach())
 
             self.optim.zero_grad()
@@ -352,9 +353,9 @@ class ExtrinsicAdapt(object):
 
             self.log_tensorboard()
 
-            if self.agent_steps % 1e3 == 0:
+            if self.agent_steps % 1e5 == 0:
                 self.save(os.path.join(self.nn_dir, f'last'))
-            if self.agent_steps % 1e4 == 0:
+            if self.agent_steps % 1e6 == 0:
                 self.save(os.path.join(self.nn_dir, f'{self.agent_steps // 1e4}0k'))
 
             mean_rewards = self.mean_eps_reward.get_mean()
@@ -384,7 +385,7 @@ class ExtrinsicAdapt(object):
         # TODO
         pass
 
-    def restore_train(self, fn, with_student=False):
+    def restore_train(self, fn):
         checkpoint = torch.load(fn)
         cprint('Restoring train with teacher')
         cprint('careful, using non-strict matching', 'red', attrs=['bold'])
@@ -393,8 +394,22 @@ class ExtrinsicAdapt(object):
         self.priv_mean_std.load_state_dict(checkpoint['priv_mean_std'])
         self.set_eval()
 
-        if with_student:
-            self.restore_student(fn)
+        if self.train_config.from_offline:
+            stud_fn = fn.replace('stage1_nn/last.pth', 'stage2_nn/last_stud.pth')
+            self.restore_student(stud_fn, from_offline=self.train_config.from_offline)
+
+    def restore_test(self, fn):
+        # load teacher for gt label, should act with student
+        checkpoint = torch.load(fn)
+        self.running_mean_std.load_state_dict(checkpoint['running_mean_std'])
+        self.agent.load_state_dict(checkpoint['model'])
+        self.priv_mean_std.load_state_dict(checkpoint['priv_mean_std'])
+
+        stud_fn = fn.replace('stage1_nn/last.pth', 'stage2_nn/last_stud.pth')
+
+        self.restore_student(stud_fn, from_offline=self.train_config.from_offline)
+        self.set_eval()
+        self.set_student_eval()
 
     def restore_student(self, fn, from_offline=False):
 
@@ -416,18 +431,6 @@ class ExtrinsicAdapt(object):
             self.stud_obs_mean_std.load_state_dict(checkpoint['stud_obs_mean_std'])
             self.student.model.load_state_dict(checkpoint['student'])
 
-    def restore_test(self, fn):
-        # load teacher for gt label, should act with student
-        checkpoint = torch.load(fn)
-        self.running_mean_std.load_state_dict(checkpoint['running_mean_std'])
-        self.agent.load_state_dict(checkpoint['model'])
-        self.priv_mean_std.load_state_dict(checkpoint['priv_mean_std'])
-
-        stud_fn = fn.replace('stage1_nn/last.pth', 'stage2_nn/last_stud.pth')
-
-        self.restore_student(stud_fn, from_offline=self.train_config.from_offline)
-        self.set_eval()
-        self.set_student_eval()
 
     def save(self, name):
         weights = {
