@@ -179,6 +179,7 @@ class MultiModalModel(BaseModel):
             include_seg: Optional[bool] = True,
             include_tactile: Optional[bool] = True,
             additional_lin: Optional[int] = 0,
+            only_bc: Optional[bool] = False,
     ) -> None:
         """
         Modified ViT class: uses a Transformer-based architecture to encode (current and past) visual observations
@@ -284,6 +285,7 @@ class MultiModalModel(BaseModel):
         )
         self.latent_predictor = nn.Sequential(
             nn.Linear(32, self.num_output_params),
+            nn.Tanh() if only_bc else nn.Identity()
         )
 
     def forward(

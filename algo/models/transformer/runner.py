@@ -88,6 +88,7 @@ class Runner:
                                          tactile_encoder="depth",  # "efficientnet-b0",
                                          img_encoder="efficientnet-b0",  # "efficientnet-b0",
                                          seg_encoder="efficientnet-b0",  # "efficientnet-b0",
+                                         lin_encoding_size=self.cfg.model.transformer.lin_encoding_size,
                                          tactile_encoding_size=self.cfg.model.transformer.tactile_encoding_size,
                                          img_encoding_size=self.cfg.model.transformer.img_encoding_size,
                                          seg_encoding_size=self.cfg.model.transformer.seg_encoding_size,
@@ -98,7 +99,8 @@ class Runner:
                                          include_img=self.cfg.model.use_img,
                                          include_seg=self.cfg.model.use_seg,
                                          include_lin=self.cfg.model.use_lin,
-                                         include_tactile=self.cfg.model.use_tactile)
+                                         include_tactile=self.cfg.model.use_tactile,
+                                         only_bc=self.only_bc)
 
         elif self.cfg.model.model_type == 'simple':
             self.model = AdaptTConv(ft_dim=self.cfg.model.linear.input_size,
@@ -206,7 +208,7 @@ class Runner:
 
             if self.only_bc:
                 out = self.model(tactile, img, seg, stud_obs, d_pos_rpy)
-                out = torch.clamp(out, -1, 1)
+                # out = torch.clamp(out, -1, 1)
                 loss_latent = self.loss_fn_mean(out, action[:, -1, :])
             else:
                 out = self.model(tactile, img, seg, stud_obs, d_pos_rpy)
@@ -217,7 +219,7 @@ class Runner:
             if self.ppo_step is not None:
                 obs_hist = obs_hist[:, -1, :].to(self.device).view(obs_hist.shape[0], obs_hist.shape[-1])
                 pred_action, _ = self.ppo_step({'obs': obs_hist, 'latent': out})
-                pred_action = torch.clamp(pred_action, -1, 1)
+                # pred_action = torch.clamp(pred_action, -1, 1)
                 loss_action = self.loss_fn_mean(pred_action, action[:, -1, :])
 
             loss = (self.cfg.train.latent_scale * loss_latent) + (self.cfg.train.action_scale * loss_action)
@@ -430,7 +432,7 @@ class Runner:
         if not os.path.exists(ckpt_path):
             os.makedirs(f'{ckpt_path}')
 
-        self.optimizer = optim.AdamW(self.model.parameters(), lr=learning_rate)
+        self.optimizer = optim.AdamW(self.model.parameters(), lr=learning_rate, weight_decay=1e-6)
 
         if self.cfg.train.scheduler == 'reduce':
             self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(self.optimizer,

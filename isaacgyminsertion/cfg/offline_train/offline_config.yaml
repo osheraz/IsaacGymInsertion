@@ -5,11 +5,11 @@ output_dir: "/home/roblab20/tactile_tests/datastore_real" # where to save checkp
 only_bc: False
 multi_gpu: False
 from_offline: False
-gpu_ids: [1, 2]
+gpu_ids: [0, 1]
 img_type: "depth" # 1C
 img_color_jitter: False
-img_width: 180 # orig 180
-img_height: 320 # orig 320
+img_width: 94 # orig 180
+img_height: 168 # orig 320
 img_gaussian_noise: 0.004
 img_masking_prob: 0.0
 img_patch_size: 16
@@ -29,7 +29,7 @@ tactile_crop_h: 8
 # supervised learning
 train:
   # basic training hyperparameters
-  epochs: 50
+  epochs: 100
   train_batch_size: 32
   val_batch_size: 32
   learning_rate: 1e-4
@@ -81,7 +81,7 @@ train:
 model:
   # linear embedding
   linear:
-    input_size: 12
+    input_size: 18
 
   use_img: True
   use_seg: True
@@ -91,14 +91,15 @@ model:
   model_type: 'tact'
 
   transformer:
-    sequence_length: 1
+    sequence_length: 2
     num_layers: 4
     num_heads: 4
     dim_factor: 4
     output_size: 8
-    tactile_encoding_size: 128
-    img_encoding_size: 128
-    seg_encoding_size: 128
+    tactile_encoding_size: 64
+    img_encoding_size: 64
+    seg_encoding_size: 64
+    lin_encoding_size: 64
     load_tact: False
     tact_path: "/home/roblab20/osher3_workspace/src/isaacgym/python/IsaacGymInsertion/isaacgyminsertion/outputs/gt_test/tact/checkpoints/model_last.pt"
 

@@ -423,11 +423,12 @@ class TactileDataset(Dataset):
 
         # noisy_socket_pos_noise = np.random.normal(loc=0, scale=0.002, size=noisy_socket_pos.shape)
         # obj_pos_rpy_noise = 0 * np.random.normal(loc=0, scale=0.002, size=obj_pos_rpy.shape)
-        shift_action_right = np.concatenate([np.zeros((1, action.shape[-1])), action[:-1, :]], axis=0)
+        shift_action_right = np.concatenate([np.zeros((self.sequence_length, action.shape[-1])),
+                                             action[:-self.sequence_length, :]], axis=0)
 
         lin_input = np.concatenate([eef_pos,  # 9
                                     socket_pos,      # 3
-                                    # shift_action_right,  # 6
+                                    shift_action_right,  # 6
                                     # obj_pos_rpy    # 6
                                     ], axis=-1)
 
