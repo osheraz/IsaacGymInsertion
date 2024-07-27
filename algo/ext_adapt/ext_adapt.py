@@ -140,7 +140,7 @@ class ExtrinsicAdapt(object):
         for name, p in self.agent.named_parameters():
             p.requires_grad = False
 
-        self.optim = torch.optim.Adam(self.student.model.parameters(), lr=1e-4)
+        self.optim = torch.optim.Adam(self.student.model.parameters(), lr=1e-4, weight_decay=1e-6)
 
         # ---- Training Misc
         batch_size = self.num_actors

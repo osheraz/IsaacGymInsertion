@@ -2,8 +2,8 @@
 GPUS=${1:-0}
 SEED=${2:-42}
 CACHE=${3:-no_phys_params}
-NUM_ENVS=${4:-20}
-HEADLESS=${5:-True}
+NUM_ENVS=${4:-1}
+HEADLESS=${5:-False}
 
 
 array=( $@ )

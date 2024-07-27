@@ -148,7 +148,7 @@ randomize:
 #    plug_quat_noise: [0.0, 0.0, 0.0, 0.0]
 
     socket_pos_xy_initial: [0.5, 0.0, 0.0]  # initial XY position of plug on table # round_hole_2in  width = 0.1016, length = 0.09144
-    socket_pos_xy_noise: [0.001, 0.001]  # noise on socket position
+    socket_pos_xy_noise: [0.000, 0.00]  # noise on socket position
     socket_pos_z_noise_bounds: [0.000, 0.000]  # noise on socket offset from table
 #    above_socket_noise: [0.03, 0.03, 0.001]
 #    socket_rot_euler_noise: 0.001  # noise on socket position
