@@ -34,6 +34,7 @@ Inherits base class and abstract environment class. Inherited by insertion task 
 
 Configuration defined in FactoryEnvInsertionTactile.yaml. Asset info defined in factory_asset_info_insertion.yaml.
 """
+import random
 
 import hydra
 import numpy as np
@@ -366,7 +367,7 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
         camera_props.width = width
         camera_props.height = height
         camera_props.enable_tensors = True
-        hfov = 75
+        hfov = 70
         if hfov is not None:
             camera_props.horizontal_fov = hfov
         camera_handle = self.gym.create_camera_sensor(self.envs[env_idx], camera_props)

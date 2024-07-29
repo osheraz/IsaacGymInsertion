@@ -881,7 +881,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                 mask = self.seg_buf[0].cpu().clone()
                 cv2.imshow("Depth Image", img.numpy().transpose(1, 2, 0) + 0.5)
 
-                forward_mask = (mask == 2).float()
+                forward_mask = ((mask == 2) | (mask == 3)).float()
                 img = torch.where(forward_mask > 0.5, img, 0)
                 cv2.imshow("Mask Image", img.numpy().transpose(1, 2, 0) + 0.5)
 
@@ -1231,21 +1231,27 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             angles = np.clip(angles, 0.03, 0.03)
 
             for env_id in env_ids:
-                radius = np.random.uniform(0.295, 0.3)
-                center_x, center_y, _ = self.socket_pos[env_id].cpu()
-                angle = angles[env_id]
+                # radius = np.random.uniform(0.295, 0.3)
+                # center_x, center_y, _ = self.socket_pos[env_id].cpu()
+                # angle = angles[env_id]
+                #
+                # x_pos = center_x + radius * np.cos(angle)
+                # y_pos = center_y + radius * np.sin(angle)
+                # z_pos = self.init_camera_pos[2]
+                # perturbed_position = np.array([x_pos, y_pos, z_pos]) + np.random.normal(0, self.pos_error_std, 3)
+                #
+                # roll = self.init_camera_rot[0]
+                # pitch = self.init_camera_rot[1]
+                # yaw = np.arctan2(center_y - y_pos, center_x - x_pos)
+                #
+                # perturbed_rotation = np.array([roll, pitch, yaw]) + np.random.normal(0, np.deg2rad(self.rot_error_std),
+                #                                                                      3)
+                random_pos_error = np.random.normal(0, self.pos_error_std, 3)
+                random_rot_error = np.random.normal(0, self.rot_error_std, 3)
 
-                x_pos = center_x + radius * np.cos(angle)
-                y_pos = center_y + radius * np.sin(angle)
-                z_pos = self.init_camera_pos[2]
-                perturbed_position = np.array([x_pos, y_pos, z_pos]) + np.random.normal(0, self.pos_error_std, 3)
-
-                roll = self.init_camera_rot[0]
-                pitch = self.init_camera_rot[1]
-                yaw = np.arctan2(center_y - y_pos, center_x - x_pos)
-
-                perturbed_rotation = np.array([roll, pitch, yaw]) + np.random.normal(0, np.deg2rad(self.rot_error_std),
-                                                                                     3)
+                # Apply random errors to the initial position and rotation
+                perturbed_position = np.array(self.init_camera_pos) + random_pos_error
+                perturbed_rotation = np.array(self.init_camera_rot) + random_rot_error
 
                 _, trans = self.make_handle_trans(self.res[0], self.res[1], env_id, perturbed_position,
                                                   perturbed_rotation)
