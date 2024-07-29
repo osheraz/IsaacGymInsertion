@@ -394,6 +394,9 @@ class MultiModalModel(BaseModel):
             if self.additional_lin:
                 add_lin_input = add_lin_input
                 lin_input = torch.cat((lin_input, add_lin_input), dim=2)
+            if len(lin_input.shape) == 2:
+                lin_input = lin_input.reshape((lin_input.shape[0], self.context_size, self.num_lin_features))
+
             lin_encoding = self.lin_encoder(lin_input)
             if len(lin_encoding.shape) == 2:
                 lin_encoding = lin_encoding.unsqueeze(1)

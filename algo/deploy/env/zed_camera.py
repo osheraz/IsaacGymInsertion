@@ -1,12 +1,9 @@
 import rospy
 
 from sensor_msgs.msg import Image
-from tf2_ros import Buffer, TransformListener
-# from algo.deploy.env.env_utils.transforms import transform_images
-from algo.deploy.env.env_utils.deploy_utils import msg_to_pil, image_msg_to_numpy
+from algo.deploy.env.env_utils.deploy_utils import image_msg_to_numpy
 import numpy
 import cv2
-
 
 
 class ZedCameraSubscriber:
@@ -24,6 +21,7 @@ class ZedCameraSubscriber:
         self.near_clip = 0.0
         self.dis_noise = 0.00
         self.display = display
+        self.zed_init = False
         self.init_success = False
         self.with_seg = with_seg
 
@@ -33,9 +31,17 @@ class ZedCameraSubscriber:
 
         self._topic_name = rospy.get_param('~topic_name', '{}'.format(topic))
         rospy.loginfo("(topic_name) Subscribing to Images to topic  %s", self._topic_name)
-        self._image_subscriber = rospy.Subscriber(self._topic_name, Image, self.image_callback, queue_size=2)
         self._check_camera_ready()
+        if with_seg:
+            self._check_seg_ready()
 
+        self._image_subscriber = rospy.Subscriber(self._topic_name, Image, self.image_callback, queue_size=2)
+
+    def _check_seg_ready(self):
+        print('Waiting for SAM to init')
+        while not self.seg.init_success and not rospy.is_shutdown():
+            self.init_success &= self.seg.init_success
+        print('SAM is ready')
 
     def _check_camera_ready(self):
 
@@ -48,7 +54,9 @@ class ZedCameraSubscriber:
                     '{}'.format(self._topic_name), Image, timeout=5.0)
                 rospy.logdebug(
                     "Current '{}' READY=>".format(self._topic_name))
-                self.init_success = True
+                self.zed_init = True
+                self.last_frame = image_msg_to_numpy(self.last_frame)
+                self.last_frame = numpy.expand_dims(self.last_frame, axis=0)
                 self.start_time = rospy.get_time()
             except:
                 rospy.logerr(
@@ -65,19 +73,24 @@ class ZedCameraSubscriber:
             frame = cv2.resize(frame, (self.w, self.h), interpolation=cv2.INTER_AREA)
             frame = numpy.expand_dims(frame, axis=0)
             frame = self.process_depth_image(frame)
-            self.last_frame = frame
 
-            if self.with_seg:
-                mask = self.seg.get_frame()
-                frame *= numpy.expand_dims(mask, axis=0)
+            try:
+                if self.with_seg:
+                    mask = self.seg.get_frame().astype(float)
+                    frame *= numpy.expand_dims(mask, axis=0)
+                    self.last_frame = frame
+                    self.seg_frame = mask
 
-            if self.display:
-                cv2.imshow("Depth Image", self.last_frame.transpose(1, 2, 0) + 0.5)
-                key = cv2.waitKey(1)
+            except Exception as e:
+                pass
+
+            # if self.display:
+            cv2.imshow("Test Depth Image", self.last_frame.transpose(1, 2, 0) + 0.5)
+            key = cv2.waitKey(1)
 
     def get_frame(self):
 
-        return self.last_frame, self.seg.get_frame()
+        return self.last_frame, self.seg_frame
 
     def process_depth_image(self, depth_image):
         # These operations are replicated on the hardware
@@ -96,6 +109,7 @@ class ZedCameraSubscriber:
     def crop_depth_image(self, depth_image):
         # crop 30 pixels from the left and right and and 20 pixels from bottom and return croped image
         return depth_image
+
 
 if __name__ == "__main__":
 

@@ -18,8 +18,7 @@ from isaacgyminsertion.utils import torch_jit_utils
 import isaacgyminsertion.tasks.factory_tactile.factory_control as fc
 from algo.models.transformer.runner import Runner as Student
 import numpy as np
-
-from scipy.spatial.transform import Rotation as R
+from termcolor import cprint
 from isaacgyminsertion.tasks.factory_tactile.factory_utils import quat2R, RotationTransformer
 
 
@@ -37,11 +36,8 @@ class HardwarePlayer:
 
         self.rot_tf = RotationTransformer()
         self.rot_tf_back = RotationTransformer(to_rep='quaternion', from_rep='rotation_6d',)
+        self.stud_tf = RotationTransformer(from_rep='matrix', to_rep='rotation_6d')
 
-        self.stats = {
-            'mean': {},
-            'std': {}
-        }
         self.num_envs = 1
         self.deploy_config = full_config.deploy
         self.full_config = full_config
@@ -83,7 +79,7 @@ class HardwarePlayer:
         self.far_clip = self.full_config.task.external_cam.far_clip
         self.dis_noise = self.full_config.task.external_cam.dis_noise
 
-        net_config = {
+        agent_config = {
             'actor_units': self.full_config.train.network.mlp.units,
             'actions_num': self.num_actions,
             'priv_mlp_units': self.full_config.train.network.priv_mlp.units,
@@ -96,9 +92,9 @@ class HardwarePlayer:
             'shared_parameters': False
         }
 
-        self.model = ActorCritic(net_config)
-        self.model.to(self.device)
-        self.model.eval()
+        self.agent = ActorCritic(agent_config)
+        self.agent.to(self.device)
+        self.agent.eval()
 
         self.running_mean_std = RunningMeanStd(self.obs_shape).to(self.device)
         self.running_mean_std.eval()
@@ -114,41 +110,75 @@ class HardwarePlayer:
         #     'yaml']
         self.asset_info_insertion = self.asset_info_insertion['']['']['']['']['']['']['assets']['factory']['yaml']
 
-        self.student = Student(self.full_config)
+        self.ppo_config = full_config.train.ppo
+        self.obs_info = True  # self.ppo_config["obs_info"]
+        self.tactile_info = self.ppo_config["tactile_info"]
+        self.img_info = True  # self.ppo_config["img_info"]
+        self.seg_info = True  # self.ppo_config["seg_info"]
+
+        student_cfg = self.full_config
+        student_cfg.offline_train.only_bc = True
+        student_cfg.offline_train.model.use_tactile = self.tactile_info
+        student_cfg.offline_train.model.use_seg = self.seg_info
+        student_cfg.offline_train.model.use_lin = self.obs_info
+        student_cfg.offline_train.model.use_img = self.img_info
+        self.student = Student(student_cfg)
 
     def restore(self, fn):
         checkpoint = torch.load(fn)
         self.running_mean_std.load_state_dict(checkpoint['running_mean_std'])
         if 'priv_mean_std' in checkpoint:
-            print('Policy with priv info')
+            print('Loading Policy with priv info')
             self.priv_mean_std.load_state_dict(checkpoint['priv_mean_std'])
         else:
-            print('Policy without priv info')
-        self.model.load_state_dict(checkpoint['model'])
+            print('Loading Policy without priv info')
+        self.agent.load_state_dict(checkpoint['model'])
 
-        self.student.load_model(self.train_config.train.student_ckpt_path)
-        if self.train_config.model.transformer.load_tact:
-            self.student.load_tact_model(self.train_config.model.transformer.tact_path)
-
-        stats = pickle.load(open(self.train_config.train.normalize_file, "rb"))
-        for key in stats['mean'].keys():
-            self.stats['mean'][key] = torch.tensor(stats['mean'][key], device=self.device)
-            self.stats['std'][key] = torch.tensor(stats['std'][key], device=self.device)
+        stud_fn = fn.replace('stage1_nn/last.pth', 'student/checkpoints/model_last.pt')
+        self.restore_student(stud_fn, from_offline=True)
 
         self.set_eval()
+        self.set_student_eval()
+
+    def restore_student(self, fn, from_offline=False):
+
+        if from_offline:
+            cprint(f'Using offline stats from: {self.train_config.train.normalize_file}', 'red', attrs=['bold'])
+            cprint(f'Restoring student from: {self.train_config.train.student_ckpt_path}', 'red', attrs=['bold'])
+            checkpoint = torch.load(self.train_config.train.student_ckpt_path, map_location=self.device)
+            self.student.model.load_state_dict(checkpoint)
+            if self.train_config.model.transformer.load_tact:
+                self.student.load_tact_model(self.train_config.model.transformer.tact_path)
+            self.stats = {'mean': {}, 'std': {}}
+            stats = pickle.load(open(self.train_config.train.normalize_file, "rb"))
+            for key in stats['mean'].keys():
+                self.stats['mean'][key] = torch.tensor(stats['mean'][key], device=self.device)
+                self.stats['std'][key] = torch.tensor(stats['std'][key], device=self.device)
+        else:
+            cprint(f'Restoring student from: {fn}', 'blue', attrs=['bold'])
+            checkpoint = torch.load(fn, map_location=self.device)
+            self.stud_obs_mean_std = RunningMeanStd((self.full_config.offline_train.model.linear.input_size,)).to(
+                self.device)
+            self.stud_obs_mean_std.load_state_dict(checkpoint['stud_obs_mean_std'])
+            self.student.model.load_state_dict(checkpoint['student'])
 
     def compile_inference(self, precision="high"):
         torch.set_float32_matmul_precision(precision)
-        self.model.policy.forward = torch.compile(torch.no_grad(self.student.model.forward))
-        self.model.tact.model.forward = torch.compile(torch.no_grad(self.tact.model.forward))
+        self.agent.policy.forward = torch.compile(torch.no_grad(self.student.model.forward))
+        self.agent.tact.model.forward = torch.compile(torch.no_grad(self.tact.model.forward))
 
     def set_eval(self):
-        self.model.eval()
+        self.agent.eval()
         self.running_mean_std.eval()
         self.priv_mean_std.eval()
+
+    def set_student_eval(self):
+
         self.student.model.eval()
         if self.train_config.model.transformer.load_tact:
             self.student.tact.eval()
+        # if self.stud_obs_mean_std:
+        #     self.stud_obs_mean_std.eval()
 
     def _initialize_grasp_poses(self, gp='yellow_round_peg_2in'):
 
@@ -369,9 +399,8 @@ class HardwarePlayer:
 
         self.plug_hand_pos, self.plug_hand_quat = self._pose_world_to_hand_base(self.plug_pos, self.plug_quat)
 
-    def compute_observations(self, with_tactile=True,
-                             with_img=True, display_image=True, with_priv=False, with_stud=False,
-                             diff_tac=True):
+    def compute_observations(self, with_tactile=True, with_img=True, display_image=True,
+                             with_priv=False, with_stud=True, diff_tac=True):
 
         obses = self.env.get_obs()
 
@@ -468,23 +497,29 @@ class HardwarePlayer:
 
         if with_stud:
 
-            eef_pos = (eef_pos - self.stats["mean"]["eef_pos"]) / self.stats["std"]["eef_pos"]
+            eef_stud = torch.cat((self.fingertip_centered_pos, quat2R(self.fingertip_centered_quat).reshape(1, -1)), dim=-1)
+            # fix bug
+            eef_stud = torch.cat((self.fingertip_centered_pos,
+                                  self.stud_tf.forward(eef_stud[:, 3:].reshape(eef_stud.shape[0], 3, 3))), dim=1)
+
+            eef_stud = (eef_stud - self.stats["mean"]["eef_pos_rot6d"]) / self.stats["std"]["eef_pos_rot6d"]
             socket_pos = (self.socket_pos - self.stats["mean"]["socket_pos"][:3]) / self.stats["std"]["socket_pos"][:3]
 
-            obs_stud = torch.cat([eef_pos,
+            obs_stud = torch.cat([eef_stud,
                                   socket_pos,
-                                  action,
+                                  # action,
                                   ], dim=-1)
 
             self.obs_stud_queue[:, 1:] = self.obs_stud_queue[:, :-1].clone().detach()
             self.obs_stud_queue[:, 0, :] = obs_stud
 
-            obs_dict['obs_stud'] = self.obs_stud_queue.clone()
+            obs_dict['student_obs'] = self.obs_stud_queue.clone()
 
         if with_tactile:
             obs_dict['tactile'] = self.tactile_queue.clone()
         if with_img:
             obs_dict['img'] = self.img_queue.clone()
+            obs_dict['seg'] = self.seg_queue.clone()
 
         if with_priv:
             # Compute privileged info (gt_error + contacts)
@@ -769,17 +804,19 @@ class HardwarePlayer:
         while cur_episode < num_episodes:
 
             # self.env.set_random_init_error(true_socket_pose=true_socket_pose)
-            # self.env.grasp()  # little squeeze
+            # self.env.grasp()  # little squeeze never hurts
 
             # Bias the ft sensor
             self.env.arm.calib_robotiq()
 
             obs_dict = self.compute_observations(with_priv=False, with_tactile=False, with_img=True)
-            obs = obs_dict['obs']
-            tactile = obs_dict['tactile'] if 'tactile' in obs_dict else None
-            img = obs_dict['img'] if 'img' in obs_dict else None
-            seg = obs_dict['seg'] if 'seg' in obs_dict else None
-            obs_stud = obs_dict['obs_stud'] if 'img' in obs_dict else None
+
+            student_dict = {
+                'student_obs': obs_dict['student_obs'] if 'student_obs' in obs_dict else None,
+                'tactile': obs_dict['tactile'] if 'tactile' in obs_dict else None,
+                'img': obs_dict['img'] if 'img' in obs_dict else None,
+                'seg': obs_dict['seg'] if 'seg' in obs_dict else None,
+            }
 
             self._update_reset_buf()
 
@@ -788,15 +825,16 @@ class HardwarePlayer:
 
             while not self.done[0, 0]:
 
-                latent, _ = self.student.get_latent(tactile, img, seg, obs_stud) # .unsqueeze(1)
+                latent, _ = self.student.predict(student_dict, requires_grad=False)
 
                 if not self.train_config.only_bc:
+
                     input_dict = {
-                        'obs': self.running_mean_std(obs.clone()),
+                        'obs': self.running_mean_std(obs_dict['obs'].clone()),
                         'latent': latent
                     }
 
-                    action, latent = self.model.act_inference(input_dict)
+                    action, latent = self.agent.act_inference(input_dict)
                 else:
                     action = latent
 
@@ -810,8 +848,6 @@ class HardwarePlayer:
                 self._update_reset_buf()
                 self.episode_length += 1
 
-                # if self.episode_length >= max_steps:
-                #     done = torch.tensor([1]).to(self.device)
                 if self.deploy_config.data_logger.collect_data:
                     data_logger.log_trajectory_data(action, latent, self.done.clone())
 
@@ -821,11 +857,12 @@ class HardwarePlayer:
 
                 # Compute next observation
                 obs_dict = self.compute_observations(with_priv=False, with_tactile=False, with_img=True)
-                obs = obs_dict['obs']
-                tactile = obs_dict['tactile'] if 'tactile' in obs_dict else None
-                img = obs_dict['img'] if 'img' in obs_dict else None
-                seg = obs_dict['seg'] if 'seg' in obs_dict else None
-                obs_stud = obs_dict['obs_stud'] if 'img' in obs_dict else None
+                student_dict = {
+                    'student_obs': obs_dict['student_obs'] if 'student_obs' in obs_dict else None,
+                    'tactile': obs_dict['tactile'] if 'tactile' in obs_dict else None,
+                    'img': obs_dict['img'] if 'img' in obs_dict else None,
+                    'seg': obs_dict['seg'] if 'seg' in obs_dict else None,
+                }
 
             self.env.arm.move_manipulator.stop_motion()
             self.reset()

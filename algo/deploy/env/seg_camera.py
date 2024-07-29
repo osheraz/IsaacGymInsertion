@@ -23,6 +23,21 @@ class SegCameraSubscriber:
         self.display = display
         self.init_success = False
         self.device = device
+        self.img_size = 1024
+        self.conf = 0.4
+        self.iou = 0.9
+        # Default configurations
+        self.table_dims = {"x_min": 10, "y_min": 10, "x_max": 280, "y_max": 250}
+        self.socket_rough_pos = {"x_min": 120, "y_min": 100, "x_max": 280, "y_max": 180}
+        self.max_dims = {"width": 70, "height": 70}
+        self.socket_max_dims = {"width": 100, "height": 80}
+        self.socket_min_dims = {"width": 0, "height": 0}
+
+        self.min_dims = {"width": 10, "height": 15}
+
+        self.first_frame = False
+        self.points_to_exclude = [(0,0)] # [(147, 156), (147, 156)]
+
         self._topic_name = rospy.get_param('~topic_name', '{}'.format(topic))
         rospy.loginfo("(topic_name) Subscribing to Images to topic  %s", self._topic_name)
         self.model = FastSAM('/home/roblab20/osher3_workspace/src/isaacgym/python/'
@@ -41,7 +56,6 @@ class SegCameraSubscriber:
                     '{}'.format(self._topic_name), Image, timeout=5.0)
                 rospy.logdebug(
                     "Current '{}' READY=>".format(self._topic_name))
-                self.init_success = True
                 self.start_time = rospy.get_time()
                 # init model overrides
                 _ = self.model.predict(source=self.last_frame,
@@ -55,104 +69,134 @@ class SegCameraSubscriber:
                     "Current '{}' not ready yet, retrying for getting image".format(self._topic_name))
         return self.last_frame
 
+    def is_box_within_rect(self, box, rect, exclude_points):
+        x_min, y_min, x_max, y_max = box
+
+        includes_exclude_points = any(
+            x_min <= point[0] <= x_max and y_min <= point[1] <= y_max
+            for point in exclude_points
+        )
+
+        within_rect = (
+            x_min >= rect["x_min"] and y_min >= rect["y_min"] and
+            x_max <= rect["x_max"] and y_max <= rect["y_max"]
+        )
+
+        return within_rect and not includes_exclude_points
+
+    def is_box_within_rect_and_dim(self, box, rect, max_dim, min_dim, exclude_points):
+        x_min, y_min, x_max, y_max = box
+        box_width = x_max - x_min
+        box_height = y_max - y_min
+
+        within_rect_and_dim = (
+            x_min >= rect["x_min"] and y_min >= rect["y_min"] and
+            x_max <= rect["x_max"] and y_max <= rect["y_max"] and
+            min_dim["width"] < box_width < max_dim["width"] and
+            min_dim["height"] < box_height < max_dim["height"]
+        )
+
+        includes_exclude_points = any(
+            x_min <= point[0] <= x_max and y_min <= point[1] <= y_max
+            for point in exclude_points
+        )
+
+        return within_rect_and_dim and not includes_exclude_points
+
+    def find_smallest_and_largest_boxes(self, socket_boxes):
+        if not socket_boxes:
+            return None, None  # Return None if the list is empty
+
+        def box_area(box):
+            x_min, y_min, x_max, y_max = box
+            return (x_max - x_min) * (y_max - y_min)
+
+        smallest_box = min(socket_boxes, key=box_area)
+        largest_box = max(socket_boxes, key=box_area)
+
+        return smallest_box, largest_box
+
     def image_callback(self, msg):
         try:
             frame = image_msg_to_numpy(msg)
         except Exception as e:
             print(e)
-        else:
-            start = time.perf_counter()
+            return
 
-            frame = cv2.resize(frame, (self.w, self.h), interpolation=cv2.INTER_AREA)
-            results = self.model.predict(source=frame,
-                                         device=self.device,
-                                         retina_masks=True,
-                                         imgsz=(384, 480),
-                                         conf=0.6,
-                                         iou=0.9,)
+        # start = time.perf_counter()
 
-            specific_rect = {
-                "x_min": 100,
-                "y_min": 70,
-                "x_max": 260,
-                "y_max": 160
-            }
-            # Define the specific dimensions (width and height)
-            max_dims = {
-                "width": 50,
-                "height": 70
-            }
+        # Resize the frame
+        frame = cv2.resize(frame, (self.w, self.h), interpolation=cv2.INTER_AREA)
 
-            min_dims = {
-                "width": 5,
-                "height": 30
-            }
+        # Perform model prediction
+        results = self.model.predict(
+            source=frame,
+            device=self.device,
+            retina_masks=True,
+            imgsz=self.img_size,
+            conf=self.conf,
+            iou=self.iou,
+        )
 
-            points_to_exclude = [(147, 156), (147, 156)]
+        seg, socket, all_boxes = [], [], []
 
-            def is_box_within_rect(box, rect, exclude_points):
-                x_min, y_min, x_max, y_max = box
+        for box in results[0].boxes:
+            box = box.xyxy.cpu().numpy()[0]
+            if self.is_box_within_rect(box, self.table_dims, self.points_to_exclude):
+                all_boxes.append([int(box[0]), int(box[1]), int(box[2]), int(box[3])])
+            if self.is_box_within_rect_and_dim(box,
+                                               self.table_dims,
+                                               self.max_dims,
+                                               self.min_dims,
+                                               self.points_to_exclude):
+                seg.append([int(box[0]), int(box[1]), int(box[2]), int(box[3])])
 
-                includes_exclude_points = any(
-                    x_min <= point[0] <= x_max and y_min <= point[1] <= y_max
-                    for point in exclude_points
-                )
+            if self.is_box_within_rect_and_dim(box,
+                                               self.socket_rough_pos,
+                                               self.socket_max_dims,
+                                               self.socket_min_dims,
+                                               self.points_to_exclude):
+                socket.append([int(box[0]), int(box[1]), int(box[2]), int(box[3])])
 
-                within_rect_and_dim = (x_min >= rect["x_min"] and y_min >= rect["y_min"] and
-                        x_max <= rect["x_max"] and y_max <= rect["y_max"])
+        # for b in all_boxes:
+        #     cv2.rectangle(frame, (b[0], b[1]), (b[2], b[3]), (0, 255, 0), 2)
 
-                return within_rect_and_dim and not includes_exclude_points
+        if not self.first_frame:
+            prompt_process = FastSAMPrompt(frame, results, device=self.device)
+            hole_box, socket_box = self.find_smallest_and_largest_boxes(socket)
+            ann = prompt_process.box_prompt(bbox=socket_box)[0]
+            ann_hole = prompt_process.box_prompt(bbox=hole_box)[0]
+            mask_socket = masks_to_bool(ann)
+            mask_hole = masks_to_bool(ann_hole)
+            self.socket_mask = mask_socket & ~mask_hole
 
-            def is_box_within_rect_and_dim(box, rect, max_dim, min_dims, exclude_points):
-                x_min, y_min, x_max, y_max = box
-                box_width = x_max - x_min
-                box_height = y_max - y_min
+            self.img_size = 640
+            self.conf = 0.6
+            self.iou = 0.6
+            self.first_frame = True
+            self.init_success = True
+            self.min_dims = {"width": 20, "height": 25}
+            self.max_dims = {"width": 70, "height": 100}
 
-                # Check if the box is within the specific rectangle and matches the dimensions
-                within_rect_and_dim = (
-                        x_min >= rect["x_min"] and y_min >= rect["y_min"] and
-                        x_max <= rect["x_max"] and y_max <= rect["y_max"] and
-                        box_width < max_dim["width"] and box_height < max_dim["height"] and
-                        box_width > min_dims["width"] and box_height > min_dims["height"]
-                )
-
-                # Check if the box includes any of the specific points to exclude
-                includes_exclude_points = any(
-                    x_min <= point[0] <= x_max and y_min <= point[1] <= y_max
-                    for point in exclude_points
-                )
-
-                return within_rect_and_dim and not includes_exclude_points
-
-
-            seg, all = [], []
-            for box in results[0].boxes:
-                box = box.xyxy.cpu().numpy()[0]
-                if is_box_within_rect(box, specific_rect, points_to_exclude):
-                    all.append([int(box[0]), int(box[1]), int(box[2]), int(box[3])])
-                if is_box_within_rect_and_dim(box, specific_rect, max_dims, min_dims, points_to_exclude):
-                    seg.append([int(box[0]), int(box[1]), int(box[2]), int(box[3])])
+        try:
+            prompt_process = FastSAMPrompt(frame, results, device=self.device)
             if len(seg) > 1:
-                print('found more than 1 object')
-
-            if len(seg) == 1:
-                prompt_process = FastSAMPrompt(frame, results, device=self.device)
-                ann = prompt_process.box_prompt(bbox=seg[0])[0]
-                mask = masks_to_bool(ann)
-                # mask_3d = numpy.repeat(mask[:, :, numpy.newaxis], 3, axis=2)
-                # frame *= mask_3d
-                #
-                # end = time.perf_counter()
-                # total_time = end - start
-                # fps = 1 / total_time
-                self.last_frame = mask
-
+                smallest, biggest = self.find_smallest_and_largest_boxes(seg)
             else:
-                for b in all:
-                    cv2.rectangle(frame, (int(b[0]), int(b[1])), (int(b[2]), int(b[3])), (0, 255, 0), 2)
-            if self.display:
-                cv2.imshow("Depth Image", frame)
-                cv2.waitKey(1)
+                biggest = seg[0]
+
+            ann = prompt_process.box_prompt(bbox=biggest)[0]
+            self.mask = masks_to_bool(ann)
+            self.last_frame = self.mask | self.socket_mask
+            self.mask_3d = numpy.repeat(self.last_frame[:, :, numpy.newaxis], 3, axis=2)
+        except:
+            # print('failed to find the object')
+            pass
+
+        # if True:
+        #     cv2.imshow("Mask Image", frame * self.mask_3d)
+        #     cv2.imshow("Raw Image", frame )
+        #     cv2.waitKey(1)
 
     def get_frame(self):
 
