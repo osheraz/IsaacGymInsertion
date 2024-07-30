@@ -219,7 +219,6 @@ class ExtrinsicAdapt(object):
                 eef_pos = student_obs[:, :9]
                 socket_pos = student_obs[:, 9:12]
                 action = student_obs[:, 12:]
-
                 eef_pos = (eef_pos - self.stats["mean"]['eef_pos_rot6d']) / self.stats["std"]['eef_pos_rot6d']
                 socket_pos = (socket_pos - self.stats["mean"]["socket_pos"][:3]) / self.stats["std"]["socket_pos"][:3]
                 student_obs = torch.cat([eef_pos, socket_pos, action], dim=-1)
@@ -618,7 +617,7 @@ class ExtrinsicAdapt(object):
             if self.agent_steps % 1e5 == 0:
                 self.save(os.path.join(self.nn_dir, f'last'))
             mean_rewards = self.mean_eps_reward.get_mean()
-            if mean_rewards > self.best_rewards:
+            if mean_rewards > self.best_rewards and not self.task_config.reset_at_success:
                 self.best_rewards = mean_rewards
                 self.save(os.path.join(self.nn_dir, f'best'))
                 cprint('saved new best', 'green', attrs=['bold'])
@@ -715,8 +714,8 @@ class ExtrinsicAdapt(object):
         stud_weights = {
             'student': self.student.model.state_dict()
         }
-        if self.stud_obs_mean_std:
-            stud_weights['stud_obs_mean_std'] = self.stud_obs_mean_std.state_dict()
+        # if self.stud_obs_mean_std:
+        #     stud_weights['stud_obs_mean_std'] = self.stud_obs_mean_std.state_dict()
 
         torch.save(stud_weights, f'{name}_stud.pth')
 

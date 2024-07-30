@@ -22,7 +22,7 @@ python train.py task=FactoryTaskInsertionTactile headless=${HEADLESS} seed=${SEE
 multi_gpu=False \
 offline_train.from_offline=True \
 offline_train.only_bc=True \
-task.reset_at_success=False \
+task.reset_at_success=True \
 task.env.numEnvs=${NUM_ENVS} \
 train.ppo.tactile_info=False \
 train.ppo.obs_info=True \

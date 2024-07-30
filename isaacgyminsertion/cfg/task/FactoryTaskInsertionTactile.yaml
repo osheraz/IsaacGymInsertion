@@ -8,7 +8,7 @@ defaults:
 name: FactoryTaskInsertionTactile
 physics_engine: ${..physics_engine}
 
-grasp_at_init: True
+grasp_at_init: False
 collect_rotate: False
 reset_at_success: False
 
