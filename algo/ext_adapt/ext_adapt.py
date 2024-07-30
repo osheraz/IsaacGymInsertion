@@ -621,7 +621,7 @@ class ExtrinsicAdapt(object):
 
             # self.log_tensorboard()
 
-            if self.agent_steps % 1e5 == 0 and self.task_config.reset_at_success:
+            if self.agent_steps % 1e6 == 0 and self.task_config.reset_at_success:
                 cprint(f'Disabling resets and evaluating', 'blue', attrs=['bold'])
                 self.task_config.reset_at_success = False
                 self.test(total_steps=500)
@@ -629,7 +629,7 @@ class ExtrinsicAdapt(object):
                 self.set_student_train()
                 cprint(f'Resume training', 'blue', attrs=['bold'])
 
-            if self.agent_steps % 1e6 == 0:
+            if self.agent_steps % 1e7 == 0:
                 cprint(f'saved model at {self.agent_steps}', 'green', attrs=['bold'])
                 self.save(os.path.join(self.nn_dir, f'last'))
 

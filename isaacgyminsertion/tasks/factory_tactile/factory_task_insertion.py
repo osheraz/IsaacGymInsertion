@@ -794,7 +794,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             plug_hand_quat,  # 4
             plug_pos_error,  # 3
             plug_quat_error,  # 4
-            # physics_params,  # 13
+            physics_params,  # 13
             # finger_contacts,         # 3
             # self.plug_pcd.view(self.num_envs, -1),  # 3 * num_points
         ]

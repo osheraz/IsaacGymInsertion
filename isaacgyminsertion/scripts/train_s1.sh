@@ -18,9 +18,6 @@ CUDA_VISIBLE_DEVICES=${GPUS} \
 python train.py task=FactoryTaskInsertionTactile headless=${HEADLESS} seed=${SEED} \
 multi_gpu=False \
 task.env.numEnvs=${NUM_ENVS} \
-task.env.numObsHist=1 \
-task.env.numObservations=18 \
-task.env.numStates=14 \
 task.env.compute_contact_gt=False \
 train.ppo.only_contact=False \
 train.algo=PPO \
