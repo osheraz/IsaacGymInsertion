@@ -148,6 +148,8 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         self.plug_obs_delay_prob = self.cfg_task.env.plugObsDelayProb
         self.img_delay_prob = self.cfg_task.env.ImgDelayProb
+        self.seg_delay_prob = self.cfg_task.env.SegDelayProb
+        self.seg_noise_prob = self.cfg_task.env.SegProbNoise
         self.tactile_delay_prob = self.cfg_task.env.TactileDelayProb
         self.scale_pos_prob = self.cfg_task.env.scalePosProb
         self.scale_rot_prob = self.cfg_task.env.scaleRotProb
@@ -687,7 +689,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         obs_tensors_student = torch.cat([eef_stud,  # 6
                                          self.socket_pos,  # 3
-                                         # actions,
+                                         actions,
                                          ], dim=-1)
 
         self.obs_stud_queue[:, :-self.num_obs_stud] = self.obs_stud_queue[:, self.num_obs_stud:]
@@ -805,7 +807,11 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         if self.external_cam:
             img_update_freq = torch.remainder(self.frame + self.img_refresh_offset, self.img_refresh_rates) == 0
             img_update_delay = torch.randn(self.num_envs, device=self.device) > self.img_delay_prob
-            self.update_external_cam(img_update_freq, img_update_delay)
+            seg_update_delay = torch.randn(self.num_envs, device=self.device) > self.seg_delay_prob
+
+            seg_update_noise = torch.randn(self.num_envs, device=self.device) > self.seg_noise_prob
+
+            self.update_external_cam(img_update_freq, img_update_delay, seg_update_delay, seg_update_noise)
 
         self.frame += 1
         self.obs_buf = self.obs_queue.clone()  # torch.cat(obs_tensors, dim=-1)  # shape = (num_envs, num_observations)
@@ -854,13 +860,15 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         self.gym.end_access_image_tensors(self.sim)
 
-    def update_external_cam(self, update_freq, update_delay):
+    def update_external_cam(self, update_freq, update_delay, seg_update_delay, seg_noise):
 
         self.gym.step_graphics(self.sim)
         self.gym.fetch_results(self.sim, True)
         self.gym.render_all_camera_sensors(self.sim)
         self.gym.start_access_image_tensors(self.sim)
         update = torch.logical_and(update_freq, update_delay)
+        update_seg = torch.logical_and(update_freq, seg_update_delay)
+        seg_noise = torch.logical_and(seg_noise, update_seg)
 
         if self.cam_type == "rgb":
             processed_images = torch.stack(self.cam_renders).unsqueeze(1)
@@ -874,7 +882,8 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         elif self.cam_type == "d":
             self.image_buf[update] = self.depth_process.process_depth_image(torch.stack(self.cam_renders)
                                                                             [update].unsqueeze(1))
-            self.seg_buf[update] = torch.stack(self.seg_renders)[update]
+            self.seg_buf[update_seg] = torch.stack(self.seg_renders)[update_seg]
+            self.seg_buf[seg_noise] = self.depth_process.add_seg_noise(self.seg_buf[seg_noise])
 
             if self.cfg_task.external_cam.display:
                 img = self.image_buf[0].cpu().clone()

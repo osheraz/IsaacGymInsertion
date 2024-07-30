@@ -19,6 +19,23 @@ class DepthImageProcessor:
         #     (self.cfg.depth.resized[1], self.cfg.depth.resized[0]),
         #     interpolation=transforms.InterpolationMode.BICUBIC
         # )
+
+    def add_seg_noise(self, seg_images_to_noise, flip_prob=0.1):
+
+        # flip inside the segmented object
+        object_mask = (seg_images_to_noise > 0)
+
+        flip_mask = torch.rand_like(seg_images_to_noise, dtype=torch.float) < flip_prob
+
+        seg_images_to_noise[object_mask & flip_mask] = 0
+
+        # flip inside the background
+        # background_mask = (seg_images_to_noise == 0)
+        # seg_images_to_noise[background_mask] = torch.randint(1, 4, size=(background_mask.sum().item(),),
+        #                                             device=seg_images_to_noise.device)
+
+        return seg_images_to_noise
+
     def process_depth_image(self, depth_images):
         # Ensure the input is in the correct shape
         if depth_images.dim() == 3:

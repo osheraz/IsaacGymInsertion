@@ -119,6 +119,24 @@ class ActorCriticSplit(nn.Module):
         return result
 
     @torch.no_grad()
+    def full_act(self, obs_dict):
+        # used specifically to collection samples during training
+        # it contains exploration so needs to sample from distribution
+        mu, logstd, value, _, latent_gt = self.actor_critic(obs_dict)
+        sigma = torch.exp(logstd)
+        distr = torch.distributions.Normal(mu, sigma)
+        selected_action = distr.sample()
+        result = {
+            'neglogpacs': -distr.log_prob(selected_action).sum(1),  # self.neglogp(selected_action, mu, sigma, logstd),
+            'values': value,
+            'actions': selected_action,
+            'mus': mu,
+            'sigmas': sigma,
+            'latent_gt': latent_gt,
+        }
+        return result
+
+    @torch.no_grad()
     def act_inference(self, obs_dict):
         # used for testing
         mu, logstd, value, latent, latent_gt = self.actor_critic(obs_dict)

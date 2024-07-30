@@ -49,7 +49,7 @@ tactile: # Pulling from task
 env:
     numEnvs: ${resolve_default:128,${...num_envs}}
     numObservations: 18 #
-    numObsStudent: 12 #
+    numObsStudent: 18 #
     numStates: 14 #
     numActions: 6 # [position, ori]
     numTargets: 6 # [position, ori]
@@ -83,7 +83,9 @@ env:
     actionDelayProbMax: 0.3
 
     plugObsDelayProb: 0.3
-    ImgDelayProb: 0.3
+    ImgDelayProb: 0.2
+    SegDelayProb: 0.3
+    SegProbNoise: 0.1
     TactileDelayProb: 0.3
 
     # Sim runs at 60 Hz
@@ -148,8 +150,8 @@ randomize:
 #    plug_quat_noise: [0.0, 0.0, 0.0, 0.0]
 
     socket_pos_xy_initial: [0.5, 0.0, 0.0]  # initial XY position of plug on table # round_hole_2in  width = 0.1016, length = 0.09144
-    socket_pos_xy_noise: [0.000, 0.00]  # noise on socket position
-    socket_pos_z_noise_bounds: [0.001, 0.001]  # noise on socket offset from table
+    socket_pos_xy_noise: [0.001, 0.001]  # noise on socket position
+    socket_pos_z_noise_bounds: [0.00, 0.005]  # noise on socket offset from table
 #    above_socket_noise: [0.03, 0.03, 0.001]
 #    socket_rot_euler_noise: 0.001  # noise on socket position
 

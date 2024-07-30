@@ -2,7 +2,7 @@ seed: 0 # not sure if this is used yet.
 data_folder: "/home/roblab20/tactile_tests/datastore_real" # where is all your data, can include * for globbing
 output_dir: "/home/roblab20/tactile_tests/datastore_real" # where to save checkpoints and logs
 
-only_bc: False
+only_bc: True
 multi_gpu: False
 from_offline: False
 gpu_ids: [0, 1]
@@ -10,7 +10,7 @@ img_type: "depth"
 img_color_jitter: False
 img_width: 54
 img_height: 96
-img_gaussian_noise: 0.004
+img_gaussian_noise: 0.001
 img_masking_prob: 0.0
 img_patch_size: 16
 img_crop_w: 0
@@ -21,10 +21,10 @@ tactile_gaussian_noise: 0.005
 tactile_masking_prob: 0.0
 tactile_patch_size: 16
 tactile_color_jitter: False
-tactile_width: 36  # orig 64
-tactile_height: 72 # orig 128
-tactile_crop_w: 4
-tactile_crop_h: 8
+tactile_width: 32
+tactile_height: 64
+tactile_crop_w: 0 #4
+tactile_crop_h: 0 #8
 
 # supervised learning
 train:
@@ -46,7 +46,7 @@ train:
 
   # loss scaling
   latent_scale: 1.0
-  action_scale: 2.0
+  action_scale: 4.0
 
   # Train params for on screen logging
   print_every: 1000
@@ -81,7 +81,7 @@ train:
 model:
   # linear embedding
   linear:
-    input_size: 12
+    input_size: 18
 
   use_img: True
   use_seg: True
@@ -92,14 +92,14 @@ model:
 
   transformer:
     sequence_length: 1
-    num_layers: 4
-    num_heads: 4
+    num_layers: 2
+    num_heads: 2
     dim_factor: 4
     output_size: 8
-    tactile_encoding_size: 128
-    img_encoding_size: 128
-    seg_encoding_size: 128
-    lin_encoding_size: 128
+    tactile_encoding_size: 32
+    img_encoding_size: 32
+    seg_encoding_size: 32
+    lin_encoding_size: 32
     load_tact: False
     tact_path: "/home/roblab20/osher3_workspace/src/isaacgym/python/IsaacGymInsertion/isaacgyminsertion/outputs/gt_test/tact/checkpoints/model_last.pt"
 

@@ -353,14 +353,15 @@ class TactileDataset(Dataset):
         tactile_input = tactile_input.view(T, F, C, *tactile_input.shape[2:])
         return tactile_input
 
-    def _load_and_preprocess_image(self, img_folder, seg_folder, start_idx, obj_id=2):
+    def _load_and_preprocess_image(self, img_folder, seg_folder, start_idx, distinct=True, obj_id=2, socket_id=3):
         img_input = [np.load(os.path.join(img_folder, f'img_{i}.npz'))['img'] for i in
                      range(start_idx, start_idx + self.sequence_length)]
         seg_input = [np.load(os.path.join(seg_folder, f'seg_{i}.npz'))['seg'] for i in
                      range(start_idx, start_idx + self.sequence_length)]
 
-        seg_input = np.stack([((m == obj_id) | (m == 3)).astype(float) for m in seg_input])
-        img_input = np.stack([img * m for img, m in zip(img_input, seg_input)])
+        valid_masks = np.stack([((m == obj_id) | (m == socket_id)).astype(float) for m in seg_input])
+        seg_input = seg_input * valid_masks if distinct else valid_masks
+        img_input = np.stack([img * m for img, m in zip(img_input, valid_masks)])
         # img_input = np.stack([img + 0.5 * (img * m != 0).astype(float) for img, m in zip(img_input, seg_input)])
         if self.sync_transform is not None:
             img_input, seg_input = self.sync_transform(self.to_torch(img_input), self.to_torch(seg_input))

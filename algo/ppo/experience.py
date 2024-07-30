@@ -46,6 +46,100 @@ def transform_op(arr):
     return arr.transpose(0, 1).reshape(s[0] * s[1], *s[2:])
 
 
+class StudentBuffer(Dataset):
+    def __init__(self, num_envs, horizon_length, batch_size, minibatch_size,
+                 obs_dim, act_dim, priv_dim, student_dims, device):
+
+        self.device = device
+        self.num_envs = num_envs
+        self.transitions_per_env = horizon_length
+        self.priv_info_dim = priv_dim
+
+        self.data_dict = None
+        self.obs_dim = obs_dim
+        self.act_dim = act_dim
+        self.priv_dim = priv_dim
+
+        self.tactile_info = student_dims.get('tactile') is not None
+        self.img_info = student_dims.get('img') is not None
+        self.seg_info = student_dims.get('seg') is not None
+        self.student_obs_info = student_dims.get('student_obs') is not None
+
+        self.stud_obs_dim = student_dims['student_obs'] if self.student_obs_info else None
+        self.tactile_dim = student_dims['tactile'] if self.tactile_info else None
+        self.img_dim = student_dims['img'] if self.img_info else None
+        self.seg_dim = student_dims['seg'] if self.seg_info else None
+
+
+        self.storage_dict = {
+            'n_obs': torch.zeros((self.transitions_per_env, self.num_envs, self.obs_dim), dtype=torch.float32,
+                                 device=self.device),
+            'n_priv_info': torch.zeros((self.transitions_per_env, self.num_envs, self.priv_dim), dtype=torch.float32,
+                                       device=self.device),
+            'rewards': torch.zeros((self.transitions_per_env, self.num_envs, 1), dtype=torch.float32,
+                                   device=self.device),
+            'teacher_actions': torch.zeros((self.transitions_per_env, self.num_envs, self.act_dim), dtype=torch.float32,
+                                           device=self.device),
+            'student_actions': torch.zeros((self.transitions_per_env, self.num_envs, self.act_dim), dtype=torch.float32,
+                                           device=self.device),
+            'latent_gt': torch.zeros((self.transitions_per_env, self.num_envs, 8), dtype=torch.float32,
+                                     device=self.device),
+        }
+
+        if self.tactile_info:
+            self.storage_dict['n_tactile'] = torch.zeros((self.transitions_per_env, self.num_envs, *self.tactile_dim),
+                                                         dtype=torch.float32,
+                                                         device=self.device)
+        if self.img_info:
+            self.storage_dict['n_img'] = torch.zeros((self.transitions_per_env, self.num_envs, *self.img_dim),
+                                                     dtype=torch.float32,
+                                                     device=self.device)
+        if self.seg_info:
+            self.storage_dict['n_seg'] = torch.zeros((self.transitions_per_env, self.num_envs, *self.seg_dim),
+                                                     dtype=torch.float32,
+                                                     device=self.device)
+        if self.student_obs_info:
+            self.storage_dict['n_student_obs'] = torch.zeros(
+                (self.transitions_per_env, self.num_envs, self.stud_obs_dim),
+                dtype=torch.float32,
+                device=self.device)
+
+        self.batch_size = batch_size
+        self.minibatch_size = minibatch_size
+        self.length = self.batch_size // self.minibatch_size
+        self.indices = torch.randperm(self.batch_size, requires_grad=False, device=self.device)
+
+    def __len__(self):
+        return self.length
+
+    def __getitem__(self, idx):
+        start = idx * self.minibatch_size
+        end = (idx + 1) * self.minibatch_size
+        self.last_range = (start, end)
+        batch_idx = self.indices[start:end]
+        input_dict = {}
+        for k, v in self.data_dict.items():
+            if type(v) is dict:
+                v_dict = {kd: vd[batch_idx] for kd, vd in v.items()}
+                input_dict[k] = v_dict
+            else:
+                input_dict[k] = v[batch_idx]
+        return input_dict
+
+    def update_data(self, name, index, val):
+        if type(val) is dict:
+            for k, v in val.items():
+                self.storage_dict[name][k][index, :] = v
+        else:
+            self.storage_dict[name][index, :] = val
+
+    def prepare_training(self):
+        self.data_dict = {}
+        for k, v in self.storage_dict.items():
+            self.data_dict[k] = transform_op(v)
+        return self.data_dict
+
+
 class ExperienceBuffer(Dataset):
     def __init__(self, num_envs, horizon_length, batch_size, minibatch_size, obs_dim, act_dim, priv_dim, pts_dim,
                  device):
@@ -310,7 +404,8 @@ class DataLoggerSim():
             if value is None:
                 value = torch.zeros((self.num_envs, self.data_shapes[key]), dtype=torch.float32, device=self.device)
 
-            self.log_data[key][self.env_ids, self.env_step_counter, ...] = value.clone().unsqueeze(1).to(self.log_data[key].dtype)
+            self.log_data[key][self.env_ids, self.env_step_counter, ...] = value.clone().unsqueeze(1).to(
+                self.log_data[key].dtype)
 
         done = kwargs.get('done', None)
         if done is None:
@@ -657,7 +752,7 @@ class RealLogger():
             'obs_hist_shape': env.full_config.task.env.numObservations,
             'obs_hist_stud_shape': env.full_config.task.env.numObsStudent,
             'contact_shape': env.full_config.task.env.num_points,
-            'latent_shape': 8, # env.deploy_config.network.merge_mlp.units[-1],
+            'latent_shape': 8,  # env.deploy_config.network.merge_mlp.units[-1],
             'ft_shape': env.ft_data.shape[-1],
             'priv_obs_shape': env.full_config.train.ppo.priv_info_dim,
             'plug_pos_error_shape': POS_SIZE + QUAT_SIZE,

@@ -18,11 +18,13 @@ import torch
 import numpy as np
 from termcolor import cprint
 
-from algo.ppo.experience import ExperienceBuffer
+from algo.ppo.experience import StudentBuffer
 from algo.models.transformer.runner import Runner as Student
 from algo.models.models_split import ActorCriticSplit as ActorCritic
 from algo.models.running_mean_std import RunningMeanStd
 from isaacgyminsertion.utils.misc import AverageScalarMeter
+from isaacgyminsertion.utils.misc import add_to_fifo, multi_gpu_aggregate_stats
+
 from tensorboardX import SummaryWriter
 import torch.distributed as dist
 import imageio
@@ -65,6 +67,7 @@ class ExtrinsicAdapt(object):
         self.env = env
         self.num_actors = self.ppo_config['num_actors']
         self.obs_shape = (self.task_config.env.numObservations * self.task_config.env.numObsHist,)
+        self.max_agent_steps = self.ppo_config['max_agent_steps']
 
         self.actions_num = self.task_config.env.numActions
         # ---- Obs Info (student)----
@@ -124,7 +127,22 @@ class ExtrinsicAdapt(object):
         self.writer = writer
         self.direct_info = {}
         # ---- Misc ----
-        self.batch_size = self.num_actors
+        # self.batch_size = self.num_actors
+        self.horizon_length = self.ppo_config['horizon_length']
+        self.batch_size = self.horizon_length * self.num_actors
+        self.mini_epochs_num = self.ppo_config['mini_epochs']
+        self.minibatch_size = self.batch_size // self.mini_epochs_num
+        assert self.batch_size % self.minibatch_size == 0
+
+        student_shapes = {'img': self.env.img_queue.shape[1:] if self.img_info else None,
+                          'seg': self.env.seg_queue.shape[1:] if self.seg_info else None,
+                          'tactile': self.env.tactile_queue.shape if self.tactile_info else None,
+                          'student_obs': self.env.obs_student_buf.shape[-1] if self.obs_info else None}
+
+        self.storage = StudentBuffer(self.num_actors, self.horizon_length, self.batch_size, self.minibatch_size,
+                                     self.obs_shape[0], self.actions_num, self.priv_info_dim,
+                                     student_shapes, self.device)
+
         self.mean_eps_reward = AverageScalarMeter(window_size=50)
         self.mean_eps_length = AverageScalarMeter(window_size=50)
         self.mean_eps_success = AverageScalarMeter(window_size=50)
@@ -146,6 +164,7 @@ class ExtrinsicAdapt(object):
         batch_size = self.num_actors
         self.step_reward = torch.zeros(batch_size, dtype=torch.float32, device=self.device)
         self.step_length = torch.zeros(batch_size, dtype=torch.float32, device=self.device)
+        self.step_success = torch.zeros(batch_size, dtype=torch.float32, device=self.device)
 
         # ---- Rollout Videos ----
         self.it = 0
@@ -170,29 +189,40 @@ class ExtrinsicAdapt(object):
         self.student.model.eval()
         if self.train_config.model.transformer.load_tact:
             self.student.tact.eval()
+        # if self.stud_obs_mean_std:
+        #     self.stud_obs_mean_std.eval()
+
+    def set_student_train(self):
+
+        self.student.model.train()
+        if self.train_config.model.transformer.load_tact:
+            self.student.tact.train()
         if self.stud_obs_mean_std:
-            self.stud_obs_mean_std.eval()
+            self.stud_obs_mean_std.train()
 
-    def process_obs(self, obs, obj_id=2, socket_id=3, display=False):
+    def process_obs(self, obs, obj_id=2, socket_id=3, distinct=True, display=False):
 
+        # TODO what about image aug?
         student_obs = obs['student_obs'] if 'student_obs' in obs else None
         tactile = obs['tactile'] if 'tactile' in obs else None
         img = obs['img'] if 'img' in obs else None
         seg = obs['seg'] if 'seg' in obs else None
 
-        seg = ((seg == obj_id) | (seg == socket_id)).float()
-        img = img * seg.unsqueeze(2)
+        valid_mask = ((seg == obj_id) | (seg == socket_id)).float()
+        seg = seg * valid_mask if distinct else valid_mask
+
+        img = img * valid_mask.unsqueeze(2)
 
         if student_obs is not None:
             if self.stats is not None:
 
                 eef_pos = student_obs[:, :9]
                 socket_pos = student_obs[:, 9:12]
-                # action = student_obs[:, 12:]
+                action = student_obs[:, 12:]
 
                 eef_pos = (eef_pos - self.stats["mean"]['eef_pos_rot6d']) / self.stats["std"]['eef_pos_rot6d']
                 socket_pos = (socket_pos - self.stats["mean"]["socket_pos"][:3]) / self.stats["std"]["socket_pos"][:3]
-                student_obs = torch.cat([eef_pos, socket_pos], dim=-1)
+                student_obs = torch.cat([eef_pos, socket_pos, action], dim=-1)
             else:
                 student_obs = self.stud_obs_mean_std(student_obs)
 
@@ -276,6 +306,236 @@ class ExtrinsicAdapt(object):
                 total_dones += len(done.nonzero())
                 print('[Test] success rate:', num_success / total_dones)
 
+    def play_steps(self):
+
+        for n in range(self.horizon_length):
+            if not self.multi_gpu or (self.multi_gpu and self.rank == 0):
+                self.log_video()
+                self.it += 1
+
+            with torch.no_grad():
+                # Collect samples
+                n_obs = self.running_mean_std(self.obs['obs'])
+                n_priv_info = self.priv_mean_std(self.obs['priv_info'])
+
+                res_dict = self.agent.full_act({'obs': n_obs, 'priv_info': n_priv_info})
+
+                prep_obs = self.process_obs(self.obs)
+
+                student_dict = {
+                    'student_obs': prep_obs['student_obs'] if 'student_obs' in prep_obs else None,
+                    'tactile': prep_obs['tactile'] if 'tactile' in prep_obs else None,
+                    'img': prep_obs['img'] if 'img' in prep_obs else None,
+                    'seg': prep_obs['seg'] if 'seg' in prep_obs else None,
+                }
+
+                latent, _ = self.student.predict(student_dict)
+
+                if not self.only_bc:
+                    student_actions, _ = self.agent.act_inference({
+                        'obs': n_obs,
+                        'latent': latent
+                    })
+                else:
+                    student_actions = latent
+
+            # n indicates already normalized
+            if self.obs_info:
+                self.storage.update_data('n_student_obs', n, student_dict['student_obs'])
+            if self.seg_info:
+                self.storage.update_data('n_img', n, student_dict['img'])
+                self.storage.update_data('n_seg', n, student_dict['seg'])
+            if self.tactile_info:
+                self.storage.update_data('n_tactile', n, student_dict['tactile'])
+
+            # already normalized
+            self.storage.update_data('n_obs', n, n_obs)
+            self.storage.update_data('n_priv_info', n, n_priv_info)
+            self.storage.update_data('latent_gt', n, res_dict['latent_gt'])
+            self.storage.update_data('teacher_actions', n, res_dict['actions'])
+            self.storage.update_data('student_actions', n, student_actions)
+
+            # do env step
+            if self.agent_steps < 4000:
+                actions = torch.clamp(res_dict['actions'], -1.0, 1.0)
+            else:
+                actions = torch.clamp(student_actions, -1.0, 1.0)
+
+            self.obs, rewards, self.dones, infos = self.env.step(actions)
+
+            rewards = rewards.unsqueeze(1)
+            # update dones and rewards after env step
+            if self.ppo_config['value_bootstrap'] and 'time_outs' in infos:
+                # bootstrapping from "the value function". (reduced variance, but almost fake reward?)
+                shaped_rewards = 0.01 * rewards.clone()
+                shaped_rewards += self.ppo_config['gamma'] * res_dict['values'] * infos['time_outs'].unsqueeze(
+                    1).float()
+            else:
+                shaped_rewards = rewards.clone()
+            self.storage.update_data('rewards', n, shaped_rewards)
+
+            self.step_reward += rewards
+            self.step_success += infos['successes']
+            self.step_length += 1
+
+            done_indices = self.dones.nonzero(as_tuple=False)
+            self.mean_eps_reward.update(self.step_reward[done_indices])
+            self.mean_eps_length.update(self.step_length[done_indices])
+            self.mean_eps_success.update(self.step_success[done_indices])
+
+            assert isinstance(infos, dict), 'Info Should be a Dict'
+            self.extra_info = {}
+            for k, v in infos.items():
+                if isinstance(v, float) or isinstance(v, int) or (isinstance(v, torch.Tensor) and len(v.shape) == 0):
+                    self.extra_info[k] = v
+
+            not_dones = 1.0 - self.dones.float()
+            self.step_reward = self.step_reward * not_dones.unsqueeze(1)
+            self.step_length = self.step_length * not_dones
+            self.step_success = self.step_success * not_dones
+
+        self.agent_steps = (
+            (self.agent_steps + self.batch_size)
+            if not self.multi_gpu
+            else self.agent_steps + self.batch_size * self.rank_size
+        )
+
+        self.storage.prepare_training()
+
+    def train_epoch(self):
+
+        _t = time.time()
+        self.set_student_eval()
+        self.play_steps()  # collect data
+        self.set_student_train()
+        _last_t = time.time()
+        loss_latent_fn = torch.nn.MSELoss()
+        loss_action_fn = torch.nn.MSELoss()
+
+        latent_losses, action_losses = [], []
+
+        for _ in range(0, self.mini_epochs_num):
+
+            for i in range(len(self.storage)):
+
+                batched_obs = self.storage[i]
+
+                student_dict = {
+                    'student_obs': batched_obs['n_student_obs'] if 'n_student_obs' in batched_obs else None,
+                    'tactile': batched_obs['n_tactile'] if 'n_tactile' in batched_obs else None,
+                    'img': batched_obs['n_img'] if 'n_img' in batched_obs else None,
+                    'seg': batched_obs['n_seg'] if 'n_seg' in batched_obs else None,
+                }
+
+                # student pass
+                latent, _ = self.student.predict(student_dict, requires_grad=True)
+
+                if not self.only_bc:
+                    # act with student latent
+                    mu, _ = self.agent.act_with_grad({
+                        'obs': batched_obs['n_obs'],
+                        'latent': latent
+                    })
+
+                    loss_latent = loss_latent_fn(latent, batched_obs['latent_gt'].detach())
+                else:
+                    # pure behaviour cloning
+                    mu = latent
+                    loss_latent = torch.zeros(1, device=self.device)
+
+                loss_action = loss_action_fn(mu, batched_obs['teacher_actions'].detach())
+
+                self.optim.zero_grad()
+                loss = (self.action_scale * loss_action) + (self.latent_scale * loss_latent)
+                loss.backward()
+
+                latent_losses.append(loss_latent.item())
+                action_losses.append(loss_action.item())
+
+                if self.multi_gpu:
+                    # batch all_reduce ops: see https://github.com/entity-neural-network/incubator/pull/220
+                    all_grads_list = []
+                    for param in self.student.model.parameters():
+                        if param.grad is not None:
+                            all_grads_list.append(param.grad.view(-1))
+                    all_grads = torch.cat(all_grads_list)
+                    dist.all_reduce(all_grads, op=dist.ReduceOp.SUM)
+                    offset = 0
+                    for param in self.student.model.parameters():
+                        if param.grad is not None:
+                            param.grad.data.copy_(
+                                all_grads[offset: offset + param.numel()].view_as(
+                                    param.grad.data
+                                )
+                                / self.rank_size
+                            )
+                            offset += param.numel()
+
+                torch.nn.utils.clip_grad_norm_(self.student.model.parameters(), 0.5)
+
+                self.optim.step()
+
+                torch.cuda.empty_cache()
+
+        return action_losses, latent_losses
+
+    def train_agg(self):
+        _t = time.time()
+        _last_t = time.time()
+        self.epoch_num = 0
+
+        self.obs = self.env.reset()
+        self.agent_steps = (self.batch_size if not self.multi_gpu else self.batch_size * self.rank_size)
+        if self.multi_gpu:
+            torch.cuda.set_device(self.rank)
+            print("====================> broadcasting parameters, rank:", self.rank)
+            model_params = [self.student.model.state_dict()]
+            dist.broadcast_object_list(model_params, 0)
+            self.student.model.load_state_dict(model_params[0])
+        while self.agent_steps < self.max_agent_steps:
+            self.epoch_num += 1
+            action_losses, latent_losses = self.train_epoch()
+            self.storage.data_dict = None
+
+            if self.multi_gpu:
+                action_losses, latent_losses = multi_gpu_aggregate_stats([action_losses, latent_losses])
+                mean_rewards, mean_lengths, mean_success = multi_gpu_aggregate_stats(
+                    [torch.Tensor([self.mean_eps_length.get_mean()]).float().to(self.device),
+                     torch.Tensor([self.mean_eps_length.get_mean()]).float().to(self.device),
+                     torch.Tensor([self.mean_eps_success.get_mean()]).float().to(self.device),])
+                for k, v in self.extra_info.items():
+                    if type(v) is not torch.Tensor:
+                        v = torch.Tensor([v]).float().to(self.device)
+                    self.extra_info[k] = multi_gpu_aggregate_stats(v[None].to(self.device))
+            else:
+                mean_rewards = self.mean_eps_reward.get_mean()
+                mean_lengths = self.mean_eps_length.get_mean()
+                mean_success = self.mean_eps_success.get_mean()
+
+                if not self.multi_gpu or (self.multi_gpu and self.rank == 0):
+                    all_fps = self.agent_steps / (time.time() - _t)
+                    last_fps = self.batch_size / (time.time() - _last_t)
+                    _last_t = time.time()
+                    info_string = f'Agent Steps: {int(self.agent_steps // 1e6):04}M | FPS: {all_fps:.1f} | ' \
+                                  f'Last FPS: {last_fps:.1f} | ' \
+                                  f"Current Best: {self.best_rewards:.2f} | " \
+                                  f'Cur Reward: {mean_rewards:.2f} | '
+                    print(info_string)
+
+                    if self.agent_steps % 1e5 == 0:
+                        self.save(os.path.join(self.nn_dir, f'last'))
+
+                    if mean_rewards > self.best_rewards and self.agent_steps >= 1e3 and mean_rewards != 0.0:
+                        cprint(f"save current best reward: {mean_rewards:.2f}", 'green', attrs=['bold'])
+                        prev_best_ckpt = os.path.join(self.nn_dir, f"best_reward_{self.best_rewards:.2f}.pth")
+                        if os.path.exists(prev_best_ckpt):
+                            os.remove(prev_best_ckpt)
+                        self.best_rewards = mean_rewards
+                        self.save(os.path.join(self.nn_dir, f"best_reward_{mean_rewards:.2f}"))
+                    self.success_rate = mean_success
+
+            print('max steps achieved')
+
     def train(self):
 
         _t = time.time()
@@ -285,6 +545,7 @@ class ExtrinsicAdapt(object):
 
         obs_dict = self.env.reset()
         self.agent_steps += self.batch_size
+        cprint('Starting to train student', 'green', attrs=['bold'])
 
         while self.agent_steps <= 1e9:
             self.log_video()
@@ -317,7 +578,7 @@ class ExtrinsicAdapt(object):
 
                 loss_latent = loss_latent_fn(latent, e_gt.detach())
             else:
-                # pure behaviour cloning output
+                # pure behaviour cloning
                 mu = latent
                 loss_latent = torch.zeros(1, device=self.device)
 
@@ -331,6 +592,7 @@ class ExtrinsicAdapt(object):
             for param in self.student.model.parameters():
                 if param.grad is not None:
                     param.grad = replace_nan_with_zero(param.grad)
+
             self.optim.step()
 
             mu = mu.detach()
@@ -355,23 +617,19 @@ class ExtrinsicAdapt(object):
 
             if self.agent_steps % 1e5 == 0:
                 self.save(os.path.join(self.nn_dir, f'last'))
-            if self.agent_steps % 1e6 == 0:
-                self.save(os.path.join(self.nn_dir, f'{self.agent_steps // 1e4}0k'))
-
             mean_rewards = self.mean_eps_reward.get_mean()
             if mean_rewards > self.best_rewards:
                 self.best_rewards = mean_rewards
                 self.save(os.path.join(self.nn_dir, f'best'))
-                cprint('saved new best')
-                # self.best_rewards = mean_rewards
-
+                cprint('saved new best', 'green', attrs=['bold'])
             all_fps = self.agent_steps / (time.time() - _t)
             last_fps = self.batch_size / (time.time() - _last_t)
             _last_t = time.time()
-            info_string = f'ExtAdapt: Agent Steps: {int(self.agent_steps // 1e6):04}M | FPS: {all_fps:.1f} | ' \
+            info_string = f'ExtAdapt: Agent Steps: {int(self.agent_steps // 1e3):04}K | FPS: {all_fps:.1f} | ' \
                           f'Last FPS: {last_fps:.1f} | ' \
                           f'Best Reward: {self.best_rewards:.2f} | ' \
                           f'Cur Reward: {mean_rewards:.2f} | ' \
+                          f'Cur Loss: {loss.item():.2f}  '
 
             cprint(info_string)
 
@@ -405,19 +663,30 @@ class ExtrinsicAdapt(object):
         self.agent.load_state_dict(checkpoint['model'])
         self.priv_mean_std.load_state_dict(checkpoint['priv_mean_std'])
 
-        stud_fn = fn.replace('stage1_nn/last.pth', 'stage2_nn/last_stud.pth')
+        stud_fn = fn.replace('stage1_nn/last.pth', 'stage2_nn/best_stud.pth')
 
-        self.restore_student(stud_fn, from_offline=self.train_config.from_offline)
+        self.restore_student(stud_fn, from_offline=self.train_config.from_offline, phase=2)
         self.set_eval()
         self.set_student_eval()
 
-    def restore_student(self, fn, from_offline=False):
+    def restore_student(self, fn, from_offline=False, phase=1):
 
         if from_offline:
-            cprint(f'Using offline stats from: {self.train_config.train.normalize_file}', 'red', attrs=['bold'])
-            cprint(f'Restoring student from: {self.train_config.train.student_ckpt_path}', 'red', attrs=['bold'])
-            checkpoint = torch.load(self.train_config.train.student_ckpt_path, map_location=self.device)
-            self.student.model.load_state_dict(checkpoint)
+            if phase == 2:
+                checkpoint = torch.load(fn, map_location=self.device)
+                self.student.model.load_state_dict(checkpoint['student'])
+                cprint(f'Restoring student from: {fn}',
+                       'red', attrs=['bold'])
+            else:
+                checkpoint = torch.load(self.train_config.train.student_ckpt_path, map_location=self.device)
+                self.student.model.load_state_dict(checkpoint)
+
+                cprint(f'Restoring student from: {self.train_config.train.student_ckpt_path}',
+                       'red', attrs=['bold'])
+
+            cprint(f'Using offline stats from: {self.train_config.train.normalize_file}',
+                   'red', attrs=['bold'])
+            del self.stud_obs_mean_std
             if self.train_config.model.transformer.load_tact:
                 self.student.load_tact_model(self.train_config.model.transformer.tact_path)
             self.stats = {'mean': {}, 'std': {}}
@@ -431,8 +700,8 @@ class ExtrinsicAdapt(object):
             self.stud_obs_mean_std.load_state_dict(checkpoint['stud_obs_mean_std'])
             self.student.model.load_state_dict(checkpoint['student'])
 
-
     def save(self, name):
+
         weights = {
             'model': self.agent.state_dict(),
         }
