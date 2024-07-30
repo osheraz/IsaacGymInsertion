@@ -197,8 +197,8 @@ class ExtrinsicAdapt(object):
         self.student.model.train()
         if self.train_config.model.transformer.load_tact:
             self.student.tact.train()
-        if self.stud_obs_mean_std:
-            self.stud_obs_mean_std.train()
+        # if self.stud_obs_mean_std:
+        #     self.stud_obs_mean_std.train()
 
     def process_obs(self, obs, obj_id=2, socket_id=3, distinct=True, display=False):
 
@@ -255,7 +255,7 @@ class ExtrinsicAdapt(object):
 
             cv2.waitKey(1)
 
-    def test(self):
+    def test(self, total_steps=1e9):
 
         if self.env.cfg_task.data_logger.collect_data:
             if self.data_logger.data_logger is None:
@@ -266,10 +266,12 @@ class ExtrinsicAdapt(object):
         self.set_eval()
         self.set_student_eval()
 
+        steps = 0
         obs_dict = self.env.reset()
         total_dones, num_success = 0, 0
 
-        while True:
+        while steps < total_steps:
+            steps += 1
 
             prep_obs = self.process_obs(obs_dict)
 
@@ -593,8 +595,13 @@ class ExtrinsicAdapt(object):
                     param.grad = replace_nan_with_zero(param.grad)
 
             self.optim.step()
+            torch.cuda.empty_cache()
 
             mu = mu.detach()
+
+            if self.agent_steps < 4000:
+                mu = mu_gt
+
             mu = torch.clamp(mu, -1.0, 1.0)
 
             obs_dict, r, done, info = self.env.step(mu)  # online
@@ -612,15 +619,26 @@ class ExtrinsicAdapt(object):
             self.step_reward = self.step_reward * not_dones
             self.step_length = self.step_length * not_dones
 
-            self.log_tensorboard()
+            # self.log_tensorboard()
 
-            if self.agent_steps % 1e5 == 0:
+            if self.agent_steps % 1e5 == 0 and self.task_config.reset_at_success:
+                cprint(f'Disabling resets and evaluating', 'blue', attrs=['bold'])
+                self.task_config.reset_at_success = False
+                self.test(total_steps=500)
+                self.task_config.reset_at_success = True
+                self.set_student_train()
+                cprint(f'Resume training', 'blue', attrs=['bold'])
+
+            if self.agent_steps % 1e6 == 0:
+                cprint(f'saved model at {self.agent_steps}', 'green', attrs=['bold'])
                 self.save(os.path.join(self.nn_dir, f'last'))
+
             mean_rewards = self.mean_eps_reward.get_mean()
-            if mean_rewards > self.best_rewards and not self.task_config.reset_at_success:
+            if mean_rewards > self.best_rewards:
                 self.best_rewards = mean_rewards
-                self.save(os.path.join(self.nn_dir, f'best'))
-                cprint('saved new best', 'green', attrs=['bold'])
+                if not self.task_config.reset_at_success:
+                    self.save(os.path.join(self.nn_dir, f'best'))
+                    cprint('saved new best', 'green', attrs=['bold'])
             all_fps = self.agent_steps / (time.time() - _t)
             last_fps = self.batch_size / (time.time() - _last_t)
             _last_t = time.time()
