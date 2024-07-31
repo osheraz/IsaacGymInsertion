@@ -533,9 +533,9 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                     self.act_moving_average_lower - self.act_moving_average_upper) * \
                                       sched_scaling
 
-            print('action moving average: {}'.format(self.act_moving_average))
-            print('last_step: {}'.format(self.last_step),
-                  ' scheduled steps: {}'.format(self.act_moving_average_scheduled_steps))
+            # print('action moving average: {}'.format(self.act_moving_average))
+            # print('last_step: {}'.format(self.last_step),
+            #       ' scheduled steps: {}'.format(self.act_moving_average_scheduled_steps))
 
             self.extras['annealing/action_moving_average_scalar'] = self.act_moving_average
 
@@ -795,7 +795,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             plug_pos_error,  # 3
             plug_quat_error,  # 4
             physics_params,  # 13
-            # finger_contacts,         # 3
+            # ,   # 3
             # self.plug_pcd.view(self.num_envs, -1),  # 3 * num_points
         ]
 
@@ -982,11 +982,13 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         pitch[pitch > np.pi] -= 2 * np.pi
         self.degrasp_buf[:] = (torch.abs(roll) > 0.4) | (torch.abs(pitch) > 0.4)
 
-        fingertips_plug_dist = (torch.norm(self.left_finger_pos - self.fingertip_centered_pos, p=2, dim=-1) < 0.005) & (
-                                torch.norm(self.right_finger_pos - self.fingertip_centered_pos, p=2, dim=-1) < 0.005) & (
-                                torch.norm(self.middle_finger_pos - self.fingertip_centered_pos, p=2, dim=-1) < 0.005)
+        fingertips_dist = (torch.norm(self.left_finger_pos - self.fingertip_centered_pos, p=2, dim=-1) < 0.005) & (
+                           torch.norm(self.right_finger_pos - self.fingertip_centered_pos, p=2, dim=-1) < 0.005) & (
+                           torch.norm(self.middle_finger_pos - self.fingertip_centered_pos, p=2, dim=-1) < 0.005)
 
-        self.degrasp_buf[:] |= fingertips_plug_dist
+        # self.degrasp_buf[:] |= fingertips_dist
+        self.reset_buf[:] |= self.degrasp_buf[:]
+        # print(torch.sum(self.degrasp_buf != 0).item())
 
         if ((self.cfg_task.data_logger.collect_data or
              self.cfg_task.data_logger.collect_test_sim or
@@ -1180,9 +1182,11 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         if param_name == "scale" and actor == "plug":
             self.plug_scale[env_id] = param_val.mean()
         elif param_name == "mass" and actor == "plug":
+            self.rigid_physics_params[env_id, 0] = np.mean(param_val)
+        elif param_name == "friction" and actor == "plug":
             self.rigid_physics_params[env_id, 1] = np.mean(param_val)
-        # elif param_name == "friction" and actor == "plug":
-        #     self.rigid_physics_params[env_id, 2] = np.mean(param_val)
+        elif param_name == "friction" and actor == "socket":
+            self.rigid_physics_params[env_id, 2] = np.mean(param_val)
 
     def reset_idx(self, env_ids):
         """Reset specified environments."""
@@ -1738,11 +1742,21 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         if self.cfg_task.grasp_at_init:
             for i in range(100):
                 diff = gripper_dof_pos[env_ids, :] - self.gripper_dof_pos[env_ids, :]
+
                 self.ctrl_target_gripper_dof_pos[env_ids, :] = self.gripper_dof_pos[env_ids, :] + diff * 0.1
                 self._move_gripper_to_dof_pos(env_ids=env_ids, gripper_dof_pos=self.ctrl_target_gripper_dof_pos,
                                               sim_steps=1)
         else:
-            self.ctrl_target_gripper_dof_pos = gripper_dof_pos.clone()
+            # diff = gripper_dof_pos[env_ids, :] - self.gripper_dof_pos[env_ids, :]
+            # self.ctrl_target_gripper_dof_pos = gripper_dof_pos.clone()
+            # self._move_gripper_to_dof_pos(env_ids=env_ids, gripper_dof_pos=self.ctrl_target_gripper_dof_pos,
+            #                               sim_steps=1)
+            for i in range(10):
+                diff = gripper_dof_pos[env_ids, :] - self.gripper_dof_pos[env_ids, :]
+
+                self.ctrl_target_gripper_dof_pos[env_ids, :] = self.gripper_dof_pos[env_ids, :] + diff * 0.1
+                self._move_gripper_to_dof_pos(env_ids=env_ids, gripper_dof_pos=self.ctrl_target_gripper_dof_pos,
+                                              sim_steps=1)
 
     def _move_gripper_to_dof_pos(self, env_ids, gripper_dof_pos, sim_steps=20):
         """Move gripper fingers to specified DOF position using controller."""

@@ -24,6 +24,7 @@ import torch
 import torch.distributed as dist
 import numpy as np
 import matplotlib
+from termcolor import cprint
 from isaacgyminsertion.tasks.factory_tactile.factory_utils import RotationTransformer
 
 # matplotlib.use('TkAgg')
@@ -353,6 +354,8 @@ class PPO(object):
         torch.save(weights, f'{name}.pth')
 
     def restore_train(self, fn):
+        cprint(f"Restore teacher from {fn}", 'red', attrs=['bold'])
+
         if not fn:
             return
         checkpoint = torch.load(fn)

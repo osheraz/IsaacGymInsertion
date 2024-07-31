@@ -2,8 +2,8 @@
 GPUS=${1:-0}
 SEED=${2:-42}
 CACHE=${3:-test}
-NUM_ENVS=${4:-2000}
-HEADLESS=${5:-False}
+NUM_ENVS=${4:-1500}
+HEADLESS=${5:-True}
 
 array=( $@ )
 len=${#array[@]}
@@ -17,6 +17,8 @@ echo extra "${EXTRA_ARGS}"
 CUDA_VISIBLE_DEVICES=${GPUS} \
 python train.py task=FactoryTaskInsertionTactile headless=${HEADLESS} seed=${SEED} \
 multi_gpu=False \
+restore_train=False \
+task.grasp_at_init=False \
 task.env.numEnvs=${NUM_ENVS} \
 task.env.compute_contact_gt=False \
 train.ppo.only_contact=False \

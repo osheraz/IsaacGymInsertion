@@ -13,7 +13,7 @@ collect_rotate: False
 reset_at_success: False
 
 grasp_logger:
-    total_grasp: 20
+    total_grasp: 2000
 
 data_logger:
     # for data collection
@@ -50,7 +50,7 @@ env:
     numEnvs: ${resolve_default:128,${...num_envs}}
     numObservations: 18 #
     numObsStudent: 18 #
-    numStates: 27 #
+    numStates: 27 # 27
     numActions: 6 # [position, ori]
     numTargets: 6 # [position, ori]
     action_latency_max: 15
@@ -145,7 +145,7 @@ randomize:
 #    plug_pos_xy_initial: [0.50, 0.0, 0.0]  # z 0.03  initial XY position of plug on table
     grasp_plug_noise: 0.005 # xyz noise on grasp pos position during grasp at init
     plug_pos_xy_noise: [ 0.01,  0.01] # noise on plug position
-    plug_rot_noise: [ 0.15, 0.15, 0.05 ] # rot noise on plug init
+    plug_rot_noise: [ 0.05, 0.05, 0.05 ] # rot noise on plug init
     plug_pos_z_noise_bounds: [ 0.005, 0.03 ]  # plug z bound noise
 #    plug_quat_noise: [0.0, 0.0, 0.0, 0.0]
 
@@ -182,7 +182,7 @@ rl:
     close_error_thresh: 0.005  # threshold below which plug is considered close enough to bolt
     success_height_thresh: 0.005  # threshold distance below which plug is considered successfully inserted
 
-    keypoint_reward_scale: -0.4 # scale on keypoint-based reward
+    keypoint_reward_scale: -0.7 # scale on keypoint-based reward
     action_penalty_scale: -0.07  # scale on action penalty
     action_delta_scale: -0.07
     ori_reward_scale: -0.1 # scale on ori-based reward

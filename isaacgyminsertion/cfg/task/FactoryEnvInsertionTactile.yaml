@@ -26,15 +26,15 @@ env:
     aggregate_mode: True
 
     desired_subassemblies: [
-#                            'small_triangle',
-#                            'triangle',
+                            'small_triangle',
                             'red_round_peg_1_5in',
                             'yellow_round_peg_2in',
-#                            'rectangular_peg_hole_32mm_loose',
-#                            'square_peg_hole_32mm_loose',
+                            'square_peg_hole_32mm_loose',
+    ]
 #                             'round_peg_hole_16mm_loose',
 #                             'rectangular_peg_hole_16mm_loose',
-    ]
+#                            'rectangular_peg_hole_32mm_loose',
+#                            'triangle',
 
     plug_lateral_offset: 0.1  # Y-axis offset of plug before initial reset to prevent initial interpenetration with socket
     plug_friction: 0.99
@@ -86,7 +86,7 @@ randomize:
                 rigid_shape_properties:
                     friction:
                         num_buckets: 250
-                        range: [0.9, 1.3] # 1 1
+                        range: [1.0, 1.0] # 1 1
                         operation: "scaling"
                         distribution: "uniform"
             plug:
@@ -116,7 +116,7 @@ randomize:
                         # schedule_steps: 30000
                 rigid_body_properties:
                     mass:
-                        range: [ 0.7, 1.3 ]
+                        range: [ 0.5, 1.1 ]
                         operation: "scaling"
                         distribution: "uniform"
                         setup_only: True # Property will only be randomized once before simulation is started. See Domain Randomization Documentation for more info.
