@@ -162,7 +162,7 @@ class ExtrinsicAdapt(object):
 
         # ---- Training Misc
         batch_size = self.num_actors
-        self.step_reward = torch.zeros(batch_size, dtype=torch.float32, device=self.device)
+        self.step_reward = torch.zeros((batch_size, 1), dtype=torch.float32, device=self.device)
         self.step_length = torch.zeros(batch_size, dtype=torch.float32, device=self.device)
         self.step_success = torch.zeros(batch_size, dtype=torch.float32, device=self.device)
 
@@ -189,16 +189,16 @@ class ExtrinsicAdapt(object):
         self.student.model.eval()
         if self.train_config.model.transformer.load_tact:
             self.student.tact.eval()
-        # if self.stud_obs_mean_std:
-        #     self.stud_obs_mean_std.eval()
+        if self.stud_obs_mean_std:
+            self.stud_obs_mean_std.eval()
 
     def set_student_train(self):
 
         self.student.model.train()
         if self.train_config.model.transformer.load_tact:
             self.student.tact.train()
-        # if self.stud_obs_mean_std:
-        #     self.stud_obs_mean_std.train()
+        if self.stud_obs_mean_std:
+            self.stud_obs_mean_std.train()
 
     def process_obs(self, obs, obj_id=2, socket_id=3, distinct=True, display=False):
 
@@ -428,7 +428,7 @@ class ExtrinsicAdapt(object):
                     'seg': batched_obs['n_seg'] if 'n_seg' in batched_obs else None,
                 }
 
-                # student pass
+                # student pass (obs already normalized)
                 latent, _ = self.student.predict(student_dict, requires_grad=True)
 
                 if not self.only_bc:
@@ -480,11 +480,10 @@ class ExtrinsicAdapt(object):
 
         return action_losses, latent_losses
 
-    def train_agg(self):
+    def train(self):
         _t = time.time()
         _last_t = time.time()
         self.epoch_num = 0
-
         self.obs = self.env.reset()
         self.agent_steps = (self.batch_size if not self.multi_gpu else self.batch_size * self.rank_size)
         if self.multi_gpu:
@@ -513,31 +512,41 @@ class ExtrinsicAdapt(object):
                 mean_lengths = self.mean_eps_length.get_mean()
                 mean_success = self.mean_eps_success.get_mean()
 
-                if not self.multi_gpu or (self.multi_gpu and self.rank == 0):
-                    all_fps = self.agent_steps / (time.time() - _t)
-                    last_fps = self.batch_size / (time.time() - _last_t)
-                    _last_t = time.time()
-                    info_string = f'Agent Steps: {int(self.agent_steps // 1e6):04}M | FPS: {all_fps:.1f} | ' \
-                                  f'Last FPS: {last_fps:.1f} | ' \
-                                  f"Current Best: {self.best_rewards:.2f} | " \
-                                  f'Cur Reward: {mean_rewards:.2f} | '
-                    print(info_string)
+            if not self.multi_gpu or (self.multi_gpu and self.rank == 0):
+                all_fps = self.agent_steps / (time.time() - _t)
+                last_fps = self.batch_size / (time.time() - _last_t)
+                _last_t = time.time()
+                info_string = f'ExtAdapt: Agent Steps: {int(self.agent_steps // 1e3):04}K | FPS: {all_fps:.1f} | ' \
+                              f'Last FPS: {last_fps:.1f} | ' \
+                              f'Best Reward: {self.best_rewards:.2f} | ' \
+                              f'Cur Reward: {mean_rewards:.2f} | ' \
 
-                    if self.agent_steps % 1e5 == 0:
-                        self.save(os.path.join(self.nn_dir, f'last'))
+                print(info_string)
 
-                    if mean_rewards > self.best_rewards and self.agent_steps >= 1e3 and mean_rewards != 0.0:
-                        cprint(f"save current best reward: {mean_rewards:.2f}", 'green', attrs=['bold'])
-                        prev_best_ckpt = os.path.join(self.nn_dir, f"best_reward_{self.best_rewards:.2f}.pth")
-                        if os.path.exists(prev_best_ckpt):
-                            os.remove(prev_best_ckpt)
-                        self.best_rewards = mean_rewards
-                        self.save(os.path.join(self.nn_dir, f"best_reward_{mean_rewards:.2f}"))
-                    self.success_rate = mean_success
+                if self.agent_steps % 1e6 == 0 and self.task_config.reset_at_success:
+                    cprint(f'Disabling resets and evaluating', 'blue', attrs=['bold'])
+                    self.task_config.reset_at_success = False
+                    self.test(total_steps=500)
+                    self.task_config.reset_at_success = True
+                    self.set_student_train()
+                    cprint(f'Resume training', 'blue', attrs=['bold'])
 
-            print('max steps achieved')
+                if self.agent_steps % 1e7 == 0:
+                    cprint(f'saved model at {self.agent_steps}', 'green', attrs=['bold'])
+                    self.save(os.path.join(self.nn_dir, f'last'))
 
-    def train(self):
+                if mean_rewards > self.best_rewards and self.agent_steps >= 1e3 and mean_rewards != 0.0:
+                    cprint(f"save current best reward: {mean_rewards:.2f}", 'green', attrs=['bold'])
+                    prev_best_ckpt = os.path.join(self.nn_dir, f"best_reward_{self.best_rewards:.2f}.pth")
+                    if os.path.exists(prev_best_ckpt):
+                        os.remove(prev_best_ckpt)
+                    self.best_rewards = mean_rewards
+                    self.save(os.path.join(self.nn_dir, f"best_reward_{mean_rewards:.2f}"))
+                self.success_rate = mean_success
+
+        print('max steps achieved')
+
+    def train_single(self):
 
         _t = time.time()
         _last_t = time.time()
@@ -631,7 +640,7 @@ class ExtrinsicAdapt(object):
 
             if self.agent_steps % 1e7 == 0:
                 cprint(f'saved model at {self.agent_steps}', 'green', attrs=['bold'])
-                self.save(os.path.join(self.nn_dir, f'last'))
+                self.sav(os.path.join(self.nn_dir, f'last'))
 
             mean_rewards = self.mean_eps_reward.get_mean()
             if mean_rewards > self.best_rewards:

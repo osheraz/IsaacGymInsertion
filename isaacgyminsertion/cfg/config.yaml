@@ -43,7 +43,7 @@ train_tactile: False # flag for real offline
 
 # used to set checkpoint path
 restore_train: False
-checkpoint: 'outputs/no_phys_params/stage1_nn/last.pth'
+checkpoint: 'outputs/teacher/stage1_nn/last.pth'
 # set sigma when restoring network
 sigma: ''
 # set to True to use multi-gpu training
