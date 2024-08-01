@@ -662,9 +662,9 @@ class ExtrinsicAdapt(object):
 
     def restore_train(self, fn):
         checkpoint = torch.load(fn)
-        cprint('Restoring train with teacher')
-        cprint('careful, using non-strict matching', 'red', attrs=['bold'])
-        self.agent.load_state_dict(checkpoint['model'], strict=False)
+        # cprint('Restoring train with teacher')
+        cprint(f'Restoring train with teacher: {fn}', 'red', attrs=['bold'])
+        self.agent.load_state_dict(checkpoint['model'])
         self.running_mean_std.load_state_dict(checkpoint['running_mean_std'])
         self.priv_mean_std.load_state_dict(checkpoint['priv_mean_std'])
         self.set_eval()

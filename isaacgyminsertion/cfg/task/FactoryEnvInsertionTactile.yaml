@@ -108,7 +108,7 @@ randomize:
                 rigid_shape_properties:
                     friction:
                         num_buckets: 250
-                        range: [ 0.65, 1.3 ]
+                        range: [ 0.9, 1.3 ]
                         operation: "scaling"
                         distribution: "uniform"
 

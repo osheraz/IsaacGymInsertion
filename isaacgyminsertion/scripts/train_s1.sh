@@ -2,7 +2,7 @@
 GPUS=${1:-0}
 SEED=${2:-42}
 CACHE=${3:-test}
-NUM_ENVS=${4:-1500}
+NUM_ENVS=${4:-3000}
 HEADLESS=${5:-True}
 
 array=( $@ )
@@ -19,6 +19,7 @@ python train.py task=FactoryTaskInsertionTactile headless=${HEADLESS} seed=${SEE
 multi_gpu=False \
 restore_train=False \
 task.grasp_at_init=False \
+task.reset_at_fails=True \
 task.env.numEnvs=${NUM_ENVS} \
 task.env.compute_contact_gt=False \
 train.ppo.only_contact=False \

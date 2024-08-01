@@ -987,12 +987,11 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                            torch.norm(self.middle_finger_pos - self.fingertip_centered_pos, p=2, dim=-1) < 0.005)
 
         # self.degrasp_buf[:] |= fingertips_dist
-        self.reset_buf[:] |= self.degrasp_buf[:]
-        # print(torch.sum(self.degrasp_buf != 0).item())
+        if self.cfg_task.reset_at_fails:
+            self.reset_buf[:] |= self.degrasp_buf[:]
 
         if ((self.cfg_task.data_logger.collect_data or
-             self.cfg_task.data_logger.collect_test_sim or
-             self.cfg_task.reset_at_success) and not self.cfg_task.collect_rotate):
+             self.cfg_task.data_logger.collect_test_sim) and not self.cfg_task.collect_rotate):
             self.reset_buf[:] |= self.degrasp_buf[:]
 
         # If plug is too far from socket pos
@@ -1751,10 +1750,10 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             # self.ctrl_target_gripper_dof_pos = gripper_dof_pos.clone()
             # self._move_gripper_to_dof_pos(env_ids=env_ids, gripper_dof_pos=self.ctrl_target_gripper_dof_pos,
             #                               sim_steps=1)
-            for i in range(10):
+            for i in range(1):
                 diff = gripper_dof_pos[env_ids, :] - self.gripper_dof_pos[env_ids, :]
 
-                self.ctrl_target_gripper_dof_pos[env_ids, :] = self.gripper_dof_pos[env_ids, :] + diff * 0.1
+                self.ctrl_target_gripper_dof_pos[env_ids, :] = self.gripper_dof_pos[env_ids, :] + diff * 0.3
                 self._move_gripper_to_dof_pos(env_ids=env_ids, gripper_dof_pos=self.ctrl_target_gripper_dof_pos,
                                               sim_steps=1)
 

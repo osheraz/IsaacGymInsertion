@@ -11,6 +11,7 @@ physics_engine: ${..physics_engine}
 grasp_at_init: False
 collect_rotate: False
 reset_at_success: False
+reset_at_fails: False
 
 grasp_logger:
     total_grasp: 2000

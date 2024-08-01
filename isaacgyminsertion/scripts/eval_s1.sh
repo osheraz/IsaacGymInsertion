@@ -1,7 +1,7 @@
 #!/bin/bash
 GPUS=${1:-0}
 SEED=${2:-42}
-CACHE=${3:-no_phys_params}
+CACHE=${3:-teacher}
 NUM_ENVS=${4:-100}
 HEADLESS=${5:-True}
 
@@ -16,9 +16,8 @@ C=outputs/${CACHE}/stage1_nn/last.pth
 CUDA_VISIBLE_DEVICES=${GPUS} \
 python train.py task=FactoryTaskInsertionTactile headless=${HEADLESS} seed=${SEED} \
 test=True \
+task.grasp_at_init=True \
 task.env.numEnvs=${NUM_ENVS} \
-task.env.numStates=14 \
-task.env.numObservations=18 \
 train.algo=PPO \
 train.ppo.priv_info=True \
 train.ppo.output_name="${CACHE}" \
