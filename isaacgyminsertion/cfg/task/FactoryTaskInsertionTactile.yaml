@@ -133,7 +133,7 @@ external_cam:
   save_im: False
   far_clip: 1.0
   near_clip: 0.0
-  dis_noise: 0.001
+  dis_noise: 0.0001
   display: False
 
 randomize:

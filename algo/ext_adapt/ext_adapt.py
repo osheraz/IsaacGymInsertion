@@ -162,7 +162,8 @@ class ExtrinsicAdapt(object):
 
         # ---- Training Misc
         batch_size = self.num_actors
-        self.step_reward = torch.zeros((batch_size, 1), dtype=torch.float32, device=self.device)
+        # self.step_reward = torch.zeros((batch_size, 1), dtype=torch.float32, device=self.device)
+        self.step_reward = torch.zeros(batch_size, dtype=torch.float32, device=self.device)
         self.step_length = torch.zeros(batch_size, dtype=torch.float32, device=self.device)
         self.step_success = torch.zeros(batch_size, dtype=torch.float32, device=self.device)
 
@@ -483,7 +484,9 @@ class ExtrinsicAdapt(object):
     def train(self):
         _t = time.time()
         _last_t = time.time()
+        test_every = 1e5
         self.epoch_num = 0
+        self.next_test_step = test_every
         self.obs = self.env.reset()
         self.agent_steps = (self.batch_size if not self.multi_gpu else self.batch_size * self.rank_size)
         if self.multi_gpu:
@@ -520,28 +523,30 @@ class ExtrinsicAdapt(object):
                               f'Last FPS: {last_fps:.1f} | ' \
                               f'Best Reward: {self.best_rewards:.2f} | ' \
                               f'Cur Reward: {mean_rewards:.2f} | ' \
+                              f'Time: {(time.time() - _t):.2f} | '
 
                 print(info_string)
 
-                if self.agent_steps % 1e6 == 0 and self.task_config.reset_at_success:
+                if self.agent_steps >= self.next_test_step and self.task_config.reset_at_success:
                     cprint(f'Disabling resets and evaluating', 'blue', attrs=['bold'])
                     self.task_config.reset_at_success = False
                     self.test(total_steps=500)
                     self.task_config.reset_at_success = True
                     self.set_student_train()
+                    self.next_test_step += test_every
                     cprint(f'Resume training', 'blue', attrs=['bold'])
 
-                if self.agent_steps % 1e7 == 0:
+                # if self.agent_steps % 1e5 == 0:
                     cprint(f'saved model at {self.agent_steps}', 'green', attrs=['bold'])
                     self.save(os.path.join(self.nn_dir, f'last'))
 
                 if mean_rewards > self.best_rewards and self.agent_steps >= 1e3 and mean_rewards != 0.0:
                     cprint(f"save current best reward: {mean_rewards:.2f}", 'green', attrs=['bold'])
-                    prev_best_ckpt = os.path.join(self.nn_dir, f"best_reward_{self.best_rewards:.2f}.pth")
-                    if os.path.exists(prev_best_ckpt):
-                        os.remove(prev_best_ckpt)
+                    # prev_best_ckpt = os.path.join(self.nn_dir, f"best_reward_{self.best_rewards:.2f}.pth")
+                    # if os.path.exists(prev_best_ckpt):
+                    #     os.remove(prev_best_ckpt)
                     self.best_rewards = mean_rewards
-                    self.save(os.path.join(self.nn_dir, f"best_reward_{mean_rewards:.2f}"))
+                    self.save(os.path.join(self.nn_dir, f"best_reward"))
                 self.success_rate = mean_success
 
         print('max steps achieved')
@@ -556,7 +561,8 @@ class ExtrinsicAdapt(object):
         obs_dict = self.env.reset()
         self.agent_steps += self.batch_size
         cprint('Starting to train student', 'green', attrs=['bold'])
-
+        test_every = 1e6
+        self.next_test_step = test_every
         while self.agent_steps <= 1e9:
             self.log_video()
             self.it += 1
@@ -630,17 +636,17 @@ class ExtrinsicAdapt(object):
 
             # self.log_tensorboard()
 
-            if self.agent_steps % 1e6 == 0 and self.task_config.reset_at_success:
+            if self.agent_steps >= self.next_test_step and self.task_config.reset_at_success:
                 cprint(f'Disabling resets and evaluating', 'blue', attrs=['bold'])
                 self.task_config.reset_at_success = False
                 self.test(total_steps=500)
                 self.task_config.reset_at_success = True
                 self.set_student_train()
                 cprint(f'Resume training', 'blue', attrs=['bold'])
-
-            if self.agent_steps % 1e7 == 0:
+                self.next_test_step += test_every
+            # if self.agent_steps % 1e7 == 0:
                 cprint(f'saved model at {self.agent_steps}', 'green', attrs=['bold'])
-                self.sav(os.path.join(self.nn_dir, f'last'))
+                self.save(os.path.join(self.nn_dir, f'last'))
 
             mean_rewards = self.mean_eps_reward.get_mean()
             if mean_rewards > self.best_rewards:
@@ -741,8 +747,8 @@ class ExtrinsicAdapt(object):
         stud_weights = {
             'student': self.student.model.state_dict()
         }
-        # if self.stud_obs_mean_std:
-        #     stud_weights['stud_obs_mean_std'] = self.stud_obs_mean_std.state_dict()
+        if self.stud_obs_mean_std:
+            stud_weights['stud_obs_mean_std'] = self.stud_obs_mean_std.state_dict()
 
         torch.save(stud_weights, f'{name}_stud.pth')
 

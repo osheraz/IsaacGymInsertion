@@ -761,7 +761,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                                                    self.socket_depths,  # 1
                                                    self.socket_widths,  # 1
                                                    self.plug_scale,  # 1
-                                                   ]), 0, 1)
+                                                   ]), 0, 1).to(self.device)
 
         self.rigid_physics_params[...] = physics_params
 

@@ -2,7 +2,7 @@
 GPUS=${1:-0}
 SEED=${2:-42}
 CACHE=${3:-teacher}
-NUM_ENVS=${4:-3}
+NUM_ENVS=${4:-64}
 HEADLESS=${5:-True}
 
 
