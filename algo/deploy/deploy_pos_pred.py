@@ -305,14 +305,6 @@ class HardwarePlayer:
                 left = left[:w // 2, :, :]
                 right = right[:w // 2, :, :]
                 bottom = bottom[:w // 2, :, :]
-
-                # h = left.shape[1]  # Get the height of the image
-                # crop_size = h // 6  # Define the amount to crop from each side
-                # # Crop h // 4 from both the top and bottom
-                # left = left[:, crop_size:-crop_size, :]
-                # right = right[:, crop_size:-crop_size, :]
-                # bottom = bottom[:, crop_size:-crop_size, :]
-
             # Resizing to encoder size
             left = cv2.resize(left, (self.height, self.width), interpolation=cv2.INTER_AREA)
             right = cv2.resize(right, (self.height, self.width), interpolation=cv2.INTER_AREA)

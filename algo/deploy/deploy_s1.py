@@ -49,27 +49,10 @@ class HardwarePlayer:
 
         self.num_actions = self.full_config.task.env.numActions
         self.num_targets = self.full_config.task.env.numTargets
-        self.num_contact_points = self.full_config.task.env.num_points
-
-        # ---- Tactile Info ---
-        self.tactile_info = self.full_config.train.ppo.tactile_info
-        self.tactile_seq_length = self.full_config.train.network.tactile_encoder.tactile_seq_length
-        self.tactile_info_dim = self.full_config.train.network.tactile_mlp.units[0]
-        self.mlp_tactile_info_dim = self.full_config.train.network.tactile_mlp.units[0]
-        self.tactile_input_dim = (self.full_config.train.network.tactile_encoder.img_width,
-                                  self.full_config.train.network.tactile_encoder.img_height,
-                                  self.full_config.train.network.tactile_encoder.num_channels)
-
-        # ---- ft Info --- currently ft isn't supported
-        self.ft_info = self.full_config.train.ppo.ft_info
-        self.ft_seq_length = self.full_config.train.ppo.ft_seq_length
-        self.ft_input_dim = self.full_config.train.ppo.ft_input_dim
-        self.ft_info_dim = self.ft_input_dim * self.ft_seq_length
 
         # ---- Priv Info ----
         self.priv_info = self.full_config.train.ppo.priv_info
         self.priv_info_dim = self.full_config.train.ppo.priv_info_dim
-        self.extrin_adapt = self.full_config.train.ppo.extrin_adapt
         # ---- Obs Info (student)----
         self.obs_info = self.full_config.train.ppo.obs_info
         self.student_obs_input_shape = self.full_config.train.ppo.student_obs_input_shape
@@ -92,24 +75,9 @@ class HardwarePlayer:
             'actions_num': self.num_actions,
             'priv_mlp_units': self.full_config.train.network.priv_mlp.units,
             'input_shape': self.obs_shape,
-            'extrin_adapt': self.extrin_adapt,
             'priv_info_dim': self.priv_info_dim,
             'priv_info': self.priv_info,
-            "tactile_info": self.tactile_info,
             "obs_info": self.obs_info,
-            'student_obs_input_shape': self.student_obs_input_shape,
-            "mlp_tactile_input_shape": self.mlp_tactile_info_dim,
-            "ft_input_shape": self.ft_info_dim,
-            "ft_info": self.ft_info,
-            "mlp_tactile_units": self.full_config.train.network.tactile_mlp.units,
-            "tactile_encoder_embed_dim": self.full_config.train.network.tactile_mlp.units[0],
-            "ft_units": self.full_config.train.network.ft_mlp.units,
-            'tactile_input_dim': self.tactile_input_dim,
-            'tactile_seq_length': self.tactile_seq_length,
-            "merge_units": self.full_config.train.network.merge_mlp.units,
-            "obs_units": self.full_config.train.network.obs_mlp.units,
-            "num_contact_points": self.num_contact_points,
-            # Added contact options
             "gt_contacts_info": self.gt_contacts_info,
             "only_contact": self.full_config.train.ppo.only_contact,
             "contacts_mlp_units": self.full_config.train.network.contact_mlp.units,
@@ -122,6 +90,7 @@ class HardwarePlayer:
 
         self.running_mean_std = RunningMeanStd(self.obs_shape).to(self.device)
         self.running_mean_std.eval()
+
         self.running_mean_std_stud = RunningMeanStd((self.student_obs_input_shape,)).to(self.device)
         self.running_mean_std_stud.eval()
 
@@ -138,6 +107,7 @@ class HardwarePlayer:
         self.asset_info_insertion = self.asset_info_insertion['']['']['']['']['']['']['assets']['factory']['yaml']
         self.rot_tf = RotationTransformer()
         self.rot_tf_back = RotationTransformer(to_rep='quaternion', from_rep='rotation_6d',)
+        self.stud_tf = RotationTransformer(from_rep='matrix', to_rep='rotation_6d')
 
         self.extrinsic_contact = None
 
@@ -252,7 +222,6 @@ class HardwarePlayer:
 
         self.actions = torch.zeros((1, self.num_actions), device=self.device)
         self.targets = torch.zeros((1, self.full_config.task.env.numTargets), device=self.device)
-        self.contacts = torch.zeros((1, self.num_contact_points), device=self.device)
         self.prev_targets = torch.zeros((1, self.full_config.task.env.numTargets), dtype=torch.float,
                                         device=self.device)
 
@@ -280,7 +249,7 @@ class HardwarePlayer:
         )
         # Way too big tensor.
         self.tactile_queue = torch.zeros(
-            (1, self.tactile_seq_length, 3,  # left, right, bottom
+            (1, self.tact_hist_len, 3,  # left, right, bottom
              self.num_channels, self.width, self.height),
             device=self.device,
             dtype=torch.float,
@@ -294,8 +263,12 @@ class HardwarePlayer:
         self.image_buf = torch.zeros(1, 1 if self.cam_type == 'd' else 3, self.res[1], self.res[0]).to(
             self.device)
 
+        self.seg_queue = torch.zeros(
+            (1, self.img_hist_len, self.res[1], self.res[0]),device=self.device, dtype=torch.float,
+        )
+        self.seg_buf = torch.zeros(1, self.res[1], self.res[0]).to(self.device)
+
         self.ft_data = torch.zeros((1, 6), device=self.device, dtype=torch.float)
-        self.ft_queue = torch.zeros((1, self.ft_seq_length, 6), device=self.device, dtype=torch.float)
 
         self.obs_buf = torch.zeros((1, self.obs_shape[0]), device=self.device, dtype=torch.float)
         self.obs_student_buf = torch.zeros((1, self.obs_stud_shape[0]), device=self.device, dtype=torch.float)
@@ -388,7 +361,7 @@ class HardwarePlayer:
         if self.gt_contacts_info:
             self.contacts[0, :] = torch.tensor(self.env.tracker.extrinsic_contact).to(self.device)
 
-    def compute_observations(self, display_image=True, with_priv=False):
+    def compute_observations(self, with_tactile=True, with_img=False, display_image=True, with_priv=False):
 
         obses = self.env.get_obs()
         # some-like taking a new socket pose measurement
@@ -396,7 +369,6 @@ class HardwarePlayer:
 
         arm_joints = obses['joints']
         ee_pose = obses['ee_pose']
-        left, right, bottom = obses['frames']
         ft = obses['ft']
 
         self.ft_data = torch.tensor(ft, device=self.device).unsqueeze(0)
@@ -404,60 +376,81 @@ class HardwarePlayer:
         self.fingertip_centered_pos = torch.tensor(ee_pose[:3], device=self.device, dtype=torch.float).unsqueeze(0)
         self.fingertip_centered_quat = torch.tensor(ee_pose[3:], device=self.device, dtype=torch.float).unsqueeze(0)
 
+        if with_tactile:
+
+            left, right, bottom = obses['frames']
+
+            if self.cfg_tactile.crop_roi:
+                w = left.shape[0]
+                left = left[:w // 2, :, :]
+                right = right[:w // 2, :, :]
+                bottom = bottom[:w // 2, :, :]
+
+            # Resizing to encoder size
+            left = cv2.resize(left, (self.height, self.width), interpolation=cv2.INTER_AREA)
+            right = cv2.resize(right, (self.height, self.width), interpolation=cv2.INTER_AREA)
+            bottom = cv2.resize(bottom, (self.height, self.width), interpolation=cv2.INTER_AREA)
+
+            if display_image:
+                cv2.imshow("Hand View\tLeft\tRight\tMiddle", np.concatenate((left, right, bottom), axis=1))
+                cv2.waitKey(1)
+
+            if self.num_channels == 3:
+                self.tactile_imgs[0, 0] = to_torch(left).permute(2, 0, 1).to(self.device)
+                self.tactile_imgs[0, 1] = to_torch(right).permute(2, 0, 1).to(self.device)
+                self.tactile_imgs[0, 2] = to_torch(bottom).permute(2, 0, 1).to(self.device)
+            else:
+                self.tactile_imgs[0, 0] = to_torch(cv2.cvtColor(left.astype('float32'), cv2.COLOR_BGR2GRAY)).to(self.device)
+                self.tactile_imgs[0, 1] = to_torch(cv2.cvtColor(right.astype('float32'), cv2.COLOR_BGR2GRAY)).to(self.device)
+                self.tactile_imgs[0, 2] = to_torch(cv2.cvtColor(bottom.astype('float32'), cv2.COLOR_BGR2GRAY)).to(self.device)
+
+            self.tactile_queue[:, 1:] = self.tactile_queue[:, :-1].clone().detach()
+            self.tactile_queue[:, 0, :] = self.tactile_imgs
+
+        if with_img:
+            img = obses['img']
+            self.image_buf[0] = to_torch(img).to(self.device)
+            self.img_queue[:, 1:] = self.img_queue[:, :-1].clone().detach()
+            self.img_queue[:, 0, ...] = self.image_buf
+
+            seg = obses['seg']
+            self.seg_buf[0] = to_torch(seg).to(self.device)
+            self.seg_queue[:, 1:] = self.seg_queue[:, :-1].clone().detach()
+            self.seg_queue[:, 0, ...] = self.seg_buf
+
+            if display_image:
+                cv2.imshow("Depth Image", img.transpose(1, 2, 0) + 0.5)
+                cv2.waitKey(1)
+
         # eef_pos = torch.cat((self.fingertip_centered_pos,
         #                      quat2R(self.fingertip_centered_quat).reshape(1, -1)), dim=-1)
         eef_pos = torch.cat((self.fingertip_centered_pos,
                              self.rot_tf.forward(self.fingertip_centered_quat)), dim=-1)
-        # Cutting by half
-        if self.cfg_tactile.crop_roi:
-            w = left.shape[0]
-            left = left[:w // 2, :, :]
-            right = right[:w // 2, :, :]
-            bottom = bottom[:w // 2, :, :]
-
-        # Resizing to encoder size
-        left = cv2.resize(left, (self.height, self.width), interpolation=cv2.INTER_AREA)
-        right = cv2.resize(right, (self.height, self.width), interpolation=cv2.INTER_AREA)
-        bottom = cv2.resize(bottom, (self.height, self.width), interpolation=cv2.INTER_AREA)
-
-        if display_image:
-            cv2.imshow("Hand View\tLeft\tRight\tMiddle", np.concatenate((left, right, bottom), axis=1))
-            cv2.waitKey(1)
-
-        if self.num_channels == 3:
-            self.tactile_imgs[0, 0] = to_torch(left).permute(2, 0, 1).to(self.device)
-            self.tactile_imgs[0, 1] = to_torch(right).permute(2, 0, 1).to(self.device)
-            self.tactile_imgs[0, 2] = to_torch(bottom).permute(2, 0, 1).to(self.device)
-        else:
-            self.tactile_imgs[0, 0] = to_torch(cv2.cvtColor(left.astype('float32'), cv2.COLOR_BGR2GRAY)).to(self.device)
-            self.tactile_imgs[0, 1] = to_torch(cv2.cvtColor(right.astype('float32'), cv2.COLOR_BGR2GRAY)).to(self.device)
-            self.tactile_imgs[0, 2] = to_torch(cv2.cvtColor(bottom.astype('float32'), cv2.COLOR_BGR2GRAY)).to(self.device)
-
-        self.tactile_queue[:, 1:] = self.tactile_queue[:, :-1].clone().detach()
-        self.tactile_queue[:, 0, :] = self.tactile_imgs
-
-        self.ft_queue[:, 1:] = self.ft_queue[:, :-1].clone().detach()
-        self.ft_queue[:, 0, :] = self.ft_data
 
         noisy_delta_pos = self.noisy_gripper_goal_pos - self.fingertip_centered_pos
 
         obs = torch.cat([eef_pos,
                          self.actions,
-                         # self.noisy_gripper_goal_pos.clone(),
                          noisy_delta_pos
                          ], dim=-1)
 
         self.obs_queue[:, :-self.num_observations] = self.obs_queue[:, self.num_observations:]
         self.obs_queue[:, -self.num_observations:] = obs
+        self.obs_buf = self.obs_queue.clone()  # torch.cat(obs_tensors, dim=-1)  # shape = (num_envs, num_observations)
 
-        obs_tensors_student = torch.cat([self.actions,  # 6
-                                         self.actions[:, -3:],  # 3
+        eef_stud = torch.cat((self.fingertip_centered_pos, quat2R(self.fingertip_centered_quat).reshape(1, -1)), dim=-1)
+        # fix bug
+        eef_stud = torch.cat((self.fingertip_centered_pos,
+                              self.stud_tf.forward(eef_stud[:, 3:].reshape(eef_stud.shape[0], 3, 3))), dim=1)
+
+        obs_tensors_student = torch.cat([eef_stud,  # 6
+                                         self.socket_pos,  # 3
+                                         self.actions
                                          ], dim=-1)
 
         self.obs_stud_queue[:, :-self.num_obs_stud] = self.obs_stud_queue[:, self.num_obs_stud:]
         self.obs_stud_queue[:, -self.num_obs_stud:] = obs_tensors_student
 
-        self.obs_buf = self.obs_queue.clone()  # torch.cat(obs_tensors, dim=-1)  # shape = (num_envs, num_observations)
         self.obs_student_buf = self.obs_stud_queue.clone()  # shape = (num_envs, num_observations_student)
 
         if not with_priv:
@@ -728,6 +721,7 @@ class HardwarePlayer:
         self._create_asset_info()
         self._acquire_task_tensors()
 
+        self.deploy_config.data_logger.collect_data = True
         # ---- Data Logger ----
         if self.deploy_config.data_logger.collect_data:
             from algo.ppo.experience import RealLogger
@@ -743,7 +737,7 @@ class HardwarePlayer:
         self.grasp_and_init()
         rospy.sleep(2.0)
 
-        num_episodes = 10
+        num_episodes = 5
         cur_episode = 0
 
         while cur_episode < num_episodes:
@@ -765,9 +759,6 @@ class HardwarePlayer:
                 input_dict = {
                     'obs': obs,
                     'priv_info': priv,
-                    # 'student_obs': self.running_mean_std_stud(obs_stud.clone()),
-                    # 'tactile_hist': tactile,
-                    # 'contacts': self.contacts.clone()
                 }
 
                 action, latent = self.model.act_inference(input_dict)
@@ -781,8 +772,6 @@ class HardwarePlayer:
                 self._update_reset_buf()
                 self.episode_length += 1
 
-                # if self.episode_length >= max_steps:
-                #     done = torch.tensor([1]).to(self.device)
                 if self.deploy_config.data_logger.collect_data:
                     data_logger.log_trajectory_data(action, latent, self.done.clone())
 

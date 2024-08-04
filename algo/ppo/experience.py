@@ -736,10 +736,10 @@ class RealLogger():
 
         self.env = env
 
-        self.with_zed = self.env.deploy_config.env.depth_cam,
-        self.with_tactile = self.env.deploy_config.env.tactile,
-        self.with_ext_cam = self.env.deploy_config.env.ext_cam,
-        self.with_hand = self.env.deploy_config.env.hand,
+        self.with_zed = self.env.deploy_config.env.depth_cam
+        self.with_tactile = self.env.deploy_config.env.tactile
+        self.with_ext_cam = self.env.deploy_config.env.ext_cam
+        self.with_hand = self.env.deploy_config.env.hand
         self.with_arm = self.env.deploy_config.env.arm
 
         log_items = {

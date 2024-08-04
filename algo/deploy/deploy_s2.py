@@ -67,7 +67,8 @@ class HardwarePlayer:
         self.tactile_seq_length = self.train_config.model.transformer.sequence_length
         self.img_hist_len = self.train_config.model.transformer.sequence_length
         self.stud_hist_len = self.train_config.model.transformer.sequence_length
-
+        #         self.tact_hist_len = self.full_config.task.env.tactile_history_len
+        #         self.img_hist_len = self.full_config.task.env.img_history_len
         # ---- Priv Info ----
         self.priv_info = self.full_config.train.ppo.priv_info
         self.priv_info_dim = self.full_config.train.ppo.priv_info_dim

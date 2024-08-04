@@ -19,15 +19,15 @@ tactile_display_viz: True
 data_logger:
     # for data collection
     collect_data: False
-    total_trajectories: 1
-    base_folder: "/home/roblab20/tactile_tests"
+    total_trajectories: 5
+    base_folder: "/home/roblab20/tactile_predict"
     sub_folder: "datastore_real"
 
 # taking from training default, allows to over write
 # actually, we should write different config for each observation we test
 rl:
-    max_episode_length: 1000
-    pos_action_scale: [0.009, 0.009, 0.004]
+    max_episode_length: 200
+    pos_action_scale: [0.006, 0.006, 0.004]
     rot_action_scale: [0.02, 0.02, 0.02]
     clamp_rot: ${...task.rl.clamp_rot}
     clamp_rot_thresh: ${...task.rl.clamp_rot_thresh}

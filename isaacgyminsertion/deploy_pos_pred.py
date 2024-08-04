@@ -32,11 +32,12 @@ def main(config: DictConfig):
     config.seed = set_seed(config.seed)
 
     agent = HardwarePlayer(config)
-    # model_path = 'outputs/gt_test/tact/'
-    model_path = '/home/roblab20/osher3_workspace/src/isaacgym/python/IsaacGymInsertion/isaacgyminsertion/outputs/depth'
     test = False
 
     if test:
+        # model_path = 'outputs/gt_test/tact/'
+
+        model_path = '/home/roblab20/osher3_workspace/src/isaacgym/python/IsaacGymInsertion/isaacgyminsertion/outputs/depth'
         config.offline_train.model.transformer.load_tact = True
         config.offline_train.model.transformer.tact_path = to_absolute_path(model_path + '/checkpoints/model_last.pt')
         config.offline_train.train.load_stats = True
