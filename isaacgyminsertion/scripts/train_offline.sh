@@ -1,6 +1,6 @@
 #!/bin/bash
 SEED=${2:-42}
-CACHE=${3:-no_phys_params}
+CACHE=${3:-teacher}
 NUM_ENVS=${4:-1}
 HEADLESS=${5:-True}
 

@@ -394,14 +394,15 @@ class MultiModalModel(BaseModel):
             if self.additional_lin:
                 add_lin_input = add_lin_input
                 lin_input = torch.cat((lin_input, add_lin_input), dim=2)
+
             if len(lin_input.shape) == 2:
                 lin_input = lin_input.reshape((lin_input.shape[0], self.context_size, self.num_lin_features))
-
             lin_encoding = self.lin_encoder(lin_input)
             if len(lin_encoding.shape) == 2:
                 lin_encoding = lin_encoding.unsqueeze(1)
             # currently, the size of goal_encoding is [batch_size, 1, self.goal_encoding_size]
             assert lin_encoding.shape[2] == self.lin_encoding_size
+
             tokens_list.append(lin_encoding)
 
         # concatenate the goal encoding to the observation encoding

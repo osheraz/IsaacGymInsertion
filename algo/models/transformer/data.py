@@ -271,7 +271,7 @@ class DataNormalizer:
 
 
 class TactileDataset(Dataset):
-    def __init__(self, traj_files, sequence_length=500, stats=None, stride=5,
+    def __init__(self, traj_files, sequence_length=500, stats=None, stride=1,
                  img_transform=None, seg_transform=None, sync_transform=None, tactile_transform=None,
                  include_img=True, include_lin=True, include_tactile=True, include_seg=True, obs_keys=None):
         """

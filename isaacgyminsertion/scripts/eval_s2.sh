@@ -2,7 +2,7 @@
 GPUS=${1:-0}
 SEED=${2:-42}
 CACHE=${3:-teacher}
-NUM_ENVS=${4:-100}
+NUM_ENVS=${4:-10}
 HEADLESS=${5:-True}
 
 
@@ -21,10 +21,11 @@ CUDA_VISIBLE_DEVICES=${GPUS} \
 python train.py task=FactoryTaskInsertionTactile headless=${HEADLESS} seed=${SEED} \
 task.env.numEnvs=${NUM_ENVS} \
 multi_gpu=False \
-offline_train.from_offline=False \
+offline_train.from_offline=True \
 offline_train.only_bc=True \
 task.reset_at_success=False \
-task.grasp_at_init=True \
+task.grasp_at_init=False \
+task.reset_at_fails=False \
 test=True \
 train.algo=ExtrinsicAdapt \
 train.ppo.priv_info=True \

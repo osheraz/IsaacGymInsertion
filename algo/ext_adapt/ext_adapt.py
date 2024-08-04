@@ -67,6 +67,8 @@ class ExtrinsicAdapt(object):
         self.env = env
         self.num_actors = self.ppo_config['num_actors']
         self.obs_shape = (self.task_config.env.numObservations * self.task_config.env.numObsHist,)
+        self.obs_stud_shape = (self.task_config.env.numObsStudent * self.task_config.env.numObsStudentHist,)
+
         self.max_agent_steps = self.ppo_config['max_agent_steps']
 
         self.actions_num = self.task_config.env.numActions
@@ -110,7 +112,7 @@ class ExtrinsicAdapt(object):
         student_cfg.offline_train.model.use_lin = self.obs_info
         student_cfg.offline_train.model.use_img = self.img_info
 
-        self.stud_obs_mean_std = RunningMeanStd((student_cfg.offline_train.model.linear.input_size,)).to(self.device)
+        self.stud_obs_mean_std = RunningMeanStd(self.obs_stud_shape).to(self.device)
         self.stud_obs_mean_std.train()
 
         self.student = Student(student_cfg)
@@ -137,7 +139,7 @@ class ExtrinsicAdapt(object):
         student_shapes = {'img': self.env.img_queue.shape[1:] if self.img_info else None,
                           'seg': self.env.seg_queue.shape[1:] if self.seg_info else None,
                           'tactile': self.env.tactile_queue.shape if self.tactile_info else None,
-                          'student_obs': self.env.obs_student_buf.shape[-1] if self.obs_info else None}
+                          'student_obs': self.obs_stud_shape[0] if self.obs_info else None}
 
         self.storage = StudentBuffer(self.num_actors, self.horizon_length, self.batch_size, self.minibatch_size,
                                      self.obs_shape[0], self.actions_num, self.priv_info_dim,
@@ -162,8 +164,8 @@ class ExtrinsicAdapt(object):
 
         # ---- Training Misc
         batch_size = self.num_actors
-        # self.step_reward = torch.zeros((batch_size, 1), dtype=torch.float32, device=self.device)
-        self.step_reward = torch.zeros(batch_size, dtype=torch.float32, device=self.device)
+        self.step_reward = torch.zeros((batch_size, 1), dtype=torch.float32, device=self.device)
+        # self.step_reward = torch.zeros(batch_size, dtype=torch.float32, device=self.device)
         self.step_length = torch.zeros(batch_size, dtype=torch.float32, device=self.device)
         self.step_success = torch.zeros(batch_size, dtype=torch.float32, device=self.device)
 
@@ -190,16 +192,18 @@ class ExtrinsicAdapt(object):
         self.student.model.eval()
         if self.train_config.model.transformer.load_tact:
             self.student.tact.eval()
-        if self.stud_obs_mean_std:
-            self.stud_obs_mean_std.eval()
+        if not self.train_config.from_offline:
+            if self.stud_obs_mean_std:
+                self.stud_obs_mean_std.eval()
 
     def set_student_train(self):
 
         self.student.model.train()
         if self.train_config.model.transformer.load_tact:
             self.student.tact.train()
-        if self.stud_obs_mean_std:
-            self.stud_obs_mean_std.train()
+        if not self.train_config.from_offline:
+            if self.stud_obs_mean_std:
+                self.stud_obs_mean_std.train()
 
     def process_obs(self, obs, obj_id=2, socket_id=3, distinct=True, display=False):
 
@@ -209,13 +213,13 @@ class ExtrinsicAdapt(object):
         img = obs['img'] if 'img' in obs else None
         seg = obs['seg'] if 'seg' in obs else None
 
-        valid_mask = ((seg == obj_id) | (seg == socket_id)).float()
-        seg = seg * valid_mask if distinct else valid_mask
-
-        img = img * valid_mask.unsqueeze(2)
+        if self.img_info:
+            valid_mask = ((seg == obj_id) | (seg == socket_id)).float()
+            seg = seg * valid_mask if distinct else valid_mask
+            img = img * valid_mask.unsqueeze(2)
 
         if student_obs is not None:
-            if self.stats is not None:
+            if self.stats is not None and self.train_config.from_offline:
 
                 eef_pos = student_obs[:, :9]
                 socket_pos = student_obs[:, 9:12]
@@ -223,8 +227,10 @@ class ExtrinsicAdapt(object):
                 eef_pos = (eef_pos - self.stats["mean"]['eef_pos_rot6d']) / self.stats["std"]['eef_pos_rot6d']
                 socket_pos = (socket_pos - self.stats["mean"]["socket_pos"][:3]) / self.stats["std"]["socket_pos"][:3]
                 student_obs = torch.cat([eef_pos, socket_pos, action], dim=-1)
-            else:
+            elif not self.train_config.from_offline:
                 student_obs = self.stud_obs_mean_std(student_obs)
+            else:
+                assert NotImplementedError
 
         student_dict = {
             'student_obs': student_obs,
@@ -358,7 +364,7 @@ class ExtrinsicAdapt(object):
             self.storage.update_data('student_actions', n, student_actions)
 
             # do env step
-            if self.agent_steps < 4000:
+            if self.agent_steps < 4e5:
                 actions = torch.clamp(res_dict['actions'], -1.0, 1.0)
             else:
                 actions = torch.clamp(student_actions, -1.0, 1.0)
@@ -473,7 +479,7 @@ class ExtrinsicAdapt(object):
                             )
                             offset += param.numel()
 
-                torch.nn.utils.clip_grad_norm_(self.student.model.parameters(), 0.5)
+                torch.nn.utils.clip_grad_norm_(self.student.model.parameters(), 1.0)
 
                 self.optim.step()
 
@@ -529,9 +535,10 @@ class ExtrinsicAdapt(object):
 
                 if self.agent_steps >= self.next_test_step and self.task_config.reset_at_success:
                     cprint(f'Disabling resets and evaluating', 'blue', attrs=['bold'])
-                    self.task_config.reset_at_success = False
-                    self.test(total_steps=500)
-                    self.task_config.reset_at_success = True
+                    # self.task_config.reset_at_success = False
+                    # self.test(total_steps=500)
+                    # self.env.reset()
+                    # self.task_config.reset_at_success = True
                     self.set_student_train()
                     self.next_test_step += test_every
                     cprint(f'Resume training', 'blue', attrs=['bold'])
@@ -695,9 +702,9 @@ class ExtrinsicAdapt(object):
         self.agent.load_state_dict(checkpoint['model'])
         self.priv_mean_std.load_state_dict(checkpoint['priv_mean_std'])
 
-        stud_fn = fn.replace('stage1_nn/last.pth', 'stage2_nn/best_stud.pth')
+        stud_fn = fn.replace('stage1_nn/last.pth', 'stage2_nn/last_stud.pth')
 
-        self.restore_student(stud_fn, from_offline=self.train_config.from_offline, phase=2)
+        self.restore_student(stud_fn, from_offline=self.train_config.from_offline, phase=1)
         self.set_eval()
         self.set_student_eval()
 
@@ -728,6 +735,7 @@ class ExtrinsicAdapt(object):
                 self.stats['std'][key] = torch.tensor(stats['std'][key], device=self.device)
         else:
             cprint(f'Restoring student from: {fn}', 'blue', attrs=['bold'])
+            self.stats = None
             checkpoint = torch.load(fn)
             self.stud_obs_mean_std.load_state_dict(checkpoint['stud_obs_mean_std'])
             self.student.model.load_state_dict(checkpoint['student'])
@@ -747,8 +755,9 @@ class ExtrinsicAdapt(object):
         stud_weights = {
             'student': self.student.model.state_dict()
         }
-        if self.stud_obs_mean_std:
-            stud_weights['stud_obs_mean_std'] = self.stud_obs_mean_std.state_dict()
+        if not self.train_config.from_offline:
+            if self.stud_obs_mean_std:
+                stud_weights['stud_obs_mean_std'] = self.stud_obs_mean_std.state_dict()
 
         torch.save(stud_weights, f'{name}_stud.pth')
 

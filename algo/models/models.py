@@ -17,10 +17,12 @@ import torch.nn as nn
 import torch.nn.functional as F
 from matplotlib import pyplot as plt
 
+
 def layer_init(layer, std=np.sqrt(2), bias_const=0.0):
     torch.nn.init.orthogonal_(layer.weight, std)
     torch.nn.init.constant_(layer.bias, bias_const)
     return layer
+
 
 class MLP(nn.Module):
     def __init__(self, units, input_size):
@@ -34,7 +36,7 @@ class MLP(nn.Module):
 
     def forward(self, x):
         return self.mlp(x)
-    
+
 
 class AdaptTConv(nn.Module):
     def __init__(self, ft_dim=6 * 5, ft_out_dim=32):
@@ -54,8 +56,10 @@ class AdaptTConv(nn.Module):
             nn.ReLU(inplace=True),
         )
         self.low_dim_proj = nn.Linear(32 * 3, ft_out_dim)
+        self.ft_dim = ft_dim
+    def forward(self, tac, img, seg, x):
 
-    def forward(self, x):
+        x = x.reshape(x.shape[0], 30, self.ft_dim)
         x = self.channel_transform(x)  # (N, 50, 32)
         x = x.permute((0, 2, 1))  # (N, 32, 50)
         x = self.temporal_aggregation(x)  # (N, 32, 3)
@@ -207,7 +211,8 @@ class ActorCritic(nn.Module):
 
                 if display:
                     plt.ylim(-1, 1)
-                    plt.scatter(list(range(extrin_gt.shape[-1])), extrin.clone().detach().cpu().numpy()[0, :], color='r')
+                    plt.scatter(list(range(extrin_gt.shape[-1])), extrin.clone().detach().cpu().numpy()[0, :],
+                                color='r')
                     plt.scatter(list(range(extrin_gt.shape[-1])), extrin_gt.clone().cpu().numpy()[0, :], color='b')
                     plt.pause(0.0001)
                     plt.cla()
@@ -217,7 +222,7 @@ class ActorCritic(nn.Module):
             # Contact obs with extrin/gt_extrin and pass to the actor
             if self.priv_info:
                 if self.priv_info_stage2:
-                    
+
                     if self.tactile_info:
                         extrin_tactile = self._tactile_encode_multi(obs_dict['tactile_hist'])
                     if self.obs_info:
@@ -257,7 +262,8 @@ class ActorCritic(nn.Module):
                     # plot for latent viz
                     if display:
                         plt.ylim(-1, 1)
-                        plt.scatter(list(range(extrin.shape[-1])), extrin.clone().detach().cpu().numpy()[0, :], color='r')
+                        plt.scatter(list(range(extrin.shape[-1])), extrin.clone().detach().cpu().numpy()[0, :],
+                                    color='r')
                         plt.scatter(list(range(extrin_gt.shape[-1])), extrin_gt.clone().cpu().numpy()[0, :], color='b')
                         plt.pause(0.0001)
                         plt.cla()
@@ -279,8 +285,10 @@ class ActorCritic(nn.Module):
                     # plot for latent viz
                     if display and 'latent' in obs_dict:
                         plt.ylim(-1, 1)
-                        plt.scatter(list(range(extrin.shape[-1])), extrin.clone().detach().cpu().numpy()[0, :], color='b')
-                        plt.scatter(list(range(extrin.shape[-1])), obs_dict['latent'].clone().cpu().numpy()[0, :], color='r')
+                        plt.scatter(list(range(extrin.shape[-1])), extrin.clone().detach().cpu().numpy()[0, :],
+                                    color='b')
+                        plt.scatter(list(range(extrin.shape[-1])), obs_dict['latent'].clone().cpu().numpy()[0, :],
+                                    color='r')
                         plt.pause(0.0001)
                         plt.cla()
 
@@ -348,6 +356,7 @@ class ActorCritic(nn.Module):
         tac_emb = self.tactile_mlp(tactile_embeddings)
 
         return tac_emb
+
 
 def load_tactile_resnet(embed_dim, num_channels,
                         root_dir=None, path_checkpoint=None, pre_trained=False):

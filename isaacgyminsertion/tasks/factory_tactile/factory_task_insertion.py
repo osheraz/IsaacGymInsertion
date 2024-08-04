@@ -688,7 +688,12 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         eef_stud = torch.cat((self.fingertip_centered_pos,
                              self.stud_tf.forward(eef_stud[:, 3:].reshape(eef_stud.shape[0], 3, 3))), dim=1)
 
-        obs_tensors_student = torch.cat([eef_stud,  # 6
+        # test
+        plug_hand_pos, plug_hand_quat = self.pose_world_to_hand_base(self.obs_plug_pos, self.obs_plug_quat)
+
+
+        obs_tensors_student = torch.cat([
+                                        eef_stud,
                                          self.socket_pos,  # 3
                                          actions,
                                          ], dim=-1)
