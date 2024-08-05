@@ -2,7 +2,7 @@
 GPUS=${1:-0}
 SEED=${2:-42}
 CACHE=${3:-teacher}
-NUM_ENVS=${4:-64}
+NUM_ENVS=${4:-8}
 HEADLESS=${5:-True}
 
 
@@ -18,11 +18,12 @@ path_norm=/${data_folder}/normalization.pkl
 echo extra "${EXTRA_ARGS}"
 
 #CUDA_VISIBLE_DEVICES=${GPUS} \
+#torchrun --standalone --nnodes=1 --nproc_per_node=4 \
 python train.py task=FactoryTaskInsertionTactile headless=${HEADLESS} seed=${SEED} \
 task.env.numEnvs=${NUM_ENVS} \
-multi_gpu=False \
+multi_gpu=True \
 restore_train=True \
-offline_train.from_offline=False \
+offline_train.from_offline=True \
 offline_train.only_bc=True \
 task.reset_at_success=True \
 task.reset_at_fails=True \
@@ -34,7 +35,7 @@ task.env.tactile=False \
 task.external_cam.external_cam=True \
 train.algo=ExtrinsicAdapt \
 train.ppo.priv_info=True \
-offline_train.gpu_ids=["${GPUS}"] \
+offline_train.gpu_ids=[0] \
 train.ppo.output_name="${CACHE}" \
 checkpoint="${model_to_load}" \
 offline_train.train.normalize_file="${path_norm}" \

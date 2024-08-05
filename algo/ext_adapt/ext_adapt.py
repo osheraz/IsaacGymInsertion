@@ -274,7 +274,7 @@ class ExtrinsicAdapt(object):
         self.set_student_eval()
 
         steps = 0
-        obs_dict = self.env.reset()
+        obs_dict = self.env.reset(is_training=False)
         total_dones, num_success = 0, 0
 
         while steps < total_steps:
@@ -490,7 +490,7 @@ class ExtrinsicAdapt(object):
     def train(self):
         _t = time.time()
         _last_t = time.time()
-        test_every = 1e5
+        test_every = 1e4
         self.epoch_num = 0
         self.next_test_step = test_every
         self.obs = self.env.reset()
@@ -529,16 +529,13 @@ class ExtrinsicAdapt(object):
                               f'Last FPS: {last_fps:.1f} | ' \
                               f'Best Reward: {self.best_rewards:.2f} | ' \
                               f'Cur Reward: {mean_rewards:.2f} | ' \
-                              f'Time: {(time.time() - _t):.2f} | '
 
                 print(info_string)
 
                 if self.agent_steps >= self.next_test_step and self.task_config.reset_at_success:
                     cprint(f'Disabling resets and evaluating', 'blue', attrs=['bold'])
-                    # self.task_config.reset_at_success = False
-                    # self.test(total_steps=500)
-                    # self.env.reset()
-                    # self.task_config.reset_at_success = True
+                    self.test(total_steps=500)
+                    self.env.reset(is_training=True)
                     self.set_student_train()
                     self.next_test_step += test_every
                     cprint(f'Resume training', 'blue', attrs=['bold'])

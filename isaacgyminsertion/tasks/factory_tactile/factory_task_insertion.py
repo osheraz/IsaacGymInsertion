@@ -688,10 +688,6 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         eef_stud = torch.cat((self.fingertip_centered_pos,
                              self.stud_tf.forward(eef_stud[:, 3:].reshape(eef_stud.shape[0], 3, 3))), dim=1)
 
-        # test
-        plug_hand_pos, plug_hand_quat = self.pose_world_to_hand_base(self.obs_plug_pos, self.obs_plug_quat)
-
-
         obs_tensors_student = torch.cat([
                                         eef_stud,
                                          self.socket_pos,  # 3
@@ -949,7 +945,6 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.extras['ori_reward'] = ori_reward
 
         self.reward_log_buf[:] = self.rew_buf[:]
-
         is_last_step = (self.progress_buf[0] == self.max_episode_length - 1)
         if is_last_step:
             if not self.cfg_task.data_logger.collect_data:
@@ -991,17 +986,17 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                            torch.norm(self.right_finger_pos - self.fingertip_centered_pos, p=2, dim=-1) < 0.005) & (
                            torch.norm(self.middle_finger_pos - self.fingertip_centered_pos, p=2, dim=-1) < 0.005)
 
+        self.far_from_goal_buf[:] = torch.norm(self.plug_pos - self.socket_pos, p=2, dim=-1) > 0.3
+
         # self.degrasp_buf[:] |= fingertips_dist
         if self.cfg_task.reset_at_fails:
             self.reset_buf[:] |= self.degrasp_buf[:]
+            self.reset_buf[:] |= self.far_from_goal_buf[:]
 
         if ((self.cfg_task.data_logger.collect_data or
              self.cfg_task.data_logger.collect_test_sim) and not self.cfg_task.collect_rotate):
             self.reset_buf[:] |= self.degrasp_buf[:]
 
-        # If plug is too far from socket pos
-        self.far_from_goal_buf[:] = torch.norm(self.plug_pos - self.socket_pos, p=2, dim=-1) > 0.3
-        self.reset_buf[:] |= self.far_from_goal_buf[:]
 
     def _reset_predefined_environment(self, env_ids):
 
@@ -1906,7 +1901,12 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         return self.obs_dict, self.rew_buf, self.reset_buf, self.extras
 
-    def reset(self):
+    def reset(self, is_training=None):
+
+        if is_training is not None:
+            self.cfg_task.reset_at_success = is_training
+            self.cfg_task.reset_at_fails = is_training
+
         self.reset_idx(torch.arange(self.num_envs, device=self.device))
         self.compute_observations()
         super().reset()

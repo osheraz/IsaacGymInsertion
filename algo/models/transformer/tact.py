@@ -40,6 +40,40 @@ class DepthOnlyFCBackbone32x64(nn.Module):
 
         return latent
 
+class DepthOnlyFCBackbone108x192(nn.Module):
+    def __init__(self, latent_dim, output_activation=None, num_channel=1):
+        super().__init__()
+
+        self.num_channel = num_channel
+        activation = nn.ELU()
+        self.image_compression = nn.Sequential(
+            # Input: [1, 108, 192]
+            nn.Conv2d(in_channels=self.num_channel, out_channels=32, kernel_size=5),
+            # Output: [32, 104, 188]
+            nn.MaxPool2d(kernel_size=2, stride=2),
+            # Output: [32, 52, 94]
+            activation,
+            nn.Conv2d(in_channels=32, out_channels=64, kernel_size=3),
+            # Output: [64, 50, 92]
+            activation,
+            nn.Flatten(),
+            # Calculate the flattened size: 64 * 50 * 92
+            nn.Linear(64 * 50 * 92, 128),
+            activation,
+            nn.Linear(128, latent_dim)
+        )
+
+        if output_activation == "tanh":
+            self.output_activation = nn.Tanh()
+        else:
+            self.output_activation = activation
+
+    def forward(self, images: torch.Tensor):
+        images_compressed = self.image_compression(images)
+        latent = self.output_activation(images_compressed)
+
+        return latent
+
 class DepthOnlyFCBackbone54x96(nn.Module):
     def __init__(self, latent_dim, output_activation=None, num_channel=1):
         super().__init__()
@@ -156,6 +190,23 @@ class BaseModel(nn.Module):
         raise NotImplementedError
 
 
+class MLPDecoder(nn.Module):
+    def __init__(self, input_dim, hidden_layers, output_dim):
+        super(MLPDecoder, self).__init__()
+        layers = []
+        in_dim = input_dim
+        for hidden_dim in hidden_layers:
+            layers.append(nn.Linear(in_dim, hidden_dim))
+            layers.append(nn.ReLU())
+            in_dim = hidden_dim
+        layers.append(nn.Linear(in_dim, output_dim))
+        self.decoder = nn.Sequential(*layers)
+
+    def forward(self, x):
+        x = x.reshape(x.shape[0], -1)
+
+        return self.decoder(x)
+
 class MultiModalModel(BaseModel):
     def __init__(
             self,
@@ -180,6 +231,7 @@ class MultiModalModel(BaseModel):
             include_tactile: Optional[bool] = True,
             additional_lin: Optional[int] = 0,
             only_bc: Optional[bool] = False,
+            use_transformer: Optional[bool] = True,
     ) -> None:
         """
         Modified ViT class: uses a Transformer-based architecture to encode (current and past) visual observations
@@ -237,7 +289,7 @@ class MultiModalModel(BaseModel):
                 self.img_encoder = replace_bn_with_gn(self.img_encoder)
                 self.num_img_features = self.img_encoder._fc.in_features
             elif img_encoder == 'depth':
-                self.img_encoder = DepthOnlyFCBackbone54x96(latent_dim=self.img_encoding_size, num_channel=num_channels)
+                self.img_encoder = DepthOnlyFCBackbone108x192(latent_dim=self.img_encoding_size, num_channel=num_channels)
                 self.num_img_features = self.img_encoding_size
             else:
                 raise NotImplementedError
@@ -255,7 +307,7 @@ class MultiModalModel(BaseModel):
                 self.seg_encoder = replace_bn_with_gn(self.seg_encoder)
                 self.num_seg_features = self.seg_encoder._fc.in_features
             elif seg_encoder == 'depth':
-                self.seg_encoder = DepthOnlyFCBackbone54x96(latent_dim=self.seg_encoding_size, num_channel=num_channels)
+                self.seg_encoder = DepthOnlyFCBackbone108x192(latent_dim=self.seg_encoding_size, num_channel=num_channels)
                 self.num_seg_features = self.seg_encoding_size
             else:
                 raise NotImplementedError
@@ -275,14 +327,22 @@ class MultiModalModel(BaseModel):
 
             num_features += 1
 
-        self.decoder = MultiLayerDecoder(
-            embed_dim=self.tactile_encoding_size,
-            seq_len=self.context_size * num_features,
-            output_layers=[256, 128, 64, 32],
-            nhead=mha_num_attention_heads,
-            num_layers=mha_num_attention_layers,
-            ff_dim_factor=mha_ff_dim_factor,
-        )
+        if use_transformer:
+            self.decoder = MultiLayerDecoder(
+                embed_dim=self.tactile_encoding_size,
+                seq_len=self.context_size * num_features,
+                output_layers=[256, 128, 64, 32],
+                nhead=mha_num_attention_heads,
+                num_layers=mha_num_attention_layers,
+                ff_dim_factor=mha_ff_dim_factor,
+            )
+        else:
+            self.decoder = MLPDecoder(
+                input_dim=self.context_size * num_features * self.tactile_encoding_size,
+                hidden_layers=[256, 128, 64],
+                output_dim=32
+            )
+
         self.latent_predictor = nn.Sequential(
             nn.Linear(32, self.num_output_params),
             nn.Tanh() if only_bc else nn.Identity()
@@ -400,14 +460,13 @@ class MultiModalModel(BaseModel):
             lin_encoding = self.lin_encoder(lin_input)
             if len(lin_encoding.shape) == 2:
                 lin_encoding = lin_encoding.unsqueeze(1)
-            # currently, the size of goal_encoding is [batch_size, 1, self.goal_encoding_size]
             assert lin_encoding.shape[2] == self.lin_encoding_size
 
             tokens_list.append(lin_encoding)
 
         # concatenate the goal encoding to the observation encoding
         tokens = torch.cat(tokens_list, dim=1)
-
+        # currently, the size is [batch_size, context, embed_dim]
         final_repr = self.decoder(tokens)
         # currently, the size is [batch_size, 32]
         latent_pred = self.latent_predictor(final_repr)

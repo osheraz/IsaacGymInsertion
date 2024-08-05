@@ -188,6 +188,33 @@ def set_seed(seed, torch_deterministic=False, rank=0):
 
     return seed
 
+class Masking(nn.Module):
+    def __init__(self, img_patch_size, img_masking_prob):
+        super().__init__()
+        self.img_patch_size = img_patch_size
+        self.img_masking_prob = img_masking_prob
+
+    def forward(self, x):
+        img_patch = x.unfold(2, self.img_patch_size, self.img_patch_size).unfold(
+            3, self.img_patch_size, self.img_patch_size
+        )
+        mask = (
+                torch.rand(
+                    (
+                        x.shape[0],
+                        x.shape[-2] // self.img_patch_size,
+                        x.shape[-1] // self.img_patch_size,
+                    )
+                )
+                < self.img_masking_prob
+        )
+        mask = mask.unsqueeze(1).unsqueeze(-1).unsqueeze(-1).expand_as(img_patch)
+        x = x.clone()
+        x.unfold(2, self.img_patch_size, self.img_patch_size).unfold(
+            3, self.img_patch_size, self.img_patch_size
+        )[mask] = 0
+        return x
+
 
 def define_tactile_transforms(width, height, crop_width, crop_height,
                               img_patch_size=16, img_gaussian_noise=0.0, img_masking_prob=0.0):
@@ -283,36 +310,13 @@ def define_img_transforms(width, height, crop_width, crop_height,
         )
         mask_transform = nn.Sequential(
             mask_transform,
-            GaussianNoise(img_gaussian_noise * 2),
+            GaussianNoise(img_gaussian_noise),
         )
-
-    def mask_img(x):
-        # Divide the image into patches and randomly mask some of them
-        img_patch = x.unfold(2, img_patch_size, img_patch_size).unfold(
-            3, img_patch_size, img_patch_size
-        )
-        mask = (
-                torch.rand(
-                    (
-                        x.shape[0],
-                        x.shape[-2] // img_patch_size,
-                        x.shape[-1] // img_patch_size,
-                    )
-                )
-                < img_masking_prob
-        )
-        mask = mask.unsqueeze(1).unsqueeze(-1).unsqueeze(-1).expand_as(img_patch)
-        x = x.clone()
-        x.unfold(2, img_patch_size, img_patch_size).unfold(
-            3, img_patch_size, img_patch_size
-        )[mask] = 0
-        return x
 
     if img_masking_prob > 0.0:
-        transform = lambda x: mask_img(
-            nn.Sequential(
-                transform,
-            )(x)
+        transform = nn.Sequential(
+            transform,
+            Masking(img_patch_size, img_masking_prob),
         )
 
     # For evaluation, only center crop and normalize
@@ -322,9 +326,9 @@ def define_img_transforms(width, height, crop_width, crop_height,
     )
 
     sync_transform = SyncTransform((crop_width, crop_height), downsample, transform, mask_transform)
-    sync_eval_transform = SyncEvalTransform((crop_width, crop_height), downsample, transform, mask_transform)
+    sync_eval_transform = SyncEvalTransform((crop_width, crop_height), downsample, eval_transform, mask_transform)
 
-    return transform, mask_transform, eval_transform, sync_transform, sync_eval_transform,
+    return transform, mask_transform, eval_transform, sync_transform, sync_eval_transform
 
 
 def define_transforms(channel, color_jitter, width, height, crop_width,

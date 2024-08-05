@@ -137,8 +137,8 @@ randomize:
                         range: [ 0.5, 1.3 ]
                         operation: "scaling"
                         distribution: "uniform"
-#                scale:
-#                    range: [ 1.0, 1.2 ]
-#                    operation: "scaling"
-#                    distribution: "uniform"
-#                    setup_only: True # Property will only be randomized once before simulation is started. See Domain Randomization Documentation for more info.
+                scale:
+                    range: [ 1.0, 1.2 ]
+                    operation: "scaling"
+                    distribution: "uniform"
+                    setup_only: True # Property will only be randomized once before simulation is started. See Domain Randomization Documentation for more info.
