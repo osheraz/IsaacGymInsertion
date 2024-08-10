@@ -46,7 +46,7 @@ train:
 
   # loss scaling
   latent_scale: 1.0
-  action_scale: 1.0
+  action_scale: 10.0
 
   # Train params for on screen logging
   print_every: 1000

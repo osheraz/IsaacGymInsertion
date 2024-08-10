@@ -2,7 +2,7 @@
 GPUS=${1:-0}
 SEED=${2:-42}
 CACHE=${3:-test}
-NUM_ENVS=${4:-3000}
+NUM_ENVS=${4:-4096}
 HEADLESS=${5:-True}
 
 array=( $@ )
@@ -20,8 +20,10 @@ multi_gpu=False \
 restore_train=False \
 task.grasp_at_init=False \
 task.reset_at_fails=True \
+task.reset_at_success=False \
 task.env.numEnvs=${NUM_ENVS} \
 task.env.compute_contact_gt=False \
+task.external_cam.external_cam=False \
 train.ppo.only_contact=False \
 train.algo=PPO \
 train.ppo.priv_info=True \

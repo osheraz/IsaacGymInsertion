@@ -159,7 +159,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.max_skip_tactile = self.cfg_task.env.maxSkipTactile
 
         self.frame = 0
-
+        self.reset_flag = True
         # inverse refresh rate for each environment
         self.plug_pose_refresh_rates = torch.randint(1, self.max_skip_obs + 1, size=(self.num_envs,),
                                                      device=self.device)
@@ -251,34 +251,27 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             self.height = self.cfg_tactile.encoder.height  # - 2 * self.crop_size
 
             self.tactile_imgs = torch.zeros(
-                (self.num_envs, len(self.fingertips),  # left, right, bottom
-                 self.num_channels, self.width, self.height),
+                (self.num_envs, len(self.fingertips), self.num_channels * self.width * self.height),
                 device=self.device,
                 dtype=torch.float,
             )
             # Way too big tensor.
             self.tactile_queue = torch.zeros(
-                (self.num_envs, self.tact_hist_len, len(self.fingertips),  # left, right, bottom
-                 self.num_channels, self.width, self.height),
+                (self.num_envs, self.tact_hist_len, len(self.fingertips), self.num_channels * self.width * self.height),
                 device=self.device,
                 dtype=torch.float,
             )
 
         if self.external_cam:
             self.img_queue = torch.zeros(
-                (self.num_envs, self.img_hist_len, 1 if self.cam_type == 'd' else 3, self.res[1], self.res[0]),
+                (self.num_envs, self.img_hist_len, self.res[1] * self.res[0]),
                 device=self.device,
                 dtype=torch.float,
             )
             self.seg_queue = torch.zeros(
-                (self.num_envs, self.img_hist_len, self.res[1], self.res[0]),
-                device=self.device,
-                dtype=torch.float,
-            )
-            self.image_buf = torch.zeros(self.num_envs, 1 if self.cam_type == 'd' else 3,
-                                         self.res[1], self.res[0]).to(self.device)
-            self.seg_buf = torch.zeros(self.num_envs, self.res[1], self.res[0], dtype=torch.int32).to(self.device)
-
+                (self.num_envs, self.img_hist_len, self.res[1] * self.res[0]), device=self.device, dtype=torch.float,)
+            self.image_buf = torch.zeros(self.num_envs, self.res[1] * self.res[0]).to(self.device)
+            self.seg_buf = torch.zeros(self.num_envs, self.res[1] * self.res[0], dtype=torch.int32).to(self.device)
             self.init_external_cam()
 
         # reset tensors
@@ -505,10 +498,11 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                         resized_img = tactile_img
 
                     if self.num_channels == 3:
-                        self.tactile_imgs[e, n] = to_torch(resized_img).permute(2, 0, 1).to(self.device)
+                        tac_img = to_torch(resized_img).permute(2, 0, 1).to(self.device)
+                        self.tactile_imgs[e, n] = tac_img.flatten()
                     else:
                         resized_img = cv2.cvtColor(resized_img.astype('float32'), cv2.COLOR_BGR2GRAY)
-                        self.tactile_imgs[e, n] = to_torch(resized_img).to(self.device)
+                        self.tactile_imgs[e, n] = to_torch(resized_img).to(self.device).flatten()
 
                     tactile_imgs_per_env.append(tactile_img)
                     height_maps_per_env.append(height_map)
@@ -589,7 +583,6 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             self.prev_actions_queue[:, 0, :] = actions
             actions_delayed = self.apply_action_noise_latency()
             actions = actions_delayed
-
 
         delta_targets = torch.cat([
             self.actions[:, :3] @ torch.diag(torch.tensor(self.cfg_task.rl.pos_action_scale, device=self.device)),  # 3
@@ -882,19 +875,26 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                 cv2.waitKey(1)
 
         elif self.cam_type == "d":
-            self.image_buf[update] = self.depth_process.process_depth_image(torch.stack(self.cam_renders)
-                                                                            [update].unsqueeze(1))
-            self.seg_buf[update_seg] = torch.stack(self.seg_renders)[update_seg]
-            self.seg_buf[seg_noise] = self.depth_process.add_seg_noise(self.seg_buf[seg_noise])
+            depth = torch.stack(self.cam_renders)
+            if update.any():
+                if update.sum() == 1:
+                    depth_to_update = depth[update].unsqueeze(0)
+                else:
+                    depth_to_update = depth[update]
+                self.image_buf[update] = self.depth_process.process_depth_image(depth_to_update).flatten(start_dim=1)
+            if update_seg.any():
+                self.seg_buf[update_seg] = torch.stack(self.seg_renders)[update_seg].flatten(start_dim=1)
+            if seg_noise.any():
+                self.seg_buf[seg_noise] = self.depth_process.add_seg_noise(self.seg_buf[seg_noise])
 
             if self.cfg_task.external_cam.display:
-                img = self.image_buf[0].cpu().clone()
-                mask = self.seg_buf[0].cpu().clone()
-                cv2.imshow("Depth Image", img.numpy().transpose(1, 2, 0) + 0.5)
+                img = self.image_buf[0].cpu().clone().reshape(1, self.res[1], self.res[0])
+                mask = self.seg_buf[0].cpu().clone().reshape(self.res[1], self.res[0])
+                cv2.imshow("Depth Image", img.numpy().transpose(1, 2, 0))
 
                 forward_mask = ((mask == 2) | (mask == 3)).float()
                 img = torch.where(forward_mask > 0.5, img, 0)
-                cv2.imshow("Mask Image", img.numpy().transpose(1, 2, 0) + 0.5)
+                cv2.imshow("Mask Image", img.numpy().transpose(1, 2, 0))
 
                 cv2.waitKey(1)
 
@@ -1237,10 +1237,10 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             self.ft_frames = []
 
         # Slightly change the external cam pose
-        if self.external_cam:
+        if self.external_cam and False:
             # angles = np.linspace(-np.pi / 4, np.pi / 4, self.num_envs)
-            angles = np.random.normal(loc=0, scale=np.pi / 8, size=self.num_envs)
-            angles = np.clip(angles, 0.03, 0.03)
+            # angles = np.random.normal(loc=0, scale=np.pi / 8, size=self.num_envs)
+            # angles = np.clip(angles, 0.03, 0.03)
 
             for env_id in env_ids:
                 # radius = np.random.uniform(0.295, 0.3)
@@ -1528,6 +1528,19 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         self.reset_buf[env_ids] = 0
         self.progress_buf[env_ids] = 0
+
+        if not self.cfg_task.grasp_at_init and self.reset_flag and self.cfg_task.reset_at_success:
+            print('\n\n\n Rand Inits \n\n\n')
+            self.reset_flag = False
+            # Cuz it's easier to shuffle here
+            self.progress_buf[env_ids] = torch.randint(
+                low=0,
+                high=500 + 1,
+                size=(len(env_ids),),
+                device=self.device,
+                dtype=torch.long
+            )
+
         self.time_complete_task = torch.zeros_like(self.progress_buf)
         self.rew_buf[env_ids] = 0
         self.reward_log_buf[env_ids] = 0
@@ -1904,6 +1917,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
     def reset(self, is_training=None):
 
         if is_training is not None:
+            self.reset_flag = is_training
             self.cfg_task.reset_at_success = is_training
             self.cfg_task.reset_at_fails = is_training
 
@@ -1923,86 +1937,3 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             self.obs_dict['seg'] = self.seg_queue.clone().to(self.rl_device)
 
         return self.obs_dict
-
-    def update_external_cam_old(self, update_freq, update_delay):
-
-        width, height = self.res
-        self.image_buf = torch.zeros(self.num_envs, 1 if self.cam_type == 'd' else 3, height, width).to(self.device)
-
-        self.gym.render_all_camera_sensors(self.sim)
-        self.gym.start_access_image_tensors(self.sim)
-
-        for i in range(self.num_envs):
-            if update_freq[i] and update_delay[i]:
-                if self.cam_type == "rgb":
-                    im = self.gym.get_camera_image_gpu_tensor(
-                        self.sim,
-                        self.envs[i],
-                        self.camera_handles[i],
-                        gymapi.IMAGE_COLOR,
-                    )
-                    im = gymtorch.wrap_tensor(im)
-
-                    if self.save_im and False:
-                        trans_im = im.detach().clone()
-                        trans_im = (trans_im[..., :3]).float() / 255
-                        save_image(
-                            trans_im.view((height, width, 3)).permute(2, 0, 1).float(),
-                            "images/im{self.count:05}.png",
-                        )
-
-                    if i == 0 and self.cfg_task.external_cam.display:
-                        img = cv2.cvtColor(im.cpu().numpy(), cv2.COLOR_RGB2BGR)
-                        cv2.imshow("Follow camera", img)
-                        cv2.waitKey(1)
-
-                elif self.cam_type == "d":
-                    im = self.gym.get_camera_image_gpu_tensor(
-                        self.sim,
-                        self.envs[i],
-                        self.camera_handles[i],
-                        gymapi.IMAGE_DEPTH,
-                    )
-                    im = gymtorch.wrap_tensor(im)
-                    self.image_buf[i] = self.process_depth_image(im)
-
-                    if self.save_im and False:
-                        trans_im = im.detach().clone()
-                        trans_im = -1 / trans_im
-                        trans_im = trans_im / torch.max(trans_im)
-                        save_image(
-                            trans_im.view((height, width, 1)).permute(2, 0, 1).float(),
-                            f"images/dim/{self.count:05}.png",
-                        )
-
-                    if self.cfg_task.external_cam.display and i == 0:
-                        img = self.process_depth_image(im)
-                        img = img.cpu().numpy()
-                        cv2.imshow("Depth Image", np.expand_dims(img, 0).transpose(1, 2, 0) + 0.5)
-
-                        cv2.waitKey(1)
-            else:
-                self.image_buf[i] = self.img_queue[i, 0, ...].clone()
-
-        self.gym.end_access_image_tensors(self.sim)
-
-        self.img_queue[:, 1:] = self.img_queue[:, :-1].clone().detach()
-        self.img_queue[:, 0, ...] = self.image_buf
-
-    def process_depth_image(self, depth_image):
-        # These operations are replicated on the hardware
-        depth_image = self.crop_depth_image(depth_image)
-        depth_image += self.dis_noise * 2 * (torch.rand(1) - 0.5)[0]
-        depth_image = torch.clip(depth_image, -self.far_clip, -self.near_clip)
-        # depth_image = self.resize_transform(depth_image[None, :]).squeeze()
-        depth_image = self.normalize_depth_image(depth_image)
-        return depth_image
-
-    def normalize_depth_image(self, depth_image):
-        depth_image = depth_image * -1
-        depth_image = (depth_image - self.near_clip) / (self.far_clip - self.near_clip) - 0.5
-        return depth_image
-
-    def crop_depth_image(self, depth_image):
-        # crop 30 pixels from the left and right and and 20 pixels from bottom and return croped image
-        return depth_image

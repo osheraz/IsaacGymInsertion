@@ -367,7 +367,7 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
         camera_props.width = width
         camera_props.height = height
         camera_props.enable_tensors = True
-        hfov = 70 + random.randint(-3, 3)
+        hfov = 70 + 0 * random.randint(-3, 3)
         if hfov is not None:
             camera_props.horizontal_fov = hfov
         camera_handle = self.gym.create_camera_sensor(self.envs[env_idx], camera_props)

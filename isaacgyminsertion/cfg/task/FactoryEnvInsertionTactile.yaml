@@ -11,15 +11,15 @@ sim:
     disable_plug_collisions: False
 
 external_cam:
-    x_init: 0.72
+    x_init: 0.65
     y_init: 0.0
     z_init: 0.16
     roll_init: 0
-    pitch_init: 22
+    pitch_init: 40
     yaw_init: 180
 
-    pos_noise: 0.01
-    rot_noise: 1
+    pos_noise: 0.00
+    rot_noise: 0.0
 
 env:
     env_name: 'FactoryEnvInsertionTactile'
@@ -28,7 +28,7 @@ env:
     desired_subassemblies: [
                             'small_triangle',
                             'red_round_peg_1_5in',
-                            'yellow_round_peg_2in',
+#                            'yellow_round_peg_2in',
                             'square_peg_hole_32mm_loose',
     ]
 #                             'round_peg_hole_16mm_loose',
@@ -134,7 +134,7 @@ randomize:
                 rigid_shape_properties:
                     friction:
                         num_buckets: 250
-                        range: [ 0.5, 1.3 ]
+                        range: [ 0.5, 1.0]
                         operation: "scaling"
                         distribution: "uniform"
                 scale:

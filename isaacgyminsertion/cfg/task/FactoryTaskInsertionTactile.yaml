@@ -58,9 +58,9 @@ env:
     # Should be the same as in EnvPPO
     numObsHist: 1
     numObsStudentHist: 1
-    ft_history_len: 1
-    tactile_history_len: 1
     img_history_len: 1
+    tactile_history_len: 1
+    ft_history_len: 1
 
     smooth_force: True
 
@@ -86,12 +86,12 @@ env:
     plugObsDelayProb: 0.3
     ImgDelayProb: 0.2
     SegDelayProb: 0.3
-    SegProbNoise: 0.1
+    SegProbNoise: 0.05
     TactileDelayProb: 0.3
 
     # Sim runs at 60 Hz
     maxObjectSkipObs: 2  # i.e max 30hz
-    maxSkipImg: 4
+    maxSkipImg: 3
     maxSkipTactile: 4
 
     scalePosProb: 0.3
@@ -131,9 +131,9 @@ external_cam:
     h: 108
   cam_type: 'd'
   save_im: False
-  far_clip: 1.0
+  far_clip: 0.4
   near_clip: 0.0
-  dis_noise: 0.0001
+  dis_noise: 0.000
   display: False
 
 randomize:
@@ -156,8 +156,8 @@ randomize:
 #    above_socket_noise: [0.03, 0.03, 0.001]
 #    socket_rot_euler_noise: 0.001  # noise on socket position
 
-    scale_noise_pos: [0.003, 0.003, 0.003]
-    scale_noise_rot: [ 0.03, 0.03, 0.03]
+    scale_noise_pos: [0.001, 0.001, 0.001]
+    scale_noise_rot: [ 0.01, 0.01, 0.01]
 
 rl:
 
@@ -183,9 +183,14 @@ rl:
     close_error_thresh: 0.005  # threshold below which plug is considered close enough to bolt
     success_height_thresh: 0.005  # threshold distance below which plug is considered successfully inserted
 
-    keypoint_reward_scale: -0.7 # scale on keypoint-based reward
-    action_penalty_scale: -0.07  # scale on action penalty
-    action_delta_scale: -0.07
+#    keypoint_reward_scale: -0.7 # scale on keypoint-based reward
+#    action_penalty_scale: -0.07  # scale on action penalty
+#    action_delta_scale: -0.07
+#    ori_reward_scale: -0.1 # scale on ori-based reward
+
+    keypoint_reward_scale: -0.4 # scale on keypoint-based reward
+    action_penalty_scale: -0.002  # scale on action penalty
+    action_delta_scale: -0.02
     ori_reward_scale: -0.1 # scale on ori-based reward
 
     early_reset_reward_scale: -1.0

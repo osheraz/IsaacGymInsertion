@@ -73,12 +73,12 @@ class Runner:
 
         self._init_transforms()
 
-        self._init_model()
+        self.init_model()
 
-    def _init_model(self):
+    def init_model(self):
 
         out_size = self.cfg.model.transformer.output_size
-        out_size = out_size - 2 if self.only_bc else out_size
+        out_size = 6 if self.only_bc else out_size
         if self.cfg.model.model_type == 'tact':
             add_lin = self.cfg.model.tact.output_size if self.cfg.model.transformer.load_tact else 0
             self.model = MultiModalModel(context_size=self.sequence_length,
@@ -86,8 +86,8 @@ class Runner:
                                          num_lin_features=self.cfg.model.linear.input_size,
                                          num_outputs=out_size,
                                          tactile_encoder="depth",  # "efficientnet-b0",
-                                         img_encoder="efficientnet-b0",  # "efficientnet-b0",
-                                         seg_encoder="efficientnet-b0",  # "efficientnet-b0",
+                                         img_encoder="depth",  # "efficientnet-b0",
+                                         seg_encoder="depth",  # "efficientnet-b0",
                                          lin_encoding_size=self.cfg.model.transformer.lin_encoding_size,
                                          tactile_encoding_size=self.cfg.model.transformer.tactile_encoding_size,
                                          img_encoding_size=self.cfg.model.transformer.img_encoding_size,
@@ -131,6 +131,7 @@ class Runner:
 
         self.model.to(self.device)
 
+        return self.model
     def _init_transforms(self):
 
         # img
@@ -377,8 +378,15 @@ class Runner:
                 tactile = TactileTransform(self.tactile_eval_transform)(tactile).to(self.device)
 
         if self.cfg.model.use_img:
+
             img = img.to(self.device)
             seg = seg.to(self.device)
+
+            if img.ndim == 3:
+                # B, T, 1*H*W (C=1)
+                img = img.reshape(*img.shape[:2], 1, self.crop_img_width, self.crop_img_height)
+                seg = seg.reshape(*seg.shape[:2], 1, self.crop_img_width, self.crop_img_height)
+
             # if self.img_transform is not None:
             #     img = ImageTransform(self.img_eval_transform)(img).to(self.device)
             img, seg = self.sync_eval_reshape_transform(img, seg)

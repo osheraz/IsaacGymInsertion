@@ -38,11 +38,11 @@ class DepthImageProcessor:
 
     def process_depth_image(self, depth_images):
         # Ensure the input is in the correct shape
-        if depth_images.dim() == 3:
-            depth_images = depth_images.unsqueeze(0)
+        # if depth_images.dim() == 3:
+        #     depth_images = depth_images.unsqueeze(0)
 
-        depth_images = self.crop_depth_image(depth_images)
-        noise = self.dis_noise * 2 * (torch.rand(depth_images.shape[0], 1, 1, 1, device=depth_images.device) - 0.5)
+        # depth_images = self.crop_depth_image(depth_images)
+        noise = self.dis_noise * 2 * (torch.rand(depth_images.shape, device=depth_images.device) - 0.5)
         depth_images += noise
         depth_images = torch.clip(depth_images, -self.far_clip, -self.near_clip)
         depth_images = self.normalize_depth_image(depth_images)
@@ -52,7 +52,7 @@ class DepthImageProcessor:
 
     def normalize_depth_image(self, depth_images):
         depth_images = depth_images * -1
-        depth_images = (depth_images - self.near_clip) / (self.far_clip - self.near_clip) - 0.5
+        depth_images = (depth_images - self.near_clip) / (self.far_clip - self.near_clip)
         return depth_images
 
     def crop_depth_image(self, depth_images):
@@ -60,9 +60,9 @@ class DepthImageProcessor:
         return depth_images
         # return depth_images[:, :, 30:-30, :-20]
 
-    def resize_depth_images(self, depth_images):
-        resized_images = torch.cat([self.resize_transform(img).unsqueeze(0) for img in depth_images])
-        return resized_images
+    # def resize_depth_images(self, depth_images):
+    #     resized_images = torch.cat([self.resize_transform(img).unsqueeze(0) for img in depth_images])
+    #     return resized_images
 
 
 class RotationTransformer:

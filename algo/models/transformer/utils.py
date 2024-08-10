@@ -32,7 +32,7 @@ class SyncCenterReshapeTransform(nn.Module):
 
         # Reshape back to [B, T, C, H, W]
         img = img.view(B, T, C, *img.shape[2:])
-        mask = mask.view(B, T, *mask.shape[2:])
+        mask = mask.view(B, T, C, *mask.shape[2:])
 
         return img, mask
 

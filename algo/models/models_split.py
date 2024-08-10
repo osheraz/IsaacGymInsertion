@@ -68,6 +68,7 @@ class ActorCriticSplit(nn.Module):
         self.priv_info = kwargs['priv_info']
         self.priv_info_dim = kwargs['priv_info_dim']
         self.shared_parameters = kwargs['shared_parameters']
+        self.vt_policy = kwargs['vt_policy']
 
         if self.priv_info:
 
@@ -81,6 +82,20 @@ class ActorCriticSplit(nn.Module):
                                             embedding_size=self.contact_mlp_units[-1])
                 if not self.only_contact:
                     mlp_input_shape += self.contact_mlp_units[-1]
+
+        if self.vt_policy:
+            student_cfg = kwargs['full_config']
+            student_cfg.offline_train.model.use_tactile = False
+            student_cfg.offline_train.model.use_seg = True
+            student_cfg.offline_train.model.use_lin = True
+            student_cfg.offline_train.model.use_img = True
+            student_cfg.offline_train.only_bc = False
+
+            student_cfg.offline_train.model.transformer.output_size = 32
+            from algo.models.transformer.runner import Runner as Student
+
+            self.stud_model = Student(student_cfg).model
+            mlp_input_shape += 32
 
         self.actor_mlp = MLP(units=self.units, input_size=mlp_input_shape)
         if not self.shared_parameters:
@@ -179,9 +194,30 @@ class ActorCriticSplit(nn.Module):
 
             # predict with the student extrinsic
             obs = torch.cat([obs, extrin], dim=-1)
-        else:
+        elif self.priv_info:
             # predict with the teacher extrinsic
             obs = torch.cat([obs, extrin_gt], dim=-1)
+
+        if self.vt_policy:
+
+            img = obs_dict['img']
+            seg = obs_dict['seg']
+            student_obs = obs_dict['student_obs']
+
+            if img.ndim == 3:
+                img = img.reshape(*img.shape[:2], 1, 54, 96)
+                seg = seg.reshape(*seg.shape[:2], 1, 54, 96)
+            if img.ndim == 2:
+                img = img.reshape(*img.shape[:1], 1,  1, 54, 96)
+                seg = seg.reshape(*seg.shape[:1], 1,  1, 54, 96)
+
+            valid_mask = ((seg == 2) | (seg == 3)).float()
+
+            seg = seg * valid_mask
+            img = img * valid_mask
+
+            latent = self.stud_model(None, img, seg, student_obs)
+            obs = torch.cat([obs, latent], dim=-1)
 
         x = self.actor_mlp(obs)
         mu = self.mu(x)

@@ -141,7 +141,7 @@ class StudentBuffer(Dataset):
 
 
 class ExperienceBuffer(Dataset):
-    def __init__(self, num_envs, horizon_length, batch_size, minibatch_size, obs_dim, act_dim, priv_dim, pts_dim,
+    def __init__(self, num_envs, horizon_length, batch_size, minibatch_size, obs_dim, act_dim, priv_dim, pts_dim, vt_poilcy,
                  device):
         self.device = device
         self.num_envs = num_envs
@@ -153,6 +153,8 @@ class ExperienceBuffer(Dataset):
         self.act_dim = act_dim
         self.priv_dim = priv_dim
         self.pts_dim = pts_dim
+        self.vt_policy = vt_poilcy
+
         self.storage_dict = {
             'obses': torch.zeros((self.transitions_per_env, self.num_envs, self.obs_dim), dtype=torch.float32,
                                  device=self.device),
@@ -177,6 +179,18 @@ class ExperienceBuffer(Dataset):
                                    device=self.device),
         }
 
+        if self.vt_policy:
+            self.storage_dict['img'] = torch.zeros((self.transitions_per_env, self.num_envs, 54*96),
+                                                     dtype=torch.float32,
+                                                     device=self.device)
+            self.storage_dict['seg'] = torch.zeros((self.transitions_per_env, self.num_envs, 54*96),
+                                                     dtype=torch.float32,
+                                                     device=self.device)
+            self.storage_dict['student_obs'] = torch.zeros(
+                (self.transitions_per_env, self.num_envs, 18),
+                dtype=torch.float32,
+                device=self.device)
+
         self.batch_size = batch_size
         self.minibatch_size = minibatch_size
         self.length = self.batch_size // self.minibatch_size
@@ -197,9 +211,14 @@ class ExperienceBuffer(Dataset):
                 input_dict[k] = v_dict
             else:
                 input_dict[k] = v[batch_idx]
-        return input_dict['values'], input_dict['neglogpacs'], input_dict['advantages'], input_dict['mus'], \
-            input_dict['sigmas'], input_dict['returns'], input_dict['actions'], \
-            input_dict['obses'], input_dict['priv_info'], input_dict['contacts']
+        if self.vt_policy:
+            return input_dict['values'], input_dict['neglogpacs'], input_dict['advantages'], input_dict['mus'], \
+                input_dict['sigmas'], input_dict['returns'], input_dict['actions'], \
+                input_dict['obses'], input_dict['priv_info'], input_dict['contacts'], input_dict['img'], input_dict['seg'], input_dict['student_obs']
+        else:
+            return input_dict['values'], input_dict['neglogpacs'], input_dict['advantages'], input_dict['mus'], \
+                input_dict['sigmas'], input_dict['returns'], input_dict['actions'], \
+                input_dict['obses'], input_dict['priv_info'], input_dict['contacts']
 
     def update_mu_sigma(self, mu, sigma):
         start = self.last_range[0]

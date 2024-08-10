@@ -2,7 +2,7 @@
 GPUS=${1:-0}
 SEED=${2:-42}
 CACHE=${3:-teacher}
-NUM_ENVS=${4:-8}
+NUM_ENVS=${4:-128}
 HEADLESS=${5:-True}
 
 
@@ -21,9 +21,10 @@ echo extra "${EXTRA_ARGS}"
 #torchrun --standalone --nnodes=1 --nproc_per_node=4 \
 python train.py task=FactoryTaskInsertionTactile headless=${HEADLESS} seed=${SEED} \
 task.env.numEnvs=${NUM_ENVS} \
-multi_gpu=True \
+multi_gpu=False \
 restore_train=True \
-offline_train.from_offline=True \
+offline_train.from_offline=False \
+task.grasp_at_init=False \
 offline_train.only_bc=True \
 task.reset_at_success=True \
 task.reset_at_fails=True \

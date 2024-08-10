@@ -29,7 +29,6 @@ from isaacgyminsertion.tasks.factory_tactile.factory_utils import RotationTransf
 
 # matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
-from algo.models.transformer.data import get_last_sequence
 from algo.ppo.experience import ExperienceBuffer
 from algo.models.models_split import ActorCriticSplit as ActorCritic
 from algo.models.running_mean_std import RunningMeanStd
@@ -39,7 +38,6 @@ from isaacgyminsertion.utils.misc import add_to_fifo, multi_gpu_aggregate_stats
 from tqdm import tqdm
 from tensorboardX import SummaryWriter
 # import wandb
-from scipy.spatial.transform import Rotation
 
 
 class PPO(object):
@@ -68,6 +66,8 @@ class PPO(object):
         self.obs_shape = (self.task_config.env.numObservations * self.task_config.env.numObsHist,)
 
         # ---- Tactile Info ---
+        self.vt_policy = False
+
         # ---- Priv Info ----
         self.priv_info = self.ppo_config['priv_info']
         self.priv_info_dim = self.ppo_config['priv_info_dim']
@@ -88,6 +88,8 @@ class PPO(object):
             "contacts_mlp_units": self.network_config.contact_mlp.units,
             "num_contact_points": self.num_contacts_points,
             "shared_parameters": self.ppo_config.shared_parameters,
+            "full_config": self.full_config,
+            "vt_policy": self.vt_policy,
         }
 
         self.rot_tf = RotationTransformer(from_rep='matrix', to_rep='rotation_6d')
@@ -97,8 +99,13 @@ class PPO(object):
 
         self.running_mean_std = RunningMeanStd(self.obs_shape).to(self.device)
         self.priv_mean_std = RunningMeanStd((self.priv_info_dim,)).to(self.device)
-
         self.value_mean_std = RunningMeanStd((1,)).to(self.device)
+
+        if self.vt_policy:
+            self.obs_stud_shape = (18 * 1,)
+            self.stud_obs_mean_std = RunningMeanStd(self.obs_stud_shape).to(self.device)
+            self.stud_obs_mean_std.train()
+
         if env is not None and not full_config.offline_training:
             # ---- Output Dir ----
             self.output_dir = output_dif
@@ -159,6 +166,7 @@ class PPO(object):
 
         self.obs = None
         self.epoch_num = 0
+
         self.storage = ExperienceBuffer(self.num_actors,
                                         self.horizon_length,
                                         self.batch_size,
@@ -167,7 +175,8 @@ class PPO(object):
                                         self.actions_num,
                                         self.priv_info_dim,
                                         self.num_contacts_points,
-                                        self.device, )
+                                        self.vt_policy,
+                                        self.device,)
 
         # ---- Data Logger ----
         if env is not None and (self.env.cfg_task.data_logger.collect_data or self.full_config.offline_training_w_env):
@@ -232,17 +241,19 @@ class PPO(object):
         #     'performance/EnvStepFPS': self.agent_steps / self.data_collect_time,
         # })
 
-        for k, v in self.extra_info.items():
-            self.writer.add_scalar(f'{k}', v, self.agent_steps)
-            # wandb.log({
-            #     f'{k}': v,
-            # })
+        # for k, v in self.extra_info.items():
+        #     self.writer.add_scalar(f'{k}', v, self.agent_steps)
+        #     wandb.log({
+        #         f'{k}': v,
+        #     })
 
     def set_eval(self):
         self.model.eval()
         if self.normalize_input:
             self.running_mean_std.eval()
             self.priv_mean_std.eval()
+            if self.vt_policy:
+                self.stud_obs_mean_std.eval()
         if self.normalize_value:
             self.value_mean_std.eval()
 
@@ -251,6 +262,8 @@ class PPO(object):
         if self.normalize_input:
             self.running_mean_std.train()
             self.priv_mean_std.train()
+            if self.vt_policy:
+                self.stud_obs_mean_std.train()
         if self.normalize_value:
             self.value_mean_std.train()
 
@@ -270,7 +283,10 @@ class PPO(object):
         if 'contacts' in obs_dict and self.gt_contacts_info:
             input_dict['contacts'] = obs_dict['contacts']
 
-        #     input_dict['tactile_hist'] = obs_dict['tactile_hist']
+        if 'img' in obs_dict and self.vt_policy:
+            input_dict['img'] = obs_dict['img']
+            input_dict['seg'] = obs_dict['seg']
+            input_dict['student_obs'] = self.stud_obs_mean_std(obs_dict['student_obs'])
 
         res_dict = self.model.act(input_dict)
         res_dict['values'] = self.value_mean_std(res_dict['values'], True)
@@ -351,6 +367,11 @@ class PPO(object):
             weights['priv_mean_std'] = self.priv_mean_std.state_dict()
         if self.value_mean_std:
             weights['value_mean_std'] = self.value_mean_std.state_dict()
+
+        if self.vt_policy:
+            if self.stud_obs_mean_std:
+                weights['stud_obs_mean_std'] = self.stud_obs_mean_std.state_dict()
+
         torch.save(weights, f'{name}.pth')
 
     def restore_train(self, fn):
@@ -362,6 +383,8 @@ class PPO(object):
         self.model.load_state_dict(checkpoint['model'])
         self.running_mean_std.load_state_dict(checkpoint['running_mean_std'])
         self.priv_mean_std.load_state_dict(checkpoint['priv_mean_std'])
+        if self.vt_policy:
+            self.stud_obs_mean_std.load_state_dict(checkpoint['stud_obs_mean_std'])
 
     def restore_test(self, fn):
         checkpoint = torch.load(fn)
@@ -369,6 +392,8 @@ class PPO(object):
         if self.normalize_input:
             self.running_mean_std.load_state_dict(checkpoint['running_mean_std'])
             self.priv_mean_std.load_state_dict(checkpoint['priv_mean_std'])
+            if self.vt_policy:
+                self.stud_obs_mean_std.load_state_dict(checkpoint['stud_obs_mean_std'])
 
     def play_latent_step(self, obs_dict):
         processed_obs = self.running_mean_std(obs_dict['obs'])
@@ -397,8 +422,13 @@ class PPO(object):
             approx_kl_divs = []
 
             for i in range(len(self.storage)):
-                value_preds, old_action_log_probs, advantage, old_mu, old_sigma, \
-                returns, actions, obs, priv_info, contacts = self.storage[i]
+
+                if self.vt_policy:
+                    value_preds, old_action_log_probs, advantage, old_mu, old_sigma, \
+                    returns, actions, obs, priv_info, contacts, img, seg, student_obs = self.storage[i]
+                else:
+                    value_preds, old_action_log_probs, advantage, old_mu, old_sigma, \
+                    returns, actions, obs, priv_info, contacts = self.storage[i]
 
                 obs = self.running_mean_std(obs)
                 priv_info = self.priv_mean_std(priv_info)
@@ -409,6 +439,12 @@ class PPO(object):
                     'priv_info': priv_info,
                     'contacts': contacts,
                 }
+
+                if self.vt_policy:
+                    batch_dict['img'] = img
+                    batch_dict['seg'] = seg
+                    batch_dict['student_obs'] = self.stud_obs_mean_std(student_obs)
+
                 res_dict = self.model(batch_dict)
                 action_log_probs = res_dict['prev_neglogp']
                 values = res_dict['values']
@@ -531,7 +567,12 @@ class PPO(object):
             res_dict = self.model_act(self.obs)
             self.storage.update_data('obses', n, self.obs['obs'])
             self.storage.update_data('priv_info', n, self.obs['priv_info'])
-            # self.storage.update_data('tactile_hist', n, self.obs['tactile_hist'])
+
+            if 'img' in self.obs and self.vt_policy:
+                self.storage.update_data('student_obs', n, self.obs['student_obs'])
+                self.storage.update_data('img', n, self.obs['img'].squeeze())
+                self.storage.update_data('seg', n, self.obs['seg'].squeeze())
+
             if 'contacts' in self.obs:
                 self.storage.update_data('contacts', n, self.obs['contacts'])
 
@@ -595,74 +636,6 @@ class PPO(object):
         self.storage.data_dict['values'] = values
         self.storage.data_dict['returns'] = returns
 
-    def old_test(self, predict=None, obs_stats=None, milestone=100):
-        self.set_eval()
-        action, latent, done = None, None, None
-
-        save_trajectory = self.env.cfg_task.data_logger.collect_data
-        offline_test = self.full_config.offline_training_w_env
-
-        # convert normalizing measures to torch and add to device
-        if obs_stats is not None:
-            stats = {
-                'mean': {key: torch.tensor(value, device=self.device) for key, value in obs_stats['mean'].items()},
-                'std': {key: torch.tensor(value, device=self.device) for key, value in obs_stats['std'].items()}
-            }
-
-        # reset all envs
-        self.obs = self.env.reset()
-
-        # logging initial data only if one of the above is true
-        if save_trajectory or offline_test:
-            if self.data_logger.data_logger is None:
-                self.data_logger.data_logger = self.data_logger.data_logger_init(None)
-            else:
-                self.data_logger.data_logger.reset()
-            if not save_trajectory:
-                self.data_logger.log_trajectory_data(action, latent, done, save_trajectory=save_trajectory)
-
-        self.env_ids = torch.arange(self.env.num_envs).view(-1, 1)
-        total_dones, num_success = 0, 0
-        total_env_runs = self.full_config.offline_train.train.test_episodes
-
-        while save_trajectory or (total_dones < total_env_runs):
-            # log video during test
-            # self.log_video()
-
-            latent = None
-            if offline_test:
-
-                if predict is not None:
-                    # Making data for the latent prediction from student model
-                    last_obs_dict = self.get_last_student_obs(self.data_logger.data_logger.get_data(), stats)
-                    latent, out_pos_rpy = predict(last_obs_dict)
-
-            obs_dict = {
-                'obs': self.running_mean_std(self.obs['obs']),
-                'priv_info': self.priv_mean_std(self.obs['priv_info']),
-                'contacts': self.obs['contacts'] if 'contacts' in self.obs else None,
-                'latent': latent,
-            }
-
-            action, latent = self.model.act_inference(obs_dict)
-            action = torch.clamp(action, -1.0, 1.0)
-
-            self.obs, r, done, info = self.env.step(action)
-
-            num_success += self.env.success_reset_buf[done.nonzero()].sum()
-
-            # logging data
-            if save_trajectory or offline_test:
-                self.data_logger.log_trajectory_data(action, latent, done, save_trajectory=save_trajectory)
-                total_dones += len(done.nonzero())
-                if total_dones >= milestone:
-                    print('[Test] success rate:', num_success / total_dones)
-                    milestone += 100
-
-        print('[LastTest] success rate:', num_success / total_dones)
-        return num_success, total_dones
-
-    #### Misc, should be moved
     def test(self, predict=None, obs_stats=None, milestone=100):
         # this will test either the student or the teacher model.
 
@@ -686,7 +659,8 @@ class PPO(object):
 
         while save_trajectory or (total_dones < total_env_runs):
             # log video during test
-            # self.log_video()
+            self.log_video()
+            self.it +=1
 
             obs_dict = {
                 'obs': self.running_mean_std(self.obs['obs']),
@@ -772,125 +746,6 @@ class PPO(object):
 
             self.env.start_recording_ft()
             self.last_recording_it_ft = self.it
-
-    def get_last_student_obs(self, data, stats, diff=False, diff_tac=True, display=False, rot6d=True, obj_id=2):
-
-        sequence_length = self.full_config.offline_train.model.transformer.sequence_length
-        eef_key = "eef_pos_rot6d" if rot6d else 'eef_pos'
-
-        # E, T, F, C, W, H = tactile.shape
-        tactile = data["tactile"]
-        img = data["img"]
-        seg = data["seg"]
-        eef_pos = data["eef_pos"]
-        if eef_key == "eef_pos_rot6d":
-            eef_pos = torch.cat((eef_pos[:, :, :3],
-                                 self.rot_tf.forward(eef_pos[:, :, 3:].reshape(*eef_pos.shape[:2], 3, 3))), dim=2)
-
-        socket_pos = data["socket_pos"][:, :, :3]
-        plug_hand_quat = data["plug_hand_quat"]
-        plug_hand_pos = data["plug_hand_pos"]
-        action = data["action"]
-
-        plug_hand_quat = get_last_sequence(plug_hand_quat, self.env.progress_buf, sequence_length)
-        plug_hand_pos = get_last_sequence(plug_hand_pos, self.env.progress_buf, sequence_length)
-        eef_pos = get_last_sequence(eef_pos, self.env.progress_buf, sequence_length)
-        socket_pos = get_last_sequence(socket_pos, self.env.progress_buf, sequence_length)
-        action = get_last_sequence(action, self.env.progress_buf, sequence_length)
-
-        print(eef_pos)
-
-        plug_hand_quat = plug_hand_quat.squeeze(0).cpu().detach().numpy()
-
-        euler = torch.tensor(Rotation.from_quat(plug_hand_quat + 1e-6).as_euler('xyz'), device=self.device).unsqueeze(0)
-
-        if diff:
-            first_plug_hand_quat = data["plug_hand_quat"][:, 0, :].cpu().detach().numpy() + 1e-6
-            first_euler = torch.tensor(Rotation.from_quat(first_plug_hand_quat).as_euler('xyz'),
-                                       device=self.device).unsqueeze(0)
-            euler = euler - first_euler
-            plug_hand_pos = plug_hand_pos - data["plug_hand_pos"][:, 0, :]
-
-        if stats is not None:
-            eef_pos = (eef_pos - stats["mean"][eef_key]) / stats["std"][eef_key]
-            socket_pos = (socket_pos - stats["mean"]["socket_pos"][:3]) / stats["std"]["socket_pos"][:3]
-            if not diff:
-                euler = (euler - stats["mean"]["plug_hand_euler"]) / stats["std"]["plug_hand_euler"]
-                plug_hand_pos = (plug_hand_pos - stats["mean"]["plug_hand_pos"]) / stats["std"]["plug_hand_pos"]
-
-            else:
-                euler = (euler - stats["mean"]["plug_hand_diff_euler"]) / stats["std"][
-                    "plug_hand_diff_euler"]
-                plug_hand_pos = (plug_hand_pos - stats["mean"]["plug_hand_pos_diff"]) / \
-                                stats["std"]["plug_hand_pos_diff"]
-
-        obj_pos_rpy = torch.cat([plug_hand_pos, euler], dim=-1).to(self.device).float()
-
-        student_obs = torch.cat([
-            eef_pos,
-            socket_pos,
-            # action,
-            # obj_pos_rpy
-        ], dim=-1)
-
-        # Adjust tactile and student_obs based on the sequence length and progress buffer
-        tactile_adjusted = get_last_sequence(tactile, self.env.progress_buf, sequence_length)
-
-        if diff_tac:
-            tactile_adjusted = tactile_adjusted - tactile[:, 1, ...] + 1e-6
-
-        img = get_last_sequence(img, self.env.progress_buf, sequence_length)
-        seg = get_last_sequence(seg, self.env.progress_buf, sequence_length)
-
-        seg = ((seg == obj_id) | (seg == 3)).float()
-        img = img * seg.unsqueeze(2)
-        # img += 0.5 * (img * seg.unsqueeze(2) != 0).float()
-
-        if display:
-            self.display_obs(tactile_adjusted, img, seg)
-
-        out_dict = {'tactile': tactile_adjusted,
-                    'img': img,
-                    'seg': seg,
-                    'student_obs': student_obs,
-                    'gt_obj_pos_rpy': obj_pos_rpy}
-
-        return out_dict
-
-    def display_obs(self, tactile, depth, seg):
-
-        tactile = tactile[:, -1:, ...]
-        depth = depth[:, -1:, ...]
-        seg = seg[:, -1:, ...]
-
-        for t in range(tactile.shape[1]):  # Iterate through the sequence of images
-            # Extract the images for all fingers at time step 't' and adjust dimensions for display.
-            fingers_images = tactile[0, t]  # This selects all fingers at time 't', shape is [F, C, W, H]
-
-            # Prepare the images for concatenation and display
-            imgs = []
-            for f in range(fingers_images.shape[0]):
-                img = fingers_images[f]
-                img = img.cpu().detach()
-                img = img.numpy()  # Convert to numpy
-                img = np.transpose(img, (1, 2, 0))  # Reorder dimensions to [W, H, C]
-                if img.shape[2] == 1:  # If grayscale, convert to BGR for consistent OpenCV display
-                    img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
-                imgs.append(img)
-
-            concatenated_img = np.concatenate(imgs, axis=1)  # Concatenate images horizontally
-
-            d = depth[0, t].cpu().detach().numpy()
-            d = np.transpose(d, (1, 2, 0))
-            cv2.imshow('Depth Sequence', d + 0.5)  # Display the concatenated image
-
-            d = seg[t].cpu().detach().numpy()
-            d = np.transpose(d, (1, 2, 0))
-            cv2.imshow('Seg Sequence', d)  # Display the concatenated image
-
-            cv2.imshow('Tactile Sequence', concatenated_img + 0.5)  # Display the concatenated image
-
-            cv2.waitKey(1)
 
 
 def policy_kl(p0_mu, p0_sigma, p1_mu, p1_sigma):

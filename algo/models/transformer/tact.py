@@ -327,7 +327,7 @@ class MultiModalModel(BaseModel):
 
             num_features += 1
 
-        if use_transformer:
+        if use_transformer and self.context_size > 1:
             self.decoder = MultiLayerDecoder(
                 embed_dim=self.tactile_encoding_size,
                 seq_len=self.context_size * num_features,
@@ -347,6 +347,15 @@ class MultiModalModel(BaseModel):
             nn.Linear(32, self.num_output_params),
             nn.Tanh() if only_bc else nn.Identity()
         )
+
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        for m in self.modules():
+            if isinstance(m, nn.Linear):
+                nn.init.trunc_normal_(m.weight, std=.02)
+                if m.bias is not None:
+                    nn.init.zeros_(m.bias)
 
     def forward(
             self, obs_tactile: torch.tensor, obs_img: torch.tensor, obs_seg: torch.tensor,
@@ -423,7 +432,6 @@ class MultiModalModel(BaseModel):
 
         if self.include_seg:
             # img
-            obs_seg = obs_seg.unsqueeze(2)
             B, T, C, W, H = obs_seg.shape
             obs_seg = obs_seg.reshape(B * T, C, W, H)
             if self.seg_encoder_type.split("-")[0] == "efficientnet":
