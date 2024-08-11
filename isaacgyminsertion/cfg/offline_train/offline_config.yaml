@@ -8,9 +8,9 @@ from_offline: False
 gpu_ids: [0, 1]
 img_type: "depth"
 img_color_jitter: False
-img_width: 108 # 54
-img_height: 192 # 96
-img_gaussian_noise: 0.0 #0.001
+img_width: 54 # 54
+img_height: 96 # 96
+img_gaussian_noise: 0.00
 img_masking_prob: 0.0 # 0.3
 img_patch_size: 16
 img_crop_w: 0
@@ -46,7 +46,7 @@ train:
 
   # loss scaling
   latent_scale: 1.0
-  action_scale: 10.0
+  action_scale: 1.0
 
   # Train params for on screen logging
   print_every: 1000

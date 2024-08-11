@@ -127,13 +127,13 @@ sim:
 external_cam:
   external_cam: False
   cam_res:
-    w: 192
-    h: 108
+    w: 96
+    h: 54
   cam_type: 'd'
   save_im: False
   far_clip: 0.4
-  near_clip: 0.0
-  dis_noise: 0.000
+  near_clip: 0.1
+  dis_noise: 0.001
   display: False
 
 randomize:

@@ -11,15 +11,15 @@ sim:
     disable_plug_collisions: False
 
 external_cam:
-    x_init: 0.65
+    x_init: 0.72
     y_init: 0.0
     z_init: 0.16
     roll_init: 0
-    pitch_init: 40
+    pitch_init: 22
     yaw_init: 180
 
-    pos_noise: 0.00
-    rot_noise: 0.0
+    pos_noise: 0.01
+    rot_noise: 1.0
 
 env:
     env_name: 'FactoryEnvInsertionTactile'

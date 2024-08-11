@@ -29,9 +29,95 @@ from tensorboardX import SummaryWriter
 import torch.distributed as dist
 import imageio
 import pickle
+import yaml
+from datetime import datetime
+import matplotlib.pyplot as plt
+import json
 
 
 # torch.autograd.set_detect_anomaly(True)
+
+def log_test_result(best_loss, cur_loss, best_reward, cur_reward, steps, success_rate, log_file='test_results.yaml'):
+    def convert_to_serializable(val):
+        if isinstance(val, torch.Tensor):
+            return val.item()
+        return val
+
+    log_data = {
+        'best_loss': convert_to_serializable(best_loss),
+        'cur_loss': convert_to_serializable(cur_loss),
+        'best_reward': convert_to_serializable(best_reward),
+        'cur_reward': convert_to_serializable(cur_reward),
+        'steps': convert_to_serializable(steps),
+        'success_rate': convert_to_serializable(success_rate),
+        'timestamp': datetime.now().isoformat()
+    }
+
+    # Check if the log file exists
+    if os.path.exists(log_file):
+        # Load existing log
+        with open(log_file, 'r') as f:
+            if log_file.endswith('.yaml'):
+                existing_data = yaml.safe_load(f) or []
+            else:  # assuming json
+                existing_data = json.load(f)
+    else:
+        existing_data = []
+
+    # Append new log entry
+    existing_data.append(log_data)
+
+    # Save the updated log
+    with open(log_file, 'w') as f:
+        if log_file.endswith('.yaml'):
+            yaml.dump(existing_data, f)
+        else:  # assuming json
+            json.dump(existing_data, f, indent=4)
+
+    # Create a figure comparing the values
+    steps_list = [entry['steps'] for entry in existing_data]
+    best_loss_list = [entry['best_loss'] for entry in existing_data]
+    cur_loss_list = [entry['cur_loss'] for entry in existing_data]
+    best_reward_list = [entry['best_reward'] for entry in existing_data]
+    cur_reward_list = [entry['cur_reward'] for entry in existing_data]
+    success_rate_list = [entry['success_rate'] for entry in existing_data]
+
+    plt.figure(figsize=(10, 6))
+
+    # Plot losses
+    plt.subplot(3, 1, 1)
+    plt.plot(steps_list, best_loss_list, label='Best Loss')
+    plt.plot(steps_list, cur_loss_list, label='Current Loss')
+    plt.xlabel('Steps')
+    plt.ylabel('Loss')
+    plt.title('Loss over Steps')
+    plt.legend()
+
+    # Plot rewards and success rate
+    plt.subplot(3, 1, 2)
+    plt.plot(steps_list, best_reward_list, label='Best Reward')
+    plt.plot(steps_list, cur_reward_list, label='Current Reward')
+    plt.xlabel('Steps')
+    plt.ylabel('Value')
+    plt.title('Rewards over Steps')
+    plt.legend()
+
+    plt.subplot(3, 1, 3)
+    plt.plot(steps_list, success_rate_list, label='Success Rate')
+    plt.xlabel('Steps')
+    plt.ylabel('Success')
+    plt.title('Success Rate over Steps')
+    plt.legend()
+
+    plt.tight_layout()
+
+    # Save the figure
+    figure_path = os.path.join(os.path.dirname(log_file), 'test_results_plot.png')
+    plt.savefig(figure_path)
+    plt.close()
+
+    print(f"Log and plot saved. Plot saved at: {figure_path}")
+
 
 def replace_nan_with_zero(tensor):
     nan_mask = torch.isnan(tensor)
@@ -254,7 +340,7 @@ class ExtrinsicAdapt(object):
         seg = seg[0, 0, ...].reshape(1, 54, 96)
 
         # for t in range(depth.shape[1]):  # Iterate through the sequence of images
-            # Extract the images for all fingers at time step 't' and adjust dimensions for display.
+        # Extract the images for all fingers at time step 't' and adjust dimensions for display.
         dp = depth.cpu().detach().numpy()
         dp = np.transpose(dp, (1, 2, 0))
         # cv2.imshow('Depth Sequence', d + 0.5)  # Display the concatenated image
@@ -283,8 +369,8 @@ class ExtrinsicAdapt(object):
 
         while steps < total_steps:
             steps += 1
-            # self.log_video()
-            # self.it += 1
+            self.log_video()
+            self.it += 1
             prep_obs = self.process_obs(obs_dict)
 
             student_dict = {
@@ -317,14 +403,22 @@ class ExtrinsicAdapt(object):
             if self.env.progress_buf[0] == self.env.max_episode_length - 1:
                 num_success += self.env.success_reset_buf[done.nonzero()].sum()
                 total_dones += len(done.nonzero())
-                print('[Test] success rate:', num_success / total_dones)
+                success_rate = num_success / total_dones
+                print('[Test] success rate:', success_rate)
+                log_test_result(best_loss=self.best_loss,
+                                cur_loss=self.cur_loss,
+                                best_reward=self.best_rewards,
+                                cur_reward=self.cur_reward,
+                                steps=self.agent_steps,
+                                success_rate=success_rate,
+                                log_file=os.path.join(self.nn_dir, f'log.json'))
 
     def play_steps(self):
 
         for n in range(self.horizon_length):
-            if not self.multi_gpu or (self.multi_gpu and self.rank == 0):
-                self.log_video()
-                self.it += 1
+            # if not self.multi_gpu or (self.multi_gpu and self.rank == 0):
+            # self.log_video()
+            # self.it += 1
 
             with torch.no_grad():
                 # Collect samples
@@ -458,11 +552,22 @@ class ExtrinsicAdapt(object):
                     mu = latent
                     loss_latent = torch.zeros(1, device=self.device)
 
-                loss_action = loss_action_fn(torch.clamp(mu, -1, 1),
-                                             torch.clamp(batched_obs['teacher_actions'].detach(), -1, 1))
+                # loss_action = loss_action_fn(torch.clamp(mu, -1, 1),
+                #                              torch.clamp(batched_obs['teacher_actions'].detach(), -1, 1))
+                weights = torch.ones(6, device=self.device)
+                weights[2] = 0.1
+                loss_action = (torch.clamp(mu, -1, 1) - torch.clamp(batched_obs['teacher_actions'].detach(), -1,
+                                                                    1)) ** 2
+
+                loss_action = torch.sum(loss_action * weights).mean()
+
+                # squared_diff = (torch.clamp(mu, -1, 1) - torch.clamp(batched_obs['teacher_actions'].detach(), -1,
+                #                                                      1)) ** 2
+                # weighted_squared_diff = squared_diff * weights
+                # loss_action = weighted_squared_diff.mean()
 
                 self.optim.zero_grad()
-                loss = (100 * self.action_scale * loss_action)  # + (self.latent_scale * loss_latent)
+                loss = (self.action_scale * loss_action)  # + (self.latent_scale * loss_latent)
                 loss.backward()
 
                 latent_losses.append(loss_latent)
@@ -539,10 +644,11 @@ class ExtrinsicAdapt(object):
                               f'Last FPS: {last_fps:.1f} | ' \
                               f'Best Reward: {self.best_rewards:.2f} | ' \
                               f'Cur Reward: {mean_rewards:.2f} | ' \
-                              f'Current Best Loss: {self.best_loss:.2f} | ' \
+                              f'Best Loss: {self.best_loss:.2f} | ' \
                               f'act_loss: {a_loss:.2f} | ' \
                               f'ext_loss: {l_loss:.2f}'
-
+                self.cur_reward = mean_rewards
+                self.cur_loss = a_loss
                 print(info_string)
 
                 if self.agent_steps >= self.next_test_step and self.task_config.reset_at_success:
@@ -556,19 +662,22 @@ class ExtrinsicAdapt(object):
                     self.save(os.path.join(self.nn_dir, f'last'))
 
                 if a_loss < self.best_loss and self.agent_steps > 1e5:
-                    self.best_loss = a_loss
                     cprint(f'saved model at {self.agent_steps} Loss {a_loss:.2f}', 'green', attrs=['bold'])
-                    self.save(os.path.join(self.nn_dir, f'last'))
+                    prev_best_ckpt = os.path.join(self.nn_dir, f'best_loss_{self.best_loss:.2f}.pth')
+                    if os.path.exists(prev_best_ckpt):
+                        os.remove(prev_best_ckpt)
+                        os.remove(prev_best_ckpt.replace('.pth', '_stud.pth'))
+                    self.best_loss = a_loss
+                    self.save(os.path.join(self.nn_dir, f'best_loss_{self.best_loss :.2f}'))
 
-                if mean_rewards > self.best_rewards and self.agent_steps >= test_every and mean_rewards != 0.0:
+                if mean_rewards > self.best_rewards and self.agent_steps >= 1e5 and mean_rewards != 0.0:
                     cprint(f"save current best reward: {mean_rewards:.2f}", 'green', attrs=['bold'])
-                    # prev_best_ckpt = os.path.join(self.nn_dir, f"best_reward_{self.best_rewards:.2f}.pth")
-                    # if os.path.exists(prev_best_ckpt):
-                    #     os.remove(prev_best_ckpt)
-
+                    prev_best_ckpt = os.path.join(self.nn_dir, f"best_reward_{self.best_rewards:.2f}.pth")
+                    if os.path.exists(prev_best_ckpt):
+                        os.remove(prev_best_ckpt)
+                        os.remove(prev_best_ckpt.replace('.pth', '_stud.pth'))
                     self.best_rewards = mean_rewards
-                    self.save(os.path.join(self.nn_dir, f"best_reward"))
-
+                    self.save(os.path.join(self.nn_dir, f'best_reward_{mean_rewards:.2f}'))
                 self.success_rate = mean_success
 
         print('max steps achieved')

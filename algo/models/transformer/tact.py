@@ -289,7 +289,7 @@ class MultiModalModel(BaseModel):
                 self.img_encoder = replace_bn_with_gn(self.img_encoder)
                 self.num_img_features = self.img_encoder._fc.in_features
             elif img_encoder == 'depth':
-                self.img_encoder = DepthOnlyFCBackbone108x192(latent_dim=self.img_encoding_size, num_channel=num_channels)
+                self.img_encoder = DepthOnlyFCBackbone54x96(latent_dim=self.img_encoding_size, num_channel=num_channels)
                 self.num_img_features = self.img_encoding_size
             else:
                 raise NotImplementedError
@@ -307,7 +307,7 @@ class MultiModalModel(BaseModel):
                 self.seg_encoder = replace_bn_with_gn(self.seg_encoder)
                 self.num_seg_features = self.seg_encoder._fc.in_features
             elif seg_encoder == 'depth':
-                self.seg_encoder = DepthOnlyFCBackbone108x192(latent_dim=self.seg_encoding_size, num_channel=num_channels)
+                self.seg_encoder = DepthOnlyFCBackbone54x96(latent_dim=self.seg_encoding_size, num_channel=num_channels)
                 self.num_seg_features = self.seg_encoding_size
             else:
                 raise NotImplementedError
