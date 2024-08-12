@@ -264,15 +264,13 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             # tactile buffers
             self.num_channels = self.cfg_tactile.encoder.num_channels
             self.width = self.cfg_tactile.encoder.width // 2 if self.cfg_tactile.crop_roi else self.cfg_tactile.encoder.width
-            # self.crop_size = self.cfg_tactile.encoder.height // 6
-            self.height = self.cfg_tactile.encoder.height  # - 2 * self.crop_size
+            self.height = self.cfg_tactile.encoder.height
 
             self.tactile_imgs = torch.zeros(
                 (self.num_envs, len(self.fingertips), self.num_channels * self.width * self.height),
                 device=self.device,
                 dtype=torch.float,
             )
-            # Way too big tensor.
             self.tactile_queue = torch.zeros(
                 (self.num_envs, self.tact_hist_len, len(self.fingertips), self.num_channels * self.width * self.height),
                 device=self.device,

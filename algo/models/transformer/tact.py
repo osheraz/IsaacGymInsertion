@@ -215,6 +215,7 @@ class MultiModalModel(BaseModel):
             num_lin_features: int = 10,
             num_outputs: int = 5,
             share_encoding: Optional[bool] = True,
+            stack_tactile: Optional[bool] = True,
             tactile_encoder: Optional[str] = "efficientnet-b0",
             img_encoder: Optional[str] = "efficientnet-b0",
             seg_encoder: Optional[str] = "efficientnet-b0",
@@ -251,8 +252,9 @@ class MultiModalModel(BaseModel):
         if additional_lin:
             num_lin_features += additional_lin
         self.num_lin_features = num_lin_features
-        self.num_channels = num_channels
+        self.num_channels = 3 if stack_tactile else 1
         self.share_encoding = share_encoding
+        self.stack_tactile = stack_tactile
 
         self.include_lin = include_lin
         self.include_tactile = include_tactile
@@ -267,11 +269,11 @@ class MultiModalModel(BaseModel):
 
         if include_tactile:
             if tactile_encoder.split("-")[0] == "efficientnet":
-                self.tactile_encoder = EfficientNet.from_name(tactile_encoder, in_channels=num_channels)
+                self.tactile_encoder = EfficientNet.from_name(tactile_encoder, in_channels=self.num_channels)
                 self.tactile_encoder = replace_bn_with_gn(self.tactile_encoder)
                 self.num_tactile_features = self.tactile_encoder._fc.in_features
             elif tactile_encoder == 'depth':
-                self.tactile_encoder = DepthOnlyFCBackbone32x64(latent_dim=self.tactile_encoding_size, num_channel=num_channels)
+                self.tactile_encoder = DepthOnlyFCBackbone32x64(latent_dim=self.tactile_encoding_size, num_channel=self.num_channels)
                 self.num_tactile_features = self.tactile_encoding_size
             else:
                 raise NotImplementedError
@@ -281,7 +283,7 @@ class MultiModalModel(BaseModel):
             else:
                 self.compress_tac_enc = nn.Identity()
 
-            num_features += 3
+            num_features += 1 if self.stack_tactile else 3
 
         if include_img:
             if img_encoder.split("-")[0] == "efficientnet":
@@ -289,7 +291,7 @@ class MultiModalModel(BaseModel):
                 self.img_encoder = replace_bn_with_gn(self.img_encoder)
                 self.num_img_features = self.img_encoder._fc.in_features
             elif img_encoder == 'depth':
-                self.img_encoder = DepthOnlyFCBackbone54x96(latent_dim=self.img_encoding_size, num_channel=num_channels)
+                self.img_encoder = DepthOnlyFCBackbone54x96(latent_dim=self.img_encoding_size, num_channel=1)
                 self.num_img_features = self.img_encoding_size
             else:
                 raise NotImplementedError
@@ -307,7 +309,7 @@ class MultiModalModel(BaseModel):
                 self.seg_encoder = replace_bn_with_gn(self.seg_encoder)
                 self.num_seg_features = self.seg_encoder._fc.in_features
             elif seg_encoder == 'depth':
-                self.seg_encoder = DepthOnlyFCBackbone54x96(latent_dim=self.seg_encoding_size, num_channel=num_channels)
+                self.seg_encoder = DepthOnlyFCBackbone54x96(latent_dim=self.seg_encoding_size, num_channel=1)
                 self.num_seg_features = self.seg_encoding_size
             else:
                 raise NotImplementedError
@@ -366,8 +368,11 @@ class MultiModalModel(BaseModel):
         if self.include_tactile:
             # split the observation into context based on the context size
             B, T, F, C, W, H = obs_tactile.shape
-            # obs_tactile = obs_tactile.reshape(B*T, CF, W, H)
-            fingers = [obs_tactile[:, :, i, ...].reshape(B*T, C, W, H) for i in range(F)]
+
+            if self.stack_tactile:
+                fingers = [obs_tactile.reshape(B*T, F*C, W, H)]
+            else:
+                fingers = [obs_tactile[:, :, i, ...].reshape(B*T, C, W, H) for i in range(F)]
 
             obs_features = []
             if self.share_encoding:

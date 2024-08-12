@@ -375,6 +375,10 @@ class Runner:
         if self.cfg.model.use_tactile:
             tactile = tactile.to(self.device)
             if self.tactile_transform is not None:
+                if tactile.ndim == 4:
+                    #                            B, T, F, C, H, W
+                    tactile = tactile.reshape(*img.shape[:2], 3, 1, self.crop_tactile_width, self.crop_tactile_height)
+
                 tactile = TactileTransform(self.tactile_eval_transform)(tactile).to(self.device)
 
         if self.cfg.model.use_img:

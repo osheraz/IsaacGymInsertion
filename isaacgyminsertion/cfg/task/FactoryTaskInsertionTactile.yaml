@@ -28,8 +28,8 @@ data_logger:
 
 tactile: # Pulling from task
   tacto:
-    width: 128 # 224 # 480 | 224
-    height: 128 # 224 # 480 | 224 for the gan
+    width: 64 # 224 # 480 | 224
+    height: 64 # 224 # 480 | 224 for the gan
     visualize_gui: True
 
   with_bg: True # add background reference frame
@@ -40,8 +40,8 @@ tactile: # Pulling from task
 
   # before cropping
   encoder:
-    width: 128
-    height: 128
+    width: 64
+    height: 64
     num_channels: 1 # 1 (Grayscale), 3 (RGB)
 
   sim2real: False
@@ -92,7 +92,7 @@ env:
     # Sim runs at 60 Hz
     maxObjectSkipObs: 2  # i.e max 30hz
     maxSkipImg: 3
-    maxSkipTactile: 4
+    maxSkipTactile: 3
 
     scalePosProb: 0.3
     scaleRotProb: 0.3
@@ -113,7 +113,7 @@ env:
     tactile_display_viz: False
     tactile_wrt_force: False
 
-    compute_contact_gt: True
+    compute_contact_gt: False
     num_points: 100
 
     record_video: True
