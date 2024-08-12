@@ -18,8 +18,8 @@ external_cam:
     pitch_init: 22
     yaw_init: 180
 
-    pos_noise: 0.01
-    rot_noise: 1.0
+    pos_noise: 0.0
+    rot_noise: 0.0
 
 env:
     env_name: 'FactoryEnvInsertionTactile'

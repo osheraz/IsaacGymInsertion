@@ -241,6 +241,8 @@ class ExtrinsicAdapt(object):
 
         self.best_rewards = -10000
         self.best_loss = 10000
+        self.cur_reward = self.best_rewards
+        self.cur_loss = self.best_loss
         self.agent_steps = 0
 
         # ---- Optim ----

@@ -103,7 +103,7 @@ class ZedCameraSubscriber:
 
     def normalize_depth_image(self, depth_image):
         depth_image = depth_image * -1
-        depth_image = (depth_image - self.near_clip) / (self.far_clip - self.near_clip) - 0.5
+        depth_image = (depth_image - self.near_clip) / (self.far_clip - self.near_clip)
         return depth_image
 
     def crop_depth_image(self, depth_image):
