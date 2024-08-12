@@ -46,6 +46,7 @@ from isaacgyminsertion.tasks.factory_tactile.factory_base import FactoryBaseTact
 from isaacgyminsertion.tasks.factory_tactile.schema.factory_schema_class_env import FactoryABCEnv
 from isaacgyminsertion.tasks.factory_tactile.schema.factory_schema_config_env import FactorySchemaConfigEnv
 from isaacgyminsertion.allsight.experiments.allsight_render import AllSightRenderer
+from isaacgyminsertion.tasks.utils.pcl_utils import CameraPointCloud
 import isaacgyminsertion.tasks.factory_tactile.factory_control as fc
 import trimesh
 import open3d as o3d
@@ -65,11 +66,11 @@ class ExtrinsicContact:
             socket_pos,
             num_envs,
             num_points=50,
-            device='cuda:0'
+            device='cuda:0',
+            calc_contact=False,
     ) -> None:
 
-        self.object_trimesh = trimesh.load(mesh_obj)
-        self.object_trimesh = self.object_trimesh.apply_scale(obj_scale)
+        self.calc_contact = calc_contact
 
         # T = np.eye(4)
         # T[0:3, 0:3] = R.from_euler("xyz", [0, 0, 90], degrees=True).as_matrix()
@@ -78,32 +79,30 @@ class ExtrinsicContact:
         self.socket_trimesh = trimesh.load(mesh_socket)
         self.reset_socket_trimesh = self.socket_trimesh.copy()
         self.socket_trimesh = self.socket_trimesh.apply_scale(socket_scale)
-        T = np.eye(4)
-        T[0:3, -1] = socket_pos
-        self.socket_trimesh.apply_transform(T)
-
-        # o3d_mesh = o3d.geometry.TriangleMesh()
-        # o3d_mesh.vertices = o3d.utility.Vector3dVector(self.socket_trimesh.vertices)
-        # o3d_mesh.triangles = o3d.utility.Vector3iVector(self.socket_trimesh.faces)
-        # o3d.visualization.draw_geometries([o3d_mesh])
+        # T = np.eye(4)
+        # T[0:3, -1] = socket_pos
+        # self.socket_trimesh.apply_transform(T)
         self.socket_pos = socket_pos
-        self.socket = o3d.t.geometry.RaycastingScene()
-        self.socket.add_triangles(
-            o3d.t.geometry.TriangleMesh.from_legacy(self.socket_trimesh.as_open3d)
-        )
         self.socket_pcl = trimesh.sample.sample_surface_even(self.socket_trimesh, num_points, seed=42)[0]
+        self.socket_pc = trimesh.points.PointCloud(self.socket_pcl.copy())
 
-        self.pointcloud_obj = trimesh.sample.sample_surface(self.object_trimesh, num_points, seed=42)[0]
+        if calc_contact:
+            self.socket = o3d.t.geometry.RaycastingScene()
+            self.socket.add_triangles(
+                o3d.t.geometry.TriangleMesh.from_legacy(self.socket_trimesh.as_open3d)
+            )
+
+        self.object_trimesh = trimesh.load(mesh_obj)
+        self.object_trimesh = self.object_trimesh.apply_scale(obj_scale)
+        self.pointcloud_obj = trimesh.sample.sample_surface_even(self.object_trimesh, num_points, seed=42)[0]
         self.object_pc = trimesh.points.PointCloud(self.pointcloud_obj.copy())
 
         self.n_points = num_points
-        # self.gt_extrinsic_contact = torch.zeros((num_envs, self.n_points))
-        self.constant_socket = False
+        self.gt_extrinsic_contact = torch.zeros((num_envs, self.n_points))
         self.first_init = True
         self.num_envs = num_envs
         self.device = device
         self.plug_pose_no_rot = np.repeat(np.eye(4)[np.newaxis, :, :], num_envs, axis=0)
-        self.dec = torch.zeros((num_envs, self.n_points)).to(device)
 
     def _xyzquat_to_tf_numpy(self, position_quat: np.ndarray) -> np.ndarray:
         """
@@ -130,6 +129,7 @@ class ExtrinsicContact:
         return transformed
 
     def reset_socket_pos(self, socket_pos):
+
         self.socket_trimesh = self.reset_socket_trimesh.copy()
         self.socket_trimesh = self.socket_trimesh.apply_scale(1.0)
         self.socket_pos = socket_pos
@@ -304,6 +304,57 @@ class ExtrinsicContact:
 
         return torch.from_numpy(np.array(d)).view(-1, self.n_points)
 
+    def get_pcl(self, obj_pos, obj_quat, socket_pos, socket_quat, display=True):
+
+        num_envs = obj_pos.shape[0]
+        object_poses = torch.cat((obj_pos, obj_quat), dim=1)
+        object_poses = self._xyzquat_to_tf_numpy(object_poses.cpu().numpy())
+
+        socket_poses = torch.cat((socket_pos, socket_quat), dim=1)
+        socket_poses = self._xyzquat_to_tf_numpy(socket_poses.cpu().numpy())
+
+        if len(object_poses.shape) == 2:
+            object_poses = object_poses[None, ...]
+        if len(socket_poses.shape) == 2:
+            socket_poses = socket_poses[None, ...]
+
+        query_points_plug = self.apply_transform(object_poses, self.object_pc.copy().vertices)
+        query_points_plug_goal = self.apply_transform(socket_poses, self.object_pc.copy().vertices)
+        query_points_socket = self.apply_transform(socket_poses, self.socket_pc.copy().vertices)
+
+        # Display
+        if display:
+            if self.first_init:
+                self.ax = plt.axes(projection='3d')
+                self.first_init = False
+
+            display_id = 0
+            self.ax.plot(query_points_plug[display_id, :, 0],
+                         query_points_plug[display_id, :, 1],
+                         query_points_plug[display_id, :, 2], 'ko')
+
+            self.ax.plot(query_points_plug_goal[display_id, :, 0],
+                         query_points_plug_goal[display_id, :, 1],
+                         query_points_plug_goal[display_id, :, 2], 'ro')
+            #
+            self.ax.plot(query_points_socket[display_id, :, 0],
+                         query_points_socket[display_id, :, 1],
+                         query_points_socket[display_id, :, 2], 'go')
+
+            self.ax.set_xlabel('X')
+            self.ax.set_ylabel('Y')
+            plt.pause(0.0001)
+            self.ax.cla()
+
+        merged_point_cloud = np.concatenate(
+            [query_points_plug, query_points_plug_goal, query_points_socket], axis=1
+        )
+
+        num_points = query_points_plug.shape[1]
+        sampled_indices = np.random.choice(merged_point_cloud.shape[1], num_points, replace=False)
+        sampled_point_cloud = merged_point_cloud[:, sampled_indices, :]
+
+        return torch.from_numpy(sampled_point_cloud).flatten(start_dim=1).float()
 
 
 class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
@@ -353,6 +404,7 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
         self.cfg_tactile = omegaconf.OmegaConf.create(self.cfg['tactile'])
 
         self.external_cam = self.cfg['external_cam']['external_cam']
+        self.pcl_cam = self.cfg['external_cam']['pcl_cam']
         self.res = [self.cfg['external_cam']['cam_res']['w'], self.cfg['external_cam']['cam_res']['h']]
         self.cam_type = self.cfg['external_cam']['cam_type']
         self.save_im = self.cfg['external_cam']['save_im']
@@ -375,7 +427,7 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
         local_transform = gymapi.Transform()
         local_transform.p = gymapi.Vec3(*trans)
         local_transform.r = gymapi.Quat.from_euler_zyx(*rot)
-        return camera_handle, local_transform
+        return camera_handle, local_transform, camera_props
 
     def create_envs(self):
         """Set env options. Import assets. Create actors."""
@@ -508,6 +560,8 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
         self.shape_ids = []
 
         self.camera_handles = []
+        self.camera_props = []
+        self.camera_trans = []
         self.kuka_actor_ids_sim = []  # within-sim indices
         self.plug_actor_ids_sim = []  # within-sim indices
         self.socket_actor_ids_sim = []  # within-sim indices
@@ -541,7 +595,6 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
         # self.plug_pcd = torch.zeros((self.num_envs, self.cfg['env']['num_points'], 3), device=self.device)
 
         self.subassembly_to_env_ids = {}
-
         # Create wrist and fingertip force sensors
         sensor_pose = gymapi.Transform()
         for ft_handle in self.fingertip_handles:
@@ -707,15 +760,15 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
             self.socket_handles.append(socket_handle)
             self.table_handles.append(table_handle)
 
-            self.camera_props = gymapi.CameraProperties()
-            self.camera_props.width = 1280
-            self.camera_props.height = 720
+            self.camera_props_viz = gymapi.CameraProperties()
+            self.camera_props_viz.width = 1280
+            self.camera_props_viz.height = 720
             if subassembly not in self.all_rendering_camera:
                 self.all_rendering_camera[subassembly] = []
                 self.all_rendering_camera[subassembly].append(i)
 
-                cam1, trans1 = self.make_handle_trans(1280, 720, i, (0.8, 0.1, 0.4),
-                                                      (np.deg2rad(0), np.deg2rad(40), np.deg2rad(180)))
+                cam1, trans1, _ = self.make_handle_trans(1280, 720, i, (0.8, 0.1, 0.4),
+                                                         (np.deg2rad(0), np.deg2rad(40), np.deg2rad(180)))
                 self.gym.attach_camera_to_body(
                     cam1,
                     self.envs[i],
@@ -726,8 +779,8 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
 
                 self.all_rendering_camera[subassembly].append(cam1)
 
-                cam2, trans2 = self.make_handle_trans(1280, 720, i, (0.8, -0.1, 0.4),
-                                                      (np.deg2rad(0), np.deg2rad(40), np.deg2rad(180)))
+                cam2, trans2, _ = self.make_handle_trans(1280, 720, i, (0.8, -0.1, 0.4),
+                                                         (np.deg2rad(0), np.deg2rad(40), np.deg2rad(180)))
                 self.gym.attach_camera_to_body(
                     cam2,
                     self.envs[i],
@@ -753,9 +806,12 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
                 perturbed_position = np.array(self.init_camera_pos) + random_pos_error
                 perturbed_rotation = np.array(self.init_camera_rot) + random_rot_error
 
-                cam, trans = self.make_handle_trans(self.res[0], self.res[1], i,
-                                                    perturbed_position, perturbed_rotation)
+                cam, trans, props = self.make_handle_trans(self.res[0], self.res[1], i,
+                                                           perturbed_position, perturbed_rotation)
                 self.camera_handles.append(cam)
+                self.camera_trans.append(trans)
+                self.camera_props.append(props)
+
                 self.gym.attach_camera_to_body(
                     cam,
                     self.envs[i],
@@ -794,7 +850,6 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
                                              for i in range(len(self.fingertips))])
 
             if self.cfg['env']['compute_contact_gt']:
-                assert 'Make sure socket pos is constant across all the envs'
                 socket_pos = [0.5, 0, 0.001]
                 if subassembly not in self.subassembly_extrinsic_contact:
                     self.subassembly_extrinsic_contact[subassembly] = ExtrinsicContact(
@@ -805,14 +860,6 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
                         socket_pos=socket_pos,
                         num_envs=self.num_envs,
                         num_points=self.cfg['env']['num_points'])
-
-                # self.extrinsic_contact_gt = ExtrinsicContact(mesh_obj=os.path.join(mesh_root, plug_file),
-                #                                              mesh_socket=os.path.join(mesh_root, socket_file),
-                #                                              obj_scale=1.0,
-                #                                              socket_scale=1.0,
-                #                                              socket_pos=socket_pos,
-                #                                              num_envs=self.num_envs,
-                #                                              num_points=self.cfg['env']['num_points'])
 
             # loading plug pcd
             if subassembly not in self.subassembly_pcd:
@@ -831,6 +878,18 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
 
             if self.cfg_env.env.aggregate_mode:
                 self.gym.end_aggregate(env_ptr)
+
+        if self.external_cam and self.pcl_cam:
+            self.pcl_generator = CameraPointCloud(isc_sim=self.sim,
+                                                  isc_gym=self.gym,
+                                                  envs=self.envs,
+                                                  camera_handles=self.camera_handles,
+                                                  camera_trans=self.camera_trans,
+                                                  camera_props=self.camera_props,
+                                                  sample_num=400,  # self.cfg['env']['num_points'],
+                                                  compute_device=self.device,
+                                                  graphics_device=self.device,
+                                                  pt_in_local=True)
 
         # Get indices
         self.num_actors = int(actor_count / self.num_envs)  # per env
@@ -957,14 +1016,14 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
                                                          camera_1,
                                                          gymapi.IMAGE_COLOR)
 
-                video_frame1 = video_frame1.reshape((self.camera_props.height, self.camera_props.width, 4))
+                video_frame1 = video_frame1.reshape((self.camera_props_viz.height, self.camera_props_viz.width, 4))
 
                 video_frame2 = self.gym.get_camera_image(self.sim,
                                                          self.envs[env_id],
                                                          camera_2,
                                                          gymapi.IMAGE_COLOR)
 
-                video_frame2 = video_frame2.reshape((self.camera_props.height, self.camera_props.width, 4))
+                video_frame2 = video_frame2.reshape((self.camera_props_viz.height, self.camera_props_viz.width, 4))
                 video_frames.append(np.concatenate((video_frame1, video_frame2), axis=1))
 
             self.video_frames.append(np.concatenate(video_frames, axis=0))

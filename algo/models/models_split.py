@@ -61,7 +61,7 @@ class ActorCriticSplit(nn.Module):
         input_shape = kwargs['input_shape']
         mlp_input_shape = input_shape[0]
         self.units = kwargs['actor_units']
-        self.contact_info = kwargs['gt_contacts_info']
+        self.contact_info = False # kwargs['gt_contacts_info']
         self.only_contact = kwargs['only_contact']
 
         self.priv_mlp_units = kwargs['priv_mlp_units']

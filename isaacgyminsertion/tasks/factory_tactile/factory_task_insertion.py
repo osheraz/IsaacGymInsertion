@@ -54,6 +54,19 @@ from collections import defaultdict
 
 torch.set_printoptions(sci_mode=False)
 
+import matplotlib.pyplot as plt
+
+
+@torch.no_grad()
+def filter_hand_base(pts):
+    # x = pts[:, 0]
+    # z = pts[:, 2]
+    # valid1 = z >= 0.005
+    # valid2 = x <= 0.5
+    # valid = valid1 & valid2
+    # pts = pts[valid1]
+    return pts
+
 
 class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
@@ -61,7 +74,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         """Initialize instance variables. Initialize task superclass."""
 
         super().__init__(cfg, rl_device, sim_device, graphics_device_id, headless, virtual_screen_capture, force_render)
-
+        self.ax = plt.axes(projection='3d')
         self.cfg = cfg
         self._get_task_yaml_params()
 
@@ -237,8 +250,12 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                                           dtype=torch.float, device=self.device)
 
         if self.cfg_task.env.compute_contact_gt:
-            self.contact_points_hist = torch.zeros((self.num_envs, self.cfg_task.env.num_points * 1),
-                                                   dtype=torch.float, device=self.device)
+            self.pcl_queue = torch.zeros((self.num_envs, self.cfg_task.env.numObsStudentHist,
+                                          self.cfg_task.env.num_points * 3),
+                                         dtype=torch.float, device=self.device)
+
+            self.pcl = torch.zeros((self.num_envs, self.cfg_task.env.num_points * 3),
+                                   device=self.device, dtype=torch.float)
 
             self.gt_extrinsic_contact = torch.zeros((self.num_envs, self.cfg_task.env.num_points),
                                                     device=self.device, dtype=torch.float)
@@ -269,7 +286,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                 dtype=torch.float,
             )
             self.seg_queue = torch.zeros(
-                (self.num_envs, self.img_hist_len, self.res[1] * self.res[0]), device=self.device, dtype=torch.float,)
+                (self.num_envs, self.img_hist_len, self.res[1] * self.res[0]), device=self.device, dtype=torch.float, )
             self.image_buf = torch.zeros(self.num_envs, self.res[1] * self.res[0]).to(self.device)
             self.seg_buf = torch.zeros(self.num_envs, self.res[1] * self.res[0], dtype=torch.int32).to(self.device)
             self.init_external_cam()
@@ -675,17 +692,17 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.obs_queue[:, -self.num_observations:] = obs
 
         eef_stud = torch.cat(self.pose_world_to_robot_base(self.fingertip_centered_pos.clone(),
-                                                          self.fingertip_centered_quat.clone(),
-                                                          to_rep='matrix'), dim=-1)
+                                                           self.fingertip_centered_quat.clone(),
+                                                           to_rep='matrix'), dim=-1)
         # fix bug
         eef_stud = torch.cat((self.fingertip_centered_pos,
-                             self.stud_tf.forward(eef_stud[:, 3:].reshape(eef_stud.shape[0], 3, 3))), dim=1)
+                              self.stud_tf.forward(eef_stud[:, 3:].reshape(eef_stud.shape[0], 3, 3))), dim=1)
 
         obs_tensors_student = torch.cat([
-                                        eef_stud,
-                                         self.socket_pos,  # 3
-                                         actions,
-                                         ], dim=-1)
+            eef_stud,
+            self.socket_pos,  # 3
+            actions,
+        ], dim=-1)
 
         self.obs_stud_queue[:, :-self.num_obs_stud] = self.obs_stud_queue[:, self.num_obs_stud:]
         self.obs_stud_queue[:, -self.num_obs_stud:] = obs_tensors_student
@@ -760,18 +777,34 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.rigid_physics_params[...] = physics_params
 
         if self.cfg_task.env.compute_contact_gt:
-            display_key = 'yellow_round_peg_2in'  # ['triangle', 'red_round_peg_1_5in', 'yellow_round_peg_2in']
+            display_key = 'square_peg_hole_32mm_loose'  # ['triangle', 'red_round_peg_1_5in', 'yellow_round_peg_2in']
             for k, v in self.subassembly_extrinsic_contact.items():
-                self.gt_extrinsic_contact[self.subassembly_to_env_ids[k], ...] = v.get_extrinsic_contact(
+                # self.gt_extrinsic_contact[self.subassembly_to_env_ids[k], ...] = v.get_extrinsic_contact(
+                self.pcl[self.subassembly_to_env_ids[k], ...] = v.get_pcl(
                     obj_pos=self.plug_pos[self.subassembly_to_env_ids[k], ...].clone(),
                     obj_quat=self.plug_quat[self.subassembly_to_env_ids[k], ...].clone(),
                     socket_pos=self.socket_pos[self.subassembly_to_env_ids[k], ...].clone(),
                     socket_quat=self.socket_quat[self.subassembly_to_env_ids[k], ...].clone(),
-                    display=display_key == k
+                    display=display_key == k and False
                 ).to(self.device)
 
-                self.contact_points_hist[:, (self.cfg_task.env.num_points * 0):,
-                ...] = self.gt_extrinsic_contact.clone()
+            if self.frame > 10 and self.pcl_cam:
+                pts = self.pcl_generator.get_point_cloud(
+                    depths=self.image_buf.clone().reshape(self.num_envs, self.res[1], self.res[0]),
+                    filter_func=filter_hand_base).to(self.device)
+                to_show = pts[3].cpu().numpy()
+                self.ax.plot(to_show[:, 0],
+                             to_show[:, 1],
+                             to_show[:, 2], 'ko')
+
+                plt.pause(0.0001)
+                self.ax.set_xlabel('X')
+                self.ax.set_ylabel('Y')
+                self.ax.cla()
+                pts = pts.flatten(start_dim=1)
+
+            self.pcl_queue[:, 1:] = self.pcl_queue[:, :-1].clone().detach()
+            self.pcl_queue[:, 0, ...] = self.pcl
 
         state_tensors = [
             #  add delta error
@@ -966,7 +999,6 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         if (self.cfg_task.data_logger.collect_data or
                 self.cfg_task.data_logger.collect_test_sim or
                 self.cfg_task.reset_at_success):
-
             self.reset_buf[:] |= self.success_reset_buf[:]
 
         # If max episode length has been reached
@@ -983,8 +1015,8 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.degrasp_buf[:] = (torch.abs(roll) > 0.4) | (torch.abs(pitch) > 0.4)
 
         fingertips_dist = (torch.norm(self.left_finger_pos - self.fingertip_centered_pos, p=2, dim=-1) < 0.005) & (
-                           torch.norm(self.right_finger_pos - self.fingertip_centered_pos, p=2, dim=-1) < 0.005) & (
-                           torch.norm(self.middle_finger_pos - self.fingertip_centered_pos, p=2, dim=-1) < 0.005)
+                torch.norm(self.right_finger_pos - self.fingertip_centered_pos, p=2, dim=-1) < 0.005) & (
+                                  torch.norm(self.middle_finger_pos - self.fingertip_centered_pos, p=2, dim=-1) < 0.005)
 
         self.far_from_goal_buf[:] = torch.norm(self.plug_pos - self.socket_pos, p=2, dim=-1) > 0.3
 
@@ -996,7 +1028,6 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         if ((self.cfg_task.data_logger.collect_data or
              self.cfg_task.data_logger.collect_test_sim) and not self.cfg_task.collect_rotate):
             self.reset_buf[:] |= self.degrasp_buf[:]
-
 
     def _reset_predefined_environment(self, env_ids):
 
@@ -1023,8 +1054,8 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self._reset_kuka(env_ids, new_pose=kuka_dof_pos)
 
         # for _, v in self.all_rendering_camera.items():
-            # env_id = v[0], camera_1 = v[1], camera_2 = v[2]
-            # self.init_plug_pos_cam[v[0], :] = plug_pos[v[0], :]
+        # env_id = v[0], camera_1 = v[1], camera_2 = v[2]
+        # self.init_plug_pos_cam[v[0], :] = plug_pos[v[0], :]
 
         object_pose = {
             'socket_pose': socket_pos,
@@ -1034,6 +1065,10 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         }
 
         self._reset_object(env_ids, new_pose=object_pose)
+
+        # TODO fix for contacts estimation
+        # for k, v in self.subassembly_extrinsic_contact.items():
+        #     v.reset_socket_pos(socket_pos=socket_pos.cpu().detach())
 
     def _reset_environment(self, env_ids):
 
@@ -1265,8 +1300,8 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                 perturbed_position = np.array(self.init_camera_pos) + random_pos_error
                 perturbed_rotation = np.array(self.init_camera_rot) + random_rot_error
 
-                _, trans = self.make_handle_trans(self.res[0], self.res[1], env_id, perturbed_position,
-                                                  perturbed_rotation)
+                _, trans, _ = self.make_handle_trans(self.res[0], self.res[1], env_id, perturbed_position,
+                                                     perturbed_rotation)
 
                 self.gym.attach_camera_to_body(
                     self.camera_handles[env_id],
@@ -1573,8 +1608,9 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             self.seg_buf[env_ids] *= 0
             self.seg_queue[env_ids] *= 0
         if self.cfg_task.env.compute_contact_gt:
-            self.gt_extrinsic_contact[env_ids] *= 0
-
+            self.pcl_queue[env_ids] *= 0
+            self.pcl[env_ids] *= 0
+            # self.gt_extrinsic_contact[env_ids] *= 0
         # update init grasp pos
 
     def _set_viewer_params(self):
@@ -1907,7 +1943,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         if self.cfg_task.env.tactile:
             self.obs_dict['tactile'] = self.tactile_queue.clone().to(self.rl_device)
         if self.cfg_task.env.compute_contact_gt:
-            self.obs_dict['contacts'] = self.contact_points_hist.clone().to(self.rl_device)
+            self.obs_dict['pcl'] = self.pcl_queue.clone().to(self.rl_device)
         if self.external_cam:
             self.obs_dict['img'] = self.img_queue.clone().to(self.rl_device)
             self.obs_dict['seg'] = self.seg_queue.clone().to(self.rl_device)
@@ -1931,7 +1967,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         if self.cfg_task.env.tactile:
             self.obs_dict['tactile'] = self.tactile_queue.clone().to(self.rl_device)
         if self.cfg_task.env.compute_contact_gt:
-            self.obs_dict['contacts'] = self.contact_points_hist.clone().to(self.rl_device)
+            self.obs_dict['pcl'] = self.pcl_queue.clone().to(self.rl_device)
         if self.external_cam:
             self.obs_dict['img'] = self.img_queue.clone().to(self.rl_device)
             self.obs_dict['seg'] = self.seg_queue.clone().to(self.rl_device)

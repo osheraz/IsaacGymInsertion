@@ -113,8 +113,8 @@ env:
     tactile_display_viz: False
     tactile_wrt_force: False
 
-    compute_contact_gt: False
-    num_points: 2
+    compute_contact_gt: True
+    num_points: 100
 
     record_video: True
     record_ft: True
@@ -125,7 +125,8 @@ sim:
     disable_gravity: True
 
 external_cam:
-  external_cam: False
+  external_cam: True
+  pcl_cam: True
   cam_res:
     w: 96
     h: 54
@@ -134,7 +135,7 @@ external_cam:
   far_clip: 0.4
   near_clip: 0.1
   dis_noise: 0.001
-  display: False
+  display: True
 
 randomize:
     force_scale: 0.0
