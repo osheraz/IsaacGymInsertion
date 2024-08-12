@@ -42,12 +42,10 @@ class DepthImageProcessor:
         #     depth_images = depth_images.unsqueeze(0)
 
         # depth_images = self.crop_depth_image(depth_images)
-
         noise = self.dis_noise * 2 * (torch.rand(depth_images.shape, device=depth_images.device) - 0.5)
         depth_images += noise
         depth_images = torch.clip(depth_images, -self.far_clip, -self.near_clip)
         depth_images = self.normalize_depth_image(depth_images)
-
         # depth_images = self.resize_depth_images(depth_images)
 
         return depth_images.squeeze(0) if depth_images.size(0) == 1 else depth_images

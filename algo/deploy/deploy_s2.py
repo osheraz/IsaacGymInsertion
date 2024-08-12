@@ -508,7 +508,7 @@ class HardwarePlayer:
 
             obs_stud = torch.cat([eef_stud,
                                   socket_pos,
-                                  # action,
+                                  action,
                                   ], dim=-1)
 
             self.obs_stud_queue[:, 1:] = self.obs_stud_queue[:, :-1].clone().detach()

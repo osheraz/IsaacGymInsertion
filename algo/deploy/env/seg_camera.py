@@ -1,3 +1,4 @@
+import numpy as np
 import rospy
 
 from sensor_msgs.msg import Image
@@ -7,10 +8,12 @@ import cv2
 from algo.models.FastSAM.live_sam import FastSAM, FastSAMPrompt
 import time
 
+
 def masks_to_bool(masks):
     if type(masks) == numpy.ndarray:
         return masks.astype(bool)
     return masks.cpu().numpy().astype(bool)
+
 
 class SegCameraSubscriber:
 
@@ -35,9 +38,10 @@ class SegCameraSubscriber:
 
         self.min_dims = {"width": 10, "height": 15}
 
-        self.first_frame = False
-        self.points_to_exclude = [(0,0)] # [(147, 156), (147, 156)]
-
+        self.got_socket_mask = False
+        self.points_to_exclude = [(0, 0)]  # [(147, 156), (147, 156)]
+        self.socket_id = 3
+        self.plug_id = 2
         self._topic_name = rospy.get_param('~topic_name', '{}'.format(topic))
         rospy.loginfo("(topic_name) Subscribing to Images to topic  %s", self._topic_name)
         self.model = FastSAM('/home/roblab20/osher3_workspace/src/isaacgym/python/'
@@ -78,8 +82,8 @@ class SegCameraSubscriber:
         )
 
         within_rect = (
-            x_min >= rect["x_min"] and y_min >= rect["y_min"] and
-            x_max <= rect["x_max"] and y_max <= rect["y_max"]
+                x_min >= rect["x_min"] and y_min >= rect["y_min"] and
+                x_max <= rect["x_max"] and y_max <= rect["y_max"]
         )
 
         return within_rect and not includes_exclude_points
@@ -90,10 +94,10 @@ class SegCameraSubscriber:
         box_height = y_max - y_min
 
         within_rect_and_dim = (
-            x_min >= rect["x_min"] and y_min >= rect["y_min"] and
-            x_max <= rect["x_max"] and y_max <= rect["y_max"] and
-            min_dim["width"] < box_width < max_dim["width"] and
-            min_dim["height"] < box_height < max_dim["height"]
+                x_min >= rect["x_min"] and y_min >= rect["y_min"] and
+                x_max <= rect["x_max"] and y_max <= rect["y_max"] and
+                min_dim["width"] < box_width < max_dim["width"] and
+                min_dim["height"] < box_height < max_dim["height"]
         )
 
         includes_exclude_points = any(
@@ -161,19 +165,20 @@ class SegCameraSubscriber:
         # for b in all_boxes:
         #     cv2.rectangle(frame, (b[0], b[1]), (b[2], b[3]), (0, 255, 0), 2)
 
-        if not self.first_frame:
+        if not self.got_socket_mask:
             prompt_process = FastSAMPrompt(frame, results, device=self.device)
             hole_box, socket_box = self.find_smallest_and_largest_boxes(socket)
             ann = prompt_process.box_prompt(bbox=socket_box)[0]
             ann_hole = prompt_process.box_prompt(bbox=hole_box)[0]
             mask_socket = masks_to_bool(ann)
             mask_hole = masks_to_bool(ann_hole)
-            self.socket_mask = mask_socket & ~mask_hole
+            self.socket_mask = (mask_socket & ~mask_hole).astype(int)
+            self.socket_mask *= self.socket_id
 
-            self.img_size = 640
+            self.img_size = 384
             self.conf = 0.6
             self.iou = 0.6
-            self.first_frame = True
+            self.got_socket_mask = True
             self.init_success = True
             self.min_dims = {"width": 20, "height": 25}
             self.max_dims = {"width": 70, "height": 100}
@@ -186,20 +191,25 @@ class SegCameraSubscriber:
                 biggest = seg[0]
 
             ann = prompt_process.box_prompt(bbox=biggest)[0]
-            self.mask = masks_to_bool(ann)
-            self.last_frame = self.mask | self.socket_mask
-            self.mask_3d = numpy.repeat(self.last_frame[:, :, numpy.newaxis], 3, axis=2)
+            self.plug_mask = (masks_to_bool(ann)).astype(int) * self.plug_id
+            self.last_frame = self.plug_mask | self.socket_mask
+
         except:
             # print('failed to find the object')
             pass
 
         # if True:
-        #     cv2.imshow("Mask Image", frame * self.mask_3d)
-        #     cv2.imshow("Raw Image", frame )
+        #     both_mask = ((self.last_frame == self.plug_id) | (self.last_frame == self.socket_id)).astype(float)
+        #     self.mask_3d = numpy.repeat(both_mask[:, :, numpy.newaxis], 3, axis=2)
+        #     seg_show = self.mask_3d
+        #     # seg_show = cv2.normalize(seg_show, None, 0, 255, cv2.NORM_MINMAX)
+        #     # seg_show = seg_show.astype(np.uint8)
+        #     cv2.imshow("Mask Image", seg_show)
+        #     cv2.imshow("Raw Image", frame)
         #     cv2.waitKey(1)
 
     def get_frame(self):
-
+        # rospy.wait_for_message('/zedm/zed_node/rgb/image_rect_color')
         return self.last_frame
 
 

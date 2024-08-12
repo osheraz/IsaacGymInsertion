@@ -17,7 +17,7 @@ class ZedCameraSubscriber:
         self.w = 320
         self.h = 180
         self.cam_type = 'd'
-        self.far_clip = 1.0
+        self.far_clip = 0.4
         self.near_clip = 0.0
         self.dis_noise = 0.00
         self.display = display
@@ -28,6 +28,9 @@ class ZedCameraSubscriber:
         if with_seg:
             from algo.deploy.env.seg_camera import SegCameraSubscriber
             self.seg = SegCameraSubscriber()
+            self.socket_id = self.seg.socket_id
+            self.plug_id = self.seg.plug_id
+            self.distinct = True
 
         self._topic_name = rospy.get_param('~topic_name', '{}'.format(topic))
         rospy.loginfo("(topic_name) Subscribing to Images to topic  %s", self._topic_name)
@@ -72,21 +75,24 @@ class ZedCameraSubscriber:
 
             frame = cv2.resize(frame, (self.w, self.h), interpolation=cv2.INTER_AREA)
             frame = numpy.expand_dims(frame, axis=0)
-            frame = self.process_depth_image(frame)
+            proc_frame = self.process_depth_image(frame)
 
             try:
                 if self.with_seg:
-                    mask = self.seg.get_frame().astype(float)
-                    frame *= numpy.expand_dims(mask, axis=0)
+                    seg = self.seg.get_frame()
+                    mask = ((seg == self.plug_id) | (seg == self.socket_id)).astype(float)
+                    frame = proc_frame * numpy.expand_dims(mask, axis=0)
                     self.last_frame = frame
-                    self.seg_frame = mask
+                    self.seg_frame = seg if self.distinct else mask
 
             except Exception as e:
                 pass
 
             # if self.display:
-            cv2.imshow("Test Depth Image", self.last_frame.transpose(1, 2, 0) + 0.5)
-            key = cv2.waitKey(1)
+            # cv2.imshow("Depth Image", proc_frame.transpose(1, 2, 0))
+            #
+            # cv2.imshow("Test Depth Image", self.last_frame.transpose(1, 2, 0))
+            # key = cv2.waitKey(1)
 
     def get_frame(self):
 
@@ -95,7 +101,7 @@ class ZedCameraSubscriber:
     def process_depth_image(self, depth_image):
         # These operations are replicated on the hardware
         depth_image = self.crop_depth_image(depth_image)
-        depth_image += self.dis_noise * 2 * (numpy.random.random(1) - 0.5)[0]
+        # depth_image += self.dis_noise * 2 * (numpy.random.random(1) - 0.5)[0]
         depth_image = numpy.clip(depth_image, -self.far_clip, -self.near_clip)
         # depth_image = self.resize_transform(depth_image[None, :]).squeeze()
         depth_image = self.normalize_depth_image(depth_image)
