@@ -284,9 +284,9 @@ class ExtrinsicAdapt(object):
         self.student.model.eval()
         if self.train_config.model.transformer.load_tact:
             self.student.tact.eval()
-        if not self.train_config.from_offline:
-            if self.stud_obs_mean_std:
-                self.stud_obs_mean_std.eval()
+        # if not self.train_config.from_offline:
+        #     if self.stud_obs_mean_std:
+        #         self.stud_obs_mean_std.eval()
 
     def set_student_train(self):
 
@@ -320,7 +320,6 @@ class ExtrinsicAdapt(object):
 
             elif not self.train_config.from_offline:
                 student_obs = self.stud_obs_mean_std(student_obs)
-
             else:
                 assert NotImplementedError
 
@@ -849,11 +848,12 @@ class ExtrinsicAdapt(object):
                 cprint(f'Restoring student from: {self.train_config.train.student_ckpt_path}',
                        'red', attrs=['bold'])
 
+            if self.train_config.model.transformer.load_tact:
+                self.student.load_tact_model(self.train_config.model.transformer.tact_path)
+
             cprint(f'Using offline stats from: {self.train_config.train.normalize_file}',
                    'red', attrs=['bold'])
             del self.stud_obs_mean_std
-            if self.train_config.model.transformer.load_tact:
-                self.student.load_tact_model(self.train_config.model.transformer.tact_path)
             self.stats = {'mean': {}, 'std': {}}
             stats = pickle.load(open(self.train_config.train.normalize_file, "rb"))
             for key in stats['mean'].keys():

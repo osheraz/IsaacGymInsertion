@@ -33,6 +33,7 @@ class HardwarePlayer:
         self.f_left = None
         self.f_bottom = None
         self.tactile_grasp_flag = True
+        self.stats = None
 
         self.rot_tf = RotationTransformer()
         self.rot_tf_back = RotationTransformer(to_rep='quaternion', from_rep='rotation_6d',)
@@ -67,8 +68,6 @@ class HardwarePlayer:
         self.tactile_seq_length = self.train_config.model.transformer.sequence_length
         self.img_hist_len = self.train_config.model.transformer.sequence_length
         self.stud_hist_len = self.train_config.model.transformer.sequence_length
-        #         self.tact_hist_len = self.full_config.task.env.tactile_history_len
-        #         self.img_hist_len = self.full_config.task.env.img_history_len
         # ---- Priv Info ----
         self.priv_info = self.full_config.train.ppo.priv_info
         self.priv_info_dim = self.full_config.train.ppo.priv_info_dim
@@ -90,7 +89,9 @@ class HardwarePlayer:
             'priv_info': self.priv_info,
             "only_contact": self.full_config.train.ppo.only_contact,
             "contacts_mlp_units": self.full_config.train.network.contact_mlp.units,
-            'shared_parameters': False
+            'shared_parameters': False,
+            'full_config': self.full_config,
+            'vt_policy': False,
         }
 
         self.agent = ActorCritic(agent_config)
@@ -113,7 +114,7 @@ class HardwarePlayer:
 
         self.ppo_config = full_config.train.ppo
         self.obs_info = True  # self.ppo_config["obs_info"]
-        self.tactile_info = self.ppo_config["tactile_info"]
+        self.tactile_info = False
         self.img_info = True  # self.ppo_config["img_info"]
         self.seg_info = True  # self.ppo_config["seg_info"]
 
@@ -123,6 +124,7 @@ class HardwarePlayer:
         student_cfg.offline_train.model.use_seg = self.seg_info
         student_cfg.offline_train.model.use_lin = self.obs_info
         student_cfg.offline_train.model.use_img = self.img_info
+
         self.student = Student(student_cfg)
 
     def restore(self, fn):
@@ -135,21 +137,31 @@ class HardwarePlayer:
             print('Loading Policy without priv info')
         self.agent.load_state_dict(checkpoint['model'])
 
-        stud_fn = fn.replace('stage1_nn/last.pth', 'student/checkpoints/model_last.pt')
-        self.restore_student(stud_fn, from_offline=True)
+        # stud_fn = fn.replace('stage1_nn/last.pth', 'student/checkpoints/model_last.pt')
+        stud_fn = fn.replace('stage1_nn/last.pth', 'stage2_nn/last_stud.pth')
+
+        self.restore_student(stud_fn, from_offline=False, phase=1)
 
         self.set_eval()
         self.set_student_eval()
 
-    def restore_student(self, fn, from_offline=False):
+    def restore_student(self, fn, from_offline=False, phase=1):
 
         if from_offline:
-            cprint(f'Using offline stats from: {self.train_config.train.normalize_file}', 'red', attrs=['bold'])
-            cprint(f'Restoring student from: {self.train_config.train.student_ckpt_path}', 'red', attrs=['bold'])
-            checkpoint = torch.load(self.train_config.train.student_ckpt_path, map_location=self.device)
-            self.student.model.load_state_dict(checkpoint)
+            if phase == 2:
+                checkpoint = torch.load(fn, map_location=self.device)
+                self.student.model.load_state_dict(checkpoint['student'])
+                cprint(f'Restoring student from: {fn}',
+                       'red', attrs=['bold'])
+            else:
+                cprint(f'Restoring student from: {self.train_config.train.student_ckpt_path}', 'red', attrs=['bold'])
+                checkpoint = torch.load(self.train_config.train.student_ckpt_path, map_location=self.device)
+                self.student.model.load_state_dict(checkpoint)
+
             if self.train_config.model.transformer.load_tact:
                 self.student.load_tact_model(self.train_config.model.transformer.tact_path)
+
+            cprint(f'Using offline stats from: {self.train_config.train.normalize_file}', 'red', attrs=['bold'])
             self.stats = {'mean': {}, 'std': {}}
             stats = pickle.load(open(self.train_config.train.normalize_file, "rb"))
             for key in stats['mean'].keys():
@@ -178,8 +190,9 @@ class HardwarePlayer:
         self.student.model.eval()
         if self.train_config.model.transformer.load_tact:
             self.student.tact.eval()
-        # if self.stud_obs_mean_std:
-        #     self.stud_obs_mean_std.eval()
+        if not self.train_config.from_offline:
+            if self.stud_obs_mean_std:
+                self.stud_obs_mean_std.eval()
 
     def _initialize_grasp_poses(self, gp='yellow_round_peg_2in'):
 
@@ -309,7 +322,7 @@ class HardwarePlayer:
             self.device)
 
         self.seg_queue = torch.zeros(
-            (1, self.img_hist_len, self.res[1], self.res[0]),device=self.device, dtype=torch.float,
+            (1, self.img_hist_len, self.res[1], self.res[0]), device=self.device, dtype=torch.float,
         )
         self.seg_buf = torch.zeros(1, self.res[1], self.res[0]).to(self.device)
 
@@ -401,7 +414,7 @@ class HardwarePlayer:
         self.plug_hand_pos, self.plug_hand_quat = self._pose_world_to_hand_base(self.plug_pos, self.plug_quat)
 
     def compute_observations(self, with_tactile=True, with_img=True, display_image=True,
-                             with_priv=False, with_stud=True, diff_tac=True):
+                             with_priv=False, with_stud=True, diff_tac=False):
 
         obses = self.env.get_obs()
 
@@ -472,7 +485,7 @@ class HardwarePlayer:
             self.seg_queue[:, 0, ...] = self.seg_buf
 
             if display_image:
-                cv2.imshow("Depth Image", img.transpose(1, 2, 0) + 0.5)
+                cv2.imshow("Depth Image", img.transpose(1, 2, 0))
                 cv2.waitKey(1)
 
         # some-like taking a new socket pose measurement
@@ -502,10 +515,12 @@ class HardwarePlayer:
             # fix bug
             eef_stud = torch.cat((self.fingertip_centered_pos,
                                   self.stud_tf.forward(eef_stud[:, 3:].reshape(eef_stud.shape[0], 3, 3))), dim=1)
+            socket_pos = self.socket_pos
 
-            eef_stud = (eef_stud - self.stats["mean"]["eef_pos_rot6d"]) / self.stats["std"]["eef_pos_rot6d"]
-            socket_pos = (self.socket_pos - self.stats["mean"]["socket_pos"][:3]) / self.stats["std"]["socket_pos"][:3]
-
+            # if self.train_config.from_offline:
+            #     eef_stud = (eef_stud - self.stats["mean"]["eef_pos_rot6d"]) / self.stats["std"]["eef_pos_rot6d"]
+            #     socket_pos = (self.socket_pos - self.stats["mean"]["socket_pos"][:3]) / self.stats["std"]["socket_pos"][:3]
+            #
             obs_stud = torch.cat([eef_stud,
                                   socket_pos,
                                   action,
@@ -768,6 +783,63 @@ class HardwarePlayer:
         except:
             print(f'failed to reach {target_joints}')
 
+    def process_obs(self, obs, obj_id=2, socket_id=3, distinct=True, display=False):
+
+        student_obs = obs['student_obs'] if 'student_obs' in obs else None
+        tactile = obs['tactile'] if 'tactile' in obs else None
+        img = obs['img'] if 'img' in obs else None
+        seg = obs['seg'] if 'seg' in obs else None
+
+        if self.img_info:
+            valid_mask = ((seg == obj_id) | (seg == socket_id)).float()
+            seg = seg * valid_mask if distinct else valid_mask
+            img = img * valid_mask
+
+        if student_obs is not None:
+            if self.stats is not None and self.train_config.from_offline:
+                eef_pos = student_obs[:, :9]
+                socket_pos = student_obs[:, 9:12]
+                action = student_obs[:, 12:]
+                eef_pos = (eef_pos - self.stats["mean"]['eef_pos_rot6d']) / self.stats["std"]['eef_pos_rot6d']
+                socket_pos = (socket_pos - self.stats["mean"]["socket_pos"][:3]) / self.stats["std"]["socket_pos"][:3]
+                student_obs = torch.cat([eef_pos, socket_pos, action], dim=-1)
+
+            elif not self.train_config.from_offline:
+                student_obs = self.stud_obs_mean_std(student_obs)
+
+            else:
+                assert NotImplementedError
+
+        student_dict = {
+            'student_obs': student_obs,
+            'tactile': tactile,
+            'img': img,
+            'seg': seg,
+        }
+
+        if display:
+            self.display_obs(img, seg)
+
+        return student_dict
+
+    def display_obs(self, depth, seg):
+
+        depth = depth[0, 0, ...].reshape(1, 54, 96)
+        seg = seg[0, 0, ...].reshape(1, 54, 96)
+
+        # for t in range(depth.shape[1]):  # Iterate through the sequence of images
+        # Extract the images for all fingers at time step 't' and adjust dimensions for display.
+        dp = depth.cpu().detach().numpy()
+        dp = np.transpose(dp, (1, 2, 0))
+        # cv2.imshow('Depth Sequence', d + 0.5)  # Display the concatenated image
+
+        sg = seg.cpu().detach().numpy()
+        sg = np.transpose(sg, (1, 2, 0))
+        # cv2.imshow('Seg Sequence', d)  # Display the concatenated image
+        cv2.imshow('Seg Sequence', np.hstack((dp, sg)))  # Display the concatenated image
+
+        cv2.waitKey(1)
+
     def deploy(self):
 
         self._initialize_grasp_poses()
@@ -812,11 +884,13 @@ class HardwarePlayer:
 
             obs_dict = self.compute_observations(with_priv=False, with_tactile=False, with_img=True)
 
+            prep_obs = self.process_obs(obs_dict)
+
             student_dict = {
-                'student_obs': obs_dict['student_obs'] if 'student_obs' in obs_dict else None,
-                'tactile': obs_dict['tactile'] if 'tactile' in obs_dict else None,
-                'img': obs_dict['img'] if 'img' in obs_dict else None,
-                'seg': obs_dict['seg'] if 'seg' in obs_dict else None,
+                'student_obs': prep_obs['student_obs'] if 'student_obs' in prep_obs else None,
+                'tactile': prep_obs['tactile'] if 'tactile' in prep_obs else None,
+                'img': prep_obs['img'] if 'img' in prep_obs else None,
+                'seg': prep_obs['seg'] if 'seg' in prep_obs else None,
             }
 
             self._update_reset_buf()
@@ -858,11 +932,14 @@ class HardwarePlayer:
 
                 # Compute next observation
                 obs_dict = self.compute_observations(with_priv=False, with_tactile=False, with_img=True)
+
+                prep_obs = self.process_obs(obs_dict)
+
                 student_dict = {
-                    'student_obs': obs_dict['student_obs'] if 'student_obs' in obs_dict else None,
-                    'tactile': obs_dict['tactile'] if 'tactile' in obs_dict else None,
-                    'img': obs_dict['img'] if 'img' in obs_dict else None,
-                    'seg': obs_dict['seg'] if 'seg' in obs_dict else None,
+                    'student_obs': prep_obs['student_obs'] if 'student_obs' in prep_obs else None,
+                    'tactile': prep_obs['tactile'] if 'tactile' in prep_obs else None,
+                    'img': prep_obs['img'] if 'img' in prep_obs else None,
+                    'seg': prep_obs['seg'] if 'seg' in prep_obs else None,
                 }
 
             self.env.arm.move_manipulator.stop_motion()

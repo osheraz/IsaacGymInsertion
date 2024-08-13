@@ -14,8 +14,8 @@ class ZedCameraSubscriber:
         :param serial: Finger device serial
         :param name: Human friendly identifier name for the device
         """
-        self.w = 320
-        self.h = 180
+        self.w = 320 # 320
+        self.h = 180 # 180
         self.cam_type = 'd'
         self.far_clip = 0.4
         self.near_clip = 0.0
@@ -81,14 +81,13 @@ class ZedCameraSubscriber:
                 if self.with_seg:
                     seg = self.seg.get_frame()
                     mask = ((seg == self.plug_id) | (seg == self.socket_id)).astype(float)
+
                     frame = proc_frame * numpy.expand_dims(mask, axis=0)
                     self.last_frame = frame
                     self.seg_frame = seg if self.distinct else mask
-
             except Exception as e:
                 pass
 
-            # if self.display:
             # cv2.imshow("Depth Image", proc_frame.transpose(1, 2, 0))
             #
             # cv2.imshow("Test Depth Image", self.last_frame.transpose(1, 2, 0))
@@ -96,7 +95,10 @@ class ZedCameraSubscriber:
 
     def get_frame(self):
 
-        return self.last_frame, self.seg_frame
+        seg_frame = cv2.resize(self.seg_frame.astype(float), (96, 54), interpolation=cv2.INTER_NEAREST)
+        last_frame = numpy.expand_dims(cv2.resize(self.last_frame[0], (96, 54), interpolation=cv2.INTER_AREA), axis=0)
+
+        return last_frame, seg_frame
 
     def process_depth_image(self, depth_image):
         # These operations are replicated on the hardware

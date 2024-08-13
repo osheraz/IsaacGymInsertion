@@ -390,7 +390,7 @@ class Runner:
                 # B, T, 1*H*W (C=1)
                 img = img.reshape(*img.shape[:2], 1, self.crop_img_width, self.crop_img_height)
                 seg = seg.reshape(*seg.shape[:2], 1, self.crop_img_width, self.crop_img_height)
-
+                # to B, T, C, W, H
             # if self.img_transform is not None:
             #     img = ImageTransform(self.img_eval_transform)(img).to(self.device)
             img, seg = self.sync_eval_reshape_transform(img, seg)
