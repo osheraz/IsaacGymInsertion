@@ -88,10 +88,10 @@ class CameraPointCloud:
         self.pt_generators = []
         for idx in range(len(envs)):
 
-            # view_matrix = self.gym.get_camera_view_matrix(self.sim,
-            #                                               envs[idx],
-            #                                               camera_handles[idx])
-            view_matrix = self.compute_view_matrix(self.camera_trans[idx])
+            view_matrix = self.gym.get_camera_view_matrix(self.sim,
+                                                          envs[idx],
+                                                          camera_handles[idx])
+            # view_matrix = self.compute_view_matrix(self.camera_trans[idx])
 
             proj_matrix = self.gym.get_camera_proj_matrix(self.sim,
                                                           envs[idx],

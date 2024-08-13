@@ -114,7 +114,7 @@ env:
     tactile_wrt_force: False
 
     compute_contact_gt: False
-    num_points: 100
+    num_points: 300
 
     record_video: True
     record_ft: True
@@ -128,8 +128,8 @@ external_cam:
   external_cam: False
   pcl_cam: False
   cam_res:
-    w: 96
-    h: 54
+    w: 320
+    h: 180
   cam_type: 'd'
   save_im: False
   far_clip: 0.4

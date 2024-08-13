@@ -58,13 +58,17 @@ import matplotlib.pyplot as plt
 
 
 @torch.no_grad()
-def filter_hand_base(pts):
-    # x = pts[:, 0]
-    # z = pts[:, 2]
-    # valid1 = z >= 0.005
-    # valid2 = x <= 0.5
-    # valid = valid1 & valid2
-    # pts = pts[valid1]
+def filter_pts(pts):
+
+    x = pts[:, 0]
+    y = pts[:, 1]
+    z = pts[:, 2]
+    valid1 = (z >= 0.005) & (z <= 0.5)
+    valid2 = (x >= 0.4) & (x <= 0.65)
+    valid3 = (y >= -0.2) & (y <= 0.2)
+
+    valid = valid1 & valid3 & valid2
+    pts = pts[valid]
     return pts
 
 
@@ -287,6 +291,9 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                 (self.num_envs, self.img_hist_len, self.res[1] * self.res[0]), device=self.device, dtype=torch.float, )
             self.image_buf = torch.zeros(self.num_envs, self.res[1] * self.res[0]).to(self.device)
             self.seg_buf = torch.zeros(self.num_envs, self.res[1] * self.res[0], dtype=torch.int32).to(self.device)
+            if self.pcl_cam:
+                self.raw_depth = torch.zeros_like(self.image_buf)
+
             self.init_external_cam()
 
         # reset tensors
@@ -775,31 +782,38 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.rigid_physics_params[...] = physics_params
 
         if self.cfg_task.env.compute_contact_gt:
-            display_key = 'square_peg_hole_32mm_loose'  # ['triangle', 'red_round_peg_1_5in', 'yellow_round_peg_2in']
-            for k, v in self.subassembly_extrinsic_contact.items():
-                # self.gt_extrinsic_contact[self.subassembly_to_env_ids[k], ...] = v.get_extrinsic_contact(
-                self.pcl[self.subassembly_to_env_ids[k], ...] = v.get_pcl(
-                    obj_pos=self.plug_pos[self.subassembly_to_env_ids[k], ...].clone(),
-                    obj_quat=self.plug_quat[self.subassembly_to_env_ids[k], ...].clone(),
-                    socket_pos=self.socket_pos[self.subassembly_to_env_ids[k], ...].clone(),
-                    socket_quat=self.socket_quat[self.subassembly_to_env_ids[k], ...].clone(),
-                    display=display_key == k and False
-                ).to(self.device)
+            if not self.pcl_cam:
+                display_key = 'square_peg_hole_32mm_loose'  # ['triangle', 'red_round_peg_1_5in', 'yellow_round_peg_2in']
+                for k, v in self.subassembly_extrinsic_contact.items():
+                    # self.gt_extrinsic_contact[self.subassembly_to_env_ids[k], ...] = v.get_extrinsic_contact(
+                    self.pcl[self.subassembly_to_env_ids[k], ...] = v.get_pcl(
+                        obj_pos=self.plug_pos[self.subassembly_to_env_ids[k], ...].clone(),
+                        obj_quat=self.plug_quat[self.subassembly_to_env_ids[k], ...].clone(),
+                        socket_pos=self.socket_pos[self.subassembly_to_env_ids[k], ...].clone(),
+                        socket_quat=self.socket_quat[self.subassembly_to_env_ids[k], ...].clone(),
+                        display=display_key == k and False
+                    ).to(self.device)
 
-            if self.frame > 10 and self.pcl_cam:
-                pts = self.pcl_generator.get_point_cloud(
-                    depths=self.image_buf.clone().reshape(self.num_envs, self.res[1], self.res[0]),
-                    filter_func=filter_hand_base).to(self.device)
-                to_show = pts[3].cpu().numpy()
-                self.ax.plot(to_show[:, 0],
-                             to_show[:, 1],
-                             to_show[:, 2], 'ko')
+            if self.pcl_cam:
+                if self.raw_depth.any():
+                    pts = self.pcl_generator.get_point_cloud(
+                        depths=self.raw_depth.reshape(self.num_envs, self.res[1], self.res[0]),
+                        # segs=self.seg_buf.reshape(self.num_envs, self.res[1], self.res[0]),
+                        filter_func=filter_pts).to(self.device)
 
-                plt.pause(0.0001)
-                self.ax.set_xlabel('X')
-                self.ax.set_ylabel('Y')
-                self.ax.cla()
-                pts = pts.flatten(start_dim=1)
+                    if self.cfg_task.external_cam.display:
+
+                        to_show = pts[0].cpu().numpy()
+                        self.ax.plot(to_show[:, 0],
+                                     to_show[:, 1],
+                                     to_show[:, 2], 'ko')
+                        self.ax.set_xlabel('X')
+                        self.ax.set_ylabel('Y')
+
+                        plt.pause(0.0001)
+
+                        self.ax.cla()
+                    self.pcl = pts.flatten(start_dim=1)
 
             self.pcl_queue[:, 1:] = self.pcl_queue[:, :-1].clone().detach()
             self.pcl_queue[:, 0, ...] = self.pcl
@@ -913,10 +927,14 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                 else:
                     depth_to_update = depth[update]
                 self.image_buf[update] = self.depth_process.process_depth_image(depth_to_update).flatten(start_dim=1)
+                if self.pcl_cam:
+                    self.raw_depth[update] = depth_to_update.flatten(start_dim=1).clone()
             if update_seg.any():
                 self.seg_buf[update_seg] = torch.stack(self.seg_renders)[update_seg].flatten(start_dim=1)
             if seg_noise.any():
                 self.seg_buf[seg_noise] = self.depth_process.add_seg_noise(self.seg_buf[seg_noise])
+            if self.pcl_cam:
+                self.raw_depth *= ((self.seg_buf == 2) | (self.seg_buf == 3)).float()
 
             if self.cfg_task.external_cam.display:
                 img = self.image_buf[0].cpu().clone().reshape(1, self.res[1], self.res[0])

@@ -812,22 +812,22 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
                 self.camera_trans.append(trans)
                 self.camera_props.append(props)
 
-                self.gym.attach_camera_to_body(
-                    cam,
-                    self.envs[i],
-                    kuka_handle,
-                    trans,
-                    gymapi.FOLLOW_TRANSFORM,
-                )
+                # self.gym.attach_camera_to_body(
+                #     cam,
+                #     self.envs[i],
+                #     kuka_handle,
+                #     trans,
+                #     gymapi.FOLLOW_TRANSFORM,
+                # )
 
                 #
-                # self.gym.set_camera_location(cam, self.envs[i],
-                #                              gymapi.Vec3(perturbed_position[0],
-                #                                          perturbed_position[1],
-                #                                          perturbed_position[2]),
-                #                              gymapi.Vec3(perturbed_rotation[0],
-                #                                          perturbed_rotation[1],
-                #                                          perturbed_rotation[2]))
+                self.gym.set_camera_location(cam, self.envs[i],
+                                             gymapi.Vec3(perturbed_position[0],
+                                                         perturbed_position[1],
+                                                         perturbed_position[2]),
+                                             gymapi.Vec3(perturbed_rotation[0],
+                                                         perturbed_rotation[1],
+                                                         perturbed_rotation[2]))
 
             # add Tactile modules for the tips
             # self.envs_asset[i] = {'subassembly': subassembly, 'components': components}
@@ -850,16 +850,17 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
                                              for i in range(len(self.fingertips))])
 
             if self.cfg['env']['compute_contact_gt']:
-                socket_pos = [0.5, 0, 0.001]
-                if subassembly not in self.subassembly_extrinsic_contact:
-                    self.subassembly_extrinsic_contact[subassembly] = ExtrinsicContact(
-                        mesh_obj=os.path.join(mesh_root, plug_file),
-                        mesh_socket=os.path.join(mesh_root, socket_file),
-                        obj_scale=1.0,
-                        socket_scale=1.0,
-                        socket_pos=socket_pos,
-                        num_envs=self.num_envs,
-                        num_points=self.cfg['env']['num_points'])
+                if not self.pcl_cam:
+                    socket_pos = [0.5, 0, 0.001]
+                    if subassembly not in self.subassembly_extrinsic_contact:
+                        self.subassembly_extrinsic_contact[subassembly] = ExtrinsicContact(
+                            mesh_obj=os.path.join(mesh_root, plug_file),
+                            mesh_socket=os.path.join(mesh_root, socket_file),
+                            obj_scale=1.0,
+                            socket_scale=1.0,
+                            socket_pos=socket_pos,
+                            num_envs=self.num_envs,
+                            num_points=self.cfg['env']['num_points'])
 
             # loading plug pcd
             if subassembly not in self.subassembly_pcd:
@@ -886,7 +887,7 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
                                                   camera_handles=self.camera_handles,
                                                   camera_trans=self.camera_trans,
                                                   camera_props=self.camera_props,
-                                                  sample_num=400,  # self.cfg['env']['num_points'],
+                                                  sample_num=self.cfg['env']['num_points'],
                                                   compute_device=self.device,
                                                   graphics_device=self.device,
                                                   pt_in_local=True)
