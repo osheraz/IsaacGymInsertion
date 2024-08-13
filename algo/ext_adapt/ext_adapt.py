@@ -241,6 +241,8 @@ class ExtrinsicAdapt(object):
 
         self.best_rewards = -10000
         self.best_loss = 10000
+        self.test_success = 0
+        self.best_success = 0
         self.cur_reward = self.best_rewards
         self.cur_loss = self.best_loss
         self.agent_steps = 0
@@ -405,6 +407,7 @@ class ExtrinsicAdapt(object):
                 num_success += self.env.success_reset_buf[done.nonzero()].sum()
                 total_dones += len(done.nonzero())
                 success_rate = num_success / total_dones
+                self.test_success = success_rate
                 print('[Test] success rate:', success_rate)
                 log_test_result(best_loss=self.best_loss,
                                 cur_loss=self.cur_loss,
@@ -413,6 +416,15 @@ class ExtrinsicAdapt(object):
                                 steps=self.agent_steps,
                                 success_rate=success_rate,
                                 log_file=os.path.join(self.nn_dir, f'log.json'))
+
+        if self.test_success > self.best_success and self.agent_steps > 1e5:
+            cprint(f'saved model at {self.agent_steps} Success {self.test_success:.2f}', 'green', attrs=['bold'])
+            prev_best_ckpt = os.path.join(self.nn_dir, f'best_succ_{self.best_success:.2f}.pth')
+            if os.path.exists(prev_best_ckpt):
+                os.remove(prev_best_ckpt)
+                os.remove(prev_best_ckpt.replace('.pth', '_stud.pth'))
+            self.best_success = self.test_success
+            self.save(os.path.join(self.nn_dir, f'best_loss_{self.best_success :.2f}'))
 
     def play_steps(self):
 
