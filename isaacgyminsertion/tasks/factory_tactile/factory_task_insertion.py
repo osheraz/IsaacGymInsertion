@@ -53,7 +53,8 @@ from torchvision.utils import save_image
 from collections import defaultdict
 
 torch.set_printoptions(sci_mode=False)
-
+import matplotlib
+matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
 
 
@@ -801,19 +802,31 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                         # segs=self.seg_buf.reshape(self.num_envs, self.res[1], self.res[0]),
                         filter_func=filter_pts).to(self.device)
 
+                    for k, v in self.subassembly_extrinsic_contact.items():
+                        self.pcl[self.subassembly_to_env_ids[k], ...] = v.get_goal_pcl(
+                            socket_pos=self.socket_pos[self.subassembly_to_env_ids[k], ...].clone(),
+                            socket_quat=self.socket_quat[self.subassembly_to_env_ids[k], ...].clone(),
+                            plug_scale=self.plug_scale[self.subassembly_to_env_ids[k]]).to(self.device)
+
                     if self.cfg_task.external_cam.display:
 
                         to_show = pts[0].cpu().numpy()
+                        to_show_pcl = self.pcl[0].cpu().numpy().reshape(300, 3)
+
                         self.ax.plot(to_show[:, 0],
                                      to_show[:, 1],
                                      to_show[:, 2], 'ko')
+                        self.ax.plot(to_show_pcl[:, 0],
+                                     to_show_pcl[:, 1],
+                                     to_show_pcl[:, 2], 'ro')
+
                         self.ax.set_xlabel('X')
                         self.ax.set_ylabel('Y')
 
                         plt.pause(0.0001)
 
                         self.ax.cla()
-                    self.pcl = pts.flatten(start_dim=1)
+                    # self.pcl = pts.flatten(start_dim=1)
 
             self.pcl_queue[:, 1:] = self.pcl_queue[:, :-1].clone().detach()
             self.pcl_queue[:, 0, ...] = self.pcl
@@ -1231,6 +1244,8 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
     def randomisation_callback(self, param_name, param_val, env_id=None, actor=None):
         if param_name == "scale" and actor == "plug":
             self.plug_scale[env_id] = param_val.mean()
+        if param_name == "scale" and actor == "socket":
+            self.socket_scale[env_id] = param_val.mean()
         elif param_name == "mass" and actor == "plug":
             self.rigid_physics_params[env_id, 0] = np.mean(param_val)
         elif param_name == "friction" and actor == "plug":

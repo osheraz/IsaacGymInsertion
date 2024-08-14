@@ -311,6 +311,12 @@ class ExtrinsicAdapt(object):
             seg = seg * valid_mask if distinct else valid_mask
             img = img * valid_mask
 
+            # obj_mask = (seg == obj_id).float()
+            # socket_mask = (seg == socket_id).float()
+            # socket_depth = (img * socket_mask).sum(dim=2, keepdim=True) /(socket_mask.sum(dim=2, keepdim=True) + 1e-6)
+            # relative_depth = (img - socket_depth) * obj_mask
+            # img = relative_depth * valid_mask
+
         if student_obs is not None:
             if self.stats is not None and self.train_config.from_offline:
                 eef_pos = student_obs[:, :9]

@@ -86,7 +86,7 @@ env:
     plugObsDelayProb: 0.3
     ImgDelayProb: 0.2
     SegDelayProb: 0.3
-    SegProbNoise: 0.05
+    SegProbNoise: 0.005
     TactileDelayProb: 0.3
 
     # Sim runs at 60 Hz
@@ -113,7 +113,7 @@ env:
     tactile_display_viz: False
     tactile_wrt_force: False
 
-    compute_contact_gt: False
+    compute_contact_gt: True
     num_points: 300
 
     record_video: True
@@ -125,8 +125,8 @@ sim:
     disable_gravity: True
 
 external_cam:
-  external_cam: False
-  pcl_cam: False
+  external_cam: True
+  pcl_cam: True
   cam_res:
     w: 96
     h: 54
@@ -135,7 +135,7 @@ external_cam:
   far_clip: 0.4
   near_clip: 0.1
   dis_noise: 0.001
-  display: False
+  display: True
 
 randomize:
     force_scale: 0.0

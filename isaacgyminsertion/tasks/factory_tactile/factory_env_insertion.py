@@ -306,7 +306,6 @@ class ExtrinsicContact:
 
     def get_pcl(self, obj_pos, obj_quat, socket_pos, socket_quat, display=True):
 
-        num_envs = obj_pos.shape[0]
         object_poses = torch.cat((obj_pos, obj_quat), dim=1)
         object_poses = self._xyzquat_to_tf_numpy(object_poses.cpu().numpy())
 
@@ -355,6 +354,36 @@ class ExtrinsicContact:
         sampled_point_cloud = merged_point_cloud[:, sampled_indices, :]
 
         return torch.from_numpy(sampled_point_cloud).flatten(start_dim=1).float()
+
+    def get_goal_pcl(self, socket_pos, socket_quat, plug_scale, display=False):
+
+        socket_poses = torch.cat((socket_pos, socket_quat), dim=1)
+        socket_poses = self._xyzquat_to_tf_numpy(socket_poses.cpu().numpy())
+
+        if len(socket_poses.shape) == 2:
+            socket_poses = socket_poses[None, ...]
+
+        object_pc_vertices =self.object_pc.copy().vertices * plug_scale
+        query_points_plug_goal = self.apply_transform(socket_poses, object_pc_vertices)
+
+        # Display
+        if display:
+            if self.first_init:
+                self.ax = plt.axes(projection='3d')
+                self.first_init = False
+
+            display_id = 0
+
+            self.ax.plot(query_points_plug_goal[display_id, :, 0],
+                         query_points_plug_goal[display_id, :, 1],
+                         query_points_plug_goal[display_id, :, 2], 'ro')
+
+            self.ax.set_xlabel('X')
+            self.ax.set_ylabel('Y')
+            plt.pause(0.0001)
+            self.ax.cla()
+
+        return torch.from_numpy(query_points_plug_goal).flatten(start_dim=1).float()
 
 
 class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
@@ -584,6 +613,7 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
         self.socket_heights = []
         self.socket_widths = []
         self.socket_depths = []
+        self.socket_scale = []
 
         self.asset_indices = []
 
@@ -724,6 +754,7 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
             socket_shape_props[0].compliance = 0.0  # default = 0.0
             socket_shape_props[0].thickness = 0.0  # default = 0.0
             self.gym.set_actor_rigid_shape_properties(env_ptr, socket_handle, socket_shape_props)
+            self.socket_scale.append(self.gym.get_actor_scale(env_ptr, socket_handle))
 
             table_shape_props = self.gym.get_actor_rigid_shape_properties(env_ptr, table_handle)
             table_shape_props[0].friction = self.cfg_base.env.table_friction
@@ -839,28 +870,27 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
 
             mesh_root = os.path.join(os.path.dirname(__file__), '..', '..', '..', 'assets', 'factory', 'mesh',
                                      'factory_insertion')
-            plug_scale = self.asset_info_insertion[subassembly][components[0]]['scale']
+            fix_scale = self.asset_info_insertion[subassembly][components[0]]['scale']
 
             if self.cfg['env']['tactile']:
                 self.tactile_handles.append([AllSightRenderer(self.cfg_tactile,
                                                               os.path.join(mesh_root, plug_file),
                                                               randomize=True,
                                                               finger_idx=i,
-                                                              scale=plug_scale)
+                                                              scale=fix_scale)
                                              for i in range(len(self.fingertips))])
 
             if self.cfg['env']['compute_contact_gt']:
-                if not self.pcl_cam:
-                    socket_pos = [0.5, 0, 0.001]
-                    if subassembly not in self.subassembly_extrinsic_contact:
-                        self.subassembly_extrinsic_contact[subassembly] = ExtrinsicContact(
-                            mesh_obj=os.path.join(mesh_root, plug_file),
-                            mesh_socket=os.path.join(mesh_root, socket_file),
-                            obj_scale=1.0,
-                            socket_scale=1.0,
-                            socket_pos=socket_pos,
-                            num_envs=self.num_envs,
-                            num_points=self.cfg['env']['num_points'])
+                init_socket_pos = [0.5, 0, 0.001]
+                if subassembly not in self.subassembly_extrinsic_contact:
+                    self.subassembly_extrinsic_contact[subassembly] = ExtrinsicContact(
+                        mesh_obj=os.path.join(mesh_root, plug_file),
+                        mesh_socket=os.path.join(mesh_root, socket_file),
+                        obj_scale=1.0,
+                        socket_scale=1.0,
+                        socket_pos=init_socket_pos,
+                        num_envs=self.num_envs,
+                        num_points=self.cfg['env']['num_points'])
 
             # loading plug pcd
             if subassembly not in self.subassembly_pcd:
