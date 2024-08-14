@@ -114,7 +114,7 @@ env:
     tactile_wrt_force: False
 
     compute_contact_gt: False
-    num_points: 300
+    num_points: 400
     num_points_goal: 100
 
     record_video: True
@@ -126,8 +126,8 @@ sim:
     disable_gravity: True
 
 external_cam:
-  external_cam: True
-  pcl_cam: True
+  external_cam: False
+  pcl_cam: False
   seg_cam: False
   depth_cam: False
   display: False
