@@ -2,7 +2,7 @@
 GPUS=${1:-0}
 SEED=${2:-42}
 CACHE=${3:-teacher}
-NUM_ENVS=${4:-256}
+NUM_ENVS=${4:-2}
 HEADLESS=${5:-True}
 
 
@@ -29,11 +29,15 @@ offline_train.only_bc=True \
 task.reset_at_success=True \
 task.reset_at_fails=True \
 train.ppo.obs_info=True \
-train.ppo.img_info=True \
-train.ppo.seg_info=True \
+train.ppo.img_info=False \
+train.ppo.seg_info=False \
+train.ppo.pcl_info=True \
 train.ppo.tactile_info=False \
 task.env.tactile=False \
 task.external_cam.external_cam=True \
+task.external_cam.depth_cam=False \
+task.external_cam.seg_cam=True \
+task.external_cam.pcl_cam=True \
 train.algo=ExtrinsicAdapt \
 train.ppo.priv_info=True \
 offline_train.gpu_ids=[0] \

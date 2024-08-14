@@ -5,6 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import math
 from typing import List, Dict, Optional, Tuple, Callable
+from algo.models.transformer.pointnets import PointNet
 
 class DepthOnlyFCBackbone32x64(nn.Module):
     def __init__(self, latent_dim, output_activation=None, num_channel=1):
@@ -230,6 +231,7 @@ class MultiModalModel(BaseModel):
             include_img: Optional[bool] = True,
             include_seg: Optional[bool] = True,
             include_tactile: Optional[bool] = True,
+            include_pcl: Optional[bool] = False,
             additional_lin: Optional[int] = 0,
             only_bc: Optional[bool] = False,
             use_transformer: Optional[bool] = True,
@@ -260,6 +262,7 @@ class MultiModalModel(BaseModel):
         self.include_tactile = include_tactile
         self.include_img = include_img
         self.include_seg = include_img
+        self.include_pcl = include_pcl
 
         self.tactile_encoder_type = tactile_encoder
         self.img_encoder_type = img_encoder
@@ -329,6 +332,12 @@ class MultiModalModel(BaseModel):
 
             num_features += 1
 
+        if include_pcl:
+            self.pcl_encoding_size = 256
+            self.pcl_encoder = PointNet(point_channel=3)
+            self.compress_pcl_enc = nn.Linear(self.pcl_encoding_size, self.lin_encoding_size)
+            num_features += 1
+
         if use_transformer and self.context_size > 1:
             self.decoder = MultiLayerDecoder(
                 embed_dim=self.tactile_encoding_size,
@@ -361,7 +370,7 @@ class MultiModalModel(BaseModel):
 
     def forward(
             self, obs_tactile: torch.tensor, obs_img: torch.tensor, obs_seg: torch.tensor,
-            lin_input: torch.tensor = None, add_lin_input: torch.tensor = None) -> torch.Tensor:
+            lin_input: torch.tensor = None, obs_pcl: torch.tensor = None, add_lin_input: torch.tensor = None) -> torch.Tensor:
 
         tokens_list = []
 
@@ -465,17 +474,30 @@ class MultiModalModel(BaseModel):
         # currently, the size of lin_encoding is [batch_size, num_lin_features]
         if self.include_lin:
             if self.additional_lin:
+                assert NotImplementedError
                 add_lin_input = add_lin_input
                 lin_input = torch.cat((lin_input, add_lin_input), dim=2)
 
             if len(lin_input.shape) == 2:
                 lin_input = lin_input.reshape((lin_input.shape[0], self.context_size, self.num_lin_features))
+
             lin_encoding = self.lin_encoder(lin_input)
             if len(lin_encoding.shape) == 2:
                 lin_encoding = lin_encoding.unsqueeze(1)
+
             assert lin_encoding.shape[2] == self.lin_encoding_size
 
             tokens_list.append(lin_encoding)
+
+        if self.include_pcl:
+            pcl_encoding, _ = self.pcl_encoder(obs_pcl)
+
+            pcl_encoding = self.compress_pcl_enc(pcl_encoding)
+
+            if len(pcl_encoding.shape) == 2:
+                pcl_encoding = pcl_encoding.unsqueeze(1)
+
+            tokens_list.append(pcl_encoding)
 
         # concatenate the goal encoding to the observation encoding
         tokens = torch.cat(tokens_list, dim=1)

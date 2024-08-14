@@ -127,6 +127,30 @@ def replace_nan_with_zero(tensor):
     return tensor
 
 
+def display_obs(depth, seg, pcl, ax=None):
+    if depth is not None:
+        depth = depth[0, 0, ...].reshape(1, 54, 96)
+        dp = depth.cpu().detach().numpy()
+        dp = np.transpose(dp, (1, 2, 0))
+        cv2.imshow('Depth Sequence', dp)
+
+    if seg is not None:
+        seg = seg[0, 0, ...].reshape(1, 54, 96)
+        sg = seg.cpu().detach().numpy()
+        sg = np.transpose(sg, (1, 2, 0))
+        cv2.imshow('Seg Sequence', sg)
+
+    if pcl is not None:
+        pcl = pcl.cpu().detach().numpy()
+        ax.plot(pcl[0, :, 0],
+                pcl[0, :, 1],
+                pcl[0, :, 2], 'ko')
+        plt.pause(0.0001)
+        ax.cla()
+
+    cv2.waitKey(1)
+
+
 class ExtrinsicAdapt(object):
     def __init__(self, env, output_dir, full_config):
         # ---- MultiGPU ----
@@ -163,6 +187,8 @@ class ExtrinsicAdapt(object):
         self.tactile_info = self.ppo_config["tactile_info"]
         self.img_info = self.ppo_config["img_info"]
         self.seg_info = self.ppo_config["seg_info"]
+        self.pcl_info = self.ppo_config["pcl_info"]
+
         self.priv_info = self.ppo_config['priv_info']
         self.priv_info_dim = self.ppo_config['priv_info_dim']
         self.gt_contacts_info = self.ppo_config['compute_contact_gt']
@@ -199,9 +225,12 @@ class ExtrinsicAdapt(object):
         student_cfg.offline_train.model.use_seg = self.seg_info
         student_cfg.offline_train.model.use_lin = self.obs_info
         student_cfg.offline_train.model.use_img = self.img_info
+        student_cfg.offline_train.model.use_pcl = self.pcl_info
 
         self.stud_obs_mean_std = RunningMeanStd(self.obs_stud_shape).to(self.device)
         self.stud_obs_mean_std.train()
+        self.pcl_mean_std = RunningMeanStd((3,)).to(self.device)  # 3-view, 3-imagined
+        self.pcl_mean_std.train()
 
         self.student = Student(student_cfg)
 
@@ -226,7 +255,8 @@ class ExtrinsicAdapt(object):
         student_shapes = {'img': self.env.img_queue.shape[1:] if self.img_info else None,
                           'seg': self.env.seg_queue.shape[1:] if self.seg_info else None,
                           'tactile': self.env.tactile_queue.shape[1:] if self.tactile_info else None,
-                          'student_obs': self.obs_stud_shape[0] if self.obs_info else None}
+                          'student_obs': self.obs_stud_shape[0] if self.obs_info else None,
+                          'pcl': self.env.pcl_queue.shape[1:] if self.pcl_info else None}
 
         self.storage = StudentBuffer(self.num_actors, self.horizon_length, self.batch_size, self.minibatch_size,
                                      self.obs_shape[0], self.actions_num, self.priv_info_dim,
@@ -289,6 +319,9 @@ class ExtrinsicAdapt(object):
         # if not self.train_config.from_offline:
         #     if self.stud_obs_mean_std:
         #         self.stud_obs_mean_std.eval()
+        # if not self.train_config.from_offline:
+        #     if self.pcl_mean_std:
+        #         self.pcl_mean_std.eval()
 
     def set_student_train(self):
 
@@ -298,24 +331,33 @@ class ExtrinsicAdapt(object):
         if not self.train_config.from_offline:
             if self.stud_obs_mean_std:
                 self.stud_obs_mean_std.train()
+            if self.pcl_mean_std:
+                self.pcl_mean_std.train()
 
-    def process_obs(self, obs, obj_id=2, socket_id=3, distinct=True, display=False):
+    def process_obs(self, obs, obj_id=2, socket_id=3, distinct=True, display=True):
 
-        student_obs = obs['student_obs'] if 'student_obs' in obs else None
-        tactile = obs['tactile'] if 'tactile' in obs else None
-        img = obs['img'] if 'img' in obs else None
-        seg = obs['seg'] if 'seg' in obs else None
+        student_obs = obs['student_obs'] if self.obs_info else None
+        tactile = obs['tactile'] if self.tactile_info else None
+        img = obs['img'] if self.img_info else None
+        seg = obs['seg'] if self.seg_info else None
+        pcl = obs['pcl'] if self.pcl_info else None
 
-        if self.img_info:
+        if self.seg_info:
             valid_mask = ((seg == obj_id) | (seg == socket_id)).float()
             seg = seg * valid_mask if distinct else valid_mask
-            img = img * valid_mask
+
+            if self.img_info:
+                img = img * valid_mask
 
             # obj_mask = (seg == obj_id).float()
             # socket_mask = (seg == socket_id).float()
             # socket_depth = (img * socket_mask).sum(dim=2, keepdim=True) /(socket_mask.sum(dim=2, keepdim=True) + 1e-6)
             # relative_depth = (img - socket_depth) * obj_mask
             # img = relative_depth * valid_mask
+
+        if self.pcl_info:
+            # [B, T, N*3] to [B, T*N*3] to [B, T*N, 3]
+            pcl = self.pcl_mean_std(pcl.reshape(-1, 3)).reshape((obs['pcl'].shape[0], -1, 3))
 
         if student_obs is not None:
             if self.stats is not None and self.train_config.from_offline:
@@ -336,30 +378,14 @@ class ExtrinsicAdapt(object):
             'tactile': tactile,
             'img': img,
             'seg': seg,
+            'pcl': pcl,
         }
 
         if display:
-            self.display_obs(img, seg)
+            ax = plt.axes(projection='3d') if pcl is not None else None
+            display_obs(img, seg, pcl, ax=ax)
 
         return student_dict
-
-    def display_obs(self, depth, seg):
-
-        depth = depth[0, 0, ...].reshape(1, 54, 96)
-        seg = seg[0, 0, ...].reshape(1, 54, 96)
-
-        # for t in range(depth.shape[1]):  # Iterate through the sequence of images
-        # Extract the images for all fingers at time step 't' and adjust dimensions for display.
-        dp = depth.cpu().detach().numpy()
-        dp = np.transpose(dp, (1, 2, 0))
-        # cv2.imshow('Depth Sequence', d + 0.5)  # Display the concatenated image
-
-        sg = seg.cpu().detach().numpy()
-        sg = np.transpose(sg, (1, 2, 0))
-        # cv2.imshow('Seg Sequence', d)  # Display the concatenated image
-        cv2.imshow('Seg Sequence', np.hstack((dp, sg)))  # Display the concatenated image
-
-        cv2.waitKey(1)
 
     def test(self, total_steps=1e9):
 
@@ -387,6 +413,7 @@ class ExtrinsicAdapt(object):
                 'tactile': prep_obs['tactile'] if 'tactile' in prep_obs else None,
                 'img': prep_obs['img'] if 'img' in prep_obs else None,
                 'seg': prep_obs['seg'] if 'seg' in prep_obs else None,
+                'pcl': prep_obs['pcl'] if 'pcl' in prep_obs else None,
             }
 
             # student pass
@@ -453,6 +480,7 @@ class ExtrinsicAdapt(object):
                     'tactile': prep_obs['tactile'] if 'tactile' in prep_obs else None,
                     'img': prep_obs['img'] if 'img' in prep_obs else None,
                     'seg': prep_obs['seg'] if 'seg' in prep_obs else None,
+                    'pcl': prep_obs['pcl'] if 'pcl' in prep_obs else None,
                 }
 
                 latent, _ = self.student.predict(student_dict, requires_grad=False)
@@ -475,6 +503,8 @@ class ExtrinsicAdapt(object):
             if self.tactile_info:
                 # num_envs, num_fingers, num_timesteps, C*H*W)
                 self.storage.update_data('n_tactile', n, student_dict['tactile'])
+            if self.pcl_info:
+                self.storage.update_data('n_pcl', n, student_dict['pcl'].reshape(*self.env.pcl_queue.shape))
 
             # already normalized
             self.storage.update_data('n_obs', n, n_obs)
@@ -553,6 +583,8 @@ class ExtrinsicAdapt(object):
                     'tactile': batched_obs['n_tactile'] if 'n_tactile' in batched_obs else None,
                     'img': batched_obs['n_img'] if 'n_img' in batched_obs else None,
                     'seg': batched_obs['n_seg'] if 'n_seg' in batched_obs else None,
+                    'pcl': batched_obs['n_pcl'].reshape(batched_obs['n_pcl'].shape[0], -1, 3) if 'n_pcl' in batched_obs
+                    else None,
                 }
 
                 # student pass (obs already normalized)
@@ -730,6 +762,7 @@ class ExtrinsicAdapt(object):
                 'tactile': prep_obs['tactile'] if 'tactile' in prep_obs else None,
                 'img': prep_obs['img'] if 'img' in prep_obs else None,
                 'seg': prep_obs['seg'] if 'seg' in prep_obs else None,
+                'pcl': prep_obs['pcl'] if 'pcl' in prep_obs else None,
             }
 
             # student pass
@@ -882,6 +915,7 @@ class ExtrinsicAdapt(object):
             self.stats = None
             checkpoint = torch.load(fn)
             self.stud_obs_mean_std.load_state_dict(checkpoint['stud_obs_mean_std'])
+            self.pcl_mean_std.load_state_dict(checkpoint['pcl_mean_std'])
             self.student.model.load_state_dict(checkpoint['student'])
 
     def save(self, name):
@@ -902,7 +936,8 @@ class ExtrinsicAdapt(object):
         if not self.train_config.from_offline:
             if self.stud_obs_mean_std:
                 stud_weights['stud_obs_mean_std'] = self.stud_obs_mean_std.state_dict()
-
+            if self.pcl_mean_std:
+                stud_weights['pcl_mean_std'] = self.pcl_mean_std.state_dict()
         torch.save(stud_weights, f'{name}_stud.pth')
 
     def log_video(self):

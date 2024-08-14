@@ -355,7 +355,7 @@ class ExtrinsicContact:
 
         return torch.from_numpy(sampled_point_cloud).flatten(start_dim=1).float()
 
-    def get_goal_pcl(self, socket_pos, socket_quat, plug_scale, display=False):
+    def merge_goal_pcl(self, pcl, socket_pos, socket_quat, plug_scale, display=False):
 
         socket_poses = torch.cat((socket_pos, socket_quat), dim=1)
         socket_poses = self._xyzquat_to_tf_numpy(socket_poses.cpu().numpy())
@@ -363,8 +363,14 @@ class ExtrinsicContact:
         if len(socket_poses.shape) == 2:
             socket_poses = socket_poses[None, ...]
 
-        object_pc_vertices =self.object_pc.copy().vertices * plug_scale
+        object_pc_vertices = self.object_pc.copy().vertices
         query_points_plug_goal = self.apply_transform(socket_poses, object_pc_vertices)
+        query_points_plug_goal = torch.from_numpy(query_points_plug_goal).float().to(self.device)
+        query_points_plug_goal *= plug_scale.view(plug_scale.shape[0], 1, 1).to(self.device)
+
+        merged_point_cloud = torch.cat([pcl, query_points_plug_goal], dim=1)
+        sampled_indices = torch.randperm(merged_point_cloud.size(1))[:pcl.size(1)]
+        sampled_point_cloud = merged_point_cloud[:, sampled_indices, :]
 
         # Display
         if display:
@@ -373,17 +379,23 @@ class ExtrinsicContact:
                 self.first_init = False
 
             display_id = 0
+            query_points_plug_goal = query_points_plug_goal.cpu().detach().numpy()
+            pcl = pcl.cpu().detach().numpy()
 
             self.ax.plot(query_points_plug_goal[display_id, :, 0],
                          query_points_plug_goal[display_id, :, 1],
                          query_points_plug_goal[display_id, :, 2], 'ro')
+
+            self.ax.plot(pcl[display_id, :, 0],
+                         pcl[display_id, :, 1],
+                         pcl[display_id, :, 2], 'ko')
 
             self.ax.set_xlabel('X')
             self.ax.set_ylabel('Y')
             plt.pause(0.0001)
             self.ax.cla()
 
-        return torch.from_numpy(query_points_plug_goal).flatten(start_dim=1).float()
+        return sampled_point_cloud.flatten(start_dim=1).float()
 
 
 class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
@@ -434,6 +446,9 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
 
         self.external_cam = self.cfg['external_cam']['external_cam']
         self.pcl_cam = self.cfg['external_cam']['pcl_cam']
+        self.seg_cam = self.cfg['external_cam']['seg_cam']
+        self.depth_cam = self.cfg['external_cam']['depth_cam']
+
         self.res = [self.cfg['external_cam']['cam_res']['w'], self.cfg['external_cam']['cam_res']['h']]
         self.cam_type = self.cfg['external_cam']['cam_type']
         self.save_im = self.cfg['external_cam']['save_im']
@@ -880,7 +895,7 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
                                                               scale=fix_scale)
                                              for i in range(len(self.fingertips))])
 
-            if self.cfg['env']['compute_contact_gt']:
+            if self.cfg['env']['compute_contact_gt'] or self.cfg['external_cam']['pcl_cam']:
                 init_socket_pos = [0.5, 0, 0.001]
                 if subassembly not in self.subassembly_extrinsic_contact:
                     self.subassembly_extrinsic_contact[subassembly] = ExtrinsicContact(
@@ -890,7 +905,7 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
                         socket_scale=1.0,
                         socket_pos=init_socket_pos,
                         num_envs=self.num_envs,
-                        num_points=self.cfg['env']['num_points'])
+                        num_points=self.cfg['env']['num_points_goal'])
 
             # loading plug pcd
             if subassembly not in self.subassembly_pcd:
@@ -970,6 +985,8 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
         self.plug_widths = torch.tensor(self.plug_widths, device=self.device).unsqueeze(-1)
 
         # for extrinsic contact
+        self.plug_scale = torch.tensor(self.plug_scale, device=self.device)
+
         self.subassembly_to_env_ids = {k: torch.tensor(v, dtype=torch.long, device=self.device) for k, v in
                                        self.subassembly_to_env_ids.items()}
 

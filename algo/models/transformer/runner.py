@@ -99,6 +99,7 @@ class Runner:
                                          include_img=self.cfg.model.use_img,
                                          include_seg=self.cfg.model.use_seg,
                                          include_lin=self.cfg.model.use_lin,
+                                         include_pcl=self.cfg.model.use_pcl,
                                          include_tactile=self.cfg.model.use_tactile,
                                          only_bc=self.only_bc)
 
@@ -132,6 +133,7 @@ class Runner:
         self.model.to(self.device)
 
         return self.model
+
     def _init_transforms(self):
 
         # img
@@ -208,11 +210,11 @@ class Runner:
                 d_pos_rpy = self.tact(tactile, img, seg, stud_obs).unsqueeze(1)
 
             if self.only_bc:
-                out = self.model(tactile, img, seg, stud_obs, d_pos_rpy)
+                out = self.model(tactile, img, seg, stud_obs, add_lin_input=d_pos_rpy)
                 # out = torch.clamp(out, -1, 1)
                 loss_latent = self.loss_fn_mean(out, action[:, -1, :])
             else:
-                out = self.model(tactile, img, seg, stud_obs, d_pos_rpy)
+                out = self.model(tactile, img, seg, stud_obs, add_lin_input=d_pos_rpy)
                 loss_latent = self.loss_fn_mean(out, latent[:, -1, :])
 
             loss_action = torch.zeros(1, device=self.device)
@@ -307,11 +309,11 @@ class Runner:
                     d_pos_rpy = self.tact(tactile, img, seg, stud_obs).unsqueeze(1)
 
                 if self.only_bc:
-                    out = self.model(tactile, img, seg, stud_obs, d_pos_rpy)
+                    out = self.model(tactile, img, seg, stud_obs, add_lin_input=d_pos_rpy)
                     out = torch.clamp(out, -1, 1)
                     loss_latent = self.loss_fn_mean(out, action[:, -1, :])
                 else:
-                    out = self.model(tactile, img, seg, stud_obs, d_pos_rpy)
+                    out = self.model(tactile, img, seg, stud_obs, add_lin_input=d_pos_rpy)
                     loss_latent = self.loss_fn_mean(out, latent[:, -1, :])
 
                 loss_action = torch.zeros(1, device=self.device)
@@ -369,6 +371,7 @@ class Runner:
         img = obs_dict['img'] if 'img' in obs_dict else None
         seg = obs_dict['seg'] if 'seg' in obs_dict else None
         student_obs = obs_dict['student_obs'] if 'student_obs' in obs_dict else None
+        pcl = obs_dict['pcl'] if 'pcl' in obs_dict else None
 
         d_pos_rpy = None
 
@@ -398,11 +401,18 @@ class Runner:
         if self.cfg.model.use_lin:
             student_obs = student_obs.to(self.device)
 
+        if self.cfg.model.use_pcl:
+            pcl = pcl.to(self.device)
+
         if self.tact is not None:
             d_pos_rpy = self.tact(tactile, img, student_obs).unsqueeze(1)
-            out = self.model(tactile, img, student_obs, d_pos_rpy)
+            out = self.model(tactile, img, student_obs, add_lin_input=d_pos_rpy)
         else:
-            out = self.model(tactile, img, seg, student_obs)
+            out = self.model(obs_tactile=tactile,
+                             obs_img=img,
+                             obs_seg=seg,
+                             lin_input=student_obs,
+                             obs_pcl=pcl)
 
         return out, d_pos_rpy
 

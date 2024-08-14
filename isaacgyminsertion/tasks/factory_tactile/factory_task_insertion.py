@@ -54,13 +54,13 @@ from collections import defaultdict
 
 torch.set_printoptions(sci_mode=False)
 import matplotlib
+
 matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
 
 
 @torch.no_grad()
 def filter_pts(pts):
-
     x = pts[:, 0]
     y = pts[:, 1]
     z = pts[:, 2]
@@ -255,15 +255,15 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                                           dtype=torch.float, device=self.device)
 
         if self.cfg_task.env.compute_contact_gt:
+            self.gt_extrinsic_contact = torch.zeros((self.num_envs, self.cfg_task.env.num_points),
+                                                    device=self.device, dtype=torch.float)
+        if self.pcl_cam:
             self.pcl_queue = torch.zeros((self.num_envs, self.cfg_task.env.numObsStudentHist,
                                           self.cfg_task.env.num_points * 3),
                                          dtype=torch.float, device=self.device)
 
             self.pcl = torch.zeros((self.num_envs, self.cfg_task.env.num_points * 3),
                                    device=self.device, dtype=torch.float)
-
-            self.gt_extrinsic_contact = torch.zeros((self.num_envs, self.cfg_task.env.num_points),
-                                                    device=self.device, dtype=torch.float)
 
         if self.cfg_task.env.tactile:
             # tactile buffers
@@ -283,17 +283,23 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             )
 
         if self.external_cam:
-            self.img_queue = torch.zeros(
-                (self.num_envs, self.img_hist_len, self.res[1] * self.res[0]),
-                device=self.device,
-                dtype=torch.float,
-            )
-            self.seg_queue = torch.zeros(
-                (self.num_envs, self.img_hist_len, self.res[1] * self.res[0]), device=self.device, dtype=torch.float, )
-            self.image_buf = torch.zeros(self.num_envs, self.res[1] * self.res[0]).to(self.device)
-            self.seg_buf = torch.zeros(self.num_envs, self.res[1] * self.res[0], dtype=torch.int32).to(self.device)
+
+            if self.depth_cam:
+                self.img_queue = torch.zeros(
+                    (self.num_envs, self.img_hist_len, self.res[1] * self.res[0]),
+                    device=self.device,
+                    dtype=torch.float,
+                )
+                self.image_buf = torch.zeros(self.num_envs, self.res[1] * self.res[0]).to(self.device)
+
+            if self.seg_cam:
+                self.seg_queue = torch.zeros(
+                    (self.num_envs, self.img_hist_len, self.res[1] * self.res[0]), device=self.device,
+                    dtype=torch.float, )
+                self.seg_buf = torch.zeros(self.num_envs, self.res[1] * self.res[0], dtype=torch.int32).to(self.device)
+
             if self.pcl_cam:
-                self.raw_depth = torch.zeros_like(self.image_buf)
+                self.raw_depth = torch.zeros(self.num_envs, self.res[1] * self.res[0]).to(self.device)
 
             self.init_external_cam()
 
@@ -305,13 +311,13 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         # state tensors
         self.plug_hand_pos, self.plug_hand_quat = torch.zeros((self.num_envs, 3), device=self.device), \
-            torch.zeros((self.num_envs, 4), device=self.device)
+                                                  torch.zeros((self.num_envs, 4), device=self.device)
         self.plug_pos_error, self.plug_quat_error = torch.zeros((self.num_envs, 3), device=self.device), \
-            torch.zeros((self.num_envs, 4), device=self.device)
+                                                    torch.zeros((self.num_envs, 4), device=self.device)
         self.plug_hand_pos_diff, self.plug_hand_quat_diff = torch.zeros((self.num_envs, 3), device=self.device), \
-            torch.zeros((self.num_envs, 4), device=self.device)
+                                                            torch.zeros((self.num_envs, 4), device=self.device)
         self.plug_hand_pos_init, self.plug_hand_quat_init = torch.zeros((self.num_envs, 3), device=self.device), \
-            torch.zeros((self.num_envs, 4), device=self.device)
+                                                            torch.zeros((self.num_envs, 4), device=self.device)
 
         self.rigid_physics_params = torch.zeros((self.num_envs, 13), device=self.device, dtype=torch.float)
         self.finger_normalized_forces = torch.zeros((self.num_envs, 3), device=self.device, dtype=torch.float)
@@ -795,42 +801,6 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                         display=display_key == k and False
                     ).to(self.device)
 
-            if self.pcl_cam:
-                if self.raw_depth.any():
-                    pts = self.pcl_generator.get_point_cloud(
-                        depths=self.raw_depth.reshape(self.num_envs, self.res[1], self.res[0]),
-                        # segs=self.seg_buf.reshape(self.num_envs, self.res[1], self.res[0]),
-                        filter_func=filter_pts).to(self.device)
-
-                    for k, v in self.subassembly_extrinsic_contact.items():
-                        self.pcl[self.subassembly_to_env_ids[k], ...] = v.get_goal_pcl(
-                            socket_pos=self.socket_pos[self.subassembly_to_env_ids[k], ...].clone(),
-                            socket_quat=self.socket_quat[self.subassembly_to_env_ids[k], ...].clone(),
-                            plug_scale=self.plug_scale[self.subassembly_to_env_ids[k]]).to(self.device)
-
-                    if self.cfg_task.external_cam.display:
-
-                        to_show = pts[0].cpu().numpy()
-                        to_show_pcl = self.pcl[0].cpu().numpy().reshape(300, 3)
-
-                        self.ax.plot(to_show[:, 0],
-                                     to_show[:, 1],
-                                     to_show[:, 2], 'ko')
-                        self.ax.plot(to_show_pcl[:, 0],
-                                     to_show_pcl[:, 1],
-                                     to_show_pcl[:, 2], 'ro')
-
-                        self.ax.set_xlabel('X')
-                        self.ax.set_ylabel('Y')
-
-                        plt.pause(0.0001)
-
-                        self.ax.cla()
-                    # self.pcl = pts.flatten(start_dim=1)
-
-            self.pcl_queue[:, 1:] = self.pcl_queue[:, :-1].clone().detach()
-            self.pcl_queue[:, 0, ...] = self.pcl
-
         state_tensors = [
             #  add delta error
             # socket_pos_wrt_robot[0],  # 3
@@ -861,7 +831,6 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             img_update_freq = torch.remainder(self.frame + self.img_refresh_offset, self.img_refresh_rates) == 0
             img_update_delay = torch.randn(self.num_envs, device=self.device) > self.img_delay_prob
             seg_update_delay = torch.randn(self.num_envs, device=self.device) > self.seg_delay_prob
-
             seg_update_noise = torch.randn(self.num_envs, device=self.device) > self.seg_noise_prob
 
             self.update_external_cam(img_update_freq, img_update_delay, seg_update_delay, seg_update_noise)
@@ -933,40 +902,74 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                 cv2.waitKey(1)
 
         elif self.cam_type == "d":
+
             depth = torch.stack(self.cam_renders)
+
             if update.any():
                 if update.sum() == 1:
                     depth_to_update = depth[update].unsqueeze(0)
                 else:
                     depth_to_update = depth[update]
-                self.image_buf[update] = self.depth_process.process_depth_image(depth_to_update).flatten(start_dim=1)
+
+                if self.depth_cam:
+                    self.image_buf[update] = self.depth_process.process_depth_image(depth_to_update).flatten(
+                        start_dim=1)
+
                 if self.pcl_cam:
                     self.raw_depth[update] = depth_to_update.flatten(start_dim=1).clone()
-            if update_seg.any():
-                self.seg_buf[update_seg] = torch.stack(self.seg_renders)[update_seg].flatten(start_dim=1)
-            if seg_noise.any():
-                self.seg_buf[seg_noise] = self.depth_process.add_seg_noise(self.seg_buf[seg_noise])
-            if self.pcl_cam:
+
+            if self.seg_cam:
+                if update_seg.any():
+                    self.seg_buf[update_seg] = torch.stack(self.seg_renders)[update_seg].flatten(start_dim=1)
+                if seg_noise.any():
+                    self.seg_buf[seg_noise] = self.depth_process.add_seg_noise(self.seg_buf[seg_noise])
+
+            if self.pcl_cam and self.seg_cam:
                 self.raw_depth *= ((self.seg_buf == 2) | (self.seg_buf == 3)).float()
 
-            if self.cfg_task.external_cam.display:
-                img = self.image_buf[0].cpu().clone().reshape(1, self.res[1], self.res[0])
-                mask = self.seg_buf[0].cpu().clone().reshape(self.res[1], self.res[0])
-                cv2.imshow("Depth Image", img.numpy().transpose(1, 2, 0))
+            if self.pcl_cam:
+                pts = self.pcl_generator.get_point_cloud(
+                    depths=self.raw_depth.reshape(self.num_envs, self.res[1], self.res[0]),
+                    filter_func=filter_pts).to(self.device)
+                # self.pcl = pts.flatten(start_dim=1)
 
-                forward_mask = ((mask == 2) | (mask == 3)).float()
-                img = torch.where(forward_mask > 0.5, img, 0)
-                cv2.imshow("Mask Image", img.numpy().transpose(1, 2, 0))
+                for k, v in self.subassembly_extrinsic_contact.items():
+                    display_key = 'square_peg_hole_32mm_loose'  # ['triangle', 'red_round_peg_1_5in', '']
+                    self.pcl[self.subassembly_to_env_ids[k], ...] = v.merge_goal_pcl(
+                        pcl=pts[self.subassembly_to_env_ids[k], ...],
+                        socket_pos=self.socket_pos[self.subassembly_to_env_ids[k], ...].clone(),
+                        socket_quat=self.socket_quat[self.subassembly_to_env_ids[k], ...].clone(),
+                        plug_scale=self.plug_scale[self.subassembly_to_env_ids[k]],
+                        display=display_key == k and self.cfg_task.external_cam.display).to(self.device)
+
+            if self.cfg_task.external_cam.display:
+                if self.depth_cam:
+                    img = self.image_buf[0].cpu().clone().reshape(1, self.res[1], self.res[0])
+                    cv2.imshow("Depth Image", img.numpy().transpose(1, 2, 0))
+
+                if self.seg_cam:
+                    mask = self.seg_buf[0].cpu().clone().reshape(self.res[1], self.res[0])
+                    forward_mask = ((mask == 2) | (mask == 3)).float()
+
+                if self.seg_cam and self.depth_cam:
+                    img = torch.where(forward_mask > 0.5, img, 0)
+                    cv2.imshow("Mask Image", img.numpy().transpose(1, 2, 0))
 
                 cv2.waitKey(1)
 
         self.gym.end_access_image_tensors(self.sim)
 
-        self.img_queue[:, 1:] = self.img_queue[:, :-1].clone().detach()
-        self.img_queue[:, 0, ...] = self.image_buf
+        if self.pcl_cam:
+            self.pcl_queue[:, 1:] = self.pcl_queue[:, :-1].clone().detach()
+            self.pcl_queue[:, 0, ...] = self.pcl
 
-        self.seg_queue[:, 1:] = self.seg_queue[:, :-1].clone().detach()
-        self.seg_queue[:, 0, ...] = self.seg_buf
+        if self.depth_cam:
+            self.img_queue[:, 1:] = self.img_queue[:, :-1].clone().detach()
+            self.img_queue[:, 0, ...] = self.image_buf
+
+        if self.seg_cam:
+            self.seg_queue[:, 1:] = self.seg_queue[:, :-1].clone().detach()
+            self.seg_queue[:, 0, ...] = self.seg_buf
 
     def compute_reward(self):
         """Detect successes and failures. Update reward and reset buffers."""
@@ -1634,14 +1637,17 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             self.tactile_queue[env_ids, ...] = 0
             self.tactile_imgs[env_ids, ...] = 0.
         if self.external_cam:
-            self.img_queue[env_ids] = 0
-            self.image_buf[env_ids] *= 0
-            self.seg_buf[env_ids] *= 0
-            self.seg_queue[env_ids] *= 0
-        if self.cfg_task.env.compute_contact_gt:
+            if self.depth_cam:
+                self.img_queue[env_ids] = 0
+                self.image_buf[env_ids] *= 0
+            if self.seg_cam:
+                self.seg_buf[env_ids] *= 0
+                self.seg_queue[env_ids] *= 0
+        if self.pcl_cam:
             self.pcl_queue[env_ids] *= 0
             self.pcl[env_ids] *= 0
-            # self.gt_extrinsic_contact[env_ids] *= 0
+        if self.cfg_task.env.compute_contact_gt:
+            self.gt_extrinsic_contact[env_ids] *= 0
         # update init grasp pos
 
     def _set_viewer_params(self):
@@ -1744,21 +1750,21 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         gripper_dof_pos = 0 * self.gripper_dof_pos.clone()
         gripper_dof_pos[env_ids,
-        list(self.dof_dict.values()).index(
-            'base_to_finger_1_1') - 7] = self.cfg_task.env.openhand.base_angle
+                        list(self.dof_dict.values()).index(
+                            'base_to_finger_1_1') - 7] = self.cfg_task.env.openhand.base_angle
         gripper_dof_pos[env_ids,
-        list(self.dof_dict.values()).index(
-            'base_to_finger_2_1') - 7] = -self.cfg_task.env.openhand.base_angle
+                        list(self.dof_dict.values()).index(
+                            'base_to_finger_2_1') - 7] = -self.cfg_task.env.openhand.base_angle
 
         gripper_dof_pos[env_ids,
-        list(self.dof_dict.values()).index(
-            'finger_1_1_to_finger_1_2') - 7] = self.cfg_task.env.openhand.proximal_open
+                        list(self.dof_dict.values()).index(
+                            'finger_1_1_to_finger_1_2') - 7] = self.cfg_task.env.openhand.proximal_open
         gripper_dof_pos[env_ids,
-        list(self.dof_dict.values()).index(
-            'finger_2_1_to_finger_2_2') - 7] = self.cfg_task.env.openhand.proximal_open
+                        list(self.dof_dict.values()).index(
+                            'finger_2_1_to_finger_2_2') - 7] = self.cfg_task.env.openhand.proximal_open
         gripper_dof_pos[env_ids,
-        list(self.dof_dict.values()).index(
-            'base_to_finger_3_2') - 7] = self.cfg_task.env.openhand.proximal_open
+                        list(self.dof_dict.values()).index(
+                            'base_to_finger_3_2') - 7] = self.cfg_task.env.openhand.proximal_open
 
         self._move_gripper_to_dof_pos(env_ids=env_ids, gripper_dof_pos=gripper_dof_pos, sim_steps=sim_steps)
         self.ctrl_target_gripper_dof_pos = gripper_dof_pos
@@ -1973,11 +1979,13 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         if self.cfg_task.env.tactile:
             self.obs_dict['tactile'] = self.tactile_queue.clone().to(self.rl_device)
-        if self.cfg_task.env.compute_contact_gt:
+        if self.pcl_cam:
             self.obs_dict['pcl'] = self.pcl_queue.clone().to(self.rl_device)
         if self.external_cam:
-            self.obs_dict['img'] = self.img_queue.clone().to(self.rl_device)
-            self.obs_dict['seg'] = self.seg_queue.clone().to(self.rl_device)
+            if self.depth_cam:
+                self.obs_dict['img'] = self.img_queue.clone().to(self.rl_device)
+            if self.seg_cam:
+                self.obs_dict['seg'] = self.seg_queue.clone().to(self.rl_device)
 
         return self.obs_dict, self.rew_buf, self.reset_buf, self.extras
 
@@ -1997,10 +2005,12 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         if self.cfg_task.env.tactile:
             self.obs_dict['tactile'] = self.tactile_queue.clone().to(self.rl_device)
-        if self.cfg_task.env.compute_contact_gt:
+        if self.pcl_cam:
             self.obs_dict['pcl'] = self.pcl_queue.clone().to(self.rl_device)
         if self.external_cam:
-            self.obs_dict['img'] = self.img_queue.clone().to(self.rl_device)
-            self.obs_dict['seg'] = self.seg_queue.clone().to(self.rl_device)
+            if self.depth_cam:
+                self.obs_dict['img'] = self.img_queue.clone().to(self.rl_device)
+            if self.seg_cam:
+                self.obs_dict['seg'] = self.seg_queue.clone().to(self.rl_device)
 
         return self.obs_dict

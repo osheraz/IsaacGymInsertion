@@ -85,6 +85,7 @@ model:
 
   use_img: True
   use_seg: True
+  use_pcl: False
   use_tactile: False
   use_lin: True
 

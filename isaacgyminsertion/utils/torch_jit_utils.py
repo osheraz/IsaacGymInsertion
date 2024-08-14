@@ -71,8 +71,8 @@ gray_transform = transforms.Compose([
     transforms.Normalize((0.5, ), (0.5, ))
 ])
 
-def to_torch(x, dtype=torch.float, device='cuda:0', requires_grad=False):
-    return torch.tensor(x, dtype=dtype, device=device, requires_grad=requires_grad)
+def to_torch(x, dtype=torch.float, device='cuda:0'):
+    return torch.tensor(x, dtype=dtype, device=device)
 
 
 @torch.jit.script

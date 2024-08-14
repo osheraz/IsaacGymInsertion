@@ -64,12 +64,13 @@ class StudentBuffer(Dataset):
         self.img_info = student_dims.get('img') is not None
         self.seg_info = student_dims.get('seg') is not None
         self.student_obs_info = student_dims.get('student_obs') is not None
+        self.pcl_info = student_dims.get('pcl') is not None
 
         self.stud_obs_dim = student_dims['student_obs'] if self.student_obs_info else None
         self.tactile_dim = student_dims['tactile'] if self.tactile_info else None
         self.img_dim = student_dims['img'] if self.img_info else None
         self.seg_dim = student_dims['seg'] if self.seg_info else None
-
+        self.pcl_dim = student_dims['pcl'] if self.pcl_info else None
 
         self.storage_dict = {
             'n_obs': torch.zeros((self.transitions_per_env, self.num_envs, self.obs_dim), dtype=torch.float32,
@@ -96,6 +97,10 @@ class StudentBuffer(Dataset):
                                                      device=self.device)
         if self.seg_info:
             self.storage_dict['n_seg'] = torch.zeros((self.transitions_per_env, self.num_envs, *self.seg_dim),
+                                                     dtype=torch.float32,
+                                                     device=self.device)
+        if self.pcl_info:
+            self.storage_dict['n_pcl'] = torch.zeros((self.transitions_per_env, self.num_envs, *self.pcl_dim),
                                                      dtype=torch.float32,
                                                      device=self.device)
         if self.student_obs_info:

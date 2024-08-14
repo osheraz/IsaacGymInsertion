@@ -22,8 +22,8 @@ from termcolor import cprint
 from isaacgyminsertion.tasks.factory_tactile.factory_utils import quat2R, RotationTransformer
 
 
-def to_torch(x, dtype=torch.float, device='cuda:0', requires_grad=False):
-    return torch.tensor(x, dtype=dtype, device=device, requires_grad=requires_grad)
+def to_torch(x, dtype=torch.float, device='cuda:0'):
+    return torch.tensor(x, dtype=dtype, device=device)
 
 
 class HardwarePlayer:

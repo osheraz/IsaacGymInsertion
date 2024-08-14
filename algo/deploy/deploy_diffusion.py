@@ -24,8 +24,8 @@ import os
 from typing import Any, Dict
 
 
-def to_torch(x, dtype=torch.float, device='cuda:0', requires_grad=False):
-    return torch.tensor(x, dtype=dtype, device=device, requires_grad=requires_grad)
+def to_torch(x, dtype=torch.float, device='cuda:0'):
+    return torch.tensor(x, dtype=dtype, device=device)
 
 
 class HardwarePlayer:

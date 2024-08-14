@@ -52,6 +52,7 @@ ppo:
   priv_info: True
   tactile_info: False
   img_info: False
+  pcl_info: False
   seg_info: False
   obs_info: False
   only_contact: False

@@ -138,7 +138,10 @@ class CameraPointCloud:
         all_pts = self.get_ptd_cuda(depths, env_ids=env_ids, filter_func=filter_func)
 
         for env_id in range(num_envs):
-            env_pt = self.sample_n(all_pts[env_id], sample_num=sample_num)
+            if all_pts[env_id].any():
+                env_pt = self.sample_n(all_pts[env_id], sample_num=sample_num)
+            else:
+                env_pt = out[env_id]
             out[env_id, :, :3] = env_pt.to(self.compute_device)
         return out.detach()
 
