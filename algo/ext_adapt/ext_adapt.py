@@ -142,9 +142,10 @@ def display_obs(depth, seg, pcl, ax=None):
 
     if pcl is not None:
         pcl = pcl.cpu().detach().numpy()
-        ax.plot(pcl[0, :, 0],
-                pcl[0, :, 1],
-                pcl[0, :, 2], 'ko')
+        env_id = 1
+        ax.plot(pcl[env_id, :, 0],
+                pcl[env_id, :, 1],
+                pcl[env_id, :, 2], 'ko')
         plt.pause(0.0001)
         ax.cla()
 
@@ -306,6 +307,14 @@ class ExtrinsicAdapt(object):
             from algo.ppo.experience import SimLogger
             self.data_logger = SimLogger(env=self.env)
 
+        self.display_obs = False
+
+        if self.display_obs and self.pcl_info:
+            self.fig = plt.figure()
+            self.ax = self.fig.add_subplot(1, 1, 1, projection='3d')
+        else:
+            self.ax = None
+
     def set_eval(self):
         self.agent.eval()
         self.running_mean_std.eval()
@@ -334,7 +343,7 @@ class ExtrinsicAdapt(object):
             if self.pcl_mean_std:
                 self.pcl_mean_std.train()
 
-    def process_obs(self, obs, obj_id=2, socket_id=3, distinct=True, display=True):
+    def process_obs(self, obs, obj_id=2, socket_id=3, distinct=True):
 
         student_obs = obs['student_obs'] if self.obs_info else None
         tactile = obs['tactile'] if self.tactile_info else None
@@ -381,9 +390,8 @@ class ExtrinsicAdapt(object):
             'pcl': pcl,
         }
 
-        if display:
-            ax = plt.axes(projection='3d') if pcl is not None else None
-            display_obs(img, seg, pcl, ax=ax)
+        if self.display_obs:
+            display_obs(img, seg, pcl, ax=self.ax)
 
         return student_dict
 

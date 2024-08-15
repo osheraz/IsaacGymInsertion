@@ -33,6 +33,7 @@ python train.py task=FactoryTaskInsertionTactile
 
 Only the environment is provided; training a successful RL policy is an open research problem left to the user.
 """
+import random
 
 import hydra
 import omegaconf
@@ -710,6 +711,10 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         eef_stud = torch.cat((self.fingertip_centered_pos,
                               self.stud_tf.forward(eef_stud[:, 3:].reshape(eef_stud.shape[0], 3, 3))), dim=1)
 
+        # test = torch.cat(self.pose_world_to_robot_base(self.plug_pos.clone(),
+        #                                                   self.plug_quat.clone(),
+        #                                                   to_rep='rot6d'), dim=-1)
+
         obs_tensors_student = torch.cat([
             eef_stud,
             self.socket_pos,  # 3
@@ -829,10 +834,13 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         if self.external_cam:
             img_update_freq = torch.remainder(self.frame + self.img_refresh_offset, self.img_refresh_rates) == 0
+            is_initial_update = self.progress_buf < 10
             img_update_delay = torch.randn(self.num_envs, device=self.device) > self.img_delay_prob
             seg_update_delay = torch.randn(self.num_envs, device=self.device) > self.seg_delay_prob
             seg_update_noise = torch.randn(self.num_envs, device=self.device) > self.seg_noise_prob
-
+            img_update_delay = is_initial_update | img_update_delay
+            seg_update_delay = is_initial_update | seg_update_delay
+            seg_update_noise = is_initial_update | seg_update_noise
             self.update_external_cam(img_update_freq, img_update_delay, seg_update_delay, seg_update_noise)
 
         self.frame += 1
@@ -904,28 +912,33 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         elif self.cam_type == "d":
 
             depth = torch.stack(self.cam_renders)
+            seg = torch.stack(self.seg_renders)
 
-            if update.any():
-                if update.sum() == 1:
-                    depth_to_update = depth[update].unsqueeze(0)
-                else:
-                    depth_to_update = depth[update]
+            if self.pcl_cam:
+                self.raw_depth = depth.flatten(start_dim=1).clone()
 
-                if self.depth_cam:
+            if self.depth_cam:
+                if update.any():
+                    if update.sum() == 1:
+                        depth_to_update = depth[update].unsqueeze(0)
+                    else:
+                        depth_to_update = depth[update]
                     self.image_buf[update] = self.depth_process.process_depth_image(depth_to_update).flatten(
                         start_dim=1)
 
-                if self.pcl_cam:
-                    self.raw_depth[update] = depth_to_update.flatten(start_dim=1).clone()
-
             if self.seg_cam:
                 if update_seg.any():
-                    self.seg_buf[update_seg] = torch.stack(self.seg_renders)[update_seg].flatten(start_dim=1)
+                    if update_seg.sum() == 1:
+                        seg_to_update = seg[update_seg].unsqueeze(0)
+                    else:
+                        seg_to_update = seg[update_seg]
+                    self.seg_buf[update_seg] = seg_to_update.flatten(start_dim=1)
+
                 if seg_noise.any():
                     self.seg_buf[seg_noise] = self.depth_process.add_seg_noise(self.seg_buf[seg_noise])
 
             if self.pcl_cam and self.seg_cam:
-                self.raw_depth *= ((self.seg_buf == 2) | (self.seg_buf == 3)).float()
+                self.raw_depth *= ((seg.flatten(start_dim=1) == 2) | (seg.flatten(start_dim=1) == 3)).float()
 
             if self.pcl_cam:
                 pts = self.pcl_generator.get_point_cloud(
@@ -934,7 +947,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                 # self.pcl = pts.flatten(start_dim=1)
 
                 for k, v in self.subassembly_extrinsic_contact.items():
-                    display_key = 'square_peg_hole_32mm_loose'  # ['triangle', 'red_round_peg_1_5in', '']
+                    display_key = 'square_peg_hole_32mm_loose'  # ['square_peg_hole_32mm_loose', 'red_round_peg_1_5in', '']
                     self.pcl[self.subassembly_to_env_ids[k], ...] = v.merge_goal_pcl(
                         pcl=pts[self.subassembly_to_env_ids[k], ...],
                         socket_pos=self.socket_pos[self.subassembly_to_env_ids[k], ...].clone(),
@@ -944,16 +957,16 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
             if self.cfg_task.external_cam.display:
                 if self.depth_cam:
-                    img = self.image_buf[0].cpu().clone().reshape(1, self.res[1], self.res[0])
-                    cv2.imshow("Depth Image", img.numpy().transpose(1, 2, 0))
+                    img = self.image_buf[self.env_id].cpu().clone().reshape(1, self.res[1], self.res[0])
+                    cv2.imshow(f"Depth Image: {self.env_id}", img.numpy().transpose(1, 2, 0))
 
                 if self.seg_cam:
-                    mask = self.seg_buf[0].cpu().clone().reshape(self.res[1], self.res[0])
+                    mask = self.seg_buf[self.env_id].cpu().clone().reshape(self.res[1], self.res[0])
                     forward_mask = ((mask == 2) | (mask == 3)).float()
 
                 if self.seg_cam and self.depth_cam:
                     img = torch.where(forward_mask > 0.5, img, 0)
-                    cv2.imshow("Mask Image", img.numpy().transpose(1, 2, 0))
+                    cv2.imshow(f"Mask Image: {self.env_id}", img.numpy().transpose(1, 2, 0))
 
                 cv2.waitKey(1)
 
@@ -1012,7 +1025,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.reward_log_buf[:] = self.rew_buf[:]
         is_last_step = (self.progress_buf[0] == self.max_episode_length - 1)
         if is_last_step:
-            if not self.cfg_task.data_logger.collect_data:
+            if not self.cfg_task.data_logger.collect_data and not self.reset_flag:
                 success_dones = self.success_reset_buf.nonzero()
                 failure_dones = (1.0 - self.success_reset_buf).nonzero()
 
@@ -1990,6 +2003,9 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         return self.obs_dict, self.rew_buf, self.reset_buf, self.extras
 
     def reset(self, is_training=None):
+
+        self.env_id = 1 # random.randint(0, self.num_envs - 1)
+
 
         if is_training is not None:
             self.reset_flag = is_training

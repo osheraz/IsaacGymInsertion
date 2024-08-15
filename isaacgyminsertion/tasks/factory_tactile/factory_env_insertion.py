@@ -327,7 +327,7 @@ class ExtrinsicContact:
                 self.ax = plt.axes(projection='3d')
                 self.first_init = False
 
-            display_id = 0
+            display_id = 1
             self.ax.plot(query_points_plug[display_id, :, 0],
                          query_points_plug[display_id, :, 1],
                          query_points_plug[display_id, :, 2], 'ko')
@@ -364,9 +364,17 @@ class ExtrinsicContact:
             socket_poses = socket_poses[None, ...]
 
         object_pc_vertices = self.object_pc.copy().vertices
-        query_points_plug_goal = self.apply_transform(socket_poses, object_pc_vertices)
-        query_points_plug_goal = torch.from_numpy(query_points_plug_goal).float().to(self.device)
-        query_points_plug_goal *= plug_scale.view(plug_scale.shape[0], 1, 1).to(self.device)
+
+        scaled_query_points = []
+        for i in range(plug_scale.shape[0]):
+            scaled_pc_vertices = object_pc_vertices * plug_scale[i].item()
+            transformed_pc = self.apply_transform(socket_poses[i][None, ...], scaled_pc_vertices)
+            scaled_query_points.append(transformed_pc)
+
+        query_points_plug_goal = torch.from_numpy(np.stack(scaled_query_points)).to(self.device).squeeze(1)
+
+        # query_points_plug_goal = self.apply_transform(socket_poses, object_pc_vertices)
+        # query_points_plug_goal = torch.from_numpy(query_points_plug_goal).float().to(self.device)
 
         merged_point_cloud = torch.cat([pcl, query_points_plug_goal], dim=1)
         sampled_indices = torch.randperm(merged_point_cloud.size(1))[:pcl.size(1)]
@@ -378,7 +386,7 @@ class ExtrinsicContact:
                 self.ax = plt.axes(projection='3d')
                 self.first_init = False
 
-            display_id = 0
+            display_id = 1
             query_points_plug_goal = query_points_plug_goal.cpu().detach().numpy()
             pcl = pcl.cpu().detach().numpy()
 
@@ -464,7 +472,7 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
         camera_props.width = width
         camera_props.height = height
         camera_props.enable_tensors = True
-        hfov = 70 + random.randint(-3, 3)
+        hfov = 70 + 0 * random.randint(-3, 3)
         if hfov is not None:
             camera_props.horizontal_fov = hfov
         camera_handle = self.gym.create_camera_sensor(self.envs[env_idx], camera_props)
@@ -806,37 +814,6 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
             self.socket_handles.append(socket_handle)
             self.table_handles.append(table_handle)
 
-            self.camera_props_viz = gymapi.CameraProperties()
-            self.camera_props_viz.width = 1280
-            self.camera_props_viz.height = 720
-            if subassembly not in self.all_rendering_camera:
-                self.all_rendering_camera[subassembly] = []
-                self.all_rendering_camera[subassembly].append(i)
-
-                cam1, trans1, _ = self.make_handle_trans(1280, 720, i, (0.8, 0.1, 0.4),
-                                                         (np.deg2rad(0), np.deg2rad(40), np.deg2rad(180)))
-                self.gym.attach_camera_to_body(
-                    cam1,
-                    self.envs[i],
-                    kuka_handle,
-                    trans1,
-                    gymapi.FOLLOW_TRANSFORM,
-                )
-
-                self.all_rendering_camera[subassembly].append(cam1)
-
-                cam2, trans2, _ = self.make_handle_trans(1280, 720, i, (0.8, -0.1, 0.4),
-                                                         (np.deg2rad(0), np.deg2rad(40), np.deg2rad(180)))
-                self.gym.attach_camera_to_body(
-                    cam2,
-                    self.envs[i],
-                    kuka_handle,
-                    trans2,
-                    gymapi.FOLLOW_TRANSFORM,
-                )
-
-                self.all_rendering_camera[subassembly].append(cam2)
-
             if self.external_cam:
                 # add external cam
                 # Standard deviations for the errors
@@ -875,8 +852,40 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
                                                          perturbed_rotation[1],
                                                          perturbed_rotation[2]))
 
+
+            if subassembly not in self.all_rendering_camera:
+
+                self.camera_props_viz = gymapi.CameraProperties()
+                self.camera_props_viz.width = 1280
+                self.camera_props_viz.height = 720
+                self.all_rendering_camera[subassembly] = []
+                self.all_rendering_camera[subassembly].append(i)
+
+                cam1, trans1, _ = self.make_handle_trans(1280, 720, i, (0.8, 0.1, 0.4),
+                                                         (np.deg2rad(0), np.deg2rad(40), np.deg2rad(180)))
+                self.gym.attach_camera_to_body(
+                    cam1,
+                    self.envs[i],
+                    kuka_handle,
+                    trans1,
+                    gymapi.FOLLOW_TRANSFORM,
+                )
+
+                self.all_rendering_camera[subassembly].append(cam1)
+
+                cam2, trans2, _ = self.make_handle_trans(1280, 720, i, (0.8, -0.1, 0.4),
+                                                         (np.deg2rad(0), np.deg2rad(40), np.deg2rad(180)))
+                self.gym.attach_camera_to_body(
+                    cam2,
+                    self.envs[i],
+                    kuka_handle,
+                    trans2,
+                    gymapi.FOLLOW_TRANSFORM,
+                )
+
+                self.all_rendering_camera[subassembly].append(cam2)
+
             # add Tactile modules for the tips
-            # self.envs_asset[i] = {'subassembly': subassembly, 'components': components}
             self.envs_asset[i] = subassembly
             plug_file = self.asset_info_insertion[subassembly][components[0]]['urdf_path']
             plug_file += '_subdiv_3x.obj' if (('rectangular' in plug_file) or ('square' in plug_file)) else '.obj'

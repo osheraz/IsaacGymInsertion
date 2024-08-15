@@ -326,9 +326,9 @@ class MultiModalModel(BaseModel):
 
         if include_lin:
             self.lin_encoding_size = lin_encoding_size
-            self.lin_encoder = nn.Sequential(nn.Linear(num_lin_features, lin_encoding_size // 2),
+            self.lin_encoder = nn.Sequential(nn.Linear(num_lin_features, 64),
                                              nn.ReLU(),
-                                             nn.Linear(lin_encoding_size // 2, lin_encoding_size))
+                                             nn.Linear(64, lin_encoding_size))
 
             num_features += 1
 

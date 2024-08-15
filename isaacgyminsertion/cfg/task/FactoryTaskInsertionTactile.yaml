@@ -84,15 +84,15 @@ env:
     actionDelayProbMax: 0.3
 
     plugObsDelayProb: 0.3
-    ImgDelayProb: 0.2
-    SegDelayProb: 0.3
+    ImgDelayProb: 0.1
+    SegDelayProb: 0.1
     SegProbNoise: 0.005
-    TactileDelayProb: 0.3
+    TactileDelayProb: 0.1
 
     # Sim runs at 60 Hz
     maxObjectSkipObs: 2  # i.e max 30hz
-    maxSkipImg: 3
-    maxSkipTactile: 3
+    maxSkipImg: 2
+    maxSkipTactile: 2
 
     scalePosProb: 0.3
     scaleRotProb: 0.3
@@ -114,8 +114,8 @@ env:
     tactile_wrt_force: False
 
     compute_contact_gt: False
-    num_points: 400
-    num_points_goal: 100
+    num_points: 500
+    num_points_goal: 200
 
     record_video: True
     record_ft: True

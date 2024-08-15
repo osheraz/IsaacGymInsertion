@@ -1,14 +1,15 @@
 import torch
 from isaacgym import gymapi
 from isaacgym import gymtorch
-
+import numpy as np
 
 class PointCloudGenerator:
-    def __init__(self, proj_matrix, view_matrix, camera_props=None,
+    def __init__(self, proj_matrix, view_matrix, env_to_global, camera_props=None,
                  height=None, width=None, sample_num=None,
                  depth_max=None, device='cpu'):
         self.cam_width = camera_props.width if camera_props is not None else width
         self.cam_height = camera_props.height if camera_props is not None else height
+        self.env_to_global = env_to_global
         fu = 2 / proj_matrix[0, 0]
         fv = 2 / proj_matrix[1, 1]
         self.fu = self.cam_width / fu
@@ -31,6 +32,7 @@ class PointCloudGenerator:
 
         self._uv_one_in_cam = self._uv_one_in_cam.repeat(1, 1, 1)
         self.sample_num = sample_num
+        self.device = device
 
     @torch.no_grad()
     def convert(self, depth_buffer):
@@ -51,6 +53,9 @@ class PointCloudGenerator:
                                dim=-1)
 
         pts_in_world = pts_in_cam @ self.ext_mat
+        env_to_global = torch.inverse(torch.Tensor(self.env_to_global)).to(self.device)
+        pts_in_world = torch.matmul(pts_in_world, env_to_global.T)
+
         pcd_pts = pts_in_world[..., :3]
         return pcd_pts
 
@@ -91,7 +96,10 @@ class CameraPointCloud:
             view_matrix = self.gym.get_camera_view_matrix(self.sim,
                                                           envs[idx],
                                                           camera_handles[idx])
-            # view_matrix = self.compute_view_matrix(self.camera_trans[idx])
+
+            env_position = self.gym.get_env_origin(envs[idx])
+            env_to_global = np.identity(4)
+            env_to_global[:3, 3] = np.array([env_position.x, env_position.y, env_position.z])
 
             proj_matrix = self.gym.get_camera_proj_matrix(self.sim,
                                                           envs[idx],
@@ -101,6 +109,7 @@ class CameraPointCloud:
                     camera_props=camera_props[idx],
                     proj_matrix=proj_matrix,
                     view_matrix=view_matrix,
+                    env_to_global=env_to_global,
                     depth_max=depth_max,
                     device=self.graphics_device
                 )
@@ -148,7 +157,6 @@ class CameraPointCloud:
     @torch.no_grad()
     def _proc_pts(self, env_id, depth_images, filter_func=None):
         pts = self.pt_generators[env_id].convert(depth_images)
-
         if filter_func is not None:
             pts = filter_func(pts)
         elif self.filter_func is not None:
