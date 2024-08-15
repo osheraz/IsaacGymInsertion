@@ -242,11 +242,11 @@ class ExtrinsicContact:
 
         return tf_curr_poses
 
-    def get_extrinsic_contact(self, obj_pos, obj_quat, socket_pos, socket_quat, threshold=0.002, display=False):
+    def get_extrinsic_contact(self, obj_pos, obj_quat, socket_pos, socket_quat, plug_scale,
+                              threshold=0.002, display=False):
 
         object_poses = torch.cat((obj_pos, obj_quat), dim=1)
         object_poses = self._xyzquat_to_tf_numpy(object_poses.cpu().numpy())
-        # self.plug_pose_no_rot = self.estimate_pose_batch(object_poses, self.plug_pose_no_rot)
 
         socket_poses = torch.cat((socket_pos, socket_quat), dim=1)
         socket_poses = self._xyzquat_to_tf_numpy(socket_poses.cpu().numpy())
@@ -274,12 +274,12 @@ class ExtrinsicContact:
         indices = np.where(d == 1.0)[0]
         if len(indices) > 0:
             np.random.shuffle(indices)
-            num_idx = int(d[indices].sum() * np.random.uniform(0.0, 0.25))
+            num_idx = int(d[indices].sum() * np.random.uniform(0.0, 0.1))
             indices = indices[:num_idx]
             d[indices] = 0.0
 
         # Display
-        if False:
+        if display:
             if self.first_init:
                 self.ax = plt.axes(projection='3d')
                 self.first_init = False
@@ -861,7 +861,7 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
                 self.all_rendering_camera[subassembly] = []
                 self.all_rendering_camera[subassembly].append(i)
 
-                cam1, trans1, _ = self.make_handle_trans(1280, 720, i, (0.8, 0.1, 0.4),
+                cam1, trans1, _ = self.make_handle_trans(1280, 720, i, (0.8, 0.0, 0.3),
                                                          (np.deg2rad(0), np.deg2rad(40), np.deg2rad(180)))
                 self.gym.attach_camera_to_body(
                     cam1,
@@ -873,17 +873,17 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
 
                 self.all_rendering_camera[subassembly].append(cam1)
 
-                cam2, trans2, _ = self.make_handle_trans(1280, 720, i, (0.8, -0.1, 0.4),
-                                                         (np.deg2rad(0), np.deg2rad(40), np.deg2rad(180)))
-                self.gym.attach_camera_to_body(
-                    cam2,
-                    self.envs[i],
-                    kuka_handle,
-                    trans2,
-                    gymapi.FOLLOW_TRANSFORM,
-                )
-
-                self.all_rendering_camera[subassembly].append(cam2)
+                # cam2, trans2, _ = self.make_handle_trans(1280, 720, i, (0.8, -0.1, 0.4),
+                #                                          (np.deg2rad(0), np.deg2rad(40), np.deg2rad(180)))
+                # self.gym.attach_camera_to_body(
+                #     cam2,
+                #     self.envs[i],
+                #     kuka_handle,
+                #     trans2,
+                #     gymapi.FOLLOW_TRANSFORM,
+                # )
+                #
+                # self.all_rendering_camera[subassembly].append(cam2)
 
             # add Tactile modules for the tips
             self.envs_asset[i] = subassembly
@@ -995,6 +995,7 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
 
         # for extrinsic contact
         self.plug_scale = torch.tensor(self.plug_scale, device=self.device)
+        self.socket_scale = torch.tensor(self.socket_scale, device=self.device)
 
         self.subassembly_to_env_ids = {k: torch.tensor(v, dtype=torch.long, device=self.device) for k, v in
                                        self.subassembly_to_env_ids.items()}

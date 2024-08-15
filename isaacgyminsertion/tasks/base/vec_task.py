@@ -803,7 +803,8 @@ class VecTask(Env):
 
                             if hasattr(self, 'plug_scale') and actor == 'plug':
                                 randomisation_callback('scale', new_scale, actor=actor, env_id=env_id)
-
+                            if hasattr(self, 'socket_scale') and actor == 'socket':
+                                randomisation_callback('scale', new_scale, actor=actor, env_id=env_id)
                         continue
 
                     prop = param_getters_map[prop_name](env, handle)

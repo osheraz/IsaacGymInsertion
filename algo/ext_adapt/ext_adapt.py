@@ -397,7 +397,8 @@ class ExtrinsicAdapt(object):
 
     def test(self, total_steps=1e9):
 
-        if self.env.cfg_task.data_logger.collect_data:
+        save_trajectory = self.env.cfg_task.data_logger.collect_data
+        if save_trajectory:
             if self.data_logger.data_logger is None:
                 self.data_logger.data_logger = self.data_logger.data_logger_init(None)
             else:
@@ -407,13 +408,14 @@ class ExtrinsicAdapt(object):
         self.set_student_eval()
 
         steps = 0
-        obs_dict = self.env.reset(is_training=False)
+        obs_dict = self.env.reset(reset_at_success=False, reset_at_fails=True)
         total_dones, num_success = 0, 0
 
         while steps < total_steps:
             steps += 1
             self.log_video()
             self.it += 1
+
             prep_obs = self.process_obs(obs_dict)
 
             student_dict = {
@@ -441,8 +443,8 @@ class ExtrinsicAdapt(object):
 
             obs_dict, r, done, info = self.env.step(mu)
 
-            if self.env.cfg_task.data_logger.collect_data:
-                self.data_logger.log_trajectory_data(mu, latent, done)
+            if save_trajectory:
+                self.data_logger.log_trajectory_data(mu, latent, done, save_trajectory=save_trajectory)
 
             if self.env.progress_buf[0] == self.env.max_episode_length - 1:
                 num_success += self.env.success_reset_buf[done.nonzero()].sum()
@@ -665,7 +667,7 @@ class ExtrinsicAdapt(object):
         test_every = 5e5
         self.epoch_num = 0
         self.next_test_step = test_every
-        self.obs = self.env.reset()
+        self.obs = self.env.reset(reset_at_success=True, reset_at_fails=True)
         self.agent_steps = (self.batch_size if not self.multi_gpu else self.batch_size * self.rank_size)
         if self.multi_gpu:
             torch.cuda.set_device(self.rank)
@@ -710,10 +712,10 @@ class ExtrinsicAdapt(object):
                 self.cur_loss = a_loss
                 print(info_string)
 
-                if self.agent_steps >= self.next_test_step and self.task_config.reset_at_success:
+                if self.agent_steps >= self.next_test_step:
                     cprint(f'Disabling resets and evaluating', 'blue', attrs=['bold'])
-                    self.test(total_steps=500)
-                    self.env.reset(is_training=True)
+                    self.test(total_steps=self.env.cfg_task.rl.max_episode_length)
+                    self.obs = self.env.reset(reset_at_success=True, reset_at_fails=True)
                     self.set_student_train()
                     self.next_test_step += test_every
                     cprint(f'Resume training', 'blue', attrs=['bold'])

@@ -38,6 +38,76 @@ from isaacgyminsertion.utils.misc import add_to_fifo, multi_gpu_aggregate_stats
 from tqdm import tqdm
 from tensorboardX import SummaryWriter
 # import wandb
+import json
+import yaml
+
+
+def log_test_result(best_reward, cur_reward, steps, success_rate, log_file='test_results.yaml'):
+    def convert_to_serializable(val):
+        if isinstance(val, torch.Tensor):
+            return val.item()
+        return val
+
+    log_data = {
+        'best_reward': convert_to_serializable(best_reward),
+        'cur_reward': convert_to_serializable(cur_reward),
+        'steps': convert_to_serializable(steps),
+        'success_rate': convert_to_serializable(success_rate),
+    }
+
+    # Check if the log file exists
+    if os.path.exists(log_file):
+        # Load existing log
+        with open(log_file, 'r') as f:
+            if log_file.endswith('.yaml'):
+                existing_data = yaml.safe_load(f) or []
+            else:  # assuming json
+                existing_data = json.load(f)
+    else:
+        existing_data = []
+
+    # Append new log entry
+    existing_data.append(log_data)
+
+    # Save the updated log
+    with open(log_file, 'w') as f:
+        if log_file.endswith('.yaml'):
+            yaml.dump(existing_data, f)
+        else:  # assuming json
+            json.dump(existing_data, f, indent=4)
+
+    # Create a figure comparing the values
+    steps_list = [entry['steps'] for entry in existing_data]
+    best_reward_list = [entry['best_reward'] for entry in existing_data]
+    cur_reward_list = [entry['cur_reward'] for entry in existing_data]
+    success_rate_list = [entry['success_rate'] for entry in existing_data]
+
+    plt.figure(figsize=(10, 6))
+
+    # Plot rewards and success rate
+    plt.subplot(2, 1, 1)
+    plt.plot(steps_list, best_reward_list, label='Best Reward')
+    plt.plot(steps_list, cur_reward_list, label='Current Reward')
+    plt.xlabel('Steps')
+    plt.ylabel('Value')
+    plt.title('Rewards over Steps')
+    plt.legend()
+
+    plt.subplot(2, 1, 2)
+    plt.plot(steps_list, success_rate_list, label='Success Rate')
+    plt.xlabel('Steps')
+    plt.ylabel('Success')
+    plt.title('Success Rate over Steps')
+    plt.legend()
+
+    plt.tight_layout()
+
+    # Save the figure
+    figure_path = os.path.join(os.path.dirname(log_file), 'test_results_plot.png')
+    plt.savefig(figure_path)
+    plt.close()
+
+    print(f"Log and plot saved. Plot saved at: {figure_path}")
 
 
 class PPO(object):
@@ -176,7 +246,7 @@ class PPO(object):
                                         self.priv_info_dim,
                                         self.num_contacts_points,
                                         self.vt_policy,
-                                        self.device,)
+                                        self.device, )
 
         # ---- Data Logger ----
         if env is not None and (self.env.cfg_task.data_logger.collect_data or self.full_config.offline_training_w_env):
@@ -193,6 +263,9 @@ class PPO(object):
         self.agent_steps = 0
         self.max_agent_steps = self.ppo_config['max_agent_steps']
         self.best_rewards = -10000
+        self.test_success = 0
+        self.best_success = 0
+        self.cur_reward = self.best_rewards
         self.success_rate = 0
 
         # ---- Timing
@@ -295,7 +368,10 @@ class PPO(object):
     def train(self):
         _t = time.time()
         _last_t = time.time()
-        self.obs = self.env.reset()
+        self.obs = self.env.reset(reset_at_success=False, reset_at_fails=True)
+        test_every = 10e6
+        self.next_test_step = test_every
+
         self.agent_steps = (self.batch_size if not self.multi_gpu else self.batch_size * self.rank_size)
         if self.multi_gpu:
             torch.cuda.set_device(self.rank)
@@ -313,7 +389,7 @@ class PPO(object):
                 mean_rewards, mean_lengths, mean_success = multi_gpu_aggregate_stats(
                     [torch.Tensor([self.episode_rewards.get_mean()]).float().to(self.device),
                      torch.Tensor([self.episode_lengths.get_mean()]).float().to(self.device),
-                     torch.Tensor([self.episode_success.get_mean()]).float().to(self.device),])
+                     torch.Tensor([self.episode_success.get_mean()]).float().to(self.device), ])
                 for k, v in self.extra_info.items():
                     if type(v) is not torch.Tensor:
                         v = torch.Tensor([v]).float().to(self.device)
@@ -331,15 +407,27 @@ class PPO(object):
                               f'Last FPS: {last_fps:.1f} | ' \
                               f'Collect Time: {self.data_collect_time / 60:.1f} min | ' \
                               f'Train RL Time: {self.rl_train_time / 60:.1f} min | ' \
-                              f"Current Best: {self.best_rewards:.2f} | " \
+                              f"Best Reward: {self.best_rewards:.2f} | " \
+                              f'Cur Reward: {mean_rewards:.2f} | ' \
                               f'Priv info: {self.full_config.train.ppo.priv_info} | ' \
                               f'Ext Contact: {self.full_config.task.env.compute_contact_gt}'
-
+                self.cur_reward = mean_rewards
                 print(info_string)
+
                 self.write_stats(a_losses, c_losses, b_losses, entropies, kls, grad_norms, returns_list)
                 self.writer.add_scalar('episode_rewards/step', mean_rewards, self.agent_steps)
                 self.writer.add_scalar('episode_lengths/step', mean_lengths, self.agent_steps)
                 self.writer.add_scalar('mean_success/step', mean_success, self.agent_steps)
+
+                if self.agent_steps >= self.next_test_step:
+                    cprint(f'Disabling resets and evaluating', 'blue', attrs=['bold'])
+                    self.test(total_steps=self.env.cfg_task.rl.max_episode_length)
+                    self.obs = self.env.reset(reset_at_success=False, reset_at_fails=True)
+                    self.set_train()
+                    self.next_test_step += test_every
+                    cprint(f'Resume training', 'blue', attrs=['bold'])
+                    cprint(f'saved model at {self.agent_steps}', 'green', attrs=['bold'])
+                    self.save(os.path.join(self.nn_dir, f'last'))
 
                 if self.save_freq > 0:
                     if self.epoch_num % self.save_freq == 0:
@@ -425,10 +513,10 @@ class PPO(object):
 
                 if self.vt_policy:
                     value_preds, old_action_log_probs, advantage, old_mu, old_sigma, \
-                    returns, actions, obs, priv_info, contacts, img, seg, student_obs = self.storage[i]
+                        returns, actions, obs, priv_info, contacts, img, seg, student_obs = self.storage[i]
                 else:
                     value_preds, old_action_log_probs, advantage, old_mu, old_sigma, \
-                    returns, actions, obs, priv_info, contacts = self.storage[i]
+                        returns, actions, obs, priv_info, contacts = self.storage[i]
 
                 obs = self.running_mean_std(obs)
                 priv_info = self.priv_mean_std(priv_info)
@@ -636,31 +724,26 @@ class PPO(object):
         self.storage.data_dict['values'] = values
         self.storage.data_dict['returns'] = returns
 
-    def test(self, predict=None, obs_stats=None, milestone=100):
-        # this will test either the student or the teacher model.
-
-        self.set_eval()
+    def test(self, milestone=100, total_steps=1e9):
 
         save_trajectory = self.env.cfg_task.data_logger.collect_data
-
-        # reset all envs
-        self.obs = self.env.reset()
-
-        # logging initial data only if one of the above is true
         if save_trajectory:
             if self.data_logger.data_logger is None:
                 self.data_logger.data_logger = self.data_logger.data_logger_init(None)
             else:
                 self.data_logger.data_logger.reset()
 
-        self.env_ids = torch.arange(self.env.num_envs).view(-1, 1)
-        total_dones, num_success = 0, 0
-        total_env_runs = self.full_config.offline_train.train.test_episodes
+        self.set_eval()
 
-        while save_trajectory or (total_dones < total_env_runs):
+        steps = 0
+        total_dones, num_success = 0, 0
+        self.obs = self.env.reset(reset_at_success=False, reset_at_fails=True)
+
+        while save_trajectory or (steps < total_steps):
             # log video during test
+            steps += 1
             self.log_video()
-            self.it +=1
+            self.it += 1
 
             obs_dict = {
                 'obs': self.running_mean_std(self.obs['obs']),
@@ -672,7 +755,7 @@ class PPO(object):
 
             self.obs, r, done, info = self.env.step(action)
 
-            num_success += self.env.success_reset_buf[done.nonzero()].sum()
+            # num_success += self.env.success_reset_buf[done.nonzero()].sum()
 
             # logging data
             if save_trajectory:
@@ -682,7 +765,27 @@ class PPO(object):
                     print('[Test] success rate:', num_success / total_dones)
                     milestone += 100
 
-        print('[LastTest] success rate:', num_success / total_dones)
+            if self.env.progress_buf[0] == self.env.max_episode_length - 1:
+                num_success += self.env.success_reset_buf[done.nonzero()].sum()
+                total_dones += len(done.nonzero())
+                success_rate = num_success / total_dones
+                self.test_success = success_rate
+                print('[Test] success rate:', success_rate)
+                log_test_result(best_reward=self.best_rewards,
+                                cur_reward=self.cur_reward,
+                                steps=self.agent_steps,
+                                success_rate=success_rate,
+                                log_file=os.path.join(self.nn_dir, f'log.json'))
+
+        if self.test_success > self.best_success and self.agent_steps > 1e5:
+            cprint(f'saved model at {self.agent_steps} Success {self.test_success:.2f}', 'green', attrs=['bold'])
+            prev_best_ckpt = os.path.join(self.nn_dir, f'best_succ_{self.best_success:.2f}.pth')
+            if os.path.exists(prev_best_ckpt):
+                os.remove(prev_best_ckpt)
+            self.best_success = self.test_success
+            self.save(os.path.join(self.nn_dir, f'best_loss_{self.best_success :.2f}'))
+
+        # print('[LastTest] success rate:', num_success / total_dones)
         return num_success, total_dones
 
     def _write_video(self, frames, ft_frames, output_loc, frame_rate):

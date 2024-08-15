@@ -90,21 +90,13 @@ randomize:
                         operation: "scaling"
                         distribution: "uniform"
             plug:
-                scale:
-                    range: [ 0.9, 1.0 ]
-                    operation: "scaling"
-                    distribution: "uniform"
-                    setup_only: True # Property will only be randomized once before simulation is started. See Domain Randomization Documentation for more info.
+#                scale:
+#                    range: [ 0.9, 1.0 ]
+#                    operation: "scaling"
+#                    distribution: "uniform"
+#                    setup_only: True # Property will only be randomized once before simulation is started. See Domain Randomization Documentation for more info.
                     # schedule: "linear"  # "linear" will scale the current random sample by ``min(current num steps, schedule_steps) / schedule_steps`
                     # schedule_steps: 30000
-#                 rigid_body_properties:
-#                     mass:
-#                         range: [ 0.1, 0.1 ]
-#                         operation: "scaling"
-#                         distribution: "uniform"
-#                         setup_only: True # Property will only be randomized once before simulation is started. See Domain Randomization Documentation for more info.
-#                         # schedule: "linear"  # "linear" will scale the current random sample by ``min(current num steps, schedule_steps) / schedule_steps`
-#                         # schedule_steps: 30000
                 rigid_shape_properties:
                     friction:
                         num_buckets: 250
@@ -138,7 +130,7 @@ randomize:
                         operation: "scaling"
                         distribution: "uniform"
                 scale:
-                    range: [ 1.0, 1.2 ]
+                    range: [ 1.0, 1.1 ]
                     operation: "scaling"
                     distribution: "uniform"
                     setup_only: True # Property will only be randomized once before simulation is started. See Domain Randomization Documentation for more info.
