@@ -873,17 +873,17 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
 
                 self.all_rendering_camera[subassembly].append(cam1)
 
-                # cam2, trans2, _ = self.make_handle_trans(1280, 720, i, (0.8, -0.1, 0.4),
-                #                                          (np.deg2rad(0), np.deg2rad(40), np.deg2rad(180)))
-                # self.gym.attach_camera_to_body(
-                #     cam2,
-                #     self.envs[i],
-                #     kuka_handle,
-                #     trans2,
-                #     gymapi.FOLLOW_TRANSFORM,
-                # )
-                #
-                # self.all_rendering_camera[subassembly].append(cam2)
+                cam2, trans2, _ = self.make_handle_trans(1280, 720, i, (0.6, 0.0, 0.1),
+                                                         (np.deg2rad(0), np.deg2rad(10), np.deg2rad(180)))
+                self.gym.attach_camera_to_body(
+                    cam2,
+                    self.envs[i],
+                    kuka_handle,
+                    trans2,
+                    gymapi.FOLLOW_TRANSFORM,
+                )
+
+                self.all_rendering_camera[subassembly].append(cam2)
 
             # add Tactile modules for the tips
             self.envs_asset[i] = subassembly
