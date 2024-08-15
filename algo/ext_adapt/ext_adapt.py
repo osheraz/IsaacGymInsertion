@@ -467,7 +467,7 @@ class ExtrinsicAdapt(object):
                 os.remove(prev_best_ckpt)
                 os.remove(prev_best_ckpt.replace('.pth', '_stud.pth'))
             self.best_success = self.test_success
-            self.save(os.path.join(self.nn_dir, f'best_loss_{self.best_success :.2f}'))
+            self.save(os.path.join(self.nn_dir, f'best_succ_{self.best_success :.2f}'))
 
     def play_steps(self):
 

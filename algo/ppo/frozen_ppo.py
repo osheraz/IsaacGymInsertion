@@ -783,7 +783,7 @@ class PPO(object):
             if os.path.exists(prev_best_ckpt):
                 os.remove(prev_best_ckpt)
             self.best_success = self.test_success
-            self.save(os.path.join(self.nn_dir, f'best_loss_{self.best_success :.2f}'))
+            self.save(os.path.join(self.nn_dir, f'best_succ_{self.best_success :.2f}'))
 
         # print('[LastTest] success rate:', num_success / total_dones)
         return num_success, total_dones
