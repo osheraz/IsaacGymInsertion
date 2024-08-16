@@ -35,7 +35,7 @@ class PointNet(nn.Module):  # actually pointnet
 
     def forward(self, x):
         '''
-        x: [B, N, 3]
+        x: [B, N, 3\6\9]
         '''
         # Local
         x = self.local_mlp(x)

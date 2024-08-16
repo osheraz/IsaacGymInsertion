@@ -405,6 +405,46 @@ class ExtrinsicContact:
 
         return sampled_point_cloud.flatten(start_dim=1).float()
 
+    def get_goal_pcl(self, socket_pos, socket_quat, plug_scale, display=False):
+
+        socket_poses = torch.cat((socket_pos, socket_quat), dim=1)
+        socket_poses = self._xyzquat_to_tf_numpy(socket_poses.cpu().numpy())
+
+        if len(socket_poses.shape) == 2:
+            socket_poses = socket_poses[None, ...]
+
+        object_pc_vertices = self.object_pc.copy().vertices
+
+        scaled_query_points = []
+        for i in range(plug_scale.shape[0]):
+            scaled_pc_vertices = object_pc_vertices * plug_scale[i].item()
+            transformed_pc = self.apply_transform(socket_poses[i][None, ...], scaled_pc_vertices)
+            scaled_query_points.append(transformed_pc)
+
+        query_points_plug_goal = torch.from_numpy(np.stack(scaled_query_points)).to(self.device).squeeze(1)
+        # sampled_indices = torch.randperm(query_points_plug_goal.size(1))[:query_points_plug_goal.size(1)]
+        # query_points_plug_goal = query_points_plug_goal[:, sampled_indices, :]
+
+        # Display
+        if display:
+            if self.first_init:
+                self.ax = plt.axes(projection='3d')
+                self.first_init = False
+
+            display_id = 0
+            query_points_plug_goal = query_points_plug_goal.cpu().detach().numpy()
+
+            self.ax.plot(query_points_plug_goal[display_id, :, 0],
+                         query_points_plug_goal[display_id, :, 1],
+                         query_points_plug_goal[display_id, :, 2], 'ro')
+
+            self.ax.set_xlabel('X')
+            self.ax.set_ylabel('Y')
+            plt.pause(0.0001)
+            self.ax.cla()
+
+        return query_points_plug_goal.float()
+
 
 class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
 
@@ -873,8 +913,8 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
 
                 self.all_rendering_camera[subassembly].append(cam1)
 
-                cam2, trans2, _ = self.make_handle_trans(1280, 720, i, (0.6, 0.0, 0.1),
-                                                         (np.deg2rad(0), np.deg2rad(10), np.deg2rad(180)))
+                cam2, trans2, _ = self.make_handle_trans(1280, 720, i, (0.7, 0.0, 0.1),
+                                                         (np.deg2rad(0), np.deg2rad(30), np.deg2rad(180)))
                 self.gym.attach_camera_to_body(
                     cam2,
                     self.envs[i],
@@ -917,7 +957,7 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
                         num_points=self.cfg['env']['num_points_goal'])
 
             # loading plug pcd
-            if subassembly not in self.subassembly_pcd:
+            if subassembly not in self.subassembly_pcd and False:
                 object_trimesh = trimesh.load(os.path.join(mesh_root, plug_file))
                 # object_trimesh = object_trimesh.apply_scale(object_trimesh)
                 pointcloud_obj = trimesh.sample.sample_surface(object_trimesh, self.cfg['env']['num_points'], seed=42)[

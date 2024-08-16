@@ -230,7 +230,13 @@ class ExtrinsicAdapt(object):
 
         self.stud_obs_mean_std = RunningMeanStd(self.obs_stud_shape).to(self.device)
         self.stud_obs_mean_std.train()
-        self.pcl_mean_std = RunningMeanStd((3,)).to(self.device)  # 3-view, 3-imagined
+
+        pcl_channel = 3
+        if self.task_config.env.merge_goal_pcl:
+            pcl_channel += 3
+        if self.task_config.env.merge_socket_pcl:
+            pcl_channel += 3
+        self.pcl_mean_std = RunningMeanStd((pcl_channel,)).to(self.device)
         self.pcl_mean_std.train()
 
         self.student = Student(student_cfg)
@@ -366,6 +372,7 @@ class ExtrinsicAdapt(object):
 
         if self.pcl_info:
             # [B, T, N*3] to [B, T*N*3] to [B, T*N, 3]
+            # num of each
             pcl = self.pcl_mean_std(pcl.reshape(-1, 3)).reshape((obs['pcl'].shape[0], -1, 3))
 
         if student_obs is not None:

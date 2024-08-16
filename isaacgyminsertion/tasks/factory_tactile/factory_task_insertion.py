@@ -260,15 +260,26 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             self.gt_extrinsic_contact = torch.zeros((self.num_envs, self.cfg_task.env.num_points),
                                                     device=self.device, dtype=torch.float)
             self.contact_queue = torch.zeros((self.num_envs, self.cfg_task.env.numObsStudentHist,
-                                          self.cfg_task.env.num_points),
-                                         dtype=torch.float, device=self.device)
+                                              self.cfg_task.env.num_points),
+                                             dtype=torch.float, device=self.device)
+
         if self.pcl_cam:
-            self.pcl_queue = torch.zeros((self.num_envs, self.cfg_task.env.numObsStudentHist,
-                                          self.cfg_task.env.num_points * 3),
+
+            num_points = self.cfg_task.env.num_points
+
+            if self.cfg_task.env.merge_socket_pcl:
+                num_points += self.cfg_task.env.num_points_socket
+
+            if self.cfg_task.env.merge_goal_pcl:
+                self.goal_pcl = torch.zeros((self.num_envs, self.cfg_task.env.num_points_goal, 3),
+                                            device=self.device, dtype=torch.float)
+
+                num_points += self.cfg_task.env.num_points_goal
+
+            self.pcl_queue = torch.zeros((self.num_envs, self.cfg_task.env.numObsStudentHist, num_points * 3),
                                          dtype=torch.float, device=self.device)
 
-            self.pcl = torch.zeros((self.num_envs, self.cfg_task.env.num_points * 3),
-                                   device=self.device, dtype=torch.float)
+            self.pcl = torch.zeros((self.num_envs, num_points * 3), device=self.device, dtype=torch.float)
 
         if self.cfg_task.env.tactile:
             # tactile buffers
@@ -302,9 +313,6 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                     (self.num_envs, self.img_hist_len, self.res[1] * self.res[0]), device=self.device,
                     dtype=torch.float, )
                 self.seg_buf = torch.zeros(self.num_envs, self.res[1] * self.res[0], dtype=torch.int32).to(self.device)
-
-            if self.pcl_cam:
-                self.raw_depth = torch.zeros(self.num_envs, self.res[1] * self.res[0]).to(self.device)
 
             self.init_external_cam()
 
@@ -919,9 +927,6 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             depth = torch.stack(self.cam_renders)
             seg = torch.stack(self.seg_renders)
 
-            if self.pcl_cam:
-                self.raw_depth = depth.flatten(start_dim=1).clone()
-
             if self.depth_cam:
                 if update.any():
                     if update.sum() == 1:
@@ -942,23 +947,43 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                 if seg_noise.any():
                     self.seg_buf[seg_noise] = self.depth_process.add_seg_noise(self.seg_buf[seg_noise])
 
-            if self.pcl_cam and self.seg_cam:
-                self.raw_depth *= ((seg.flatten(start_dim=1) == 2) | (seg.flatten(start_dim=1) == 3)).float()
-
             if self.pcl_cam:
-                pts = self.pcl_generator.get_point_cloud(
-                    depths=self.raw_depth.reshape(self.num_envs, self.res[1], self.res[0]),
-                    filter_func=filter_pts).to(self.device)
-                # self.pcl = pts.flatten(start_dim=1)
+                if self.seg_cam:
+                    plug_depth = depth.flatten(start_dim=1) * (seg.flatten(start_dim=1) == 2)
+                    if self.cfg_task.env.merge_socket_pcl:
+                        socket_depth = depth.flatten(start_dim=1) * (seg.flatten(start_dim=1) == 3)
+                else:
+                    NotImplementedError
 
-                for k, v in self.subassembly_extrinsic_contact.items():
-                    display_key = 'square_peg_hole_32mm_loose'  # ['square_peg_hole_32mm_loose', 'red_round_peg_1_5in', '']
-                    self.pcl[self.subassembly_to_env_ids[k], ...] = v.merge_goal_pcl(
-                        pcl=pts[self.subassembly_to_env_ids[k], ...],
-                        socket_pos=self.socket_pos[self.subassembly_to_env_ids[k], ...].clone(),
-                        socket_quat=self.socket_quat[self.subassembly_to_env_ids[k], ...].clone(),
-                        plug_scale=self.plug_scale[self.subassembly_to_env_ids[k]],
-                        display=display_key == k and self.cfg_task.external_cam.display).to(self.device)
+                plug_pts = self.pcl_generator.get_point_cloud(
+                    depths=plug_depth.reshape(self.num_envs, self.res[1], self.res[0]),
+                    filter_func=filter_pts, sample_num=self.cfg_task.env.num_points).to(self.device)
+
+                self.pcl = plug_pts.flatten(start_dim=1)
+
+                if self.cfg_task.env.merge_socket_pcl:
+
+                    socket_pts = self.pcl_generator.get_point_cloud(
+                        depths=socket_depth.reshape(self.num_envs, self.res[1], self.res[0]),
+                        filter_func=filter_pts, sample_num=self.cfg_task.env.num_points_socket).to(self.device)
+
+                    self.pcl = torch.cat([plug_pts, socket_pts], dim=1).flatten(start_dim=1)
+                else:
+                    socket_pts = None
+
+                if self.cfg_task.env.merge_goal_pcl:
+                    for k, v in self.subassembly_extrinsic_contact.items():
+                        self.goal_pcl[self.subassembly_to_env_ids[k], ...] = v.get_goal_pcl(
+                            socket_pos=self.socket_pos[self.subassembly_to_env_ids[k], ...].clone(),
+                            socket_quat=self.socket_quat[self.subassembly_to_env_ids[k], ...].clone(),
+                            plug_scale=self.plug_scale[self.subassembly_to_env_ids[k]],
+                            display='square_peg_hole_32mm_loose' == k and self.cfg_task.external_cam.display).to(
+                            self.device)
+
+                    if socket_pts is not None:
+                        self.pcl = torch.cat([plug_pts, socket_pts, self.goal_pcl], dim=1).flatten(start_dim=1)
+                    else:
+                        self.pcl = torch.cat([plug_pts, self.goal_pcl], dim=1).flatten(start_dim=1)
 
             if self.cfg_task.external_cam.display:
                 if self.depth_cam:
@@ -1112,8 +1137,8 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         self._reset_object(env_ids, new_pose=object_pose)
 
-        for k, v in self.subassembly_extrinsic_contact.items():
-            v.reset_socket_pos(socket_pos=socket_pos.cpu().detach())
+        # for k, v in self.subassembly_extrinsic_contact.items():
+        #     v.reset_socket_pos(socket_pos=socket_pos.cpu().detach())
 
     def _reset_environment(self, env_ids):
 
@@ -1614,7 +1639,6 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         if (not self.cfg_task.grasp_at_init and
                 self.reset_flag and
                 self.cfg_task.reset_at_success):
-
             print('\n\n\n Rand Inits \n\n\n')
             self.reset_flag = False
             # Cuz it's easier to shuffle here
@@ -1662,6 +1686,8 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         if self.pcl_cam:
             self.pcl_queue[env_ids] *= 0
             self.pcl[env_ids] *= 0
+            if self.cfg_task.env.merge_goal_pcl:
+                self.goal_pcl[env_ids] *= 0
         if self.cfg_task.env.compute_contact_gt:
             self.gt_extrinsic_contact[env_ids] *= 0
             self.contact_queue[env_ids] *= 0

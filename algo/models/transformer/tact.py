@@ -234,6 +234,7 @@ class MultiModalModel(BaseModel):
             include_pcl: Optional[bool] = False,
             additional_lin: Optional[int] = 0,
             only_bc: Optional[bool] = False,
+            pcl_channel: Optional[int] = 3,
             use_transformer: Optional[bool] = True,
     ) -> None:
         """
@@ -334,7 +335,7 @@ class MultiModalModel(BaseModel):
 
         if include_pcl:
             self.pcl_encoding_size = 256
-            self.pcl_encoder = PointNet(point_channel=3)
+            self.pcl_encoder = PointNet(point_channel=pcl_channel)
             self.compress_pcl_enc = nn.Linear(self.pcl_encoding_size, self.lin_encoding_size)
             num_features += 1
 

@@ -80,7 +80,15 @@ class Runner:
         out_size = self.cfg.model.transformer.output_size
         out_size = 6 if self.only_bc else out_size
         if self.cfg.model.model_type == 'tact':
+
             add_lin = self.cfg.model.tact.output_size if self.cfg.model.transformer.load_tact else 0
+
+            pcl_channel = 3
+            if self.task_cfg.task.env.merge_goal_pcl:
+                pcl_channel += 3
+            if self.task_cfg.task.env.merge_socket_pcl:
+                pcl_channel += 3
+
             self.model = MultiModalModel(context_size=self.sequence_length,
                                          num_channels=self.tactile_channel,
                                          num_lin_features=self.cfg.model.linear.input_size,
@@ -101,7 +109,7 @@ class Runner:
                                          include_lin=self.cfg.model.use_lin,
                                          include_pcl=self.cfg.model.use_pcl,
                                          include_tactile=self.cfg.model.use_tactile,
-                                         only_bc=self.only_bc)
+                                         only_bc=self.only_bc, pcl_channel=pcl_channel)
 
         elif self.cfg.model.model_type == 'simple':
             self.model = AdaptTConv(ft_dim=self.cfg.model.linear.input_size,
