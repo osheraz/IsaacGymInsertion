@@ -1644,7 +1644,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             # Cuz it's easier to shuffle here
             self.progress_buf[env_ids] = torch.randint(
                 low=0,
-                high=500 + 1,
+                high=self.cfg_task.rl.max_episode_length + 1,
                 size=(len(env_ids),),
                 device=self.device,
                 dtype=torch.long

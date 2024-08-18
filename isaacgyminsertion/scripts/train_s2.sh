@@ -2,8 +2,8 @@
 GPUS=${1:-0}
 SEED=${2:-42}
 CACHE=${3:-teacher}
-NUM_ENVS=${4:-10}
-HEADLESS=${5:-False}
+NUM_ENVS=${4:-256}
+HEADLESS=${5:-True}
 
 
 array=( $@ )
@@ -46,6 +46,3 @@ checkpoint="${model_to_load}" \
 offline_train.train.normalize_file="${path_norm}" \
 offline_train.train.student_ckpt_path="${student_ckpt_path}" \
 ${EXTRA_ARGS}
-
-#train.ppo.horizon_length=1024 \
-#train.ppo.mini_epochs=16 \

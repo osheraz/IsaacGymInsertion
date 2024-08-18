@@ -2,8 +2,8 @@
 GPUS=${1:-0}
 SEED=${2:-42}
 CACHE=${3:-teacher}
-NUM_ENVS=${4:-10}
-HEADLESS=${5:-False}
+NUM_ENVS=${4:-100}
+HEADLESS=${5:-True}
 
 
 array=( $@ )
@@ -20,7 +20,6 @@ path_norm=/${data_folder}/normalization.pkl
 CUDA_VISIBLE_DEVICES=${GPUS} \
 python train.py task=FactoryTaskInsertionTactile headless=${HEADLESS} seed=${SEED} \
 task.env.numEnvs=${NUM_ENVS} \
-multi_gpu=False \
 offline_train.from_offline=False \
 offline_train.only_bc=True \
 task.reset_at_success=True \
@@ -31,10 +30,14 @@ train.algo=ExtrinsicAdapt \
 train.ppo.priv_info=True \
 train.ppo.tactile_info=False \
 train.ppo.obs_info=True \
-train.ppo.img_info=True \
-train.ppo.seg_info=True \
+train.ppo.img_info=False \
+train.ppo.seg_info=False \
+train.ppo.pcl_info=True \
 task.env.tactile=False \
 task.external_cam.external_cam=True \
+task.external_cam.depth_cam=False \
+task.external_cam.seg_cam=True \
+task.external_cam.pcl_cam=True \
 task.data_logger.collect_data=False \
 offline_train.gpu_ids=["${GPUS}"] \
 offline_train.train.normalize_file="${path_norm}" \

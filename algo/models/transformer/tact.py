@@ -234,7 +234,7 @@ class MultiModalModel(BaseModel):
             include_pcl: Optional[bool] = False,
             additional_lin: Optional[int] = 0,
             only_bc: Optional[bool] = False,
-            pcl_channel: Optional[int] = 3,
+            pcl_conf: Optional[Dict] = None,
             use_transformer: Optional[bool] = True,
     ) -> None:
         """
@@ -334,8 +334,17 @@ class MultiModalModel(BaseModel):
             num_features += 1
 
         if include_pcl:
+
+            # {'num_sample_plug':  self.task_cfg.task.env.num_points,
+            #                         'num_sample_hole': self.task_cfg.task.env.num_points_socket,
+            #                         'num_sample_goal': self.task_cfg.task.env.num_points_goal,
+            #                         'merge_socket':  self.task_cfg.task.env.merge_socket_pcl,
+            #                         'merge_goal':  self.task_cfg.task.env.merge_goal_pcl,
+            #                         'relative': False
+            #                         }
+
             self.pcl_encoding_size = 256
-            self.pcl_encoder = PointNet(point_channel=pcl_channel)
+            self.pcl_encoder = PointNet(point_channel=3)
             self.compress_pcl_enc = nn.Linear(self.pcl_encoding_size, self.lin_encoding_size)
             num_features += 1
 

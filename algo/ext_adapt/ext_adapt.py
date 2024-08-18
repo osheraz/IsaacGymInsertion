@@ -231,12 +231,12 @@ class ExtrinsicAdapt(object):
         self.stud_obs_mean_std = RunningMeanStd(self.obs_stud_shape).to(self.device)
         self.stud_obs_mean_std.train()
 
-        pcl_channel = 3
+        self.pcl_channel = 3
         if self.task_config.env.merge_goal_pcl:
-            pcl_channel += 3
+            self.pcl_channel += 3
         if self.task_config.env.merge_socket_pcl:
-            pcl_channel += 3
-        self.pcl_mean_std = RunningMeanStd((pcl_channel,)).to(self.device)
+            self.pcl_channel += 3
+        self.pcl_mean_std = RunningMeanStd((3,)).to(self.device)
         self.pcl_mean_std.train()
 
         self.student = Student(student_cfg)
@@ -374,6 +374,11 @@ class ExtrinsicAdapt(object):
             # [B, T, N*3] to [B, T*N*3] to [B, T*N, 3]
             # num of each
             pcl = self.pcl_mean_std(pcl.reshape(-1, 3)).reshape((obs['pcl'].shape[0], -1, 3))
+
+            # if self.pcl_channel == 6:
+            #     NP = self.task_config.env.num_points
+            #     NS = self.task_config.env.num_points_socket
+            #     NG = self.task_config.env.num_points_goal
 
         if student_obs is not None:
             if self.stats is not None and self.train_config.from_offline:
@@ -531,7 +536,7 @@ class ExtrinsicAdapt(object):
             self.storage.update_data('student_actions', n, student_actions)
 
             # do env step
-            if self.agent_steps < 1e3:
+            if self.agent_steps < 1e6:
                 actions = torch.clamp(res_dict['actions'], -1.0, 1.0)
             else:
                 actions = torch.clamp(student_actions, -1.0, 1.0)
@@ -839,7 +844,7 @@ class ExtrinsicAdapt(object):
             if self.agent_steps >= self.next_test_step and self.task_config.reset_at_success:
                 cprint(f'Disabling resets and evaluating', 'blue', attrs=['bold'])
                 self.task_config.reset_at_success = False
-                self.test(total_steps=500)
+                self.test(total_steps=self.env.cfg_task.rl.max_episode_length)
                 self.task_config.reset_at_success = True
                 self.set_student_train()
                 cprint(f'Resume training', 'blue', attrs=['bold'])

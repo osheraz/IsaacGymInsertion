@@ -40,6 +40,7 @@ import hydra
 import numpy as np
 import os
 import torch
+from tqdm import tqdm
 
 from isaacgym import gymapi
 from isaacgyminsertion.tasks.factory_tactile.factory_base import FactoryBaseTactile
@@ -512,7 +513,7 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
         camera_props.width = width
         camera_props.height = height
         camera_props.enable_tensors = True
-        hfov = 70 + 0 * random.randint(-3, 3)
+        hfov = 70 + random.randint(-3, 3)
         if hfov is not None:
             camera_props.horizontal_fov = hfov
         camera_handle = self.gym.create_camera_sensor(self.envs[env_idx], camera_props)
@@ -537,10 +538,10 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
         for subassembly in self.cfg_env.env.desired_subassemblies:
             self._initialize_grasp_poses(subassembly)
 
-    def _initialize_grasp_poses(self, subassembly, with_noise=True):
+    def _initialize_grasp_poses(self, subassembly, pre_noise=True, add_noise=True):
 
         try:
-            sf = subassembly + '_noise' if with_noise else subassembly
+            sf = subassembly + '_noise' if pre_noise else subassembly
             self.initial_grasp_poses[subassembly] = np.load(f'initial_grasp_data/{sf}.npz')
         except:
             print('Failed to load initial grasp data for, ', subassembly)
@@ -553,14 +554,18 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
         self.init_plug_quat[subassembly] = torch.zeros((self.total_init_poses[subassembly], 4))
         self.init_dof_pos[subassembly] = torch.zeros((self.total_init_poses[subassembly], 15))
 
-        socket_pos = self.initial_grasp_poses[subassembly]['socket_pos']
+        if add_noise:
+            socket_pos = self.add_socket_noise(self.initial_grasp_poses[subassembly]['socket_pos'])
+        else:
+            socket_pos = self.initial_grasp_poses[subassembly]['socket_pos']
+
         socket_quat = self.initial_grasp_poses[subassembly]['socket_quat']
         plug_pos = self.initial_grasp_poses[subassembly]['plug_pos']
         plug_quat = self.initial_grasp_poses[subassembly]['plug_quat']
         dof_pos = self.initial_grasp_poses[subassembly]['dof_pos']
 
         self.env_to_grasp = torch.zeros((self.num_envs,)).to(dtype=torch.int32)
-        from tqdm import tqdm
+
         print("Loading Grasping poses for:", subassembly)
         for i in tqdm(range(self.total_init_poses[subassembly])):
             self.init_socket_pos[subassembly][i] = torch.from_numpy(socket_pos[i])
@@ -568,6 +573,35 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
             self.init_plug_pos[subassembly][i] = torch.from_numpy(plug_pos[i])
             self.init_plug_quat[subassembly][i] = torch.from_numpy(plug_quat[i])
             self.init_dof_pos[subassembly][i] = torch.from_numpy(dof_pos[i])
+
+    def add_socket_noise(self, socket_pos):
+        num_positions = len(socket_pos)
+
+        # Randomize socket pos
+        socket_noise_xy = 2 * (np.random.rand(num_positions, 2) - 0.5)
+        noise_scale = np.diag(self.cfg['randomize']['socket_pos_xy_noise'])
+        socket_noise_xy = socket_noise_xy @ noise_scale
+
+        socket_noise_z_mag = (
+                self.cfg['randomize']['socket_pos_z_noise_bounds'][1]
+                - self.cfg['randomize']['socket_pos_z_noise_bounds'][0]
+        )
+        socket_noise_z = (
+                socket_noise_z_mag * np.random.rand(num_positions)
+                + self.cfg['randomize']['socket_pos_z_noise_bounds'][0]
+        )
+
+        socket_pos[:, 0] = (
+                self.cfg['randomize']['socket_pos_xy_initial'][0]
+                + socket_noise_xy[:, 0]
+        )
+        socket_pos[:, 1] = (
+                self.cfg['randomize']['socket_pos_xy_initial'][1]
+                + socket_noise_xy[:, 1]
+        )
+        socket_pos[:, 2] = self.cfg_base.env.table_height + socket_noise_z
+
+        return socket_pos
 
     def _import_env_assets(self):
         """Set plug and socket asset options. Import assets."""
@@ -892,9 +926,7 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
                                                          perturbed_rotation[1],
                                                          perturbed_rotation[2]))
 
-
             if subassembly not in self.all_rendering_camera:
-
                 self.camera_props_viz = gymapi.CameraProperties()
                 self.camera_props_viz.width = 1280
                 self.camera_props_viz.height = 720
