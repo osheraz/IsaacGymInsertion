@@ -17,7 +17,7 @@ def masks_to_bool(masks):
 
 class SegCameraSubscriber:
 
-    def __init__(self, topic='/zedm/zed_node/rgb/image_rect_color', display=False, device='cuda:0'):
+    def __init__(self, with_socket=False, topic='/zedm/zed_node/rgb/image_rect_color', display=False, device='cuda:0'):
         """
         """
         self.last_frame = None
@@ -37,6 +37,7 @@ class SegCameraSubscriber:
         self.socket_min_dims = {"width": 0, "height": 0}
 
         self.min_dims = {"width": 10, "height": 15}
+        self.with_socket = with_socket
 
         self.got_socket_mask = False
         self.points_to_exclude = [(0, 0)]  # [(147, 156), (147, 156)]
@@ -192,15 +193,19 @@ class SegCameraSubscriber:
 
             ann = prompt_process.box_prompt(bbox=biggest)[0]
             self.plug_mask = (masks_to_bool(ann)).astype(int) * self.plug_id
-            self.last_frame = self.plug_mask | self.socket_mask
+            self.last_frame = self.plug_mask | self.socket_mask if self.with_socket else self.plug_mask
 
         except:
             # print('failed to find the object')
             pass
 
         # if True:
-        #     both_mask = ((self.last_frame == self.plug_id) | (self.last_frame == self.socket_id)).astype(float)
-        #     self.mask_3d = numpy.repeat(both_mask[:, :, numpy.newaxis], 3, axis=2)
+        #     if self.with_socket:
+        #         mask = ((self.last_frame == self.plug_id) | (self.last_frame == self.socket_id)).astype(float)
+        #     else:
+        #         mask = (self.last_frame == self.plug_id).astype(float)
+        #
+        #     self.mask_3d = numpy.repeat(mask[:, :, numpy.newaxis], 3, axis=2)
         #     seg_show = self.mask_3d
         #     # seg_show = cv2.normalize(seg_show, None, 0, 255, cv2.NORM_MINMAX)
         #     # seg_show = seg_show.astype(np.uint8)

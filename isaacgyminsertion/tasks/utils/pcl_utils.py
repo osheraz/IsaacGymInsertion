@@ -3,6 +3,28 @@ from isaacgym import gymapi
 from isaacgym import gymtorch
 import numpy as np
 
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+
+
+def plot_point_cloud(points):
+    """ Visualize 3D point cloud using Matplotlib """
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
+
+    # Extract x, y, z coordinates from the points
+    x = points[::10, 0]
+    y = points[::10, 1]
+    z = points[::10, 2]
+
+    # Plot the points
+    ax.scatter(x, y, z, c=z, cmap='viridis', marker='.')
+    ax.set_xlabel('X')
+    ax.set_ylabel('Y')
+    ax.set_zlabel('Z')
+    plt.show()
+
+
 class PointCloudGenerator:
     def __init__(self, proj_matrix, view_matrix, env_to_global, camera_props=None,
                  height=None, width=None, sample_num=None,
@@ -10,12 +32,15 @@ class PointCloudGenerator:
         self.cam_width = camera_props.width if camera_props is not None else width
         self.cam_height = camera_props.height if camera_props is not None else height
         self.env_to_global = env_to_global
+
         fu = 2 / proj_matrix[0, 0]
         fv = 2 / proj_matrix[1, 1]
+
         self.fu = self.cam_width / fu
         self.fv = self.cam_height / fv
         self.cu = self.cam_width / 2.
         self.cv = self.cam_height / 2.
+
         self.int_mat = torch.Tensor(
             [[-self.fu, 0, self.cu],
              [0, self.fv, self.cv],
@@ -47,6 +72,9 @@ class PointCloudGenerator:
         uv_one_in_cam = self._uv_one_in_cam[valid_ids]
 
         pts_in_cam = torch.mul(uv_one_in_cam, valid_depth.unsqueeze(-1))
+
+        # plot_point_cloud(pts_in_cam.cpu().detach().numpy())
+
         pts_in_cam = torch.cat((pts_in_cam,
                                 torch.ones(*pts_in_cam.shape[:-1], 1,
                                            device=pts_in_cam.device)),
@@ -57,6 +85,8 @@ class PointCloudGenerator:
         pts_in_world = torch.matmul(pts_in_world, env_to_global.T)
 
         pcd_pts = pts_in_world[..., :3]
+        # plot_point_cloud(pcd_pts.cpu().detach().numpy())
+
         return pcd_pts
 
     @torch.no_grad()
@@ -71,7 +101,7 @@ class CameraPointCloud:
     def __init__(self, isc_sim, isc_gym, envs, camera_handles, camera_trans,
                  camera_props, sample_num=4000,
                  filter_func=None, pt_in_local=False,
-                 depth_max=None, graphics_device='cpu',
+                 depth_max=0.4, graphics_device='cpu',
                  compute_device='cpu'):
 
         self.sim = isc_sim

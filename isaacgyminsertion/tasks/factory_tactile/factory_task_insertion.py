@@ -953,7 +953,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                     if self.cfg_task.env.merge_socket_pcl:
                         socket_depth = depth.flatten(start_dim=1) * (seg.flatten(start_dim=1) == 3)
                 else:
-                    NotImplementedError
+                    plug_depth = depth.flatten(start_dim=1)
 
                 plug_pts = self.pcl_generator.get_point_cloud(
                     depths=plug_depth.reshape(self.num_envs, self.res[1], self.res[0]),

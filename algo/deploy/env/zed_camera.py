@@ -18,16 +18,16 @@ class ZedCameraSubscriber:
         self.h = 180 # 180
         self.cam_type = 'd'
         self.far_clip = 0.4
-        self.near_clip = 0.0
+        self.near_clip = 0.1
         self.dis_noise = 0.00
         self.display = display
         self.zed_init = False
         self.init_success = False
         self.with_seg = with_seg
-
+        self.with_socket = False
         if with_seg:
             from algo.deploy.env.seg_camera import SegCameraSubscriber
-            self.seg = SegCameraSubscriber()
+            self.seg = SegCameraSubscriber(with_socket=self.with_socket)
             self.socket_id = self.seg.socket_id
             self.plug_id = self.seg.plug_id
             self.distinct = True
@@ -80,7 +80,10 @@ class ZedCameraSubscriber:
             try:
                 if self.with_seg:
                     seg = self.seg.get_frame()
-                    mask = ((seg == self.plug_id) | (seg == self.socket_id)).astype(float)
+                    if self.with_socket:
+                        mask = ((seg == self.plug_id) | (seg == self.socket_id)).astype(float)
+                    else:
+                        mask = (seg == self.plug_id).astype(float)
 
                     frame = proc_frame * numpy.expand_dims(mask, axis=0)
                     self.last_frame = frame
@@ -88,10 +91,10 @@ class ZedCameraSubscriber:
             except Exception as e:
                 pass
 
-            # cv2.imshow("Depth Image", proc_frame.transpose(1, 2, 0))
-            #
-            # cv2.imshow("Test Depth Image", self.last_frame.transpose(1, 2, 0))
-            # key = cv2.waitKey(1)
+            cv2.imshow("Depth Image", proc_frame.transpose(1, 2, 0))
+
+            cv2.imshow("Test Depth Image", self.last_frame.transpose(1, 2, 0))
+            key = cv2.waitKey(1)
 
     def get_frame(self):
 
