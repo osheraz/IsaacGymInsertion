@@ -6,7 +6,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from algo.deploy.env.env_utils.deploy_utils import image_msg_to_numpy
 from sensor_msgs.msg import Image
-
+from pytorch3d import ops
 np.set_printoptions(suppress=True, formatter={'float_kind': '{: .3f}'.format})
 import torch
 import cv2
@@ -37,10 +37,16 @@ class PointCloudGenerator:
                  depth_max=None, device='cpu'):
 
         # Initialize the view_matrix in torch tensor
+        # from world space (robot) to camera space
         view_matrix = torch.tensor([[-0.0163, -0.4122, 0.9109, 0.],
                                     [0.9999, -0.0067, 0.0149, 0.],
                                     [0., 0.9111, 0.4123, 0.],
                                     [0.0065, 0.1445, -0.7189, 1.]], dtype=torch.float32).to(device)
+
+        # array([[ 0.    , -0.3961,  0.9182,  0.    ],
+        #        [ 1.    ,  0.    , -0.    ,  0.    ],
+        #        [-0.    ,  0.9182,  0.3961,  0.    ],
+        #        [-0.    ,  0.1383, -0.7245,  1.    ]], dtype=float32)
 
         if camera_info_topic is not None:
             camera_info = rospy.wait_for_message(camera_info_topic, CameraInfo)
@@ -283,7 +289,8 @@ class ZedPointCloudSubscriber:
         valid = valid1 & valid3 & valid2
         points = points[valid]
 
-        points = points[::10, :]
+        points = ops.sample_farthest_points(points, torch.tensor(valid, dtype=torch.int), K=512)[0]
+        # points = points[::10, :]
 
         return points
 
