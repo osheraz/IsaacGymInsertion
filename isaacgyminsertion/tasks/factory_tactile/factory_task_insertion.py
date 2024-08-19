@@ -950,7 +950,8 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             if self.pcl_cam:
                 if self.seg_cam:
                     plug_depth = depth.flatten(start_dim=1) * (seg.flatten(start_dim=1) == 2)
-                    if self.cfg_task.env.merge_socket_pcl:
+
+                    if self.cfg_task.env.merge_socket_pcl or self.cfg_task.env.relative_pcl:
                         socket_depth = depth.flatten(start_dim=1) * (seg.flatten(start_dim=1) == 3)
                 else:
                     plug_depth = depth.flatten(start_dim=1)
@@ -961,17 +962,27 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
                 self.pcl = plug_pts.flatten(start_dim=1)
 
-                if self.cfg_task.env.merge_socket_pcl:
+                if self.cfg_task.env.merge_socket_pcl or self.cfg_task.env.relative_pcl:
 
                     socket_pts = self.pcl_generator.get_point_cloud(
                         depths=socket_depth.reshape(self.num_envs, self.res[1], self.res[0]),
                         filter_func=filter_pts, sample_num=self.cfg_task.env.num_points_socket).to(self.device)
 
-                    self.pcl = torch.cat([plug_pts, socket_pts], dim=1).flatten(start_dim=1)
+                    if self.cfg_task.env.relative_pcl:
+                        socket_mean = socket_pts.mean(dim=1, keepdim=True) # TODO noise?
+                        plug_pts -= socket_mean
+                        socket_pts -= socket_mean
+
+                    if self.cfg_task.env.merge_socket_pcl:
+                        self.pcl = torch.cat([plug_pts, socket_pts], dim=1).flatten(start_dim=1)
+                    else:
+                        self.pcl = plug_pts.flatten(start_dim=1)
+
                 else:
                     socket_pts = None
 
                 if self.cfg_task.env.merge_goal_pcl:
+
                     for k, v in self.subassembly_extrinsic_contact.items():
                         self.goal_pcl[self.subassembly_to_env_ids[k], ...] = v.get_goal_pcl(
                             socket_pos=self.socket_pos[self.subassembly_to_env_ids[k], ...].clone(),
