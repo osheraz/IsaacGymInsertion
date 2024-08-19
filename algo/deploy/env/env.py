@@ -6,6 +6,7 @@ from algo.deploy.env.openhand_env import OpenhandEnv
 from algo.deploy.env.robots import RobotWithFtEnv
 from algo.deploy.env.apriltag_tracker import Tracker
 from algo.deploy.env.zed_camera import ZedCameraSubscriber
+from algo.deploy.env.pcl_camera import ZedPointCloudSubscriber
 
 from std_msgs.msg import Bool
 import geometry_msgs.msg
@@ -17,14 +18,17 @@ class ExperimentEnv:
     """ Superclass for all Robots environments.
     """
 
-    def __init__(self, with_arm=True, with_hand=True, with_tactile=True, with_ext_cam=True, with_zed=False):
+    def __init__(self, with_arm=True, with_hand=True, with_tactile=True,
+                 with_ext_cam=False, with_depth=False, with_pcl=False):
+
         rospy.logwarn('Setting up the environment')
 
-        self.with_zed = with_zed
+        self.with_depth = with_depth
         self.with_hand = with_hand
         self.with_arm = with_arm
         self.with_tactile = with_tactile
         self.with_ext_cam = with_ext_cam
+        self.with_pcl = with_pcl
 
         self.ready = True  # Start with the assumption that everything will be initialized correctly
 
@@ -46,9 +50,13 @@ class ExperimentEnv:
             self.tracker.set_object_id(6)
             self.ready = self.ready and self.tracker.init_success
 
-        if with_zed:
+        if with_depth:
             self.zed = ZedCameraSubscriber()
             self.ready = self.ready and self.zed.init_success
+
+        if with_pcl:
+            self.pcl_gen = ZedPointCloudSubscriber()
+            self.ready = self.ready and self.pcl_gen.zed_init
 
         rospy.sleep(2)
 
@@ -76,10 +84,14 @@ class ExperimentEnv:
             left, right, bottom = self.tactile.get_frames()
             obs['frames'] = (left, right, bottom)
 
-        if self.with_zed:
+        if self.with_depth:
             img, seg = self.zed.get_frame()
             obs['img'] = img
             obs['seg'] = seg
+
+        if self.with_pcl:
+            pcl = self.pcl_gen.get_pcl()
+            obs['pcl'] = pcl
 
         return obs
 

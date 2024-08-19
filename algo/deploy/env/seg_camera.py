@@ -47,7 +47,7 @@ class SegCameraSubscriber:
         rospy.loginfo("(topic_name) Subscribing to Images to topic  %s", self._topic_name)
         self.model = FastSAM('/home/roblab20/osher3_workspace/src/isaacgym/python/'
                              'IsaacGymInsertion/isaacgyminsertion/outputs/weights/FastSAM-x.pt')
-        self._image_subscriber = rospy.Subscriber(self._topic_name, Image, self.image_callback, queue_size=2)
+        self._image_subscriber = rospy.Subscriber(self._topic_name, Image, self.image_callback, queue_size=1)
         self._check_camera_ready()
 
     def _check_camera_ready(self):
@@ -205,17 +205,42 @@ class SegCameraSubscriber:
         #     else:
         #         mask = (self.last_frame == self.plug_id).astype(float)
         #
+        #     mask = self.shrink_mask(mask)
         #     self.mask_3d = numpy.repeat(mask[:, :, numpy.newaxis], 3, axis=2)
-        #     seg_show = self.mask_3d
+        #     seg_show = (self.mask_3d * frame).astype(np.uint8)
         #     # seg_show = cv2.normalize(seg_show, None, 0, 255, cv2.NORM_MINMAX)
         #     # seg_show = seg_show.astype(np.uint8)
         #     cv2.imshow("Mask Image", seg_show)
         #     cv2.imshow("Raw Image", frame)
         #     cv2.waitKey(1)
 
+    def shrink_mask(self, mask, shrink_percentage=10):
+        """
+        Shrink the object in the mask by a certain percentage of its area.
+
+        :param mask: Binary mask image (object = 255, background = 0)
+        :param shrink_percentage: Percentage to shrink the object
+        :return: Shrunk mask
+        """
+        # Calculate the original area of the object
+        original_area = np.sum(mask > 0)
+
+        # Calculate the target area after shrinkage
+        target_area = original_area * (1 - shrink_percentage / 100.0)
+
+        # Create a structuring element (kernel) for erosion
+        kernel = np.ones((3, 3), np.uint8)  # Small 3x3 kernel
+
+        # Iteratively erode the mask until the target area is reached
+        shrunk_mask = mask.copy()
+        while np.sum(shrunk_mask > 0) > target_area:
+            shrunk_mask = cv2.erode(shrunk_mask, kernel, iterations=1)
+
+        return shrunk_mask
+
     def get_frame(self):
         # rospy.wait_for_message('/zedm/zed_node/rgb/image_rect_color')
-        return self.last_frame
+        return self.last_frame if not isinstance(self.last_frame, Image) else None
 
 
 if __name__ == "__main__":

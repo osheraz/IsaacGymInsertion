@@ -79,17 +79,21 @@ class ZedCameraSubscriber:
 
             try:
                 if self.with_seg:
-                    seg = self.seg.get_frame()
-                    if self.with_socket:
-                        mask = ((seg == self.plug_id) | (seg == self.socket_id)).astype(float)
-                    else:
-                        mask = (seg == self.plug_id).astype(float)
 
-                    frame = proc_frame * numpy.expand_dims(mask, axis=0)
+                    seg = self.seg.get_frame()
+                    if seg is not None:
+                        if self.with_socket:
+                            mask = ((seg == self.plug_id) | (seg == self.socket_id)).astype(float)
+                        else:
+                            mask = (seg == self.plug_id).astype(float)
+
+                        frame = proc_frame * numpy.expand_dims(mask, axis=0)
+                        self.seg_frame = seg if self.distinct else mask
+
                     self.last_frame = frame
-                    self.seg_frame = seg if self.distinct else mask
+
             except Exception as e:
-                pass
+                print(e)
 
             cv2.imshow("Depth Image", proc_frame.transpose(1, 2, 0))
 

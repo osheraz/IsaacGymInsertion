@@ -1,15 +1,63 @@
 import rospy
-from sensor_msgs.msg import PointCloud2
-import sensor_msgs.point_cloud2 as pc2
-from sensor_msgs.msg import CameraInfo
+from sensor_msgs.msg import PointCloud2, CameraInfo, Image
 import numpy as np
 import matplotlib.pyplot as plt
 from algo.deploy.env.env_utils.deploy_utils import image_msg_to_numpy
-from sensor_msgs.msg import Image
-from pytorch3d import ops
+
 np.set_printoptions(suppress=True, formatter={'float_kind': '{: .3f}'.format})
 import torch
 import cv2
+from sklearn.neighbors import NearestNeighbors
+import sensor_msgs.point_cloud2 as pc2
+from sensor_msgs.msg import PointCloud2, PointField
+from std_msgs.msg import Header
+import numpy as np
+
+
+class PointCloudPublisher:
+    def __init__(self):
+        self.pcl_pub = rospy.Publisher('/pointcloud', PointCloud2, queue_size=10)
+
+    def publish_pointcloud(self, points):
+        """
+        Publish the point cloud to a ROS topic.
+
+        :param points: numpy array of shape [N, 3] representing the point cloud
+        """
+        header = Header()
+        header.stamp = rospy.Time.now()
+        header.frame_id = 'odom'  # Set the frame according to your setup
+
+        # Define the PointCloud2 fields (x, y, z)
+        fields = [
+            PointField('x', 0, PointField.FLOAT32, 1),
+            PointField('y', 4, PointField.FLOAT32, 1),
+            PointField('z', 8, PointField.FLOAT32, 1)
+        ]
+
+        # Convert the numpy array to PointCloud2 format
+        cloud_msg = pc2.create_cloud(header, fields, points)
+
+        # Publish the point cloud message
+        self.pcl_pub.publish(cloud_msg)
+
+
+def remove_statistical_outliers(points, k=20, z_thresh=2.0):
+    # Find the k-nearest neighbors for each point
+    nbrs = NearestNeighbors(n_neighbors=k + 1).fit(points)  # k+1 because the point itself is included
+    distances, _ = nbrs.kneighbors(points)
+
+    # Remove the point itself from distance calculation (the first column)
+    mean_distances = np.mean(distances[:, 1:], axis=1)
+
+    # Calculate mean and standard deviation of distances
+    mean = np.mean(mean_distances)
+    std = np.std(mean_distances)
+
+    # Keep points that are within the z_thresh standard deviations
+    inliers = np.where(np.abs(mean_distances - mean) < z_thresh * std)[0]
+
+    return points[inliers]
 
 
 def plot_point_cloud(points):
@@ -34,7 +82,7 @@ class PointCloudGenerator:
     def __init__(self, view_matrix=None,
                  camera_info_topic='/zedm/zed_node/depth/camera_info',
                  height=None, width=None, sample_num=None, proj_matrix=None,
-                 depth_max=None, device='cpu'):
+                 depth_max=None, input_type='pcl', device='cpu'):
 
         # Initialize the view_matrix in torch tensor
         # from world space (robot) to camera space
@@ -42,6 +90,11 @@ class PointCloudGenerator:
                                     [0.9999, -0.0067, 0.0149, 0.],
                                     [0., 0.9111, 0.4123, 0.],
                                     [0.0065, 0.1445, -0.7189, 1.]], dtype=torch.float32).to(device)
+
+        view_matrix = torch.tensor([[-0., -0.3961, 0.9182, 0.],
+                                    [1, -0., 0.0, 0.],
+                                    [0., 0.9182, 0.3961, 0.],
+                                    [0.0, 0.1383, -0.7245, 1.]], dtype=torch.float32).to(device)
 
         # array([[ 0.    , -0.3961,  0.9182,  0.    ],
         #        [ 1.    ,  0.    , -0.    ,  0.    ],
@@ -93,7 +146,7 @@ class PointCloudGenerator:
         self.sample_num = sample_num
         self.device = device
 
-        self.input_type = 'depth'
+        self.input_type = input_type
 
     def convert(self, points):
         # Process depth buffer
@@ -123,6 +176,8 @@ class PointCloudGenerator:
         # # Apply the rotation to convert to Y-up coordinate system
         # pts_in_cam = torch.matmul(pts_in_cam[:, :3], R_flip_y_up.T)
 
+        # plot_point_cloud(pts_in_cam.cpu().detach().numpy())
+
         pts_in_cam = torch.cat((pts_in_cam,
                                 torch.ones(*pts_in_cam.shape[:-1], 1,
                                            device=pts_in_cam.device)),
@@ -131,53 +186,71 @@ class PointCloudGenerator:
         pts_in_world = torch.matmul(pts_in_cam, self.ext_mat)
 
         pcd_pts = pts_in_world[:, :3]
+        # plot_point_cloud(pcd_pts.cpu().detach().numpy())
 
         return pcd_pts.cpu().detach().numpy()
 
 
 class ZedPointCloudSubscriber:
 
-    def __init__(self, topic='/zedm/zed_node/point_cloud/cloud_registered', with_seg=True, display=False):
+    def __init__(self, topic='/zedm/zed_node/point_cloud/cloud_registered', display=False):
+
         self.far_clip = 0.4
         self.near_clip = 0.1
         self.dis_noise = 0.00
         self.w = 320  # 320
         self.h = 180  # 180
         self.display = display
-        self.with_seg = with_seg
+
+        self.with_seg = True
         self.pointcloud_init = False
         self.init_success = False
-        with_depth = True
-        self.last_cloud = None
-        self.pcl_gen = PointCloudGenerator()
-        self.fig = plt.figure()
-        self.ax = self.fig.add_subplot(111, projection='3d')
 
-        if with_seg:
+        self.use_depth = True
+        self.use_pcl = not self.use_depth
+
+        input_type = 'depth' if self.use_depth else 'pcl'
+        self.last_cloud = None
+        self.pcl_gen = PointCloudGenerator(input_type=input_type)
+
+        self.first = True
+
+        if self.with_seg:
             from algo.deploy.env.seg_camera import SegCameraSubscriber
             self.seg = SegCameraSubscriber(with_socket=False)
             self._check_seg_ready()
 
-        if with_depth:
+        if self.use_depth:
             self._image_subscriber = rospy.Subscriber('/zedm/zed_node/depth/depth_registered', Image,
                                                       self.image_callback, queue_size=2)
             self._check_camera_ready()
 
-        self._topic_name = rospy.get_param('~topic_name', '{}'.format(topic))
-
-        self.use_pcl = False
         if self.use_pcl:
+            self._topic_name = rospy.get_param('~topic_name', '{}'.format(topic))
             rospy.loginfo("(topic_name) Subscribing to PointCloud2 topic %s", self._topic_name)
             self._pointcloud_subscriber = rospy.Subscriber(self._topic_name, PointCloud2, self.pointcloud_callback,
                                                            queue_size=2)
             self._check_pointcloud_ready()
 
     def update_plot(self):
+
         if self.last_cloud is not None:
+
+            if self.first:
+                self.fig = plt.figure()
+                self.ax = self.fig.add_subplot(111, projection='3d')
+                self.first = False
+
             self.ax.scatter(self.last_cloud[:, 0],
                             self.last_cloud[:, 1],
                             self.last_cloud[:, 2], 'ro')
 
+            self.ax.set_xlim([0.35, 0.6])
+            self.ax.set_ylim([-0.1, 0.1])
+            self.ax.set_zlim([0., 0.1])
+            self.ax.set_xlabel('X')
+            self.ax.set_ylabel('Y')
+            self.ax.set_zlabel('Z')
             plt.pause(0.0001)
             plt.cla()
 
@@ -185,26 +258,27 @@ class ZedPointCloudSubscriber:
 
         try:
             frame = image_msg_to_numpy(msg)
+            frame = cv2.resize(frame, (self.w, self.h), interpolation=cv2.INTER_AREA)
 
         except Exception as e:
             print(e)
         else:
             if self.with_seg:
-                try:
-                    seg = self.seg.get_frame()
-                except Exception as e:
-                    print(e)
+                seg = self.seg.get_frame()
+                # seg = cv2.resize(seg, (640, 360), interpolation=cv2.INTER_NEAREST)
+                if seg is not None:
+                    mask = (seg == self.seg.plug_id).astype(float)
+                    frame *= mask
 
-                seg = cv2.resize(seg, (640, 360), interpolation=cv2.INTER_NEAREST)
-                mask = (seg == self.seg.plug_id).astype(float)
-                frame *= mask
+            try:
+                cloud_points = self.pcl_gen.convert(frame)
+                proc_cloud = self.process_pointcloud(cloud_points)
+                proc_cloud = remove_statistical_outliers(proc_cloud)
+                proc_cloud = self.sample_n(proc_cloud, num_sample=400)
 
-            cloud_points = self.pcl_gen.convert(frame)
-
-            proc_cloud = self.process_pointcloud(cloud_points)
-            proc_cloud = self.sample_n(proc_cloud, num_sample=400)
-
-            self.last_cloud = proc_cloud
+                self.last_cloud = proc_cloud
+            except Exception as e:
+                print(e)
 
     def _check_camera_ready(self):
 
@@ -289,17 +363,41 @@ class ZedPointCloudSubscriber:
         valid = valid1 & valid3 & valid2
         points = points[valid]
 
-        points = ops.sample_farthest_points(points, torch.tensor(valid, dtype=torch.int), K=512)[0]
-        # points = points[::10, :]
+        # points = ops.sample_farthest_points(points, torch.tensor(valid, dtype=torch.int), K=512)[0]
+        points = self.voxel_grid_sampling(points)
 
         return points
+
+    def voxel_grid_sampling(self, points, voxel_size=0.001):
+        # voxel_size is a tuple (voxel_size_x, voxel_size_y, voxel_size_z)
+        voxel_size_x = voxel_size
+        voxel_size_y = voxel_size
+        voxel_size_z = voxel_size
+
+        # Floor the points into voxel bins with different sizes for x, y, and z
+        voxel_grid = np.floor(points / np.array([voxel_size_x, voxel_size_y, voxel_size_z])).astype(int)
+
+        # Use np.unique to find unique voxels and get indices
+        unique_voxels, indices = np.unique(voxel_grid, axis=0, return_index=True)
+
+        # Select the first point in each voxel
+        sampled_points = points[indices]
+
+        return sampled_points
+
+    def get_pcl(self):
+
+        return self.last_cloud
 
 
 if __name__ == "__main__":
     rospy.init_node('ZedPointCloud')
     pointcloud_sub = ZedPointCloudSubscriber()
+    pointcloud_pub = PointCloudPublisher()
     rate = rospy.Rate(60)
 
     while not rospy.is_shutdown():
-        pointcloud_sub.update_plot()
+        if pointcloud_sub.last_cloud is not None:
+            pointcloud_pub.publish_pointcloud(pointcloud_sub.last_cloud)
+
         rate.sleep()
