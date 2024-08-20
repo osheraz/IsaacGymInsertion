@@ -50,8 +50,8 @@ tactile: # Pulling from task
 env:
     numEnvs: ${resolve_default:128,${...num_envs}}
     numObservations: 18 #
-    numObsStudent: 18 #
-    numStates: 25 # 27
+    numObsStudent: 15 #
+    numStates: 28 # 27
     numActions: 6 # [position, ori]
     numTargets: 6 # [position, ori]
     action_latency_max: 15
