@@ -84,31 +84,35 @@ class DepthImageProcessor:
 
 class PointCloudAugmentations:
     def __init__(self,
-                 num_points=400, sigma=0.001, noise_clip=0.005,
-                 rotate_range=(-10, 10), scale_range=(0.8, 1.2),
-                 symmetry_axes=(True, False, False), drop_prob=0.2,
-                 scale_pos=0.5):
+                 num_points=400, sigma=0.005, noise_clip=0.003, rotate_range=(-10, 10), scale_range=(0.8, 1.2)):
         self.num_points = num_points  # Fixed number of points
         self.sigma = sigma            # Noise standard deviation
         self.noise_clip = noise_clip  # Clipping value for noise
         self.rotate_range = rotate_range  # Rotation range in degrees
         self.scale_range = scale_range    # Scaling range
-        self.symmetry_axes = symmetry_axes # Symmetry axes
-        self.drop_prob = drop_prob        # Dropout probability for features
-        self.scale_pos = scale_pos        # Scaling factor for position
 
-    def random_noise(self, pointcloud_batch):
-        """Add Gaussian noise to the entire batch of point clouds."""
+    def random_noise(self, pointcloud_batch, noise_prob=0.3):
+        """
+        Add Gaussian noise to a subset of the points in the batch of point clouds.
+
+        :param pointcloud_batch: Tensor of shape [B, N, 3]
+        :param noise_prob: Probability of applying noise to each point (default is 50%).
+        :return: Point cloud batch with noise applied selectively.
+        """
+        B, N, _ = pointcloud_batch.shape
         noise = torch.randn(pointcloud_batch.size(), device=pointcloud_batch.device) * self.sigma
         noise = torch.clamp(noise, -self.noise_clip, self.noise_clip)
-        return pointcloud_batch + noise
+
+        noise_mask = torch.rand(B, N, device=pointcloud_batch.device) < noise_prob
+        noise_mask = noise_mask.unsqueeze(-1).expand_as(pointcloud_batch)
+
+        pointcloud_batch = pointcloud_batch + noise * noise_mask.float()
+
+        return pointcloud_batch
 
     def random_rotate(self, pointcloud_batch):
-        """Rotate the entire batch of point clouds randomly around a randomly chosen axis (X, Y, or Z)."""
+        """Rotate the entire batch of point clouds randomly around the X-axis."""
         B, N, _ = pointcloud_batch.shape
-
-        # Randomly select axis for each point cloud in the batch
-        axes = torch.randint(0, 3, (B,), device=pointcloud_batch.device)
 
         # Generate random rotation angles for each point cloud
         angles = torch.FloatTensor(B).uniform_(*self.rotate_range).to(pointcloud_batch.device)
@@ -117,35 +121,18 @@ class PointCloudAugmentations:
         cos_vals = torch.cos(angles_rad)
         sin_vals = torch.sin(angles_rad)
 
-        # Initialize identity matrices for each batch
+        # Initialize identity matrices (B, 3, 3)
         rotation_matrices = torch.eye(3, device=pointcloud_batch.device).unsqueeze(0).repeat(B, 1, 1)
 
-        # X-axis rotation
-        mask_x = axes == 0
-        if mask_x.any():
-            rotation_matrices[mask_x, 1, 1] = cos_vals[mask_x]
-            rotation_matrices[mask_x, 1, 2] = -sin_vals[mask_x]
-            rotation_matrices[mask_x, 2, 1] = sin_vals[mask_x]
-            rotation_matrices[mask_x, 2, 2] = cos_vals[mask_x]
+        # X-axis rotation (fixed axis for all point clouds)
+        rotation_matrices[:, 1, 1] = cos_vals
+        rotation_matrices[:, 1, 2] = -sin_vals
+        rotation_matrices[:, 2, 1] = sin_vals
+        rotation_matrices[:, 2, 2] = cos_vals
 
-        # Y-axis rotation
-        mask_y = axes == 1
-        if mask_y.any():
-            rotation_matrices[mask_y, 0, 0] = cos_vals[mask_y]
-            rotation_matrices[mask_y, 0, 2] = sin_vals[mask_y]
-            rotation_matrices[mask_y, 2, 0] = -sin_vals[mask_y]
-            rotation_matrices[mask_y, 2, 2] = cos_vals[mask_y]
-
-        # Z-axis rotation
-        mask_z = axes == 2
-        if mask_z.any():
-            rotation_matrices[mask_z, 0, 0] = cos_vals[mask_z]
-            rotation_matrices[mask_z, 0, 1] = -sin_vals[mask_z]
-            rotation_matrices[mask_z, 1, 0] = sin_vals[mask_z]
-            rotation_matrices[mask_z, 1, 1] = cos_vals[mask_z]
-
-        # Apply the rotation matrices to the batch of point clouds
+        # Apply the rotation matrices to the batch of point clouds using batch matrix multiplication
         rotated_pointcloud_batch = torch.bmm(pointcloud_batch, rotation_matrices)
+
         return rotated_pointcloud_batch
 
     def random_scale_anisotropic(self, pointcloud_batch):
@@ -154,7 +141,65 @@ class PointCloudAugmentations:
         scale_factors = torch.FloatTensor(B, 3).uniform_(*self.scale_range).to(pointcloud_batch.device)
         return pointcloud_batch * scale_factors[:, None, :]  # Apply scale per batch
 
-    def augment(self, pointcloud_batch, feature_batch=None):
+    def add_outliers(self, pointcloud_batch, outlier_ratio=0.1, contour_prob=0.75, scale_factor=1.5):
+        """
+        Replace a portion of the points in the point cloud with outliers.
+
+        :param pointcloud_batch: Tensor of shape [B, N, 3] (batch of point clouds)
+        :param outlier_ratio: Ratio of points to be replaced with outliers (e.g., 0.1 for 10%).
+        :param contour_prob: Probability of placing outliers around the bounding box contours.
+        :param scale_factor: Factor to control how far outliers can be from the existing points.
+        :return: Point cloud batch with outliers replacing some original points.
+        """
+        B, N, _ = pointcloud_batch.shape
+        num_outliers = int(N * outlier_ratio)  # Number of points to replace with outliers
+
+        # Calculate the bounding box of the point cloud for each batch
+        min_vals, _ = torch.min(pointcloud_batch, dim=1, keepdim=True)
+        max_vals, _ = torch.max(pointcloud_batch, dim=1, keepdim=True)
+
+        # Create a mask to determine where to place the outliers
+        contour_mask = torch.rand(B, num_outliers, device=pointcloud_batch.device) < contour_prob
+
+        # Generate random outliers: Either near the contour or completely random
+        random_outliers = torch.randn(B, num_outliers, 3, device=pointcloud_batch.device) * scale_factor
+
+        # Outliers near the bounding box contour: biased towards min/max bounds
+        contour_outliers = torch.empty(B, num_outliers, 3, device=pointcloud_batch.device)
+
+        # Top and bottom along Z-axis
+        contour_outliers[:, :, 2] = torch.where(torch.rand(B, num_outliers, device=pointcloud_batch.device) < 0.5,
+                                                max_vals[:, :, 2] + torch.abs(
+                                                    torch.randn(B, num_outliers, device=pointcloud_batch.device)),
+                                                min_vals[:, :, 2] - torch.abs(
+                                                    torch.randn(B, num_outliers, device=pointcloud_batch.device)))
+
+        # Left and right along X-axis
+        contour_outliers[:, :, 0] = torch.where(torch.rand(B, num_outliers, device=pointcloud_batch.device) < 0.5,
+                                                max_vals[:, :, 0] + torch.abs(
+                                                    torch.randn(B, num_outliers, device=pointcloud_batch.device)),
+                                                min_vals[:, :, 0] - torch.abs(
+                                                    torch.randn(B, num_outliers, device=pointcloud_batch.device)))
+
+        # Front and back along Y-axis
+        contour_outliers[:, :, 1] = torch.where(torch.rand(B, num_outliers, device=pointcloud_batch.device) < 0.5,
+                                                max_vals[:, :, 1] + torch.abs(
+                                                    torch.randn(B, num_outliers, device=pointcloud_batch.device)),
+                                                min_vals[:, :, 1] - torch.abs(
+                                                    torch.randn(B, num_outliers, device=pointcloud_batch.device)))
+
+        # Use the contour points where the mask is true, and random points elsewhere
+        outliers = torch.where(contour_mask.unsqueeze(-1), contour_outliers, random_outliers)
+
+        # Randomly select indices in the point cloud to be replaced with outliers
+        replace_indices = torch.randint(0, N, (B, num_outliers), device=pointcloud_batch.device)
+
+        # Replace the selected points with outliers
+        pointcloud_batch.scatter_(1, replace_indices.unsqueeze(-1).expand(-1, -1, 3), outliers)
+
+        return pointcloud_batch
+
+    def augment(self, pointcloud_batch):
         """
         Apply augmentations to the entire batch of point clouds without loops.
         :param pointcloud_batch: Tensor of shape [B, N, 3]
@@ -164,7 +209,7 @@ class PointCloudAugmentations:
         # Apply augmentations to the entire batch
         pointcloud_batch = self.random_noise(pointcloud_batch)
         pointcloud_batch = self.random_rotate(pointcloud_batch)
-        pointcloud_batch = self.random_scale_anisotropic(pointcloud_batch)
+        # pointcloud_batch = self.add_outliers(pointcloud_batch)
 
         return pointcloud_batch
 

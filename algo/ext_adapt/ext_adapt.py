@@ -373,6 +373,8 @@ class ExtrinsicAdapt(object):
         if self.pcl_info:
             # [B, T, N*3] to [B, T*N*3] to [B, T*N, 3]
             pcl = self.pcl_mean_std(pcl.reshape(-1, 3)).reshape((obs['pcl'].shape[0], -1, 3))
+            # pcl = pcl.reshape((obs['pcl'].shape[0], -1, 3))
+
             # if self.pcl_channel == 6:
             #     NP = self.task_config.env.num_points
             #     NS = self.task_config.env.num_points_socket
