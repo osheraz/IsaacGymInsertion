@@ -51,7 +51,7 @@ env:
     numEnvs: ${resolve_default:128,${...num_envs}}
     numObservations: 18 #
     numObsStudent: 18 #
-    numStates: 28 # 27
+    numStates: 25 # 27
     numActions: 6 # [position, ori]
     numTargets: 6 # [position, ori]
     action_latency_max: 15
@@ -115,8 +115,8 @@ env:
 
     compute_contact_gt: False
     num_points: 400
-    num_points_socket: 200
-    num_points_goal: 200
+    num_points_socket: 400
+    num_points_goal: 400
     merge_goal_pcl: False
     merge_socket_pcl: False
     relative_pcl: True
