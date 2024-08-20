@@ -146,6 +146,8 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                                                  far_clip=self.far_clip,
                                                  near_clip=self.near_clip)
 
+        self.pcl_process = PointCloudAugmentations()
+
     def _acquire_task_tensors(self):
         """Acquire tensors."""
 
@@ -170,6 +172,8 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.img_delay_prob = self.cfg_task.env.ImgDelayProb
         self.seg_delay_prob = self.cfg_task.env.SegDelayProb
         self.seg_noise_prob = self.cfg_task.env.SegProbNoise
+        self.pcl_noise_prob = self.cfg_task.env.PclProbNoise
+
         self.tactile_delay_prob = self.cfg_task.env.TactileDelayProb
         self.scale_pos_prob = self.cfg_task.env.scalePosProb
         self.scale_rot_prob = self.cfg_task.env.scaleRotProb
@@ -851,10 +855,17 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             img_update_delay = torch.randn(self.num_envs, device=self.device) > self.img_delay_prob
             seg_update_delay = torch.randn(self.num_envs, device=self.device) > self.seg_delay_prob
             seg_update_noise = torch.randn(self.num_envs, device=self.device) > self.seg_noise_prob
+            pcl_update_noise = torch.randn(self.num_envs, device=self.device) > self.pcl_noise_prob
             img_update_delay = is_initial_update | img_update_delay
             seg_update_delay = is_initial_update | seg_update_delay
-            seg_update_noise = is_initial_update | seg_update_noise
-            self.update_external_cam(img_update_freq, img_update_delay, seg_update_delay, seg_update_noise)
+            seg_update_noise = ~is_initial_update & seg_update_noise
+            pcl_update_noise = ~is_initial_update & pcl_update_noise
+
+            self.update_external_cam(img_update_freq,
+                                     img_update_delay,
+                                     seg_update_delay,
+                                     seg_update_noise,
+                                     pcl_update_noise)
 
         self.frame += 1
         self.obs_buf = self.obs_queue.clone()  # torch.cat(obs_tensors, dim=-1)  # shape = (num_envs, num_observations)
@@ -903,7 +914,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         self.gym.end_access_image_tensors(self.sim)
 
-    def update_external_cam(self, update_freq, update_delay, seg_update_delay, seg_noise):
+    def update_external_cam(self, update_freq, update_delay, seg_update_delay, seg_noise, pcl_noise):
 
         self.gym.step_graphics(self.sim)
         self.gym.fetch_results(self.sim, True)
@@ -959,6 +970,8 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                 plug_pts = self.pcl_generator.get_point_cloud(
                     depths=plug_depth.reshape(self.num_envs, self.res[1], self.res[0]),
                     filter_func=filter_pts, sample_num=self.cfg_task.env.num_points).to(self.device)
+
+                plug_pts[pcl_noise] = self.pcl_process.augment(plug_pts[pcl_noise])
 
                 self.pcl = plug_pts.flatten(start_dim=1)
 
