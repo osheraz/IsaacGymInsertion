@@ -969,7 +969,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                         filter_func=filter_pts, sample_num=self.cfg_task.env.num_points_socket).to(self.device)
 
                     if self.cfg_task.env.relative_pcl:
-                        socket_mean = socket_pts.mean(dim=1, keepdim=True)
+                        socket_mean = self.noisy_socket_pos  # socket_pts.mean(dim=1, keepdim=True)
                         plug_pts -= socket_mean
                         socket_pts -= socket_mean
 

@@ -343,8 +343,12 @@ class MultiModalModel(BaseModel):
             #                         'relative': False
             #                         }
 
+            if pcl_conf['merge_socket']:
+                self.p_channel = 6
+            else:
+                self.p_channel = 3
             self.pcl_encoding_size = 256
-            self.pcl_encoder = PointNet(point_channel=3)
+            self.pcl_encoder = PointNet(point_channel=self.p_channel)
             self.compress_pcl_enc = nn.Linear(self.pcl_encoding_size, self.lin_encoding_size)
             num_features += 1
 
@@ -500,6 +504,11 @@ class MultiModalModel(BaseModel):
             tokens_list.append(lin_encoding)
 
         if self.include_pcl:
+
+            if self.p_channel == 6:
+                obs_pcl = torch.cat([obs_pcl[:, :obs_pcl.shape[1] // 2],
+                                     obs_pcl[:, obs_pcl.shape[1] // 2:]], dim=-1)
+
             pcl_encoding, _ = self.pcl_encoder(obs_pcl)
 
             pcl_encoding = self.compress_pcl_enc(pcl_encoding)

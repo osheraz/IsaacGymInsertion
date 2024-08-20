@@ -15,7 +15,6 @@ class PointNet(nn.Module):  # actually pointnet
         super(PointNet, self).__init__()
 
         print(f'PointNetSmall')
-
         in_channel = point_channel
         mlp_out_dim = 256
         self.local_mlp = nn.Sequential(

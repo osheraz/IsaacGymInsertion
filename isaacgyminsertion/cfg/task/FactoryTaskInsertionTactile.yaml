@@ -102,7 +102,7 @@ env:
     num_gripper_lift_sim_steps: 25  # number of timesteps to reserve for lift after last step of episode
 
     socket_priv_obs_noise: [ 0.000, 0.000, 0.000 ]
-    socket_pos_obs_noise: [ 0.002, 0.002, 0.002 ]
+    socket_pos_obs_noise: [ 0.005, 0.005, 0.005 ]
 
     socket_rot_obs_noise: [ 0.0, 0.0, 0.0 ]
 
@@ -118,7 +118,7 @@ env:
     num_points_socket: 400
     num_points_goal: 400
     merge_goal_pcl: False
-    merge_socket_pcl: False
+    merge_socket_pcl: True
     relative_pcl: False
 
     record_video: True

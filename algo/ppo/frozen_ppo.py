@@ -766,8 +766,8 @@ class PPO(object):
                     milestone += 100
 
             if self.env.progress_buf[0] == self.env.max_episode_length - 1:
-                num_success += self.env.success_reset_buf[done.nonzero()].sum()
-                total_dones += len(done.nonzero())
+                num_success = self.env.success_reset_buf[done.nonzero()].sum()
+                total_dones = len(done.nonzero())
                 success_rate = num_success / total_dones
                 self.test_success = success_rate
                 print('[Test] success rate:', success_rate)
