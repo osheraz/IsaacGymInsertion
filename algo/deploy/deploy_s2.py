@@ -161,7 +161,7 @@ class HardwarePlayer:
             self.pcl_mean_std.eval()
 
         self.student = Student(student_cfg)
-        self.display_obs = True
+        self.display_obs = False
 
         if self.display_obs and self.pcl_info:
             self.fig = plt.figure()
@@ -592,7 +592,7 @@ class HardwarePlayer:
             #     socket_pos = (self.socket_pos - self.stats["mean"]["socket_pos"][:3]) / self.stats["std"]["socket_pos"][:3]
             #
             obs_stud = torch.cat([eef_stud,
-                                  socket_pos,
+                                  self.noisy_gripper_goal_pos,
                                   action,
                                   ], dim=-1)
 
@@ -773,7 +773,7 @@ class HardwarePlayer:
         # Apply the action
         if regulize_force:
             ft = torch.tensor(self.env.get_ft(), device=self.device, dtype=torch.float).unsqueeze(0)
-            condition_mask = torch.abs(ft[:, 2]) > 2.0
+            condition_mask = torch.abs(ft[:, 2]) > 1.5
             actions[:, 2] = torch.where(condition_mask, torch.clamp(actions[:, 2], min=0.0), actions[:, 2])
             # actions = torch.where(torch.abs(ft) > 1.5, torch.clamp(actions, min=0.0), actions)
             # print("Error:", np.round(self.plug_pos_error[0].cpu().numpy(), 4))

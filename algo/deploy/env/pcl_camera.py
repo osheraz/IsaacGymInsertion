@@ -15,8 +15,8 @@ import numpy as np
 
 
 class PointCloudPublisher:
-    def __init__(self):
-        self.pcl_pub = rospy.Publisher('/pointcloud', PointCloud2, queue_size=10)
+    def __init__(self, topic='pointcloud'):
+        self.pcl_pub = rospy.Publisher(f'/{topic}', PointCloud2, queue_size=10)
 
     def publish_pointcloud(self, points):
         """
@@ -26,7 +26,7 @@ class PointCloudPublisher:
         """
         header = Header()
         header.stamp = rospy.Time.now()
-        header.frame_id = 'odom'  # Set the frame according to your setup
+        header.frame_id = 'base_link'  # Set the frame according to your setup
 
         # Define the PointCloud2 fields (x, y, z)
         fields = [
@@ -217,8 +217,13 @@ class ZedPointCloudSubscriber:
 
         if self.with_seg:
             from algo.deploy.env.seg_camera import SegCameraSubscriber
-            self.seg = SegCameraSubscriber(with_socket=False)
+            self.with_socket = True
+            self.pointcloud_socket_pub = PointCloudPublisher(topic='socket')
+
+            self.seg = SegCameraSubscriber(with_socket=self.with_socket)
             self._check_seg_ready()
+
+        self.pointcloud_pub = PointCloudPublisher(topic='pointcloud')
 
         if self.use_depth:
             self._image_subscriber = rospy.Subscriber('/zedm/zed_node/depth/depth_registered', Image,
@@ -267,16 +272,33 @@ class ZedPointCloudSubscriber:
                 seg = self.seg.get_frame()
                 # seg = cv2.resize(seg, (640, 360), interpolation=cv2.INTER_NEAREST)
                 if seg is not None:
-                    mask = (seg == self.seg.plug_id).astype(float)
-                    frame *= mask
+
+                    if self.with_socket:
+                        socket_mask = (seg == self.seg.socket_id).astype(float)
+                        socket_points = self.pcl_gen.convert(frame * socket_mask)
+                        proc_socket = self.process_pointcloud(socket_points)
+                        proc_socket = remove_statistical_outliers(proc_socket)
+                        proc_socket = self.sample_n(proc_socket, num_sample=400)
+                        socket_mean = proc_socket.mean(axis=0)
+                        proc_socket -= socket_mean
+                        self.pointcloud_socket_pub.publish_pointcloud(proc_socket)
+
+                    plug_mask = (seg == self.seg.plug_id).astype(float)
+                    frame *= plug_mask
 
             try:
+
                 cloud_points = self.pcl_gen.convert(frame)
                 proc_cloud = self.process_pointcloud(cloud_points)
                 proc_cloud = remove_statistical_outliers(proc_cloud)
                 proc_cloud = self.sample_n(proc_cloud, num_sample=400)
 
                 self.last_cloud = proc_cloud
+                if self.with_socket:
+                    self.last_cloud -= socket_mean
+
+                self.pointcloud_pub.publish_pointcloud(self.last_cloud)
+
             except Exception as e:
                 print(e)
 
@@ -335,8 +357,9 @@ class ZedPointCloudSubscriber:
                     mask = (seg == self.seg.plug_id).astype(float)
                     cloud_points = proc_cloud * np.expand_dims(mask, axis=0)
                     self.last_cloud = cloud_points
+                    self.pointcloud_pub.publish_pointcloud(self.last_cloud)
             except Exception as e:
-                pass
+                print(e)
 
     def sample_n(self, pts, num_sample):
         num = pts.shape[0]
@@ -393,11 +416,11 @@ class ZedPointCloudSubscriber:
 if __name__ == "__main__":
     rospy.init_node('ZedPointCloud')
     pointcloud_sub = ZedPointCloudSubscriber()
-    pointcloud_pub = PointCloudPublisher()
+    # pointcloud_pub = PointCloudPublisher()
     rate = rospy.Rate(60)
 
     while not rospy.is_shutdown():
-        if pointcloud_sub.last_cloud is not None:
-            pointcloud_pub.publish_pointcloud(pointcloud_sub.last_cloud)
+        # if pointcloud_sub.last_cloud is not None:
+        #     pointcloud_pub.publish_pointcloud(pointcloud_sub.last_cloud)
 
         rate.sleep()

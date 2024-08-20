@@ -17,7 +17,7 @@ def masks_to_bool(masks):
 
 class SegCameraSubscriber:
 
-    def __init__(self, with_socket=False, topic='/zedm/zed_node/rgb/image_rect_color', display=False, device='cuda:0'):
+    def __init__(self, with_socket=True, topic='/zedm/zed_node/rgb/image_rect_color', display=False, device='cuda:0'):
         """
         """
         self.last_frame = None
@@ -31,7 +31,7 @@ class SegCameraSubscriber:
         self.iou = 0.9
         # Default configurations
         self.table_dims = {"x_min": 10, "y_min": 10, "x_max": 280, "y_max": 250}
-        self.socket_rough_pos = {"x_min": 120, "y_min": 100, "x_max": 280, "y_max": 180}
+        self.socket_rough_pos = {"x_min": 60, "y_min": 60, "x_max": 280, "y_max": 180}
         self.max_dims = {"width": 70, "height": 70}
         self.socket_max_dims = {"width": 100, "height": 80}
         self.socket_min_dims = {"width": 0, "height": 0}
@@ -167,6 +167,7 @@ class SegCameraSubscriber:
         #     cv2.rectangle(frame, (b[0], b[1]), (b[2], b[3]), (0, 255, 0), 2)
 
         if not self.got_socket_mask:
+
             prompt_process = FastSAMPrompt(frame, results, device=self.device)
             hole_box, socket_box = self.find_smallest_and_largest_boxes(socket)
             ann = prompt_process.box_prompt(bbox=socket_box)[0]
@@ -199,20 +200,20 @@ class SegCameraSubscriber:
             # print('failed to find the object')
             pass
 
-        # if True:
-        #     if self.with_socket:
-        #         mask = ((self.last_frame == self.plug_id) | (self.last_frame == self.socket_id)).astype(float)
-        #     else:
-        #         mask = (self.last_frame == self.plug_id).astype(float)
-        #
-        #     mask = self.shrink_mask(mask)
-        #     self.mask_3d = numpy.repeat(mask[:, :, numpy.newaxis], 3, axis=2)
-        #     seg_show = (self.mask_3d * frame).astype(np.uint8)
-        #     # seg_show = cv2.normalize(seg_show, None, 0, 255, cv2.NORM_MINMAX)
-        #     # seg_show = seg_show.astype(np.uint8)
-        #     cv2.imshow("Mask Image", seg_show)
-        #     cv2.imshow("Raw Image", frame)
-        #     cv2.waitKey(1)
+        if True:
+            if self.with_socket:
+                mask = ((self.last_frame == self.plug_id) | (self.last_frame == self.socket_id)).astype(float)
+            else:
+                mask = (self.last_frame == self.plug_id).astype(float)
+
+            mask = self.shrink_mask(mask)
+            self.mask_3d = numpy.repeat(mask[:, :, numpy.newaxis], 3, axis=2)
+            seg_show = (self.mask_3d * frame).astype(np.uint8)
+            # seg_show = cv2.normalize(seg_show, None, 0, 255, cv2.NORM_MINMAX)
+            # seg_show = seg_show.astype(np.uint8)
+            cv2.imshow("Mask Image", seg_show)
+            cv2.imshow("Raw Image", frame)
+            cv2.waitKey(1)
 
     def shrink_mask(self, mask, shrink_percentage=10):
         """
