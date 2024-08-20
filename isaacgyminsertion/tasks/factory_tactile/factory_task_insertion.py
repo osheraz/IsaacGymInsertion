@@ -729,7 +729,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         obs_tensors_student = torch.cat([
             eef_stud,
-            # noisy_delta_pos,  # 3
+            noisy_delta_pos,  # 3
             actions,
         ], dim=-1)
 
