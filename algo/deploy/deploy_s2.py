@@ -590,9 +590,9 @@ class HardwarePlayer:
             # if self.train_config.from_offline:
             #     eef_stud = (eef_stud - self.stats["mean"]["eef_pos_rot6d"]) / self.stats["std"]["eef_pos_rot6d"]
             #     socket_pos = (self.socket_pos - self.stats["mean"]["socket_pos"][:3]) / self.stats["std"]["socket_pos"][:3]
-            #
+
             obs_stud = torch.cat([eef_stud,
-                                  self.noisy_gripper_goal_pos,
+                                  noisy_delta_pos,
                                   action,
                                   ], dim=-1)
 
@@ -773,7 +773,7 @@ class HardwarePlayer:
         # Apply the action
         if regulize_force:
             ft = torch.tensor(self.env.get_ft(), device=self.device, dtype=torch.float).unsqueeze(0)
-            condition_mask = torch.abs(ft[:, 2]) > 1.5
+            condition_mask = torch.abs(ft[:, 2]) > 2.0
             actions[:, 2] = torch.where(condition_mask, torch.clamp(actions[:, 2], min=0.0), actions[:, 2])
             # actions = torch.where(torch.abs(ft) > 1.5, torch.clamp(actions, min=0.0), actions)
             # print("Error:", np.round(self.plug_pos_error[0].cpu().numpy(), 4))

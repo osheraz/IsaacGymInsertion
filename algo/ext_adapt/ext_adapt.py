@@ -143,9 +143,10 @@ def display_obs(depth, seg, pcl, ax=None):
     if pcl is not None:
         pcl = pcl.cpu().detach().numpy()
         env_id = 1
-        ax.plot(pcl[env_id, :, 0],
-                pcl[env_id, :, 1],
-                pcl[env_id, :, 2], 'ko')
+        ax.scatter(pcl[env_id, :, 0],
+                   pcl[env_id, :, 1],
+                   pcl[env_id, :, 2], color='k', s=2)
+
         plt.pause(0.0001)
         ax.cla()
 
@@ -939,6 +940,8 @@ class ExtrinsicAdapt(object):
             self.stud_obs_mean_std.load_state_dict(checkpoint['stud_obs_mean_std'])
             self.pcl_mean_std.load_state_dict(checkpoint['pcl_mean_std'])
             self.student.model.load_state_dict(checkpoint['student'])
+            cprint(f'stud_obs_mean_std: {self.stud_obs_mean_std.running_mean}', 'green', attrs=['bold'])
+            cprint(f'pcl_mean_std: {self.pcl_mean_std.running_mean}', 'green', attrs=['bold'])
 
     def save(self, name):
 

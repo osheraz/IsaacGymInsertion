@@ -285,6 +285,11 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
             self.pcl = torch.zeros((self.num_envs, num_points * 3), device=self.device, dtype=torch.float)
 
+            self.rot_pcl_angle = torch.deg2rad(torch.FloatTensor(self.num_envs).uniform_(*(-self.cfg_task.randomize.pcl_rot,
+                                                                                           self.cfg_task.randomize.pcl_rot)).to(self.device))
+            self.pcl_pos_noise = torch.randn(self.num_envs, 1, 3, device=self.device)
+            self.axes = torch.randint(0, 3, (self.num_envs,), device=self.device)
+
         if self.cfg_task.env.tactile:
             # tactile buffers
             self.num_channels = self.cfg_tactile.encoder.num_channels
@@ -846,26 +851,29 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         if self.cfg_task.env.tactile:
             tactile_update_freq = torch.remainder(self.frame + self.tactile_refresh_offset,
                                                   self.tactile_refresh_rates) == 0
-            tactile_update_delay = torch.randn(self.num_envs, device=self.device) > self.tactile_delay_prob
+            tactile_update_delay = torch.rand(self.num_envs, device=self.device) > self.tactile_delay_prob
             self.update_tactile(tactile_update_freq, tactile_update_delay)
 
         if self.external_cam:
             img_update_freq = torch.remainder(self.frame + self.img_refresh_offset, self.img_refresh_rates) == 0
             is_initial_update = self.progress_buf < 10
-            img_update_delay = torch.randn(self.num_envs, device=self.device) > self.img_delay_prob
-            seg_update_delay = torch.randn(self.num_envs, device=self.device) > self.seg_delay_prob
-            seg_update_noise = torch.randn(self.num_envs, device=self.device) > self.seg_noise_prob
-            pcl_update_noise = torch.randn(self.num_envs, device=self.device) > self.pcl_noise_prob
-            img_update_delay = is_initial_update | img_update_delay
-            seg_update_delay = is_initial_update | seg_update_delay
-            seg_update_noise = ~is_initial_update & seg_update_noise
-            pcl_update_noise = ~is_initial_update & pcl_update_noise
+
+            img_update = torch.rand(self.num_envs, device=self.device) > self.img_delay_prob
+            seg_update = torch.rand(self.num_envs, device=self.device) > self.seg_delay_prob
+
+            seg_add_noise = torch.rand(self.num_envs, device=self.device) > 1 - self.seg_noise_prob
+            pcl_add_noise = torch.rand(self.num_envs, device=self.device) > 1 - self.pcl_noise_prob
+
+            img_update = is_initial_update | img_update
+            seg_update = is_initial_update | seg_update
+            seg_add_noise = ~is_initial_update & seg_add_noise
+            pcl_add_noise = ~is_initial_update & pcl_add_noise
 
             self.update_external_cam(img_update_freq,
-                                     img_update_delay,
-                                     seg_update_delay,
-                                     seg_update_noise,
-                                     pcl_update_noise)
+                                     img_update,
+                                     seg_update,
+                                     seg_add_noise,
+                                     pcl_add_noise)
 
         self.frame += 1
         self.obs_buf = self.obs_queue.clone()  # torch.cat(obs_tensors, dim=-1)  # shape = (num_envs, num_observations)
@@ -874,52 +882,13 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         return self.obs_buf  # shape = (num_envs, num_observations)
 
-    def init_external_cam(self, with_seg=True):
-
-        self.gym.render_all_camera_sensors(self.sim)
-        self.gym.start_access_image_tensors(self.sim)
-        self.cam_renders = []
-        self.seg_renders = []
-
-        for i in range(self.num_envs):
-            if self.cam_type == "rgb":
-                im = self.gym.get_camera_image_gpu_tensor(
-                    self.sim,
-                    self.envs[i],
-                    self.camera_handles[i],
-                    gymapi.IMAGE_COLOR,
-                )
-                im = gymtorch.wrap_tensor(im)
-
-            elif self.cam_type == "d":
-                im = self.gym.get_camera_image_gpu_tensor(
-                    self.sim,
-                    self.envs[i],
-                    self.camera_handles[i],
-                    gymapi.IMAGE_DEPTH,
-                )
-                im = gymtorch.wrap_tensor(im)
-
-            self.cam_renders.append(im)
-
-            if with_seg:
-                im = self.gym.get_camera_image_gpu_tensor(
-                    self.sim,
-                    self.envs[i],
-                    self.camera_handles[i],
-                    gymapi.IMAGE_SEGMENTATION,
-                )
-                im = gymtorch.wrap_tensor(im)
-                self.seg_renders.append(im)
-
-        self.gym.end_access_image_tensors(self.sim)
-
     def update_external_cam(self, update_freq, update_delay, seg_update_delay, seg_noise, pcl_noise):
 
         self.gym.step_graphics(self.sim)
         self.gym.fetch_results(self.sim, True)
         self.gym.render_all_camera_sensors(self.sim)
         self.gym.start_access_image_tensors(self.sim)
+
         update = torch.logical_and(update_freq, update_delay)
         update_seg = torch.logical_and(update_freq, seg_update_delay)
         seg_noise = torch.logical_and(seg_noise, update_seg)
@@ -937,6 +906,10 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
             depth = torch.stack(self.cam_renders)
             seg = torch.stack(self.seg_renders)
+            # self.rot_pcl_angle = torch.deg2rad(torch.FloatTensor(self.num_envs).uniform_(*(-self.cfg_task.randomize.pcl_rot,
+            #                                                                                self.cfg_task.randomize.pcl_rot)).to(self.device))
+            # self.pcl_pos_noise = torch.randn(self.num_envs, 1, 3, device=self.device)
+            # self.axes = torch.randint(0, 3, (self.num_envs,), device=self.device)
 
             if self.depth_cam:
                 if update.any():
@@ -971,7 +944,10 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                     depths=plug_depth.reshape(self.num_envs, self.res[1], self.res[0]),
                     filter_func=filter_pts, sample_num=self.cfg_task.env.num_points).to(self.device)
 
-                plug_pts[pcl_noise] = self.pcl_process.augment(plug_pts[pcl_noise])
+                plug_pts[pcl_noise] = self.pcl_process.augment(plug_pts[pcl_noise],
+                                                               self.rot_pcl_angle[pcl_noise],
+                                                               self.axes[pcl_noise],
+                                                               self.pcl_pos_noise[pcl_noise])
 
                 self.pcl = plug_pts.flatten(start_dim=1)
 
@@ -981,8 +957,13 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                         depths=socket_depth.reshape(self.num_envs, self.res[1], self.res[0]),
                         filter_func=filter_pts, sample_num=self.cfg_task.env.num_points_socket).to(self.device)
 
+                    socket_pts[pcl_noise] = self.pcl_process.augment(socket_pts[pcl_noise],
+                                                                     self.rot_pcl_angle[pcl_noise],
+                                                                     self.axes[pcl_noise],
+                                                                     self.pcl_pos_noise[pcl_noise])
+
                     if self.cfg_task.env.relative_pcl:
-                        socket_mean = self.noisy_socket_pos  # socket_pts.mean(dim=1, keepdim=True)
+                        socket_mean = self.noisy_socket_pos.unsqueeze(1)  # socket_pts.mean(dim=1, keepdim=True)
                         plug_pts -= socket_mean
                         socket_pts -= socket_mean
 
@@ -1037,6 +1018,46 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         if self.seg_cam:
             self.seg_queue[:, 1:] = self.seg_queue[:, :-1].clone().detach()
             self.seg_queue[:, 0, ...] = self.seg_buf
+
+    def init_external_cam(self, with_seg=True):
+
+        self.gym.render_all_camera_sensors(self.sim)
+        self.gym.start_access_image_tensors(self.sim)
+        self.cam_renders = []
+        self.seg_renders = []
+
+        for i in range(self.num_envs):
+            if self.cam_type == "rgb":
+                im = self.gym.get_camera_image_gpu_tensor(
+                    self.sim,
+                    self.envs[i],
+                    self.camera_handles[i],
+                    gymapi.IMAGE_COLOR,
+                )
+                im = gymtorch.wrap_tensor(im)
+
+            elif self.cam_type == "d":
+                im = self.gym.get_camera_image_gpu_tensor(
+                    self.sim,
+                    self.envs[i],
+                    self.camera_handles[i],
+                    gymapi.IMAGE_DEPTH,
+                )
+                im = gymtorch.wrap_tensor(im)
+
+            self.cam_renders.append(im)
+
+            if with_seg:
+                im = self.gym.get_camera_image_gpu_tensor(
+                    self.sim,
+                    self.envs[i],
+                    self.camera_handles[i],
+                    gymapi.IMAGE_SEGMENTATION,
+                )
+                im = gymtorch.wrap_tensor(im)
+                self.seg_renders.append(im)
+
+        self.gym.end_access_image_tensors(self.sim)
 
     def compute_reward(self):
         """Detect successes and failures. Update reward and reset buffers."""
@@ -1352,6 +1373,12 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         plug_hand_pos, plug_hand_quat = self.pose_world_to_hand_base(self.plug_pos, self.plug_quat)
         self.plug_hand_pos_init[...] = plug_hand_pos
         self.plug_hand_quat_init[...] = plug_hand_quat
+
+        rand_angles = torch.FloatTensor(self.num_envs).uniform_(*(-self.cfg_task.randomize.pcl_rot,
+                                                                  self.cfg_task.randomize.pcl_rot)).to(self.device)
+        self.rot_pcl_angle[env_ids] = torch.deg2rad(rand_angles)[env_ids]
+        self.pcl_pos_noise[env_ids] = torch.randn(self.num_envs, 1, 3, device=self.device)[env_ids]
+        self.axes[env_ids] = torch.randint(0, 3, (self.num_envs,), device=self.device)[env_ids]
 
         if self.cfg_task.env.record_video and 0 in env_ids:
             if self.complete_video_frames is None:

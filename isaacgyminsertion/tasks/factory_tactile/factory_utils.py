@@ -84,39 +84,40 @@ class DepthImageProcessor:
 
 class PointCloudAugmentations:
     def __init__(self,
-                 num_points=400, sigma=0.005, noise_clip=0.003, rotate_range=(-10, 10), scale_range=(0.8, 1.2)):
+                 num_points=400, sigma=0.005, noise_clip=0.01, rotate_range=(-10, 10), scale_range=(0.8, 1.2)):
         self.num_points = num_points  # Fixed number of points
         self.sigma = sigma            # Noise standard deviation
         self.noise_clip = noise_clip  # Clipping value for noise
         self.rotate_range = rotate_range  # Rotation range in degrees
         self.scale_range = scale_range    # Scaling range
 
-    def random_noise(self, pointcloud_batch, noise_prob=0.3):
+    def random_noise(self, pointcloud_batch, pcl_noise, noise_prob=0.3):
         """
-        Add Gaussian noise to a subset of the points in the batch of point clouds.
+        Add both point-wise Gaussian noise and constant noise to each point cloud in the batch.
 
         :param pointcloud_batch: Tensor of shape [B, N, 3]
-        :param noise_prob: Probability of applying noise to each point (default is 50%).
-        :return: Point cloud batch with noise applied selectively.
+        :param noise_prob: Probability of applying point-wise noise to each point.
+        :return: Point cloud batch with both point-wise and constant noise applied.
         """
         B, N, _ = pointcloud_batch.shape
-        noise = torch.randn(pointcloud_batch.size(), device=pointcloud_batch.device) * self.sigma
-        noise = torch.clamp(noise, -self.noise_clip, self.noise_clip)
+
+        pointwise_noise = torch.randn(pointcloud_batch.size(), device=pointcloud_batch.device) * self.sigma
+        pointwise_noise = torch.clamp(pointwise_noise, -self.noise_clip, self.noise_clip)
 
         noise_mask = torch.rand(B, N, device=pointcloud_batch.device) < noise_prob
         noise_mask = noise_mask.unsqueeze(-1).expand_as(pointcloud_batch)
 
-        pointcloud_batch = pointcloud_batch + noise * noise_mask.float()
+        pointcloud_batch = pointcloud_batch + pointwise_noise * noise_mask.float()
+
+        constant_noise = pcl_noise * self.sigma
+        constant_noise = torch.clamp(constant_noise, -self.noise_clip, self.noise_clip)
+
+        pointcloud_batch = pointcloud_batch + constant_noise
 
         return pointcloud_batch
-
-    def random_rotate(self, pointcloud_batch):
-        """Rotate the entire batch of point clouds randomly around the X-axis."""
+    def random_rotate(self, pointcloud_batch, angles_rad, axes):
+        """Rotate the entire batch of point clouds randomly around the X, Y, or Z axis."""
         B, N, _ = pointcloud_batch.shape
-
-        # Generate random rotation angles for each point cloud
-        angles = torch.FloatTensor(B).uniform_(*self.rotate_range).to(pointcloud_batch.device)
-        angles_rad = torch.deg2rad(angles)
 
         cos_vals = torch.cos(angles_rad)
         sin_vals = torch.sin(angles_rad)
@@ -124,11 +125,26 @@ class PointCloudAugmentations:
         # Initialize identity matrices (B, 3, 3)
         rotation_matrices = torch.eye(3, device=pointcloud_batch.device).unsqueeze(0).repeat(B, 1, 1)
 
-        # X-axis rotation (fixed axis for all point clouds)
-        rotation_matrices[:, 1, 1] = cos_vals
-        rotation_matrices[:, 1, 2] = -sin_vals
-        rotation_matrices[:, 2, 1] = sin_vals
-        rotation_matrices[:, 2, 2] = cos_vals
+        # X-axis rotation (apply if axes[i] == 0)
+        mask_x = axes == 0
+        rotation_matrices[mask_x, 1, 1] = cos_vals[mask_x]
+        rotation_matrices[mask_x, 1, 2] = -sin_vals[mask_x]
+        rotation_matrices[mask_x, 2, 1] = sin_vals[mask_x]
+        rotation_matrices[mask_x, 2, 2] = cos_vals[mask_x]
+
+        # Y-axis rotation (apply if axes[i] == 1)
+        mask_y = axes == 1
+        rotation_matrices[mask_y, 0, 0] = cos_vals[mask_y]
+        rotation_matrices[mask_y, 0, 2] = sin_vals[mask_y]
+        rotation_matrices[mask_y, 2, 0] = -sin_vals[mask_y]
+        rotation_matrices[mask_y, 2, 2] = cos_vals[mask_y]
+
+        # Z-axis rotation (apply if axes[i] == 2)
+        mask_z = axes == 2
+        rotation_matrices[mask_z, 0, 0] = cos_vals[mask_z]
+        rotation_matrices[mask_z, 0, 1] = -sin_vals[mask_z]
+        rotation_matrices[mask_z, 1, 0] = sin_vals[mask_z]
+        rotation_matrices[mask_z, 1, 1] = cos_vals[mask_z]
 
         # Apply the rotation matrices to the batch of point clouds using batch matrix multiplication
         rotated_pointcloud_batch = torch.bmm(pointcloud_batch, rotation_matrices)
@@ -199,7 +215,7 @@ class PointCloudAugmentations:
 
         return pointcloud_batch
 
-    def augment(self, pointcloud_batch):
+    def augment(self, pointcloud_batch, angle, axes, pcl_noise):
         """
         Apply augmentations to the entire batch of point clouds without loops.
         :param pointcloud_batch: Tensor of shape [B, N, 3]
@@ -207,8 +223,8 @@ class PointCloudAugmentations:
         :return: Augmented pointcloud batch, and possibly augmented feature batch
         """
         # Apply augmentations to the entire batch
-        pointcloud_batch = self.random_noise(pointcloud_batch)
-        pointcloud_batch = self.random_rotate(pointcloud_batch)
+        pointcloud_batch = self.random_noise(pointcloud_batch, pcl_noise)
+        pointcloud_batch = self.random_rotate(pointcloud_batch, angle, axes)
         # pointcloud_batch = self.add_outliers(pointcloud_batch)
 
         return pointcloud_batch

@@ -202,10 +202,12 @@ class ZedPointCloudSubscriber:
         self.h = 180  # 180
         self.display = display
 
-        self.with_seg = True
+        self.with_seg = False
+        self.with_socket = False
+        self.relative = False
         self.pointcloud_init = False
         self.init_success = False
-
+        self.got_socket = False
         self.use_depth = True
         self.use_pcl = not self.use_depth
 
@@ -217,7 +219,6 @@ class ZedPointCloudSubscriber:
 
         if self.with_seg:
             from algo.deploy.env.seg_camera import SegCameraSubscriber
-            self.with_socket = True
             self.pointcloud_socket_pub = PointCloudPublisher(topic='socket')
 
             self.seg = SegCameraSubscriber(with_socket=self.with_socket)
@@ -273,31 +274,44 @@ class ZedPointCloudSubscriber:
                 # seg = cv2.resize(seg, (640, 360), interpolation=cv2.INTER_NEAREST)
                 if seg is not None:
 
-                    if self.with_socket:
+                    if self.with_socket and not self.got_socket:
                         socket_mask = (seg == self.seg.socket_id).astype(float)
                         socket_points = self.pcl_gen.convert(frame * socket_mask)
                         proc_socket = self.process_pointcloud(socket_points)
                         proc_socket = remove_statistical_outliers(proc_socket)
                         proc_socket = self.sample_n(proc_socket, num_sample=400)
-                        socket_mean = proc_socket.mean(axis=0)
-                        proc_socket -= socket_mean
-                        self.pointcloud_socket_pub.publish_pointcloud(proc_socket)
+                        if self.relative:
+                            socket_mean = proc_socket.mean(axis=0)
+                            proc_socket -= socket_mean
+                        self.proc_socket = proc_socket
+                        self.got_socket = True
+
+
+                    if self.with_socket:
+                        self.pointcloud_socket_pub.publish_pointcloud(self.proc_socket)
 
                     plug_mask = (seg == self.seg.plug_id).astype(float)
                     frame *= plug_mask
+                else:
+                    return
 
             try:
 
                 cloud_points = self.pcl_gen.convert(frame)
                 proc_cloud = self.process_pointcloud(cloud_points)
-                proc_cloud = remove_statistical_outliers(proc_cloud)
-                proc_cloud = self.sample_n(proc_cloud, num_sample=400)
+                # proc_cloud = remove_statistical_outliers(proc_cloud)
+                num_samples = 400 if self.with_seg else 4000
+                proc_cloud = self.sample_n(proc_cloud, num_sample=num_samples)
+                self.pointcloud_pub.publish_pointcloud(proc_cloud)
 
-                self.last_cloud = proc_cloud
+                # self.last_cloud = proc_cloud
+
                 if self.with_socket:
-                    self.last_cloud -= socket_mean
 
-                self.pointcloud_pub.publish_pointcloud(self.last_cloud)
+                    self.last_cloud = np.concatenate((proc_cloud, self.proc_socket), axis=0)
+
+                    if self.relative:
+                        self.last_cloud -= socket_mean
 
             except Exception as e:
                 print(e)
@@ -385,7 +399,6 @@ class ZedPointCloudSubscriber:
 
         valid = valid1 & valid3 & valid2
         points = points[valid]
-
         # points = ops.sample_farthest_points(points, torch.tensor(valid, dtype=torch.int), K=512)[0]
         points = self.voxel_grid_sampling(points)
 
@@ -409,7 +422,6 @@ class ZedPointCloudSubscriber:
         return sampled_points
 
     def get_pcl(self):
-
         return self.last_cloud
 
 

@@ -82,10 +82,17 @@ class ZedCameraSubscriber:
 
                     seg = self.seg.get_frame()
                     if seg is not None:
+
+                        plug_mask = (seg == self.plug_id).astype(float)
+                        socket_mask = (seg == self.socket_id).astype(float)
+
+                        plug_mask = self.seg.shrink_mask(plug_mask)
+                        socket_mask = self.seg.shrink_mask(socket_mask)
+
                         if self.with_socket:
-                            mask = ((seg == self.plug_id) | (seg == self.socket_id)).astype(float)
+                            mask = plug_mask | socket_mask
                         else:
-                            mask = (seg == self.plug_id).astype(float)
+                            mask = plug_mask
 
                         frame = proc_frame * numpy.expand_dims(mask, axis=0)
                         self.seg_frame = seg if self.distinct else mask

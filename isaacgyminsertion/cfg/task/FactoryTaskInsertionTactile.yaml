@@ -85,9 +85,9 @@ env:
 
     plugObsDelayProb: 0.3
     ImgDelayProb: 0.1
-    PclProbNoise: 0.1
+    PclProbNoise: 1.0
     SegDelayProb: 0.1
-    SegProbNoise: 0.005
+    SegProbNoise: 0.1
     TactileDelayProb: 0.1
 
     # Sim runs at 60 Hz
@@ -148,6 +148,8 @@ external_cam:
 
 randomize:
     force_scale: 0.0
+    pcl_rot: 15.0
+
     kuka_arm_initial_dof_pos: [0.0064, 0.2375,  -0.0075,  -1.2022, 0.0015,  1.6900,  -1.5699]
     fingertip_midpoint_rot_initial: [-3.14159265359, 0.0, -1.57079632679]  # initial rotation of fingertips (Euler)
 
