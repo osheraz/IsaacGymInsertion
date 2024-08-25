@@ -1374,12 +1374,6 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.plug_hand_pos_init[...] = plug_hand_pos
         self.plug_hand_quat_init[...] = plug_hand_quat
 
-        rand_angles = torch.FloatTensor(self.num_envs).uniform_(*(-self.cfg_task.randomize.pcl_rot,
-                                                                  self.cfg_task.randomize.pcl_rot)).to(self.device)
-        self.rot_pcl_angle[env_ids] = torch.deg2rad(rand_angles)[env_ids]
-        self.pcl_pos_noise[env_ids] = torch.randn(self.num_envs, 1, 3, device=self.device)[env_ids]
-        self.axes[env_ids] = torch.randint(0, 3, (self.num_envs,), device=self.device)[env_ids]
-
         if self.cfg_task.env.record_video and 0 in env_ids:
             if self.complete_video_frames is None:
                 self.complete_video_frames = []
@@ -1735,6 +1729,11 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                 self.seg_buf[env_ids] *= 0
                 self.seg_queue[env_ids] *= 0
         if self.pcl_cam:
+            rand_angles = torch.FloatTensor(self.num_envs).uniform_(*(-self.cfg_task.randomize.pcl_rot,
+                                                                      self.cfg_task.randomize.pcl_rot)).to(self.device)
+            self.rot_pcl_angle[env_ids] = torch.deg2rad(rand_angles)[env_ids]
+            self.pcl_pos_noise[env_ids] = torch.randn(self.num_envs, 1, 3, device=self.device)[env_ids]
+            self.axes[env_ids] = torch.randint(0, 3, (self.num_envs,), device=self.device)[env_ids]
             self.pcl_queue[env_ids] *= 0
             self.pcl[env_ids] *= 0
             if self.cfg_task.env.merge_goal_pcl:

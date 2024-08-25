@@ -84,7 +84,7 @@ class DepthImageProcessor:
 
 class PointCloudAugmentations:
     def __init__(self,
-                 num_points=400, sigma=0.005, noise_clip=0.01, rotate_range=(-10, 10), scale_range=(0.8, 1.2)):
+                 num_points=400, sigma=0.005, noise_clip=0.005, rotate_range=(-10, 10), scale_range=(0.8, 1.2)):
         self.num_points = num_points  # Fixed number of points
         self.sigma = sigma            # Noise standard deviation
         self.noise_clip = noise_clip  # Clipping value for noise
