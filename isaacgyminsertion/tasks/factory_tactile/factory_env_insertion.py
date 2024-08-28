@@ -917,7 +917,7 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
                 #     gymapi.FOLLOW_TRANSFORM,
                 # )
 
-                #
+                # perturbed_rotation is actually camera focus point (change name)
                 self.gym.set_camera_location(cam, self.envs[i],
                                              gymapi.Vec3(perturbed_position[0],
                                                          perturbed_position[1],

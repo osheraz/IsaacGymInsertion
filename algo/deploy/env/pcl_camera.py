@@ -94,7 +94,7 @@ class PointCloudGenerator:
         view_matrix = torch.tensor([[-0., -0.3961, 0.9182, 0.],
                                     [1, -0., 0.0, 0.],
                                     [0., 0.9182, 0.3961, 0.],
-                                    [0.0, 0.1383, -0.7245, 1.]], dtype=torch.float32).to(device)
+                                    [0.0, 0.125, -0.7245, 1.]], dtype=torch.float32).to(device)
 
         # array([[ 0.    , -0.3961,  0.9182,  0.    ],
         #        [ 1.    ,  0.    , -0.    ,  0.    ],
@@ -202,8 +202,8 @@ class ZedPointCloudSubscriber:
         self.h = 180  # 180
         self.display = display
 
-        self.with_seg = False
-        self.with_socket = False
+        self.with_seg = True
+        self.with_socket = True
         self.relative = False
         self.pointcloud_init = False
         self.init_success = False
@@ -260,6 +260,23 @@ class ZedPointCloudSubscriber:
             plt.pause(0.0001)
             plt.cla()
 
+    def get_com(self, pcl):
+
+        # Example point cloud
+
+        # Fit k-nearest neighbors to estimate local density
+        nbrs = NearestNeighbors(n_neighbors=10, algorithm='ball_tree').fit(pcl)
+        distances, indices = nbrs.kneighbors(pcl)
+
+        # Local density: inverse of the mean distance to the nearest neighbors
+        density = np.mean(distances, axis=1)
+        weights = 1.0 / density
+
+        # Compute the weighted centroid (center of mass)
+        weighted_center = np.average(pcl, axis=0, weights=weights)
+
+        return weighted_center
+
     def image_callback(self, msg):
 
         try:
@@ -276,16 +293,18 @@ class ZedPointCloudSubscriber:
 
                     if self.with_socket and not self.got_socket:
                         socket_mask = (seg == self.seg.socket_id).astype(float)
-                        socket_points = self.pcl_gen.convert(frame * socket_mask)
-                        proc_socket = self.process_pointcloud(socket_points)
-                        proc_socket = remove_statistical_outliers(proc_socket)
+                        proc_socket = self.pcl_gen.convert(frame * socket_mask)
+                        proc_socket = self.process_pointcloud(proc_socket)
+                        # proc_socket = remove_statistical_outliers(proc_socket)
                         proc_socket = self.sample_n(proc_socket, num_sample=400)
+                        socket_mean = proc_socket.mean(axis=0)
+                        print('mean',  socket_mean)
+                        # print('com', self.get_com(proc_socket))
+
                         if self.relative:
-                            socket_mean = proc_socket.mean(axis=0)
                             proc_socket -= socket_mean
                         self.proc_socket = proc_socket
-                        self.got_socket = True
-
+                        self.got_socket = False
 
                     if self.with_socket:
                         self.pointcloud_socket_pub.publish_pointcloud(self.proc_socket)
@@ -293,6 +312,7 @@ class ZedPointCloudSubscriber:
                     plug_mask = (seg == self.seg.plug_id).astype(float)
                     frame *= plug_mask
                 else:
+                    print('Cant find the object')
                     return
 
             try:
@@ -393,7 +413,7 @@ class ZedPointCloudSubscriber:
         x = points[:, 0]
         y = points[:, 1]
         z = points[:, 2]
-        valid1 = (z >= 0.005) & (z <= 0.5)
+        valid1 = (z >= -0.001) & (z <= 0.5)
         valid2 = (x >= 0.4) & (x <= 0.65)
         valid3 = (y >= -0.2) & (y <= 0.2)
 
