@@ -742,8 +742,8 @@ class PPO(object):
         while save_trajectory or (steps < total_steps):
             # log video during test
             steps += 1
-            self.log_video()
-            self.it += 1
+            # self.log_video()
+            # self.it += 1
 
             obs_dict = {
                 'obs': self.running_mean_std(self.obs['obs']),

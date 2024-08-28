@@ -101,7 +101,7 @@ class PointCloudAugmentations:
         """
         B, N, _ = pointcloud_batch.shape
 
-        pointwise_noise = torch.randn(pointcloud_batch.size(), device=pointcloud_batch.device) * self.sigma
+        pointwise_noise = torch.randn(pointcloud_batch.size(), device=pointcloud_batch.device) * self.sigma * 0
         pointwise_noise = torch.clamp(pointwise_noise, -self.noise_clip, self.noise_clip)
 
         noise_mask = torch.rand(B, N, device=pointcloud_batch.device) < noise_prob
@@ -115,6 +115,7 @@ class PointCloudAugmentations:
         pointcloud_batch = pointcloud_batch + constant_noise
 
         return pointcloud_batch
+
     def random_rotate(self, pointcloud_batch, angles_rad, axes):
         """Rotate the entire batch of point clouds randomly around the X, Y, or Z axis."""
         B, N, _ = pointcloud_batch.shape
@@ -223,7 +224,7 @@ class PointCloudAugmentations:
         :return: Augmented pointcloud batch, and possibly augmented feature batch
         """
         # Apply augmentations to the entire batch
-        pointcloud_batch = self.random_noise(pointcloud_batch, pcl_noise)
+        # pointcloud_batch = self.random_noise(pointcloud_batch, pcl_noise)
         pointcloud_batch = self.random_rotate(pointcloud_batch, angle, axes)
         # pointcloud_batch = self.add_outliers(pointcloud_batch)
 

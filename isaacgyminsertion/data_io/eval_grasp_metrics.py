@@ -2,8 +2,8 @@ import os
 import numpy as np
 import torch
 import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
 from tqdm import tqdm
-from scipy.spatial.distance import cdist
 
 class GraspPoseVisualizer:
     def __init__(self, num_envs):
@@ -59,26 +59,28 @@ class GraspPoseVisualizer:
         plug_positions = self.init_plug_pos[subassembly].numpy()
         num_poses = self.total_init_poses[subassembly]
 
-        # Plot socket positions
-        plt.figure(figsize=(12, 8))
-        plt.scatter(socket_positions[:, 0], socket_positions[:, 1], c='r', label='Socket Positions')
-        plt.title(f'Socket Positions for {subassembly}')
-        plt.xlabel('X Position')
-        plt.ylabel('Y Position')
-        plt.legend()
-        plt.grid(True)
-        plt.savefig(f'{output_folder}/socket_positions.png')
+        # Plot socket positions in 3D
+        fig = plt.figure(figsize=(12, 8))
+        ax = fig.add_subplot(111, projection='3d')
+        ax.scatter(socket_positions[:, 0], socket_positions[:, 1], socket_positions[:, 2], c='r', label='Socket Positions')
+        ax.set_title(f'Socket Positions for {subassembly}')
+        ax.set_xlabel('X Position')
+        ax.set_ylabel('Y Position')
+        ax.set_zlabel('Z Position')
+        ax.legend()
+        plt.savefig(f'{output_folder}/socket_positions_3d.png')
         plt.close()
 
-        # Plot plug positions
-        plt.figure(figsize=(12, 8))
-        plt.scatter(plug_positions[:, 0], plug_positions[:, 1], c='b', label='Plug Positions')
-        plt.title(f'Plug Positions for {subassembly}')
-        plt.xlabel('X Position')
-        plt.ylabel('Y Position')
-        plt.legend()
-        plt.grid(True)
-        plt.savefig(f'{output_folder}/plug_positions.png')
+        # Plot plug positions in 3D
+        fig = plt.figure(figsize=(12, 8))
+        ax = fig.add_subplot(111, projection='3d')
+        ax.scatter(plug_positions[:, 0], plug_positions[:, 1], plug_positions[:, 2], c='b', label='Plug Positions')
+        ax.set_title(f'Plug Positions for {subassembly}')
+        ax.set_xlabel('X Position')
+        ax.set_ylabel('Y Position')
+        ax.set_zlabel('Z Position')
+        ax.legend()
+        plt.savefig(f'{output_folder}/plug_positions_3d.png')
         plt.close()
 
         # Calculate errors (distance between plug and socket positions)
