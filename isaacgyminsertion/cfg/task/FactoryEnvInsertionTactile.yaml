@@ -14,12 +14,12 @@ external_cam:
     x_init: 0.72
     y_init: 0.0
     z_init: 0.16
-    roll_init: 20
-    pitch_init: 0
-    yaw_init: 0
+    x_point_init: 0.349
+    y_point_init: 0
+    z_point_init: 0
 
-    pos_noise: 0.01
-    rot_noise: 3.0
+    cam_pos_noise: 0.01
+    cam_point_noise: 0.05
 
 env:
     env_name: 'FactoryEnvInsertionTactile'

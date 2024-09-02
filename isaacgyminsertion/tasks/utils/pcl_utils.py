@@ -98,7 +98,7 @@ class PointCloudGenerator:
 
 
 class CameraPointCloud:
-    def __init__(self, isc_sim, isc_gym, envs, camera_handles, camera_trans,
+    def __init__(self, isc_sim, isc_gym, envs, camera_handles,
                  camera_props, sample_num=4000,
                  filter_func=None, pt_in_local=False,
                  depth_max=0.4, graphics_device='cpu',
@@ -108,7 +108,6 @@ class CameraPointCloud:
         self.gym = isc_gym
         self.envs = envs
         self.camera_handles = camera_handles
-        self.camera_trans = camera_trans
         assert pt_in_local
         self.filter_func = filter_func
         print(f'Depth max:{depth_max}')

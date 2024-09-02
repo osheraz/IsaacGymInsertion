@@ -224,7 +224,7 @@ class PointCloudAugmentations:
         :return: Augmented pointcloud batch, and possibly augmented feature batch
         """
         # Apply augmentations to the entire batch
-        # pointcloud_batch = self.random_noise(pointcloud_batch, pcl_noise)
+        pointcloud_batch = self.random_noise(pointcloud_batch, pcl_noise)
         pointcloud_batch = self.random_rotate(pointcloud_batch, angle, axes)
         # pointcloud_batch = self.add_outliers(pointcloud_batch)
 

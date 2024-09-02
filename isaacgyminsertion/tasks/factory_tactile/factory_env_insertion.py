@@ -433,11 +433,11 @@ class ExtrinsicContact:
                 self.first_init = False
 
             display_id = 0
-            query_points_plug_goal = query_points_plug_goal.cpu().detach().numpy()
+            query_points_plug_goal_dsp = query_points_plug_goal.cpu().detach().numpy()
 
-            self.ax.plot(query_points_plug_goal[display_id, :, 0],
-                         query_points_plug_goal[display_id, :, 1],
-                         query_points_plug_goal[display_id, :, 2], 'ro')
+            self.ax.plot(query_points_plug_goal_dsp[display_id, :, 0],
+                         query_points_plug_goal_dsp[display_id, :, 1],
+                         query_points_plug_goal_dsp[display_id, :, 2], 'ro')
 
             self.ax.set_xlabel('X')
             self.ax.set_ylabel('Y')
@@ -687,7 +687,6 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
 
         self.camera_handles = []
         self.camera_props = []
-        self.camera_trans = []
         self.kuka_actor_ids_sim = []  # within-sim indices
         self.plug_actor_ids_sim = []  # within-sim indices
         self.socket_actor_ids_sim = []  # within-sim indices
@@ -735,9 +734,9 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
         self.init_camera_pos = (self.cfg_env.external_cam.x_init,
                                 self.cfg_env.external_cam.y_init,
                                 self.cfg_env.external_cam.z_init)
-        self.init_camera_rot = (np.deg2rad(self.cfg_env.external_cam.roll_init),
-                                np.deg2rad(self.cfg_env.external_cam.pitch_init),
-                                np.deg2rad(self.cfg_env.external_cam.yaw_init))
+        self.init_camera_point = (self.cfg_env.external_cam.x_point_init,
+                                self.cfg_env.external_cam.y_point_init,
+                                self.cfg_env.external_cam.z_point_init)
 
         from tqdm import tqdm
 
@@ -890,41 +889,27 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
 
             if self.external_cam:
                 # add external cam
-                # Standard deviations for the errors
-                self.pos_error_std = self.cfg_env.external_cam.pos_noise  # Position error standard deviation
-                self.rot_error_std = np.deg2rad(
-                    self.cfg_env.external_cam.rot_noise)  # Rotation error standard deviation
+                self.pos_error_std = self.cfg_env.external_cam.cam_pos_noise
+                self.point_error_std = self.cfg_env.external_cam.cam_point_noise
 
-                # Generate random position and rotation errors
                 random_pos_error = np.random.normal(0, self.pos_error_std, 3)
-                random_rot_error = np.random.normal(0, self.rot_error_std, 3)
+                random_point_error = np.random.normal(0, self.point_error_std, 3)
 
-                # Apply random errors to the initial position and rotation
                 perturbed_position = np.array(self.init_camera_pos) + random_pos_error
-                perturbed_rotation = np.array(self.init_camera_rot) + random_rot_error
+                perturbed_point = np.array(self.init_camera_point) + random_point_error
 
-                cam, trans, props = self.make_handle_trans(self.res[0], self.res[1], i,
-                                                           perturbed_position, perturbed_rotation)
+                cam, _, props = self.make_handle_trans(self.res[0], self.res[1], i,
+                                                           perturbed_position, perturbed_point)
                 self.camera_handles.append(cam)
-                self.camera_trans.append(trans)
                 self.camera_props.append(props)
 
-                # self.gym.attach_camera_to_body(
-                #     cam,
-                #     self.envs[i],
-                #     kuka_handle,
-                #     trans,
-                #     gymapi.FOLLOW_TRANSFORM,
-                # )
-
-                # perturbed_rotation is actually camera focus point (change name)
                 self.gym.set_camera_location(cam, self.envs[i],
                                              gymapi.Vec3(perturbed_position[0],
                                                          perturbed_position[1],
                                                          perturbed_position[2]),
-                                             gymapi.Vec3(perturbed_rotation[0],
-                                                         perturbed_rotation[1],
-                                                         perturbed_rotation[2]))
+                                             gymapi.Vec3(perturbed_point[0],
+                                                         perturbed_point[1],
+                                                         perturbed_point[2]))
 
             if subassembly not in self.all_rendering_camera:
                 self.camera_props_viz = gymapi.CameraProperties()
@@ -1011,7 +996,6 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
                                                   isc_gym=self.gym,
                                                   envs=self.envs,
                                                   camera_handles=self.camera_handles,
-                                                  camera_trans=self.camera_trans,
                                                   camera_props=self.camera_props,
                                                   sample_num=self.cfg['env']['num_points'],
                                                   compute_device=self.device,

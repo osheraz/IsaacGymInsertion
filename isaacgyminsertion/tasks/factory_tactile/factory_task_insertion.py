@@ -985,6 +985,10 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                             display='square_peg_hole_32mm_loose' == k and self.cfg_task.external_cam.display).to(
                             self.device)
 
+                    self.goal_pcl[pcl_noise] = self.pcl_process.augment(self.goal_pcl[pcl_noise],
+                                                                        self.rot_pcl_angle[pcl_noise],
+                                                                        self.axes[pcl_noise],
+                                                                        self.pcl_pos_noise[pcl_noise])
                     if socket_pts is not None:
                         self.pcl = torch.cat([plug_pts, socket_pts, self.goal_pcl], dim=1).flatten(start_dim=1)
                     else:
@@ -1388,45 +1392,6 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                 self.complete_ft_frames = self.ft_frames[:]
             self.ft_frames = []
 
-        # Slightly change the external cam pose
-        if self.external_cam and False:
-            # angles = np.linspace(-np.pi / 4, np.pi / 4, self.num_envs)
-            # angles = np.random.normal(loc=0, scale=np.pi / 8, size=self.num_envs)
-            # angles = np.clip(angles, 0.03, 0.03)
-
-            for env_id in env_ids:
-                # radius = np.random.uniform(0.295, 0.3)
-                # center_x, center_y, _ = self.socket_pos[env_id].cpu()
-                # angle = angles[env_id]
-                #
-                # x_pos = center_x + radius * np.cos(angle)
-                # y_pos = center_y + radius * np.sin(angle)
-                # z_pos = self.init_camera_pos[2]
-                # perturbed_position = np.array([x_pos, y_pos, z_pos]) + np.random.normal(0, self.pos_error_std, 3)
-                #
-                # roll = self.init_camera_rot[0]
-                # pitch = self.init_camera_rot[1]
-                # yaw = np.arctan2(center_y - y_pos, center_x - x_pos)
-                #
-                # perturbed_rotation = np.array([roll, pitch, yaw]) + np.random.normal(0, np.deg2rad(self.rot_error_std),
-                #                                                                      3)
-                random_pos_error = np.random.normal(0, self.pos_error_std, 3)
-                random_rot_error = np.random.normal(0, self.rot_error_std, 3)
-
-                # Apply random errors to the initial position and rotation
-                perturbed_position = np.array(self.init_camera_pos) + random_pos_error
-                perturbed_rotation = np.array(self.init_camera_rot) + random_rot_error
-
-                _, trans, _ = self.make_handle_trans(self.res[0], self.res[1], env_id, perturbed_position,
-                                                     perturbed_rotation)
-
-                self.gym.attach_camera_to_body(
-                    self.camera_handles[env_id],
-                    self.envs[env_id],
-                    self.kuka_handles[env_id],
-                    trans,
-                    gymapi.FOLLOW_TRANSFORM,
-                )
 
         self._reset_buffers(env_ids)
 

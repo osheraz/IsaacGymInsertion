@@ -1,0 +1,686 @@
+<?xml version="1.0" ?>
+<robot name="kuka">
+  <link name="iiwa7_link_0">
+    <inertial>
+      <origin xyz="-0.000648 -0.000166 0.084487" rpy="0 0 0" />
+      <mass value="1.697" />
+      <inertia ixx="0.004622" ixy="9E-06" ixz="6E-05" iyy="0.004495" iyz="9E-06" izz="0.002079" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../../urdf/kuka_openhand_description/meshes/kinova/base_link.obj" />
+      </geometry>
+      <material name="">
+        <color rgba="0.75294 0.75294 0.75294 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../../urdf/kuka_openhand_description/meshes/kinova/base_link.obj" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="shoulder_link">
+    <inertial>
+      <origin xyz="-2.3E-05 -0.010364 -0.07336" rpy="0 0 0" />
+      <mass value="1.3773" />
+      <inertia ixx="0.00457" ixy="1E-06" ixz="2E-06" iyy="0.004831" iyz="0.000448" izz="0.001409" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../../urdf/kuka_openhand_description/meshes/kinova/shoulder_link.obj" />
+      </geometry>
+      <material name="">
+        <color rgba="0.75294 0.75294 0.75294 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../../urdf/kuka_openhand_description/meshes/kinova/shoulder_link.obj" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="Actuator1" type="continuous">
+    <origin xyz="0 0 0.15643" rpy="3.1416 2.7629E-18 -4.9305E-36" />
+    <parent link="iiwa7_link_0" />
+    <child link="shoulder_link" />
+    <axis xyz="0 0 1" />
+    <limit effort="39" velocity="0.8727" />
+  </joint>
+  <link name="HalfArm1_link">
+    <inertial>
+      <origin xyz="-4.4E-05 -0.09958 -0.013278" rpy="0 0 0" />
+      <mass value="1.1636" />
+      <inertia ixx="0.011088" ixy="5E-06" ixz="0" iyy="0.001072" iyz="-0.000691" izz="0.011255" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../../urdf/kuka_openhand_description/meshes/kinova/half_arm_1_link.obj" />
+      </geometry>
+      <material name="">
+        <color rgba="0.75294 0.75294 0.75294 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../../urdf/kuka_openhand_description/meshes/kinova/half_arm_1_link.obj" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="Actuator2" type="revolute">
+    <origin xyz="0 0.005375 -0.12838" rpy="1.5708 2.1343E-17 -1.1102E-16" />
+    <parent link="shoulder_link" />
+    <child link="HalfArm1_link" />
+    <axis xyz="0 0 1" />
+    <limit lower="-2.41" upper="2.41" effort="39" velocity="0.8727" />
+  </joint>
+  <link name="half_arm_2_link">
+    <inertial>
+      <origin xyz="-4.4E-05 -0.006641 -0.117892" rpy="0 0 0" />
+      <mass value="1.1636" />
+      <inertia ixx="0.010932" ixy="0" ixz="-7E-06" iyy="0.011127" iyz="0.000606" izz="0.001043" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../../urdf/kuka_openhand_description/meshes/kinova/half_arm_2_link.obj" />
+      </geometry>
+      <material name="">
+        <color rgba="0.75294 0.75294 0.75294 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../../urdf/kuka_openhand_description/meshes/kinova/half_arm_2_link.obj" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="Actuator3" type="continuous">
+    <origin xyz="0 -0.21038 -0.006375" rpy="-1.5708 1.2326E-32 -2.9122E-16" />
+    <parent link="HalfArm1_link" />
+    <child link="half_arm_2_link" />
+    <axis xyz="0 0 1" />
+    <limit effort="39" velocity="0.8727" />
+  </joint>
+  <link name="forearm_link">
+    <inertial>
+      <origin xyz="-1.8E-05 -0.075478 -0.015006" rpy="0 0 0" />
+      <mass value="0.9302" />
+      <inertia ixx="0.008147" ixy="-1E-06" ixz="0" iyy="0.000631" iyz="-0.0005" izz="0.008316" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../../urdf/kuka_openhand_description/meshes/kinova/forearm_link.obj" />
+      </geometry>
+      <material name="">
+        <color rgba="0.75294 0.75294 0.75294 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../../urdf/kuka_openhand_description/meshes/kinova/forearm_link.obj" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="Actuator4" type="revolute">
+    <origin xyz="0 0.006375 -0.21038" rpy="1.5708 -6.6954E-17 -1.6653E-16" />
+    <parent link="half_arm_2_link" />
+    <child link="forearm_link" />
+    <axis xyz="0 0 1" />
+    <limit lower="-2.66" upper="2.66" effort="39" velocity="0.8727" />
+  </joint>
+  <link name="spherical_wrist_1_link">
+    <inertial>
+      <origin xyz="1E-06 -0.009432 -0.063883" rpy="0 0 0" />
+      <mass value="0.6781" />
+      <inertia ixx="0.001596" ixy="0" ixz="0" iyy="0.001607" iyz="0.000256" izz="0.000399" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../../urdf/kuka_openhand_description/meshes/kinova/spherical_wrist_1_link.obj" />
+      </geometry>
+      <material name="">
+        <color rgba="0.75294 0.75294 0.75294 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../../urdf/kuka_openhand_description/meshes/kinova/spherical_wrist_1_link.obj" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="Actuator5" type="continuous">
+    <origin xyz="0 -0.20843 -0.006375" rpy="-1.5708 2.2204E-16 -6.373E-17" />
+    <parent link="forearm_link" />
+    <child link="spherical_wrist_1_link" />
+    <axis xyz="0 0 1" />
+    <limit effort="9" velocity="0.8727" />
+  </joint>
+  <link name="spherical_wrist_2_link">
+    <inertial>
+      <origin xyz="1E-06 -0.045483 -0.00965" rpy="0 0 0" />
+      <mass value="0.6781" />
+      <inertia ixx="0.001641" ixy="0" ixz="0" iyy="0.00041" iyz="-0.000278" izz="0.001641" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../../urdf/kuka_openhand_description/meshes/kinova/spherical_wrist_2_link.obj" />
+      </geometry>
+      <material name="">
+        <color rgba="0.75294 0.75294 0.75294 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../../urdf/kuka_openhand_description/meshes/kinova/spherical_wrist_2_link.obj" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="Actuator6" type="revolute">
+    <origin xyz="0 0.00017505 -0.10593" rpy="1.5708 9.2076E-28 -8.2157E-15" />
+    <parent link="spherical_wrist_1_link" />
+    <child link="spherical_wrist_2_link" />
+    <axis xyz="0 0 1" />
+    <limit lower="-2.23" upper="2.23" effort="9" velocity="0.8727" />
+  </joint>
+  <link name="iiwa7_link_7">
+    <inertial>
+      <origin xyz="-0.000281 -0.011402 -0.029798" rpy="0 0 0" />
+      <mass value="0.5006" />
+      <inertia ixx="0.000587" ixy="3E-06" ixz="3E-06" iyy="0.000369" iyz="0.000118" izz="0.000609" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../../urdf/kuka_openhand_description/meshes/kinova/bracelet_with_vision_link.obj" />
+      </geometry>
+      <material name="">
+        <color rgba="0.75294 0.75294 0.75294 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../../urdf/kuka_openhand_description/meshes/kinova/bracelet_with_vision_link.obj" />
+      </geometry>
+    </collision>
+  </link>
+
+  <joint name="Actuator7" type="continuous">
+    <origin xyz="0 -0.10593 -0.00017505" rpy="-1.5708 -5.5511E-17 9.6396E-17" />
+    <parent link="spherical_wrist_2_link" />
+    <child link="iiwa7_link_7" />
+    <axis xyz="0 0 1" />
+    <limit effort="9" velocity="0.8727" />
+  </joint>
+
+  <!-- joint between link_ee and gripper -->
+  <joint name="iiwa_ft_base_joint" type="fixed">
+    <parent link="iiwa7_link_7"/>
+    <child link="dummy_ft_link"/>
+    <origin rpy="0 0 0" xyz="0 0 -0.11"/>
+  </joint>
+
+  <!-- gripper tags -->
+
+   <link name="dummy_ft_link">
+    <visual>
+      <geometry>
+        <cylinder length="0.08" radius="0.04"/>
+      </geometry>
+      <material name="Grey"/>
+    </visual>
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="0.1"/>
+      <inertia ixx="0.001"  ixy="0"  ixz="0" iyy="0.001" iyz="0" izz="0.001" />
+    </inertial>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <cylinder length="0.08" radius="0.04"/>
+      </geometry>
+    </collision>
+  </link>
+
+
+  <joint name="iiwa_gripper_base_joint" type="fixed">
+    <parent link="iiwa7_link_7"/>
+    <child link="gripper_base_link"/>
+    <origin rpy="0 -1.57079632679 0" xyz="0 0 -0.21"/>
+  </joint>
+
+  <link name="gripper_base_link">
+    <visual>
+      <origin rpy="1.57079632679 0 -1.57079632679" xyz="0.06 0.017 0"/>
+      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <geometry>
+        <mesh filename="../../urdf/kuka_openhand_description/meshes/yale_openhand_O/base_link.obj"/>
+      </geometry>
+  <material name="coolgrey" >
+    <color rgba="0.5843137254901961 0.6392156862745098 0.6509803921568628 1.0" />
+  </material>
+    </visual>
+    <inertial>
+      <origin rpy="0 0 0" xyz="0.03 0 0."/>
+      <mass value="0.7"/>
+      <inertia ixx="0.001" ixy="0.0" ixz="0.0" iyy="0.001" iyz="0.0" izz="0.001"/>
+    </inertial>
+    <collision>
+      <origin rpy="1.57079632679 0 -1.57079632679" xyz="0.06 0.017 0"/>
+      <geometry>
+        <mesh filename="../../urdf/kuka_openhand_description/meshes/yale_openhand_O/base_link.obj"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <link name="finger_1_1">
+     <contact>
+        <lateral_friction value="1"/>
+        <rolling_friction value="0.1"/>
+        <contact_cfm value="0.0"/>
+        <contact_erp value="1.0"/>
+      </contact>
+    <inertial>
+      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <mass value="0.05"/>
+      <inertia ixx="0.0001" ixy="0.0" ixz="0.0" iyy="0.0001" iyz="0.0" izz="0.0001"/>
+    </inertial>
+    <visual>
+  <material name="coolgrey" >
+    <color rgba="0.5843137254901961 0.6392156862745098 0.6509803921568628 1.0" />
+  </material>
+      <origin rpy="1.57079632679 3.14159265359 -1.57079632679" xyz="-0.00 0.0 0.00"/>
+      <geometry>
+        <!-- <cylinder length="0.002" radius="0.018" /> -->
+        <mesh filename="../../urdf/kuka_openhand_description/meshes/yale_openhand_O/swivel_1.obj"/>
+      </geometry>
+    </visual>
+    <collision>
+      <origin rpy="0 1.57079632679 0 " xyz="0.00 0.0 0.00"/>
+      <geometry>
+        <cylinder length="0.002" radius="0.018"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <link name="finger_1_2">
+        <contact>
+        <lateral_friction value="1"/>
+        <rolling_friction value="0.1"/>
+        <contact_cfm value="0.0"/>
+        <contact_erp value="1.0"/>
+      </contact>
+    <inertial>
+      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <mass value="0.05"/>
+      <inertia ixx="0.0001" ixy="0.0" ixz="0.0" iyy="0.0001" iyz="0.0" izz="0.0001"/>
+    </inertial>
+    <visual>
+  <material name="lightgrey" >
+    <color rgba="0.8470588235294118 0.8627450980392157 0.8392156862745098 1.0" />
+  </material>
+      <origin rpy="0 -3.141592653592 2.4" xyz="-0.00 0.0753 0.008"/>
+      <geometry>
+        <mesh filename="../../urdf/kuka_openhand_description/meshes/yale_openhand_O/proximal_O.obj" scale="0.00100 0.00100 0.00100"/>
+      </geometry>
+    </visual>
+    <collision>
+      <origin rpy="0 -3.141592653592 2.4" xyz="-0.00 0.0753 0.008"/>
+      <geometry>
+        <mesh filename="../../urdf/kuka_openhand_description/meshes/yale_openhand_O/proximal_O.obj" scale="0.00100 0.00100 0.00100"/>
+      </geometry>
+    </collision>
+  </link>
+
+    <link name="mount_1_3">
+      <inertial>
+      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <mass value="0.05"/>
+      <inertia ixx="0.0001" ixy="0.0" ixz="0.0" iyy="0.0001" iyz="0.0" izz="0.0001"/>
+    </inertial>
+    <visual>
+      <geometry>
+        <mesh filename="../../urdf/kuka_openhand_description/meshes/allsight/allsight_mount.obj"/>
+      </geometry>
+      <material name="white">
+        <color rgba=".9 .9 .9 1"/>
+      </material>
+    </visual>
+     <collision>
+           <geometry>
+        <mesh filename="../../urdf/kuka_openhand_description/meshes/allsight/allsight_mount.obj"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <link name="finger_1_3">
+      <inertial>
+      <!--                  <origin xyz="-0.005 0.03 0" rpy="0 0 0"/>-->
+      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <mass value="0.05"/>
+      <inertia ixx="0.0001" ixy="0.0" ixz="0.0" iyy="0.0001" iyz="0.0" izz="0.0001"/>
+    </inertial>
+    <visual>
+      <geometry>
+        <mesh filename="../../urdf/kuka_openhand_description/meshes/allsight/allsight_fine01.obj"/>
+      </geometry>
+      <material name="white">
+        <color rgba=".9 .9 .9 1"/>
+      </material>
+    </visual>
+     <collision>
+     <!--
+            <origin xyz="0.016 0 0" rpy="0 -1.57079632679 0"/>
+            <geometry>
+                   <cylinder radius="0.012" length="0.032" />
+            </geometry>
+     -->
+           <geometry>
+        <mesh filename="../../urdf/kuka_openhand_description/meshes/allsight/allsight_fine01.obj"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <link name="finger_2_1">
+        <contact>
+        <lateral_friction value="1"/>
+        <rolling_friction value="0.1"/>
+        <contact_cfm value="0.0"/>
+        <contact_erp value="1.0"/>
+      </contact>
+    <inertial>
+      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <mass value="0.05"/>
+      <inertia ixx="0.0001" ixy="0.0" ixz="0.0" iyy="0.0001" iyz="0.0" izz="0.0001"/>
+    </inertial>
+    <visual>
+  <material name="coolgrey" >
+    <color rgba="0.5843137254901961 0.6392156862745098 0.6509803921568628 1.0" />
+  </material>
+      <origin rpy="1.57079632679 3.14159265359 -1.57079632679" xyz="-0.00 0.0 0.00"/>
+      <geometry>
+        <mesh filename="../../urdf/kuka_openhand_description/meshes/yale_openhand_O/swivel_1.obj"/>
+      </geometry>
+    </visual>
+    <collision>
+      <origin rpy="0 1.57079632679 0 " xyz="0.00 0.0 0.00"/>
+      <geometry>
+        <cylinder length="0.002" radius="0.018"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <link name="finger_2_2">
+        <contact>
+        <lateral_friction value="1"/>
+        <rolling_friction value="0.1"/>
+        <contact_cfm value="0.0"/>
+        <contact_erp value="1.0"/>
+      </contact>
+    <inertial>
+      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <mass value="0.05"/>
+      <inertia ixx="0.0001" ixy="0.0" ixz="0.0" iyy="0.0001" iyz="0.0" izz="0.0001"/>
+    </inertial>
+    <visual>
+  <material name="lightgrey" >
+    <color rgba="0.8470588235294118 0.8627450980392157 0.8392156862745098 1.0" />
+  </material>
+      <origin rpy="0 -3.141592653592 2.4" xyz="-0.00 0.0753 0.008"/>
+      <geometry>
+        <mesh filename="../../urdf/kuka_openhand_description/meshes/yale_openhand_O/proximal_O.obj" scale="0.00100 0.00100 0.00100"/>
+      </geometry>
+    </visual>
+    <collision>
+      <origin rpy="0 -3.141592653592 2.4" xyz="-0.00 0.0753 0.008"/>
+      <geometry>
+        <mesh filename="../../urdf/kuka_openhand_description/meshes/yale_openhand_O/proximal_O.obj" scale="0.00100 0.00100 0.00100"/>
+      </geometry>
+    </collision>
+  </link>
+
+   <link name="mount_2_3">
+      <inertial>
+      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <mass value="0.05"/>
+      <inertia ixx="0.0001" ixy="0.0" ixz="0.0" iyy="0.0001" iyz="0.0" izz="0.0001"/>
+    </inertial>
+    <visual>
+      <geometry>
+        <mesh filename="../../urdf/kuka_openhand_description/meshes/allsight/allsight_mount.obj"/>
+      </geometry>
+      <material name="white">
+        <color rgba=".9 .9 .9 1"/>
+      </material>
+    </visual>
+     <collision>
+           <geometry>
+        <mesh filename="../../urdf/kuka_openhand_description/meshes/allsight/allsight_mount.obj"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <link name="finger_2_3">
+
+      <inertial>
+      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <mass value="0.05"/>
+      <inertia ixx="0.0001" ixy="0.0" ixz="0.0" iyy="0.0001" iyz="0.0" izz="0.0001"/>
+    </inertial>
+    <visual>
+      <geometry>
+        <mesh filename="../../urdf/kuka_openhand_description/meshes/allsight/allsight_fine01.obj"/>
+      </geometry>
+      <material name="white">
+        <color rgba=".9 .9 .9 1"/>
+      </material>
+    </visual>
+     <collision>
+     <!--
+            <origin xyz="0.016 0 0" rpy="0 -1.57079632679 0"/>
+            <geometry>
+                   <cylinder radius="0.012" length="0.032" />
+            </geometry>
+     -->
+           <geometry>
+        <mesh filename="../../urdf/kuka_openhand_description/meshes/allsight/allsight_fine01.obj"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <link name="finger_3_2">
+        <contact>
+        <lateral_friction value="1"/>
+        <rolling_friction value="0.1"/>
+        <contact_cfm value="0.0"/>
+        <contact_erp value="1.0"/>
+      </contact>
+    <inertial>
+      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <mass value="0.05"/>
+      <inertia ixx="0.0001" ixy="0.0" ixz="0.0" iyy="0.0001" iyz="0.0" izz="0.0001"/>
+    </inertial>
+    <visual>
+  <material name="lightgrey" >
+    <color rgba="0.8470588235294118 0.8627450980392157 0.8392156862745098 1.0" />
+  </material>
+      <origin rpy="0 -3.141592653592 2.4" xyz="-0.00 0.0753 0.008"/>
+      <geometry>
+        <mesh filename="../../urdf/kuka_openhand_description/meshes/yale_openhand_O/proximal_O.obj" scale="0.00100 0.00100 0.00100"/>
+      </geometry>
+    </visual>
+    <collision>
+      <origin rpy="0 -3.141592653592 2.4" xyz="-0.00 0.0753 0.008"/>
+      <geometry>
+        <mesh filename="../../urdf/kuka_openhand_description/meshes/yale_openhand_O/proximal_O.obj" scale="0.00100 0.00100 0.00100"/>
+      </geometry>
+    </collision>
+  </link>
+
+    <link name="mount_3_3">
+      <inertial>
+      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <mass value="0.05"/>
+      <inertia ixx="0.0001" ixy="0.0" ixz="0.0" iyy="0.0001" iyz="0.0" izz="0.0001"/>
+    </inertial>
+    <visual>
+      <geometry>
+        <mesh filename="../../urdf/kuka_openhand_description/meshes/allsight/allsight_mount.obj"/>
+      </geometry>
+      <material name="white">
+        <color rgba=".9 .9 .9 1"/>
+      </material>
+    </visual>
+     <collision>
+           <geometry>
+        <mesh filename="../../urdf/kuka_openhand_description/meshes/allsight/allsight_mount.obj"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <link name="finger_3_3">
+
+      <inertial>
+      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <mass value="0.05"/>
+      <inertia ixx="0.0001" ixy="0.0" ixz="0.0" iyy="0.0001" iyz="0.0" izz="0.0001"/>
+    </inertial>
+    <visual>
+      <geometry>
+        <mesh filename="../../urdf/kuka_openhand_description/meshes/allsight/allsight_fine01.obj"/>
+      </geometry>
+      <material name="white">
+        <color rgba=".9 .9 .9 1"/>
+      </material>
+    </visual>
+     <collision>
+     <!--
+            <origin xyz="0.016 0 0" rpy="0 -1.57079632679 0"/>
+            <geometry>
+                   <cylinder radius="0.012" length="0.032" />
+            </geometry>
+     -->
+           <geometry>
+        <mesh filename="../../urdf/kuka_openhand_description/meshes/allsight/allsight_fine01.obj"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <!-- Joints -->
+
+  <joint name="base_to_finger_1_1" type="revolute">
+    <origin rpy="3.14159265359 0 0" xyz="-0.003 -0.034 -0.027"/>
+    <parent link="gripper_base_link"/>
+    <child link="finger_1_1"/>
+    <limit effort="3" lower="0" upper="1.57079632679" velocity="2"/>
+    <axis xyz="1 0 0"/>
+    <dynamics friction="10" damping="10" />
+  </joint>
+
+  <joint name="finger_1_1_to_finger_1_2" type="revolute">
+    <origin rpy="0 0 0" xyz="-0.023 0.00725 0"/>
+    <parent link="finger_1_1"/>
+    <child link="finger_1_2"/>
+    <limit effort="3" lower="-0.1" upper="3.0" velocity="2"/>
+    <axis xyz="0 0 1"/>
+    <dynamics friction="10" damping="10" />
+  </joint>
+
+   <joint name="finger_1_2_to_finger_1_3" type="revolute">
+    <origin rpy="0 0 1.57079632679" xyz="0.0008 0.063 0"/>
+    <parent link="finger_1_2"/>
+    <child link="mount_1_3"/>
+    <limit effort="3" lower="0.0" upper="1.27" velocity="2"/>
+    <axis xyz="0 0 1"/>
+    <dynamics friction="10" damping="10" />
+  </joint>
+
+    <joint name="finger_1_2_to_finger_1_3_tip" type="fixed">
+    <origin rpy="1.57079632679 0 0" xyz="0.025 0.003 0"/>
+    <parent link="mount_1_3"/>
+    <child link="finger_1_3"/>
+  </joint>
+
+  <joint name="base_to_finger_2_1" type="revolute">
+    <origin rpy="3.14159265359 0 0" xyz="-0.003 -0.034 0.027"/>
+    <parent link="gripper_base_link"/>
+    <child link="finger_2_1"/>
+    <limit effort="3" lower="-1.57079632679" upper="0" velocity="2"/>
+    <axis xyz="1 0 0"/>
+    <dynamics friction="10" damping="10" />
+  </joint>
+
+  <joint name="finger_2_1_to_finger_2_2" type="revolute">
+    <origin rpy="0 0 0" xyz="-0.02 0.00725 0"/>
+    <parent link="finger_2_1"/>
+    <child link="finger_2_2"/>
+    <limit effort="3" lower="-0.1" upper="3.0" velocity="2"/>
+    <axis xyz="0 0 1"/>
+    <dynamics friction="10" damping="10" />
+  </joint>
+
+  <joint name="finger_2_2_to_finger_2_3" type="revolute">
+    <origin rpy="0 0 1.57079632679" xyz="0.0008 0.063 0"/>
+    <parent link="finger_2_2"/>
+    <child link="mount_2_3"/>
+    <limit effort="3" lower="0.0" upper="1.27" velocity="2"/>
+    <axis xyz="0 0 1"/>
+    <dynamics friction="10" damping="10" />
+  </joint>
+
+   <joint name="finger_2_2_to_finger_2_3_tip" type="fixed">
+    <origin rpy="1.57079632679 0 0" xyz="0.025 0.003 0"/>
+    <parent link="mount_2_3"/>
+    <child link="finger_2_3"/>
+  </joint>
+
+  <joint name="base_to_finger_3_2" type="revolute">
+    <origin rpy="0 0 0" xyz="-0.023 0.047 0.000000"/>
+    <parent link="gripper_base_link"/>
+    <child link="finger_3_2"/>
+    <limit effort="3" lower="-0.1" upper="3.0" velocity="2"/>
+    <axis xyz="0 0 1"/>
+    <dynamics friction="10" damping="10" />
+  </joint>
+
+  <joint name="finger_3_2_to_finger_3_3" type="revolute">
+    <origin rpy="0 0 1.57079632679" xyz="0.0008 0.063 0"/>
+    <parent link="finger_3_2"/>
+    <child link="mount_3_3"/>
+    <limit effort="3" lower="0.0" upper="1.27" velocity="2"/>
+    <axis xyz="0 0 1"/>
+    <dynamics friction="10" damping="10" />
+  </joint>
+
+  <joint name="finger_3_2_to_finger_3_3_tip" type="fixed">
+    <origin rpy="1.57079632679 0 0" xyz="0.025 0.003 0"/>
+    <parent link="mount_3_3"/>
+    <child link="finger_3_3"/>
+  </joint>
+
+     <!--Used for calculating pose and Jacobian.
+    Joint connects hand to dummy link located at midpoint between bottoms of fingertips (when centered).-->
+
+  <joint name="iiwa7_joint_ee" type="fixed">
+    <parent link="dummy_ft_link"/>
+    <child link="kuka_fingertip_centered"/>
+    <origin rpy="0 0 0" xyz="0.00 -0.01 0.23"/>
+  </joint>
+
+  <link name="kuka_fingertip_centered" />
+
+</robot>
