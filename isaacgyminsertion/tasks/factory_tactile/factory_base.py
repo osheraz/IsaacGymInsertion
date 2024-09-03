@@ -218,6 +218,7 @@ class FactoryBaseTactile(VecTask, FactoryABCBase):
         self.arm_dof_pos = self.dof_pos[:, 0:7]
         self.arm_dof_vel = self.dof_vel[:, 0:7]
         self.arm_mass_matrix = self.mass_matrix[:, 0:7, 0:7]  # for kuka arm (not gripper)
+        self.gripper_mass_matrix = self.mass_matrix[:, 7:, 7:]  # for gripper arm (not gripper)
 
         self.robot_base_pos = self.body_pos[:, self.robot_base_body_id_env, 0:3]
         self.robot_base_quat = self.body_quat[:, self.robot_base_body_id_env, 0:4]
@@ -301,18 +302,36 @@ class FactoryBaseTactile(VecTask, FactoryABCBase):
         self.ctrl_target_fingertip_centered_quat = torch.zeros((self.num_envs, 4), device=self.device)
 
         self.prev_actions = torch.zeros((self.num_envs, self.num_actions), device=self.device)
-
+        self.prev_plug_quat = torch.zeros((self.num_envs, 4), device=self.device)
+        self.prev_plug_pos = torch.zeros((self.num_envs, 3), device=self.device)
         self.gripper_normal_quat = (torch.tensor([-1 / 2 ** 0.5, -1 / 2 ** 0.5, 0.0, 0.0],
                                                  device=self.device).unsqueeze(0).repeat(self.num_envs, 1))
 
         self.identity_quat = torch.tensor([0.0, 0.0, 0.0, 1.0], device=self.device).unsqueeze(0).repeat(self.num_envs,
                                                                                                         1)
-        
+        # Underactuated stuff
+        r_prox = 1.0
+        r_dist = 0.5
+        self.r_act = 2.0
+        max_f = 5.0  # mapping coeff between act_force to tendon tension
+        k1 = 0.5  # spring coeff
+        k2 = 1.0  # spring coeff
+        d1 = d2 = 6.0  # damping coeff
 
-        # self.rigid_contacts = self.gym.get_rigid_contacts(self.sim)
-        # print(self.rigid_contacts)
-
-        # self.test_plot = []
+        self.R = torch.tensor([[r_prox, 0., 0.],
+                               [r_dist, 0., 0.],
+                               [0., r_prox, 0.],
+                               [0., r_dist, 0.],
+                               [0., 0., r_prox],
+                               [0., 0., r_dist]], device=self.device).repeat((self.num_envs, 1, 1))
+        self.Q = torch.tensor([[max_f, 0., 0.],
+                               [0., max_f, 0.],
+                               [0., 0., max_f]], device=self.device).repeat((self.num_envs, 1, 1))
+        self.K = torch.diag(torch.tensor([k1, k2, k1, k2, k1, k2], device=self.device)).repeat((self.num_envs, 1, 1))
+        self.D = torch.diag(torch.tensor([d1, d2, d1, d2, d1, d2], device=self.device)).repeat((self.num_envs, 1, 1))
+        self.act_angles = torch.tensor([0., 0., 0.], device=self.device).repeat((self.num_envs, 1))
+        self.rel_act_angles = torch.tensor([0.0, 0.0, 0.0], device=self.device).repeat((self.num_envs, 1))
+        self.act_torque = None
 
     def refresh_base_tensors(self):
         """Refresh tensors."""
@@ -552,6 +571,8 @@ class FactoryBaseTactile(VecTask, FactoryABCBase):
             right_finger_force=self.right_finger_force,
             jacobian=self.fingertip_centered_jacobian_tf,
             arm_mass_matrix=self.arm_mass_matrix,
+            gripper_mass_matrix=self.gripper_mass_matrix,
+            act_torque=self.act_torque,
             ctrl_target_gripper_dof_pos=self.ctrl_target_gripper_dof_pos,
             ctrl_target_fingertip_midpoint_pos=self.ctrl_target_fingertip_centered_pos,
             ctrl_target_fingertip_midpoint_quat=self.ctrl_target_fingertip_centered_quat,

@@ -60,6 +60,11 @@ matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
 
 
+@torch.jit.script
+def randomize_rotation(rand0, rand1, x_unit_tensor, y_unit_tensor):
+    return quat_mul(quat_from_angle_axis(rand0 * np.pi * 0.12, x_unit_tensor),
+                    quat_from_angle_axis(rand1 * np.pi * 0.12, y_unit_tensor))
+
 @torch.no_grad()
 def filter_pts(pts):
     x = pts[:, 0]
@@ -151,6 +156,10 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
     def _acquire_task_tensors(self):
         """Acquire tensors."""
 
+        self.x_unit_tensor = to_torch([1, 0, 0], dtype=torch.float, device=self.device).repeat((self.num_envs, 1))
+        self.y_unit_tensor = to_torch([0, 1, 0], dtype=torch.float, device=self.device).repeat((self.num_envs, 1))
+        self.z_unit_tensor = to_torch([0, 0, 1], dtype=torch.float, device=self.device).repeat((self.num_envs, 1))
+
         self.act_moving_average_range = self.cfg_task.env.actionsMovingAverage.range
         self.act_moving_average_scheduled_steps = self.cfg_task.env.actionsMovingAverage.schedule_steps
         self.act_moving_average_scheduled_freq = self.cfg_task.env.actionsMovingAverage.schedule_freq
@@ -184,6 +193,9 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         self.frame = 0
         self.reset_flag = True
+
+        self.goal_ori = self.identity_quat.clone()
+
         # inverse refresh rate for each environment
         self.plug_pose_refresh_rates = torch.randint(1, self.max_skip_obs + 1, size=(self.num_envs,),
                                                      device=self.device)
@@ -350,6 +362,8 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.ep_success_count = torch.zeros(self.num_envs, dtype=torch.int32, device=self.device)
         self.ep_failure_count = torch.zeros(self.num_envs, dtype=torch.int32, device=self.device)
 
+        self.reset_goal_buf = self.reset_buf.clone()
+
     def _refresh_task_tensors(self):
         """Refresh tensors."""
 
@@ -432,8 +446,8 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                                                                      self.plug_pos,
                                                                      self.identity_quat,
                                                                      (keypoint_offset * self.socket_heights))[1]
-            self.keypoints_socket[:, idx] = torch_jit_utils.tf_combine(self.socket_quat,
-                                                                       self.socket_pos,
+            self.keypoints_socket[:, idx] = torch_jit_utils.tf_combine(self.fingertip_centered_quat,
+                                                                       self.fingertip_centered_pos,
                                                                        self.identity_quat,
                                                                        (keypoint_offset * self.socket_heights)
                                                                        + socket_tip_pos_local)[1]
@@ -619,12 +633,15 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             self.reset_idx(env_ids)
 
         # test actions for whenever we want to see some axis motion
-        # actions[:, :] = 0.
+        actions[:, :6] = 0.
         # actions[:, 0] = 1.
         # actions[:, 1] = 1.
         # actions[:, 2] = 1.
 
         self.prev_actions[:] = self.actions.clone()
+        self.prev_plug_quat = self.plug_quat.clone()
+        self.prev_plug_pos = self.plug_pos.clone()
+
         self.actions = actions.clone().to(self.device)  # shape = (num_envs, num_actions); values = [-1, 1]
 
         if with_delay:
@@ -635,10 +652,22 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             actions_delayed = self.apply_action_noise_latency()
             actions = actions_delayed
 
-        delta_targets = torch.cat([
-            self.actions[:, :3] @ torch.diag(torch.tensor(self.cfg_task.rl.pos_action_scale, device=self.device)),  # 3
-            self.actions[:, 3:6] @ torch.diag(torch.tensor(self.cfg_task.rl.rot_action_scale, device=self.device))  # 3
-        ], dim=-1).clone()
+        if self.cfg_task.env.hand_action:
+            delta_targets = torch.cat([
+                self.actions[:, :3] @ torch.diag(torch.tensor(self.cfg_task.rl.pos_action_scale, device=self.device)),
+                # 3
+                self.actions[:, 3:6] @ torch.diag(torch.tensor(self.cfg_task.rl.rot_action_scale, device=self.device)),
+                # 3
+                self.actions[:, 6:9] @ torch.diag(
+                    torch.tensor(self.cfg_task.rl.gripper_action_scale, device=self.device))  # 3
+            ], dim=-1).clone()
+        else:
+            delta_targets = torch.cat([
+                self.actions[:, :3] @ torch.diag(torch.tensor(self.cfg_task.rl.pos_action_scale, device=self.device)),
+                # 3
+                self.actions[:, 3:6] @ torch.diag(torch.tensor(self.cfg_task.rl.rot_action_scale, device=self.device)),
+                # 3
+            ], dim=-1).clone()
 
         # Update targets
         self.targets = self.prev_targets + delta_targets
@@ -709,41 +738,40 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         """Compute observations."""
 
         # Compute Observation and state at current timestep
-        # delta_pos = self.socket_tip - self.fingertip_centered_pos
-        noisy_delta_pos = self.noisy_gripper_goal_pos - self.fingertip_centered_pos
-
-        eef_pos = torch.cat(self.pose_world_to_robot_base(self.fingertip_centered_pos.clone(),
-                                                          self.fingertip_centered_quat.clone(),
-                                                          to_rep='rot6d'), dim=-1)
+        # noisy_delta_pos = self.noisy_gripper_goal_pos - self.fingertip_centered_pos
+        #
+        # eef_pos = torch.cat(self.pose_world_to_robot_base(self.fingertip_centered_pos.clone(),
+        #                                                   self.fingertip_centered_quat.clone(),
+        #                                                   to_rep='rot6d'), dim=-1)
         actions = self.actions.clone()
 
-        obs = torch.cat([eef_pos,  # 9
-                         actions,  # 6
-                         noisy_delta_pos  # 3
+        obs = torch.cat([self.rel_act_angles,  # 3
+                         self.goal_ori,        # 4
+                         actions[:, -3:],  # 3
                          ], dim=-1)
 
         self.obs_queue[:, :-self.num_observations] = self.obs_queue[:, self.num_observations:]
         self.obs_queue[:, -self.num_observations:] = obs
 
-        eef_stud = torch.cat(self.pose_world_to_robot_base(self.fingertip_centered_pos.clone(),
-                                                           self.fingertip_centered_quat.clone(),
-                                                           to_rep='matrix'), dim=-1)
-        # fix bug
-        eef_stud = torch.cat((self.fingertip_centered_pos,
-                              self.stud_tf.forward(eef_stud[:, 3:].reshape(eef_stud.shape[0], 3, 3))), dim=1)
+        # eef_stud = torch.cat(self.pose_world_to_robot_base(self.fingertip_centered_pos.clone(),
+        #                                                    self.fingertip_centered_quat.clone(),
+        #                                                    to_rep='matrix'), dim=-1)
+        # # fix bug
+        # eef_stud = torch.cat((self.fingertip_centered_pos,
+        #                       self.stud_tf.forward(eef_stud[:, 3:].reshape(eef_stud.shape[0], 3, 3))), dim=1)
 
         # test = torch.cat(self.pose_world_to_robot_base(self.plug_pos.clone(),
         #                                                   self.plug_quat.clone(),
         #                                                   to_rep='rot6d'), dim=-1)
 
-        obs_tensors_student = torch.cat([
-            eef_stud,
-            noisy_delta_pos,  # 3
-            actions,
-        ], dim=-1)
+        # obs_tensors_student = torch.cat([
+        #     eef_stud,
+        #     noisy_delta_pos,  # 3
+        #     actions,
+        # ], dim=-1)
 
         self.obs_stud_queue[:, :-self.num_obs_stud] = self.obs_stud_queue[:, self.num_obs_stud:]
-        self.obs_stud_queue[:, -self.num_obs_stud:] = obs_tensors_student
+        self.obs_stud_queue[:, -self.num_obs_stud:] = obs
 
         # Define state (for teacher)
         if self.randomize:
@@ -842,8 +870,8 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             # self.plug_hand_quat_diff,  # 4
             plug_hand_pos,  # 3
             plug_hand_quat,  # 4
-            plug_pos_error,  # 3
-            plug_quat_error,  # 4
+            # plug_pos_error,  # 3
+            # plug_quat_error,  # 4
             physics_params,  # 13
             # self.plug_pcd.view(self.num_envs, -1),  # 3 * num_points
         ]
@@ -1072,33 +1100,59 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
     def _update_rew_buf(self):
         """Compute reward at current timestep."""
 
-        action_penalty = torch.norm(self.actions, p=2, dim=-1)
+        act = self.actions[:, -3:]
+        prv = self.prev_actions[:, -3:]
+
+        action_penalty = torch.norm(act, p=2, dim=-1)
         action_reward = self.cfg_task.rl.action_penalty_scale * action_penalty
 
-        action_delta_penalty = torch.norm(self.actions - self.prev_actions, p=2, dim=-1)
+        action_delta_penalty = torch.norm(act - prv, p=2, dim=-1)
         action_delta_reward = self.cfg_task.rl.action_delta_scale * action_delta_penalty
 
-        plug_ori_penalty = torch.norm(self.plug_quat - self.identity_quat, p=2, dim=-1)
-        ori_reward = plug_ori_penalty * self.cfg_task.rl.ori_reward_scale
+        # hand_joints_penalty = torch.norm(self.hand_joints - self.init_hand_joints, p=2, dim=-1)
+        # hand_joint_reward = self.cfg_task.rl.tension_penalty * hand_joints_penalty
 
-        keypoint_dist = self._get_keypoint_dist()
-        keypoint_reward = keypoint_dist * self.cfg_task.rl.keypoint_reward_scale
+        # plug_ori_penalty = torch.norm(self.plug_quat - self.identity_quat, p=2, dim=-1)
+        # ori_reward = plug_ori_penalty * self.cfg_task.rl.ori_reward_scale
 
-        is_plug_engaged_w_socket = self._check_plug_engaged_w_socket()
-        engagement = self._get_engagement_reward_scale(is_plug_engaged_w_socket, self.cfg_task.rl.success_height_thresh)
-        engagement_reward = engagement * self.cfg_task.rl.engagement_reward_scale
+        quat_diff = torch_jit_utils.quat_mul(self.plug_quat, torch_jit_utils.quat_conjugate(self.goal_ori))
+        rot_dist = 2.0 * torch.asin(torch.clamp(torch.norm(quat_diff[:, 0:3], p=2, dim=-1), max=1.0))
+        ori_reward = self.cfg_task.rl.ori_reward_scale / (torch.abs(rot_dist) + self.cfg_task.rl.orientation_threshold)
+
+        # keypoint_dist = self._get_keypoint_dist()
+        # keypoint_reward = keypoint_dist * self.cfg_task.rl.keypoint_reward_scale
+
+        # is_plug_engaged_w_socket = self._check_plug_engaged_w_socket()
+        # engagement = self._get_engagement_reward_scale(is_plug_engaged_w_socket, self.cfg_task.rl.success_height_thresh)
+        # engagement_reward = engagement * self.cfg_task.rl.engagement_reward_scale
 
         distance_reset_buf = (self.far_from_goal_buf | self.degrasp_buf)
         early_reset_reward = distance_reset_buf * self.cfg_task.rl.early_reset_reward_scale
 
-        self.rew_buf[:] = keypoint_reward + engagement_reward + ori_reward + action_reward + action_delta_reward
+        fingertip_pos = torch.cat((self.left_finger_pos,
+                                   self.right_finger_pos,
+                                   self.middle_finger_pos), dim=0)
+
+        ftip_diff = (fingertip_pos.view(self.num_envs, -1, 3) - self.plug_pos[:, None, :])
+        ftip_dist = torch.linalg.norm(ftip_diff, dim=-1).view(self.num_envs, -1)
+        ftip_dist_mean = ftip_dist.mean(dim=-1)
+        ftip_reward = ftip_dist_mean * self.cfg_task.rl.fingertip_reward_scale
+
+        self.rew_buf[:] = ftip_reward + ori_reward + action_reward + action_delta_reward
         self.rew_buf[:] += early_reset_reward
         # self.rew_buf[:] += (early_reset_reward * self.timeout_reset_buf)
         # self.rew_buf[:] += (self.timeout_reset_buf * self.success_reset_buf) * self.cfg_task.rl.success_bonus
 
+        # Find out which envs hit the goal and update successes count
+        goal_resets = torch.where(torch.abs(rot_dist) <= self.cfg_task.rl.success_tolerance,
+                                  torch.ones_like(self.success_reset_buf),
+                                  self.success_reset_buf)
+        self.success_reset_buf[:] = goal_resets
+        # self.rew_buf[:] = torch.where(goal_resets == 1, self.rew_buf + self.cfg_task.rl.success_bonus, self.rew_buf)
+
         self.extras['successes'] = ((self.timeout_reset_buf | distance_reset_buf) * self.success_reset_buf) * 1.0
-        self.extras['keypoint_reward'] = keypoint_reward
-        self.extras['engagement_reward'] = engagement_reward
+        # self.extras['keypoint_reward'] = keypoint_reward
+        # self.extras['engagement_reward'] = engagement_reward
         self.extras['ori_reward'] = ori_reward
 
         self.reward_log_buf[:] = self.rew_buf[:]
@@ -1117,7 +1171,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         """Assign environments for reset if successful or failed."""
 
         # if successfully inserted to a certain threshold
-        self.success_reset_buf[:] = self._check_plug_inserted_in_socket()
+        # self.success_reset_buf[:] = self._check_plug_inserted_in_socket()
 
         # if we are collecting data, reset at insertion
         if (self.cfg_task.data_logger.collect_data or
@@ -1133,18 +1187,20 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.reset_buf[:] = self.timeout_reset_buf[:]
 
         # check is object is grasped and reset if not
-        roll, pitch, _ = get_euler_xyz(self.plug_quat.clone())
+        roll, pitch, yaw = get_euler_xyz(self.plug_quat.clone())
         roll[roll > np.pi] -= 2 * np.pi
         pitch[pitch > np.pi] -= 2 * np.pi
-        self.degrasp_buf[:] = (torch.abs(roll) > 0.4) | (torch.abs(pitch) > 0.4)
+        yaw[yaw > np.pi] -= 2 * np.pi
 
-        fingertips_dist = (torch.norm(self.left_finger_pos - self.fingertip_centered_pos, p=2, dim=-1) < 0.005) & (
-                torch.norm(self.right_finger_pos - self.fingertip_centered_pos, p=2, dim=-1) < 0.005) & (
-                                  torch.norm(self.middle_finger_pos - self.fingertip_centered_pos, p=2, dim=-1) < 0.005)
+        self.degrasp_buf[:] = (torch.abs(roll) > 0.7) | (torch.abs(pitch) > 0.7) | (torch.abs(yaw) > 0.7)
 
-        self.far_from_goal_buf[:] = torch.norm(self.plug_pos - self.socket_pos, p=2, dim=-1) > 0.3
+        # Check if object is too far from gripper
+        fingertips_plug_dist = (torch.norm(self.left_finger_pos - self.plug_pos, p=2, dim=-1) > 0.2) | (
+                                torch.norm(self.right_finger_pos - self.plug_pos, p=2, dim=-1) > 0.2) | (
+                                torch.norm(self.middle_finger_pos - self.plug_pos, p=2, dim=-1) > 0.2)
 
-        # self.degrasp_buf[:] |= fingertips_dist
+        self.far_from_goal_buf[:] = fingertips_plug_dist
+
         if self.cfg_task.reset_at_fails:
             self.reset_buf[:] |= self.degrasp_buf[:]
             self.reset_buf[:] |= self.far_from_goal_buf[:]
@@ -1161,7 +1217,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             random_init_idx[subassembly] = torch.randint(0, self.total_init_poses[subassembly], size=(len(env_ids),))
         subassemblies = [self.envs_asset[e_id] for e_id in range(self.num_envs)]
 
-        kuka_dof_pos = torch.zeros((len(env_ids), 15))
+        kuka_dof_pos = torch.zeros((len(env_ids), 13))
         socket_pos = torch.zeros((len(env_ids), 3))
         socket_quat = torch.zeros((len(env_ids), 4))
         plug_pos = torch.zeros((len(env_ids), 3))
@@ -1189,6 +1245,29 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         # for k, v in self.subassembly_extrinsic_contact.items():
         #     v.reset_socket_pos(socket_pos=socket_pos.cpu().detach())
 
+    def reset_target_pose(self, env_ids, apply_reset=False, random_rot=False):
+        rand_floats = torch_rand_float(-1.0, 1.0, (len(env_ids), 4), device=self.device)
+
+        new_rot = randomize_rotation(rand_floats[:, 0], rand_floats[:, 1], self.x_unit_tensor[env_ids], self.y_unit_tensor[env_ids])
+        new_rot = new_rot if random_rot else self.identity_quat[env_ids, :]
+
+        self.goal_ori[env_ids, :] = new_rot
+
+        self.root_quat[env_ids, self.goal_actor_id_env, :] = new_rot.to(device=self.device)
+        self.root_linvel[env_ids, self.goal_actor_id_env] = 0.0
+        self.root_angvel[env_ids, self.goal_actor_id_env] = 0.0
+
+        if apply_reset:
+            goal_actor_ids_sim_int32 = self.goal_actor_ids_sim.clone().to(dtype=torch.int32, device=self.device)
+            self.gym.set_actor_root_state_tensor_indexed(self.sim,
+                                                         gymtorch.unwrap_tensor(self.root_state),
+                                                         gymtorch.unwrap_tensor(goal_actor_ids_sim_int32[env_ids]),
+                                                         len(goal_actor_ids_sim_int32[env_ids]))
+
+            self._simulate_and_refresh()
+
+        self.reset_goal_buf[env_ids] = 0
+
     def _reset_environment(self, env_ids):
 
         random_init_idx = {}
@@ -1198,7 +1277,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         subassemblies = [self.envs_asset[e_id] for e_id in range(self.num_envs)]
 
-        kuka_dof_pos = torch.zeros((len(env_ids), 15), device=self.device)
+        kuka_dof_pos = torch.zeros((len(env_ids), 13), device=self.device)
         socket_pos = torch.zeros((len(env_ids), 3), device=self.device)
         socket_quat = torch.zeros((len(env_ids), 4), device=self.device)
         plug_pos = torch.zeros((len(env_ids), 3), device=self.device)
@@ -1349,6 +1428,9 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         if self.randomize:
             self.apply_randomizations(dr_params=self.randomization_params,
                                       randomisation_callback=self.randomisation_callback)
+
+        self.reset_target_pose(env_ids, apply_reset=True)
+
         self.disable_gravity()
         if self.cfg_task.grasp_at_init:
             self._reset_environment(env_ids)
@@ -1377,6 +1459,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         plug_hand_pos, plug_hand_quat = self.pose_world_to_hand_base(self.plug_pos, self.plug_quat)
         self.plug_hand_pos_init[...] = plug_hand_pos
         self.plug_hand_quat_init[...] = plug_hand_quat
+        self.init_hand_joints = self.hand_joints.clone()
 
         if self.cfg_task.env.record_video and 0 in env_ids:
             if self.complete_video_frames is None:
@@ -1674,7 +1757,9 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.prev_targets[env_ids] *= 0
         self.prev_actions[env_ids] *= 0
         self.prev_actions_queue[env_ids] *= 0
-
+        self.prev_plug_quat[env_ids] *= 0
+        self.prev_plug_pos[env_ids] *= 0
+        self.rel_act_angles[env_ids] *= 0
         self.rb_forces[env_ids, :, :] = 0.0
 
         # object pose is represented with respect to the wrist
@@ -1714,7 +1799,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         cam_target = gymapi.Vec3(bx, by, bz)
         self.gym.viewer_camera_look_at(self.viewer, None, cam_pos, cam_target)
 
-    def _apply_actions_as_ctrl_targets(self, actions, ctrl_target_gripper_dof_pos, do_scale):
+    def _apply_actions_as_ctrl_targets(self, actions, ctrl_target_gripper_dof_pos, do_scale, init_grasp=False):
         """Apply actions from policy as position/rotation targets."""
 
         # Interpret actions as target pos displacements and set pos target
@@ -1782,7 +1867,6 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                                                                                                          1))
         self.ctrl_target_fingertip_centered_quat = torch_jit_utils.quat_mul(rot_actions_quat,
                                                                             self.fingertip_centered_quat)
-
         if self.cfg_ctrl['do_force_ctrl']:
             # Interpret actions as target forces and target torques
             force_actions = actions[:, 6:9]
@@ -1797,8 +1881,43 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
             self.ctrl_target_fingertip_contact_wrench = torch.cat((force_actions, torque_actions), dim=-1)
 
-        # TODO should be changed to delta as well ?
-        self.ctrl_target_gripper_dof_pos = ctrl_target_gripper_dof_pos  # directly putting desired gripper_pos
+        if self.cfg_task.env.hand_action and not init_grasp:
+
+            gripper_actions = actions[:, 6:9]
+            # gripper_actions[:, :2] = 1.0
+
+            if do_scale:
+                gripper_actions = gripper_actions @ torch.diag(
+                    torch.tensor(self.cfg_task.rl.gripper_action_scale, device=self.device))
+
+            idx = [list(self.dof_dict.values()).index('finger_1_1_to_finger_1_2') - 7,
+                   list(self.dof_dict.values()).index('finger_1_2_to_finger_1_3') - 7,
+                   list(self.dof_dict.values()).index('finger_2_1_to_finger_2_2') - 7,
+                   list(self.dof_dict.values()).index('finger_2_2_to_finger_2_3') - 7,
+                   list(self.dof_dict.values()).index('base_to_finger_3_2') - 7,
+                   list(self.dof_dict.values()).index('finger_3_2_to_finger_3_3') - 7]
+
+            # (delta) Tendon string constraint r_a * q_a = r_p * q_p + r_d * d_p (constant length)
+            # self.act_angles *= 0
+            self.act_angles = (
+                        self.R.permute(0, 2, 1) @ self.gripper_dof_pos[:, idx].unsqueeze(-1) / self.r_act).squeeze(-1)
+            self.act_angles += gripper_actions  # add the action
+            self.rel_act_angles += gripper_actions
+            # self.act_angles = torch.clamp(self.act_angles, min=0 * self.act_angles)
+
+            tendon_forces = self.Q @ self.act_angles.unsqueeze(-1)  # linear mapping between act_angle to tension
+            self.act_torque = self.R @ tendon_forces - self.K @ self.gripper_dof_pos[:, idx].unsqueeze(-1)
+            self.act_torque = self.act_torque.squeeze(-1)  # sum torque@each joint
+
+            # to_plot = gripper_actions.clone().cpu().numpy()[0, :]
+            # self.force_hist = np.vstack((self.force_hist, to_plot))
+            # plt.plot(self.force_hist[1:, :])
+            # plt.pause(0.0001)
+
+        elif init_grasp or not self.cfg_task.env.hand_action:
+
+            self.act_torque = None
+            self.ctrl_target_gripper_dof_pos = ctrl_target_gripper_dof_pos  # directly putting desired gripper_pos
 
         self.generate_ctrl_signals()
 
@@ -1806,12 +1925,12 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         """Fully open gripper using controller. Called outside RL loop (i.e., after last step of episode)."""
 
         gripper_dof_pos = 0 * self.gripper_dof_pos.clone()
-        gripper_dof_pos[env_ids,
-                        list(self.dof_dict.values()).index(
-                            'base_to_finger_1_1') - 7] = self.cfg_task.env.openhand.base_angle
-        gripper_dof_pos[env_ids,
-                        list(self.dof_dict.values()).index(
-                            'base_to_finger_2_1') - 7] = -self.cfg_task.env.openhand.base_angle
+        # gripper_dof_pos[env_ids,
+        #                 list(self.dof_dict.values()).index(
+        #                     'base_to_finger_1_1') - 7] = self.cfg_task.env.openhand.base_angle
+        # gripper_dof_pos[env_ids,
+        #                 list(self.dof_dict.values()).index(
+        #                     'base_to_finger_2_1') - 7] = -self.cfg_task.env.openhand.base_angle
 
         gripper_dof_pos[env_ids,
                         list(self.dof_dict.values()).index(
@@ -1848,10 +1967,10 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         gripper_distal_close_noise = np.random.uniform(0., self.cfg_task.env.openhand.distal_noise, 3)
 
         positions_indices = [
-            ('base_to_finger_1_1', 0.0,
-             self.cfg_task.env.openhand.base_angle, 0.0),
-            ('base_to_finger_2_1', 0.0,
-             -self.cfg_task.env.openhand.base_angle, 0.0),
+            # ('base_to_finger_1_1', 0.0,
+            #  self.cfg_task.env.openhand.base_angle, 0.0),
+            # ('base_to_finger_2_1', 0.0,
+            #  -self.cfg_task.env.openhand.base_angle, 0.0),
             ('finger_1_1_to_finger_1_2',
              self.cfg_task.env.openhand.proximal_open,
              self.cfg_task.env.openhand.proximal_close, gripper_proximal_close_noise[0]),
@@ -1905,7 +2024,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         delta_hand_pose = torch.zeros((self.num_envs, self.cfg_task.env.numActions),
                                       device=self.device)  # no arm motion
-        self._apply_actions_as_ctrl_targets(delta_hand_pose, gripper_dof_pos, do_scale=False)
+        self._apply_actions_as_ctrl_targets(delta_hand_pose, gripper_dof_pos, do_scale=False, init_grasp=True)
 
         # Step sim
         for _ in range(sim_steps):

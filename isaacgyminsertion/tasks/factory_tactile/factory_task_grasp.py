@@ -663,15 +663,11 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
             # Check orientation
             left_finger_dist = torch.norm(self.left_finger_pos[:, :2] - self.plug_tip[:, :2], p=2, dim=-1)
-            right_finger_dist = torch.norm(self.right_finger_pos[:, :2] - self.plug_tip[:, :2], p=2,
-                                           dim=-1)
-            middle_finger_dist = torch.norm(self.middle_finger_pos[:, :2] - self.plug_tip[:, :2], p=2,
-                                            dim=-1)
+            right_finger_dist = torch.norm(self.right_finger_pos[:, :2] - self.plug_tip[:, :2], p=2, dim=-1)
+            middle_finger_dist = torch.norm(self.middle_finger_pos[:, :2] - self.plug_tip[:, :2], p=2, dim=-1)
             # dist = torch.norm(self.socket_tip[:, :2] - self.plug_pos[:, :2], p=2, dim=-1)
             max_dis = 0.05
-            dist = ((left_finger_dist < max_dis) &
-                    (right_finger_dist < max_dis) &
-                    (middle_finger_dist < max_dis))
+            dist = ((left_finger_dist < max_dis) & (right_finger_dist < max_dis) & (middle_finger_dist < max_dis))
             # print('dist', dist)
 
             max_ang = 20
@@ -723,7 +719,7 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         socket_quat = np.zeros((self.total_init_grasp_count, 4))
         plug_pos = np.zeros((self.total_init_grasp_count, 3))
         plug_quat = np.zeros((self.total_init_grasp_count, 4))
-        dof_pos = np.zeros((self.total_init_grasp_count, 15))
+        dof_pos = np.zeros((self.total_init_grasp_count, 13))
         last_ptr = 0
 
         for i in range(self.grasps_save_ctr):
@@ -755,12 +751,12 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.dof_pos[env_ids, :7] = torch.tensor(self.cfg_task.randomize.kuka_arm_initial_dof_pos,
                                                  device=self.device).repeat((len(env_ids), 1))
         # dont play with these joints (no actuation here)#
-        self.dof_pos[
-            env_ids, list(self.dof_dict.values()).index(
-                'base_to_finger_1_1')] = self.cfg_task.env.openhand.base_angle
-        self.dof_pos[
-            env_ids, list(self.dof_dict.values()).index(
-                'base_to_finger_2_1')] = -self.cfg_task.env.openhand.base_angle
+        # self.dof_pos[
+        #     env_ids, list(self.dof_dict.values()).index(
+        #         'base_to_finger_1_1')] = self.cfg_task.env.openhand.base_angle
+        # self.dof_pos[
+        #     env_ids, list(self.dof_dict.values()).index(
+        #         'base_to_finger_2_1')] = -self.cfg_task.env.openhand.base_angle
         # dont play with these joints (no actuation here)#
         self.dof_pos[env_ids, list(self.dof_dict.values()).index(
             'finger_1_1_to_finger_1_2')] = self.cfg_task.env.openhand.proximal_open
@@ -804,7 +800,7 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
     def _reset_environment(self, env_ids):
 
-        kuka_dof_pos = torch.zeros((len(env_ids), 15), device=self.device)
+        kuka_dof_pos = torch.zeros((len(env_ids), 13), device=self.device)
         socket_pos = torch.zeros((len(env_ids), 3), device=self.device)
         socket_quat = torch.zeros((len(env_ids), 4), device=self.device)
         plug_pos = torch.zeros((len(env_ids), 3), device=self.device)
@@ -864,7 +860,11 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         # above socket with overlap
         # Set plug pos to assembled state, but offset plug Z-coordinate by height of socket,
-        plug_pos = socket_pos.clone()
+        # plug_pos = socket_pos.clone()
+        plug_pos[:, 0] = self.cfg_task.randomize.plug_pos_xy_initial[0]
+        plug_pos[:, 1] = self.cfg_task.randomize.plug_pos_xy_initial[1]
+        plug_pos[:, 2] = self.cfg_task.randomize.plug_pos_xy_initial[2]
+
         plug_noise_xy = 2 * (
                 torch.rand((len(env_ids), 2), dtype=torch.float32, device=self.device)
                 - 0.5
@@ -1153,12 +1153,12 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         """Fully open gripper using controller. Called outside RL loop (i.e., after last step of episode)."""
 
         gripper_dof_pos = 0 * self.gripper_dof_pos.clone()
-        gripper_dof_pos[env_ids,
-                        list(self.dof_dict.values()).index(
-                            'base_to_finger_1_1') - 7] = self.cfg_task.env.openhand.base_angle
-        gripper_dof_pos[env_ids,
-                        list(self.dof_dict.values()).index(
-                            'base_to_finger_2_1') - 7] = -self.cfg_task.env.openhand.base_angle
+        # gripper_dof_pos[env_ids,
+        #                 list(self.dof_dict.values()).index(
+        #                     'base_to_finger_1_1') - 7] = self.cfg_task.env.openhand.base_angle
+        # gripper_dof_pos[env_ids,
+        #                 list(self.dof_dict.values()).index(
+        #                     'base_to_finger_2_1') - 7] = -self.cfg_task.env.openhand.base_angle
 
         gripper_dof_pos[env_ids,
                         list(self.dof_dict.values()).index(
@@ -1195,10 +1195,10 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         gripper_distal_close_noise = np.random.uniform(0., self.cfg_task.env.openhand.distal_noise, 3)
 
         positions_indices = [
-            ('base_to_finger_1_1', 0.0,
-             self.cfg_task.env.openhand.base_angle, 0.0),
-            ('base_to_finger_2_1', 0.0,
-             -self.cfg_task.env.openhand.base_angle, 0.0),
+            # ('base_to_finger_1_1', 0.0,
+            #  self.cfg_task.env.openhand.base_angle, 0.0),
+            # ('base_to_finger_2_1', 0.0,
+            #  -self.cfg_task.env.openhand.base_angle, 0.0),
             ('finger_1_1_to_finger_1_2',
              self.cfg_task.env.openhand.proximal_open,
              self.cfg_task.env.openhand.proximal_close, gripper_proximal_close_noise[0]),
@@ -1228,7 +1228,7 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             gripper_dof_pos[env_ids, index] = scaled_position(index, open_value, close_value, noise)
 
         # Slowly grasp the plug
-        for i in range(100):
+        for i in range(150):
             diff = gripper_dof_pos[env_ids, :] - self.gripper_dof_pos[env_ids, :]
             self.ctrl_target_gripper_dof_pos[env_ids, :] = self.gripper_dof_pos[env_ids, :] + diff * 0.1
             self._move_gripper_to_dof_pos(env_ids=env_ids, gripper_dof_pos=self.ctrl_target_gripper_dof_pos,
@@ -1391,7 +1391,7 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.obs_dict['socket_pos'] = self.socket_pos.to(self.rl_device)
         return self.obs_dict, self.rew_buf, self.reset_buf, self.extras
 
-    def reset(self):
+    def reset(self, reset_at_success=None, reset_at_fails=None):
         super().reset()
         self.obs_dict['priv_info'] = self.obs_dict['states']
         self.obs_dict['tactile_hist'] = self.tactile_queue.to(self.rl_device)

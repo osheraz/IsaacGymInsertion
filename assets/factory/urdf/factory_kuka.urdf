@@ -95,12 +95,8 @@
       <origin xyz="0 0 0.1575" rpy="0 0 0"/>
       <axis xyz="0 0 1"/>
       <limit lower="-2.96705972839" upper="2.96705972839"
-             effort="300" velocity="2" />
-      <safety_controller soft_lower_limit="-2.93215314335"
-                         soft_upper_limit="2.93215314335"
-                         k_position="100"
-                         k_velocity="2"/>
-      <dynamics damping="0.5"/>
+             effort="87" velocity="2" />
+      <dynamics damping="0.1" friction="0.1"/>
     </joint>
 
     <link name="iiwa7_link_1">
@@ -134,12 +130,8 @@
       <origin xyz="0 0 0.2025" rpy="1.57079632679   0 3.14159265359"/>
       <axis xyz="0 0 1"/>
       <limit lower="-2.09439510239" upper="2.09439510239"
-             effort="300" velocity="2" />
-      <safety_controller soft_lower_limit="-2.05948851735"
-                         soft_upper_limit="2.05948851735"
-                         k_position="100"
-                         k_velocity="2"/>
-      <dynamics damping="0.5"/>
+             effort="87" velocity="2" />
+      <dynamics damping="0.1" friction="0.1"/>
     </joint>
 
     <link name="iiwa7_link_2">
@@ -173,12 +165,8 @@
       <origin xyz="0 0.2045 0" rpy="1.57079632679 0 3.14159265359"/>
       <axis xyz="0 0 1"/>
       <limit lower="-2.96705972839" upper="2.96705972839"
-             effort="300" velocity="2" />
-      <safety_controller soft_lower_limit="-2.93215314335"
-                         soft_upper_limit="2.93215314335"
-                         k_position="100"
-                         k_velocity="2"/>
-      <dynamics damping="0.5"/>
+             effort="87" velocity="2" />
+      <dynamics damping="0.1" friction="0.1"/>
     </joint>
 
     <link name="iiwa7_link_3">
@@ -212,12 +200,8 @@
       <origin xyz="0 0 0.2155" rpy="1.57079632679 0 0"/>
       <axis xyz="0 0 1"/>
       <limit lower="-2.09439510239" upper="2.09439510239"
-             effort="300" velocity="2" />
-      <safety_controller soft_lower_limit="-2.05948851735"
-                         soft_upper_limit="2.05948851735"
-                         k_position="100"
-                         k_velocity="2"/>
-      <dynamics damping="0.5"/>
+             effort="87" velocity="2" />
+      <dynamics damping="0.1" friction="0.1"/>
     </joint>
 
     <link name="iiwa7_link_4">
@@ -251,12 +235,8 @@
       <origin xyz="0 0.1845 0" rpy="-1.57079632679 3.14159265359 0"/>
       <axis xyz="0 0 1"/>
       <limit lower="-2.96705972839" upper="2.96705972839"
-             effort="300" velocity="2" />
-      <safety_controller soft_lower_limit="-2.93215314335"
-                         soft_upper_limit="2.93215314335"
-                         k_position="100"
-                         k_velocity="2"/>
-      <dynamics damping="0.5"/>
+             effort="12" velocity="2" />
+      <dynamics damping="0.1" friction="0.1"/>
     </joint>
 
     <link name="iiwa7_link_5">
@@ -290,12 +270,8 @@
       <origin xyz="0 0 0.2155" rpy="1.57079632679 0 0"/>
       <axis xyz="0 0 1"/>
       <limit lower="-2.09439510239" upper="2.09439510239"
-             effort="300" velocity="2" />
-      <safety_controller soft_lower_limit="-2.05948851735"
-                         soft_upper_limit="2.05948851735"
-                         k_position="100"
-                         k_velocity="2"/>
-      <dynamics damping="0.5"/>
+             effort="12" velocity="2" />
+      <dynamics damping="0.1" friction="0.1"/>
     </joint>
 
     <link name="iiwa7_link_6">
@@ -329,12 +305,8 @@
       <origin xyz="0 0.081 0" rpy="-1.57079632679 3.14159265359 0"/>
       <axis xyz="0 0 1"/>
       <limit lower="-3.05432619099" upper="3.05432619099"
-             effort="300" velocity="2" />
-      <safety_controller soft_lower_limit="-3.01941960595"
-                         soft_upper_limit="3.01941960595"
-                         k_position="100"
-                         k_velocity="2"/>
-      <dynamics damping="0.5"/>
+             effort="12" velocity="2" />
+      <dynamics damping="0.1" friction="0.1"/>
     </joint>
 
     <link name="iiwa7_link_7">
@@ -422,12 +394,7 @@
   </link>
 
   <link name="finger_1_1">
-     <contact>
-        <lateral_friction value="1"/>
-        <rolling_friction value="0.1"/>
-        <contact_cfm value="0.0"/>
-        <contact_erp value="1.0"/>
-      </contact>
+
     <inertial>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <mass value="0.05"/>
@@ -452,12 +419,7 @@
   </link>
 
   <link name="finger_1_2">
-        <contact>
-        <lateral_friction value="1"/>
-        <rolling_friction value="0.1"/>
-        <contact_cfm value="0.0"/>
-        <contact_erp value="1.0"/>
-      </contact>
+
     <inertial>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <mass value="0.05"/>
@@ -530,12 +492,7 @@
   </link>
 
   <link name="finger_2_1">
-        <contact>
-        <lateral_friction value="1"/>
-        <rolling_friction value="0.1"/>
-        <contact_cfm value="0.0"/>
-        <contact_erp value="1.0"/>
-      </contact>
+
     <inertial>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <mass value="0.05"/>
@@ -559,12 +516,7 @@
   </link>
 
   <link name="finger_2_2">
-        <contact>
-        <lateral_friction value="1"/>
-        <rolling_friction value="0.1"/>
-        <contact_cfm value="0.0"/>
-        <contact_erp value="1.0"/>
-      </contact>
+
     <inertial>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <mass value="0.05"/>
@@ -637,12 +589,7 @@
   </link>
 
   <link name="finger_3_2">
-        <contact>
-        <lateral_friction value="1"/>
-        <rolling_friction value="0.1"/>
-        <contact_cfm value="0.0"/>
-        <contact_erp value="1.0"/>
-      </contact>
+
     <inertial>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <mass value="0.05"/>
@@ -716,13 +663,10 @@
 
   <!-- Joints -->
 
-  <joint name="base_to_finger_1_1" type="revolute">
-    <origin rpy="3.14159265359 0 0" xyz="-0.003 -0.034 -0.027"/>
+  <joint name="base_to_finger_1_1" type="fixed">
+    <origin rpy="3.84159265359 0 0" xyz="-0.003 -0.034 -0.027"/>
     <parent link="gripper_base_link"/>
     <child link="finger_1_1"/>
-    <limit effort="3" lower="0" upper="1.57079632679" velocity="2"/>
-    <axis xyz="1 0 0"/>
-    <dynamics friction="10" damping="10" />
   </joint>
 
   <joint name="finger_1_1_to_finger_1_2" type="revolute">
@@ -731,7 +675,7 @@
     <child link="finger_1_2"/>
     <limit effort="3" lower="-0.1" upper="3.0" velocity="2"/>
     <axis xyz="0 0 1"/>
-    <dynamics friction="10" damping="10" />
+    <dynamics friction="0.05" damping="0.0" />
   </joint>
 
    <joint name="finger_1_2_to_finger_1_3" type="revolute">
@@ -740,7 +684,7 @@
     <child link="mount_1_3"/>
     <limit effort="3" lower="0.0" upper="1.27" velocity="2"/>
     <axis xyz="0 0 1"/>
-    <dynamics friction="10" damping="10" />
+    <dynamics friction="0.05" damping="0.0" />
   </joint>
 
     <joint name="finger_1_2_to_finger_1_3_tip" type="fixed">
@@ -749,13 +693,10 @@
     <child link="finger_1_3"/>
   </joint>
 
-  <joint name="base_to_finger_2_1" type="revolute">
-    <origin rpy="3.14159265359 0 0" xyz="-0.003 -0.034 0.027"/>
+  <joint name="base_to_finger_2_1" type="fixed">
+    <origin rpy="2.44159265359 0 0" xyz="-0.003 -0.034 0.027"/>
     <parent link="gripper_base_link"/>
     <child link="finger_2_1"/>
-    <limit effort="3" lower="-1.57079632679" upper="0" velocity="2"/>
-    <axis xyz="1 0 0"/>
-    <dynamics friction="10" damping="10" />
   </joint>
 
   <joint name="finger_2_1_to_finger_2_2" type="revolute">
@@ -764,7 +705,7 @@
     <child link="finger_2_2"/>
     <limit effort="3" lower="-0.1" upper="3.0" velocity="2"/>
     <axis xyz="0 0 1"/>
-    <dynamics friction="10" damping="10" />
+    <dynamics friction="0.05" damping="0.0" />
   </joint>
 
   <joint name="finger_2_2_to_finger_2_3" type="revolute">
@@ -773,7 +714,7 @@
     <child link="mount_2_3"/>
     <limit effort="3" lower="0.0" upper="1.27" velocity="2"/>
     <axis xyz="0 0 1"/>
-    <dynamics friction="10" damping="10" />
+    <dynamics friction="0.05" damping="0.0" />
   </joint>
 
    <joint name="finger_2_2_to_finger_2_3_tip" type="fixed">
@@ -788,7 +729,7 @@
     <child link="finger_3_2"/>
     <limit effort="3" lower="-0.1" upper="3.0" velocity="2"/>
     <axis xyz="0 0 1"/>
-    <dynamics friction="10" damping="10" />
+    <dynamics friction="0.05" damping="0.0" />
   </joint>
 
   <joint name="finger_3_2_to_finger_3_3" type="revolute">
@@ -797,7 +738,7 @@
     <child link="mount_3_3"/>
     <limit effort="3" lower="0.0" upper="1.27" velocity="2"/>
     <axis xyz="0 0 1"/>
-    <dynamics friction="10" damping="10" />
+    <dynamics friction="0.05" damping="0.0" />
   </joint>
 
   <joint name="finger_3_2_to_finger_3_3_tip" type="fixed">
