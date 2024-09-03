@@ -293,16 +293,15 @@ class ZedPointCloudSubscriber:
 
                     if self.with_socket and not self.got_socket:
                         socket_mask = (seg == self.seg.socket_id).astype(float)
+                        socket_mask = self.seg.shrink_mask(socket_mask)
                         proc_socket = self.pcl_gen.convert(frame * socket_mask)
                         proc_socket = self.process_pointcloud(proc_socket)
                         # proc_socket = remove_statistical_outliers(proc_socket)
                         proc_socket = self.sample_n(proc_socket, num_sample=400)
                         socket_mean = proc_socket.mean(axis=0)
-                        print('mean',  socket_mean)
+                        # print('mean',  socket_mean)
                         # print('com', self.get_com(proc_socket))
 
-                        if self.relative:
-                            proc_socket -= socket_mean
                         self.proc_socket = proc_socket
                         self.got_socket = False
 
@@ -310,6 +309,7 @@ class ZedPointCloudSubscriber:
                         self.pointcloud_socket_pub.publish_pointcloud(self.proc_socket)
 
                     plug_mask = (seg == self.seg.plug_id).astype(float)
+                    plug_mask = self.seg.shrink_mask(plug_mask)
                     frame *= plug_mask
                 else:
                     print('Cant find the object')
@@ -320,8 +320,7 @@ class ZedPointCloudSubscriber:
                 cloud_points = self.pcl_gen.convert(frame)
                 proc_cloud = self.process_pointcloud(cloud_points)
                 # proc_cloud = remove_statistical_outliers(proc_cloud)
-                num_samples = 400 if self.with_seg else 4000
-                proc_cloud = self.sample_n(proc_cloud, num_sample=num_samples)
+                proc_cloud = self.sample_n(proc_cloud, num_sample=400)
                 self.pointcloud_pub.publish_pointcloud(proc_cloud)
 
                 # self.last_cloud = proc_cloud
@@ -413,7 +412,7 @@ class ZedPointCloudSubscriber:
         x = points[:, 0]
         y = points[:, 1]
         z = points[:, 2]
-        valid1 = (z >= -0.001) & (z <= 0.5)
+        valid1 = (z >= 0.001) & (z <= 0.5)
         valid2 = (x >= 0.4) & (x <= 0.65)
         valid3 = (y >= -0.2) & (y <= 0.2)
 

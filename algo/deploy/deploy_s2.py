@@ -876,6 +876,7 @@ class HardwarePlayer:
 
         if student_obs is not None:
             if self.stats is not None and self.train_config.from_offline:
+                assert NotImplementedError
                 eef_pos = student_obs[:, :9]
                 socket_pos = student_obs[:, 9:12]
                 action = student_obs[:, 12:]
