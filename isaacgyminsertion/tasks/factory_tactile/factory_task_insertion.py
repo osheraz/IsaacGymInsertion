@@ -1223,9 +1223,9 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.degrasp_buf[:] = (torch.abs(roll) > 0.7) | (torch.abs(pitch) > 0.7) | (torch.abs(yaw) > 0.7)
 
         # Check if object is too far from gripper
-        fingertips_plug_dist = (torch.norm(self.left_finger_pos - self.plug_pos, p=2, dim=-1) > 0.2) | (
-                                torch.norm(self.right_finger_pos - self.plug_pos, p=2, dim=-1) > 0.2) | (
-                                torch.norm(self.middle_finger_pos - self.plug_pos, p=2, dim=-1) > 0.2)
+        fingertips_plug_dist = (torch.norm(self.left_finger_pos - self.plug_pos, p=2, dim=-1) > 0.12) | (
+                                torch.norm(self.right_finger_pos - self.plug_pos, p=2, dim=-1) > 0.12) | (
+                                torch.norm(self.middle_finger_pos - self.plug_pos, p=2, dim=-1) > 0.12)
 
         self.far_from_goal_buf[:] = fingertips_plug_dist
 
@@ -1914,8 +1914,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         if self.cfg_task.env.hand_action and not init_grasp:
 
             gripper_actions = actions[:, 6:9]
-            gripper_actions[:, :] = 1.0
-
+            # gripper_actions[:, :] = 1.0
 
             if do_scale:
                 gripper_actions = gripper_actions @ torch.diag(
