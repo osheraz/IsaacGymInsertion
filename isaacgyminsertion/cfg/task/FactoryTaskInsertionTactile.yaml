@@ -76,6 +76,15 @@ env:
         base_angle: 0.7
         tactile_finger: [ 'finger_1_3', 'finger_2_3', 'finger_3_3' ] # left, right, middle
 
+        r_prox: 1.0
+        r_dist: 0.9
+        r_act: 2.0
+        max_f: 10.0  # Q
+        k1: 5.0  # K
+        k2: 10.0
+        d1: 6.0
+        d2: 6.0
+
     actionsMovingAverage:
       range: [ 0.15, 0.35 ]
       schedule_steps: 1000000

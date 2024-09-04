@@ -39,6 +39,8 @@ import hydra
 import omegaconf
 import os
 
+import torch
+
 os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
 
 from isaacgym import gymapi, gymtorch
@@ -55,6 +57,7 @@ from collections import defaultdict
 
 torch.set_printoptions(sci_mode=False)
 import matplotlib
+import matplotlib.cm as cm
 
 matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
@@ -85,7 +88,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         """Initialize instance variables. Initialize task superclass."""
 
         super().__init__(cfg, rl_device, sim_device, graphics_device_id, headless, virtual_screen_capture, force_render)
-        self.ax = plt.axes(projection='3d')
+        # self.ax = plt.axes(projection='3d')
         self.cfg = cfg
         self._get_task_yaml_params()
         self.display_id = random.randint(0, self.num_envs - 1)
@@ -159,6 +162,29 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.x_unit_tensor = to_torch([1, 0, 0], dtype=torch.float, device=self.device).repeat((self.num_envs, 1))
         self.y_unit_tensor = to_torch([0, 1, 0], dtype=torch.float, device=self.device).repeat((self.num_envs, 1))
         self.z_unit_tensor = to_torch([0, 0, 1], dtype=torch.float, device=self.device).repeat((self.num_envs, 1))
+        # Adaptive stuff
+        r_prox = self.cfg_task.env.openhand.r_prox
+        r_dist = self.cfg_task.env.openhand.r_dist
+        max_f = self.cfg_task.env.openhand.max_f  # mapping coeff between act_force to tendon tension
+        k1 = self.cfg_task.env.openhand.k1   # spring coeff
+        k2 = self.cfg_task.env.openhand.k2  # spring coeff
+        d1 = self.cfg_task.env.openhand.d1  # damping coeff
+        d2 = self.cfg_task.env.openhand.d2  # damping coeff
+
+        self.R = torch.tensor([[r_prox, 0., 0.],
+                               [r_dist, 0., 0.],
+                               [0., r_prox, 0.],
+                               [0., r_dist, 0.],
+                               [0., 0., r_prox],
+                               [0., 0., r_dist]], device=self.device).repeat((self.num_envs, 1, 1))
+        self.Q = torch.tensor([[max_f, 0., 0.],
+                               [0., max_f, 0.],
+                               [0., 0., max_f]], device=self.device).repeat((self.num_envs, 1, 1))
+        self.K = torch.diag(torch.tensor([k1, k2, k1, k2, k1, k2], device=self.device)).repeat((self.num_envs, 1, 1))
+        self.D = torch.diag(torch.tensor([d1, d2, d1, d2, d1, d2], device=self.device)).repeat((self.num_envs, 1, 1))
+        self.act_angles = torch.tensor([0., 0., 0.], device=self.device).repeat((self.num_envs, 1))
+        self.rel_grip_actions = torch.tensor([0.0, 0.0, 0.0], device=self.device).repeat((self.num_envs, 1))
+        self.act_torque = None
 
         self.act_moving_average_range = self.cfg_task.env.actionsMovingAverage.range
         self.act_moving_average_scheduled_steps = self.cfg_task.env.actionsMovingAverage.schedule_steps
@@ -745,9 +771,9 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         #                                                   to_rep='rot6d'), dim=-1)
         actions = self.actions.clone()
 
-        obs = torch.cat([self.rel_act_angles,  # 3
+        obs = torch.cat([self.rel_grip_actions,  # 3
                          self.goal_ori,        # 4
-                         actions[:, -3:],  # 3
+                         actions[:, 6:9],  # 3
                          ], dim=-1)
 
         self.obs_queue[:, :-self.num_observations] = self.obs_queue[:, self.num_observations:]
@@ -1100,8 +1126,8 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
     def _update_rew_buf(self):
         """Compute reward at current timestep."""
 
-        act = self.actions[:, -3:]
-        prv = self.prev_actions[:, -3:]
+        act = self.actions[:, 6:9]
+        prv = self.actions[:, 6:9]
 
         action_penalty = torch.norm(act, p=2, dim=-1)
         action_reward = self.cfg_task.rl.action_penalty_scale * action_penalty
@@ -1761,7 +1787,9 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.prev_actions_queue[env_ids] *= 0
         self.prev_plug_quat[env_ids] *= 0
         self.prev_plug_pos[env_ids] *= 0
-        self.rel_act_angles[env_ids] *= 0
+        self.rel_grip_actions[env_ids] *= 0
+        self.act_angles[env_ids] *= 0
+        # self.act_torque[env_ids] *= 0
         self.rb_forces[env_ids, :, :] = 0.0
 
         # object pose is represented with respect to the wrist
@@ -1886,7 +1914,8 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         if self.cfg_task.env.hand_action and not init_grasp:
 
             gripper_actions = actions[:, 6:9]
-            # gripper_actions[:, :2] = 1.0
+            gripper_actions[:, :] = 1.0
+
 
             if do_scale:
                 gripper_actions = gripper_actions @ torch.diag(
@@ -1899,24 +1928,31 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                    list(self.dof_dict.values()).index('base_to_finger_3_2') - 7,
                    list(self.dof_dict.values()).index('finger_3_2_to_finger_3_3') - 7]
 
-            # (delta) Tendon string constraint r_a * q_a = r_p * q_p + r_d * d_p (constant length)
-            # self.act_angles *= 0
-            self.act_angles = (
-                        self.R.permute(0, 2, 1) @ self.gripper_dof_pos[:, idx].unsqueeze(-1) / self.r_act).squeeze(-1)
-            self.act_angles += gripper_actions  # add the action
-            self.rel_act_angles += gripper_actions
-            # self.act_angles = torch.clamp(self.act_angles, min=0 * self.act_angles)
+            #########################################
+            # Underactuation mechanics
+            #########################################
 
-            tendon_forces = self.Q @ self.act_angles.unsqueeze(-1)  # linear mapping between act_angle to tension
+            self.rel_grip_actions += gripper_actions
+            # (delta) Tendon string constraint r_a * q_a = r_p * q_p + r_d * d_p (constant length)
+            self.act_angles = (self.R.permute(0, 2, 1) @ self.gripper_dof_pos[:, idx].unsqueeze(-1) /
+                               self.cfg_task.env.openhand.r_act).squeeze(-1)
+
+            self.act_angles += gripper_actions
+
+            tendon_forces = self.Q @ self.act_angles.unsqueeze(-1)
+
             self.act_torque = self.R @ tendon_forces - self.K @ self.gripper_dof_pos[:, idx].unsqueeze(-1)
             self.act_torque = self.act_torque.squeeze(-1)  # sum torque@each joint
 
-            # to_plot = gripper_actions.clone().cpu().numpy()[0, :]
+            # to_plot = self.act_angles.clone().cpu().numpy()[0, :]
             # if self.frame == 1:
-            #     self.force_hist = gripper_actions.clone().cpu().numpy()[0, :]
+            #     self.to_plot = to_plot
             # else:
-            #     self.force_hist = np.vstack((self.force_hist, to_plot))
-            #     plt.plot(self.force_hist[:, :])
+            #     self.to_plot = np.vstack((self.to_plot, to_plot))
+            #     color_map = cm.get_cmap('tab10', to_plot.shape[0])
+            #     for i in range(to_plot.shape[0]):
+            #         plt.plot(self.to_plot[:, i], color=color_map(i))
+            #
             #     plt.pause(0.0001)
 
         elif init_grasp or not self.cfg_task.env.hand_action:

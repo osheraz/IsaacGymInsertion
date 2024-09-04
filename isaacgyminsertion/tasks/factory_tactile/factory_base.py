@@ -309,29 +309,6 @@ class FactoryBaseTactile(VecTask, FactoryABCBase):
 
         self.identity_quat = torch.tensor([0.0, 0.0, 0.0, 1.0], device=self.device).unsqueeze(0).repeat(self.num_envs,
                                                                                                         1)
-        # Underactuated stuff
-        r_prox = 1.0
-        r_dist = 0.5
-        self.r_act = 2.0
-        max_f = 5.0  # mapping coeff between act_force to tendon tension
-        k1 = 0.5  # spring coeff
-        k2 = 1.0  # spring coeff
-        d1 = d2 = 6.0  # damping coeff
-
-        self.R = torch.tensor([[r_prox, 0., 0.],
-                               [r_dist, 0., 0.],
-                               [0., r_prox, 0.],
-                               [0., r_dist, 0.],
-                               [0., 0., r_prox],
-                               [0., 0., r_dist]], device=self.device).repeat((self.num_envs, 1, 1))
-        self.Q = torch.tensor([[max_f, 0., 0.],
-                               [0., max_f, 0.],
-                               [0., 0., max_f]], device=self.device).repeat((self.num_envs, 1, 1))
-        self.K = torch.diag(torch.tensor([k1, k2, k1, k2, k1, k2], device=self.device)).repeat((self.num_envs, 1, 1))
-        self.D = torch.diag(torch.tensor([d1, d2, d1, d2, d1, d2], device=self.device)).repeat((self.num_envs, 1, 1))
-        self.act_angles = torch.tensor([0., 0., 0.], device=self.device).repeat((self.num_envs, 1))
-        self.rel_act_angles = torch.tensor([0.0, 0.0, 0.0], device=self.device).repeat((self.num_envs, 1))
-        self.act_torque = None
 
     def refresh_base_tensors(self):
         """Refresh tensors."""
