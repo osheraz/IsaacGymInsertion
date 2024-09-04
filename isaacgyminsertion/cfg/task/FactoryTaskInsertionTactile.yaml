@@ -51,7 +51,7 @@ env:
     numEnvs: ${resolve_default:128,${...num_envs}}
     numObservations: 10 #
     numObsStudent: 10 #
-    numStates: 21 # 27
+    numStates: 27 # 27
     numActions: 9 # [position, ori]
     numTargets: 9 # [position, ori]
     hand_action: True
@@ -164,7 +164,7 @@ randomize:
     plug_pos_z_noise_bounds: [ 0.005, 0.1]  # plug z bound noise
 #    plug_quat_noise: [0.0, 0.0, 0.0, 0.0]
 
-    socket_pos_xy_initial: [100, 0.0, 0.0]  # initial XY position of plug on table # round_hole_2in  width = 0.1016, length = 0.09144
+    socket_pos_xy_initial: [-0.3, 0.0, 0.0]  # initial XY position of plug on table # round_hole_2in  width = 0.1016, length = 0.09144
     socket_pos_xy_noise: [0.0001, 0.0001]  # noise on socket position
     socket_pos_z_noise_bounds: [0.00, 0.0005]  # noise on socket offset from table
 #    above_socket_noise: [0.03, 0.03, 0.001]
@@ -205,9 +205,9 @@ rl:
     keypoint_reward_scale: -0.9 # scale on keypoint-based reward
     action_penalty_scale: -0.1  # scale on action penalty
     action_delta_scale: -0.1
-    fingertip_reward_scale: -1.0
+    fingertip_reward_scale: -0.1
     orientation_threshold: 0.1
-    success_tolerance: 0.4
+    success_tolerance: 0.2
     ori_reward_scale: 1.0 # scale on ori-based reward
     linvel_penalty: -0.3
     tension_penalty: -0.3

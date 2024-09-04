@@ -865,7 +865,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             # plug_bottom_wrt_robot[1],  # 4
             # self.socket_pos.clone(),   # 3
             # self.socket_quat.clone(),  # 4
-            # self.hand_joints,          # 6
+            self.hand_joints,          # 6
             # self.plug_hand_pos_diff,   # 3
             # self.plug_hand_quat_diff,  # 4
             plug_hand_pos,  # 3
@@ -1140,6 +1140,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         self.rew_buf[:] = ftip_reward + ori_reward + action_reward + action_delta_reward
         self.rew_buf[:] += early_reset_reward
+
         # self.rew_buf[:] += (early_reset_reward * self.timeout_reset_buf)
         # self.rew_buf[:] += (self.timeout_reset_buf * self.success_reset_buf) * self.cfg_task.rl.success_bonus
 
@@ -1147,6 +1148,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         goal_resets = torch.where(torch.abs(rot_dist) <= self.cfg_task.rl.success_tolerance,
                                   torch.ones_like(self.success_reset_buf),
                                   self.success_reset_buf)
+
         self.success_reset_buf[:] = goal_resets
         # self.rew_buf[:] = torch.where(goal_resets == 1, self.rew_buf + self.cfg_task.rl.success_bonus, self.rew_buf)
 
@@ -1910,9 +1912,12 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             self.act_torque = self.act_torque.squeeze(-1)  # sum torque@each joint
 
             # to_plot = gripper_actions.clone().cpu().numpy()[0, :]
-            # self.force_hist = np.vstack((self.force_hist, to_plot))
-            # plt.plot(self.force_hist[1:, :])
-            # plt.pause(0.0001)
+            # if self.frame == 1:
+            #     self.force_hist = gripper_actions.clone().cpu().numpy()[0, :]
+            # else:
+            #     self.force_hist = np.vstack((self.force_hist, to_plot))
+            #     plt.plot(self.force_hist[:, :])
+            #     plt.pause(0.0001)
 
         elif init_grasp or not self.cfg_task.env.hand_action:
 
