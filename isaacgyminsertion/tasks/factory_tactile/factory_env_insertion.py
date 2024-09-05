@@ -609,22 +609,22 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
         urdf_root = os.path.join(os.path.dirname(__file__), '..', '..', '..', 'assets', 'factory', 'urdf')
 
         plug_options = gymapi.AssetOptions()
-        # plug_options.flip_visual_attachments = False
-        # plug_options.fix_base_link = False
-        # plug_options.thickness = 0.0  # default = 0.02
-        # plug_options.armature = 0.0  # default = 0.0
-        # plug_options.use_physx_armature = True
-        # plug_options.linear_damping = 0.5  # default = 0.0  TODO
-        # plug_options.max_linear_velocity = 1000.0  # default = 1000.0
-        # plug_options.angular_damping = 0.5  # default = 0.5
-        # plug_options.max_angular_velocity = 64.0  # default = 64.0
-        # plug_options.disable_gravity = False
-        # plug_options.enable_gyroscopic_forces = True
-        # plug_options.default_dof_drive_mode = gymapi.DOF_MODE_NONE
-        # # plug_options.vhacd_enabled = True  # convex decomposition
-        # plug_options.use_mesh_materials = False
-        # if self.cfg_base.mode.export_scene:
-        #     plug_options.mesh_normal_mode = gymapi.COMPUTE_PER_FACE
+        plug_options.flip_visual_attachments = False
+        plug_options.fix_base_link = False
+        plug_options.thickness = 0.0  # default = 0.02
+        plug_options.armature = 0.0  # default = 0.0
+        plug_options.use_physx_armature = True
+        plug_options.linear_damping = 0.5  # default = 0.0  TODO
+        plug_options.max_linear_velocity = 1000.0  # default = 1000.0
+        plug_options.angular_damping = 0.5  # default = 0.5
+        plug_options.max_angular_velocity = 64.0  # default = 64.0
+        plug_options.disable_gravity = False
+        plug_options.enable_gyroscopic_forces = True
+        plug_options.default_dof_drive_mode = gymapi.DOF_MODE_NONE
+        # plug_options.vhacd_enabled = True  # convex decomposition
+        plug_options.use_mesh_materials = False
+        if self.cfg_base.mode.export_scene:
+            plug_options.mesh_normal_mode = gymapi.COMPUTE_PER_FACE
 
         goal_asset_options = gymapi.AssetOptions()
         goal_asset_options.disable_gravity = True

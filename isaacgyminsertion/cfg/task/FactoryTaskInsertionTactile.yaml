@@ -79,9 +79,9 @@ env:
         r_prox: 1.0
         r_dist: 0.9
         r_act: 2.0
-        max_f: 10.0  # Q
-        k1: 5.0  # K
-        k2: 10.0
+        max_f: 5.0  # Q
+        k1: 0.9  # K
+        k2: 1.0
         d1: 6.0
         d2: 6.0
 
@@ -186,7 +186,7 @@ rl:
 
     pos_action_scale: [0.005, 0.005, 0.004]
     rot_action_scale: [0.02, 0.02, 0.02]
-    gripper_action_scale: [1.0, 1.0, 1.0]
+    gripper_action_scale: [0.003, 0.003, 0.003]
     force_action_scale: [1.0, 1.0, 1.0]
     torque_action_scale: [1.0, 1.0, 1.0]
     

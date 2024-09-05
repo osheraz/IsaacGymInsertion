@@ -182,8 +182,9 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                                [0., 0., max_f]], device=self.device).repeat((self.num_envs, 1, 1))
         self.K = torch.diag(torch.tensor([k1, k2, k1, k2, k1, k2], device=self.device)).repeat((self.num_envs, 1, 1))
         self.D = torch.diag(torch.tensor([d1, d2, d1, d2, d1, d2], device=self.device)).repeat((self.num_envs, 1, 1))
-        self.act_angles = torch.tensor([0., 0., 0.], device=self.device).repeat((self.num_envs, 1))
+        self.virtual_act_angles = torch.tensor([0., 0., 0.], device=self.device).repeat((self.num_envs, 1))
         self.rel_grip_actions = torch.tensor([0.0, 0.0, 0.0], device=self.device).repeat((self.num_envs, 1))
+        self.prev_gripper_dof_pos = torch.zeros_like(self.gripper_dof_pos, device=self.device)
         self.act_torque = None
 
         self.act_moving_average_range = self.cfg_task.env.actionsMovingAverage.range
@@ -664,10 +665,6 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         # actions[:, 1] = 1.
         # actions[:, 2] = 1.
 
-        self.prev_actions[:] = self.actions.clone()
-        self.prev_plug_quat = self.plug_quat.clone()
-        self.prev_plug_pos = self.plug_pos.clone()
-
         self.actions = actions.clone().to(self.device)  # shape = (num_envs, num_actions); values = [-1, 1]
 
         if with_delay:
@@ -703,6 +700,10 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                                             do_scale=True)
 
         self.prev_targets[:] = self.targets.clone()
+        self.prev_actions[:] = self.actions.clone()
+        self.prev_plug_quat = self.plug_quat.clone()
+        self.prev_plug_pos = self.plug_pos.clone()
+        self.prev_gripper_dof_pos = self.gripper_dof_pos.clone()
 
         if self.force_scale > 0.0:
             """Applies random forces to the object.
@@ -1788,7 +1789,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.prev_plug_quat[env_ids] *= 0
         self.prev_plug_pos[env_ids] *= 0
         self.rel_grip_actions[env_ids] *= 0
-        self.act_angles[env_ids] *= 0
+        self.virtual_act_angles[env_ids] *= 0
         # self.act_torque[env_ids] *= 0
         self.rb_forces[env_ids, :, :] = 0.0
 
@@ -1914,7 +1915,10 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         if self.cfg_task.env.hand_action and not init_grasp:
 
             gripper_actions = actions[:, 6:9]
-            # gripper_actions[:, :] = 1.0
+            if self.progress_buf[0] < 30:
+                gripper_actions[:, :] = 1
+            else:
+                gripper_actions[:, :] = 0
 
             if do_scale:
                 gripper_actions = gripper_actions @ torch.diag(
@@ -1932,27 +1936,33 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             #########################################
 
             self.rel_grip_actions += gripper_actions
+
+            delta_gripper_dof_pos = self.gripper_dof_pos[:, idx] - self.prev_gripper_dof_pos[:, idx]
+            if self.frame == 1:
+                delta_gripper_dof_pos *= 0
+
             # (delta) Tendon string constraint r_a * q_a = r_p * q_p + r_d * d_p (constant length)
-            self.act_angles = (self.R.permute(0, 2, 1) @ self.gripper_dof_pos[:, idx].unsqueeze(-1) /
-                               self.cfg_task.env.openhand.r_act).squeeze(-1)
+            self.virtual_act_angles = (self.R.permute(0, 2, 1) @ delta_gripper_dof_pos.unsqueeze(-1) /
+                                       self.cfg_task.env.openhand.r_act).squeeze(-1)
 
-            self.act_angles += gripper_actions
+            self.virtual_act_angles += gripper_actions
+            # self.virtual_act_angles = torch.clamp(self.virtual_act_angles, min=0, max=1)
 
-            tendon_forces = self.Q @ self.act_angles.unsqueeze(-1)
+            tendon_forces = self.Q @ self.virtual_act_angles.unsqueeze(-1)
+            tendon_torque = self.R @ tendon_forces
+            spring_torque = self.K @ self.gripper_dof_pos[:, idx].unsqueeze(-1)
+            self.act_torque = (tendon_torque - spring_torque).squeeze(-1)
 
-            self.act_torque = self.R @ tendon_forces - self.K @ self.gripper_dof_pos[:, idx].unsqueeze(-1)
-            self.act_torque = self.act_torque.squeeze(-1)  # sum torque@each joint
+            to_plot = self.virtual_act_angles.clone().cpu().numpy()[0, :]
+            if self.frame == 1:
+                self.to_plot = to_plot
+            else:
+                self.to_plot = np.vstack((self.to_plot, to_plot))
+                color_map = cm.get_cmap('tab10', to_plot.shape[0])
+                for i in range(to_plot.shape[0]):
+                    plt.plot(self.to_plot[:, i], color=color_map(i))
 
-            # to_plot = self.act_angles.clone().cpu().numpy()[0, :]
-            # if self.frame == 1:
-            #     self.to_plot = to_plot
-            # else:
-            #     self.to_plot = np.vstack((self.to_plot, to_plot))
-            #     color_map = cm.get_cmap('tab10', to_plot.shape[0])
-            #     for i in range(to_plot.shape[0]):
-            #         plt.plot(self.to_plot[:, i], color=color_map(i))
-            #
-            #     plt.pause(0.0001)
+                plt.pause(0.0001)
 
         elif init_grasp or not self.cfg_task.env.hand_action:
 
