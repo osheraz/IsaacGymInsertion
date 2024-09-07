@@ -131,9 +131,9 @@ sim:
     disable_gravity: True
 
 external_cam:
-  external_cam: True
-  pcl_cam: True
-  seg_cam: True
+  external_cam: False
+  pcl_cam: False
+  seg_cam: False
   depth_cam: False
   display: False
 
@@ -157,9 +157,9 @@ randomize:
     # for grasp generations
 #    plug_pos_xy_initial: [0.50, 0.0, 0.0]  # z 0.03  initial XY position of plug on table
     grasp_plug_noise: 0.005 # xyz noise on grasp pos position during grasp at init
-    plug_pos_xy_noise: [ 0.01,  0.01] # noise on plug position
-    plug_rot_noise: [ 0.05, 0.05, 0.05 ] # rot noise on plug init
-    plug_pos_z_noise_bounds: [ 0.005, 0.03 ]  # plug z bound noise
+    plug_pos_xy_noise: [ 0.1,  0.1] # noise on plug position
+    plug_rot_noise: [ 0.5, 0.5, 0.3 ] # rot noise on plug init
+    plug_pos_z_noise_bounds: [ 0.05, 0.1 ]  # plug z bound noise
 #    plug_quat_noise: [0.0, 0.0, 0.0, 0.0]
 
     socket_pos_xy_initial: [0.5, 0.0, 0.0]  # initial XY position of plug on table # round_hole_2in  width = 0.1016, length = 0.09144

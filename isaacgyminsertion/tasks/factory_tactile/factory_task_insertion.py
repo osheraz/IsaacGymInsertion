@@ -433,7 +433,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                                                                      self.identity_quat,
                                                                      (keypoint_offset * self.socket_heights))[1]
             self.keypoints_socket[:, idx] = torch_jit_utils.tf_combine(self.socket_quat,
-                                                                       self.socket_pos,
+                                                                       self.socket_tip,
                                                                        self.identity_quat,
                                                                        (keypoint_offset * self.socket_heights)
                                                                        + socket_tip_pos_local)[1]
@@ -1091,7 +1091,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         distance_reset_buf = (self.far_from_goal_buf | self.degrasp_buf)
         early_reset_reward = distance_reset_buf * self.cfg_task.rl.early_reset_reward_scale
 
-        self.rew_buf[:] = keypoint_reward + engagement_reward + ori_reward + action_reward + action_delta_reward
+        self.rew_buf[:] = keypoint_reward + 0 * engagement_reward + ori_reward + action_reward + action_delta_reward
         self.rew_buf[:] += early_reset_reward
         # self.rew_buf[:] += (early_reset_reward * self.timeout_reset_buf)
         # self.rew_buf[:] += (self.timeout_reset_buf * self.success_reset_buf) * self.cfg_task.rl.success_bonus

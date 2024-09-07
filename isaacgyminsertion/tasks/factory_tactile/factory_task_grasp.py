@@ -674,7 +674,7 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                     (middle_finger_dist < max_dis))
             # print('dist', dist)
 
-            max_ang = 20
+            max_ang = 50
             cond = ((abs(roll * 180 / np.pi) < max_ang) &
                     (abs(pitch * 180 / np.pi) < max_ang) &
                     (abs(yaw * 180 / np.pi) < max_ang))
@@ -1391,7 +1391,7 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.obs_dict['socket_pos'] = self.socket_pos.to(self.rl_device)
         return self.obs_dict, self.rew_buf, self.reset_buf, self.extras
 
-    def reset(self):
+    def reset(self, reset_at_success=None, reset_at_fails=None):
         super().reset()
         self.obs_dict['priv_info'] = self.obs_dict['states']
         self.obs_dict['tactile_hist'] = self.tactile_queue.to(self.rl_device)
