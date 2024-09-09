@@ -538,7 +538,7 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
         for subassembly in self.cfg_env.env.desired_subassemblies:
             self._initialize_grasp_poses(subassembly)
 
-    def _initialize_grasp_poses(self, subassembly, pre_noise=True, add_noise=True):
+    def _initialize_grasp_poses(self, subassembly, pre_noise=True, add_noise=False):
 
         try:
             sf = subassembly + '_noise' if pre_noise else subassembly
@@ -552,7 +552,7 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
         self.init_socket_quat[subassembly] = torch.zeros((self.total_init_poses[subassembly], 4))
         self.init_plug_pos[subassembly] = torch.zeros((self.total_init_poses[subassembly], 3))
         self.init_plug_quat[subassembly] = torch.zeros((self.total_init_poses[subassembly], 4))
-        self.init_dof_pos[subassembly] = torch.zeros((self.total_init_poses[subassembly], 15))
+        self.init_dof_pos[subassembly] = torch.zeros((self.total_init_poses[subassembly], 13))
 
         if add_noise:
             socket_pos = self.add_socket_noise(self.initial_grasp_poses[subassembly]['socket_pos'])
@@ -692,7 +692,7 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
         self.socket_actor_ids_sim = []  # within-sim indices
         self.table_actor_ids_sim = []  # within-sim indices
 
-        self.fingertips = ['finger_1_3', 'finger_2_3', 'finger_3_3']  # left, right, bottom. same for all envs
+        self.fingertips = ['finger_1_3', 'finger_2_3']  # left, right, bottom. same for all envs
         self.fingertip_handles = [self.gym.find_asset_rigid_body_index(kuka_asset, name) for name in self.fingertips]
         self.left_fingertip_handle = []
         self.right_fingertip_handle = []
@@ -811,15 +811,12 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
                                                                   gymapi.DOMAIN_ACTOR)
             right_finger_id = self.gym.find_actor_rigid_body_index(env_ptr, kuka_handle, 'finger_2_3',
                                                                    gymapi.DOMAIN_ACTOR)
-            middle_finger_id = self.gym.find_actor_rigid_body_index(env_ptr, kuka_handle, 'finger_3_3',
-                                                                    gymapi.DOMAIN_ACTOR)
 
             # useful for measuring the friction parameters (privileged information)
             self.left_finger_id = left_finger_id - 1
             self.right_finger_id = right_finger_id - 1
-            self.middle_finger_id = middle_finger_id - 1
 
-            self.shape_ids = [link7_id, hand_id, left_finger_id - 1, right_finger_id - 1, middle_finger_id - 1]
+            self.shape_ids = [link7_id, hand_id, left_finger_id - 1, right_finger_id - 1]
 
             kuka_shape_props = self.gym.get_actor_rigid_shape_properties(env_ptr, kuka_handle)
 
@@ -1031,8 +1028,7 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
                                                                             gymapi.DOMAIN_ENV)
         self.right_finger_body_id_env = self.gym.find_actor_rigid_body_index(env_ptr, kuka_handle, 'finger_2_3',
                                                                              gymapi.DOMAIN_ENV)
-        self.middle_finger_body_id_env = self.gym.find_actor_rigid_body_index(env_ptr, kuka_handle, 'finger_3_3',
-                                                                              gymapi.DOMAIN_ENV)
+
         # Robot motion will be w.r.t this tf.
         self.fingertip_centered_body_id_env = self.gym.find_actor_rigid_body_index(env_ptr, kuka_handle,
                                                                                    'kuka_fingertip_centered',

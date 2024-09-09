@@ -245,17 +245,8 @@ class FactoryBaseTactile(VecTask, FactoryABCBase):
                                      0:6,
                                      0:7]  # minus 1 because base is fixed
 
-        self.middle_finger_pos = self.body_pos[:, self.middle_finger_body_id_env, 0:3]
-        self.middle_finger_quat = self.body_quat[:, self.middle_finger_body_id_env, 0:4]
-        self.middle_finger_linvel = self.body_linvel[:, self.middle_finger_body_id_env, 0:3]
-        self.middle_finger_angvel = self.body_angvel[:, self.middle_finger_body_id_env, 0:3]
-        self.middle_finger_jacobian = self.jacobian[:, self.middle_finger_body_id_env - self.robot_base_body_id_env - 1,
-                                      0:6,
-                                      0:7]  # minus 1 because base is fixed
-
         self.left_finger_force = self.contact_force[:, self.left_finger_body_id_env, 0:3]
         self.right_finger_force = self.contact_force[:, self.right_finger_body_id_env, 0:3]
-        self.middle_finger_force = self.contact_force[:, self.middle_finger_body_id_env, 0:3]
 
         self.gripper_dof_pos = self.dof_pos[:, 7:]
         self.dof_dict = {index: value for index, value in enumerate(self.kuka_joints_names)}
@@ -285,7 +276,7 @@ class FactoryBaseTactile(VecTask, FactoryABCBase):
 
         self.fingertip_midpoint_angvel = self.fingertip_centered_angvel  # always equal
         self.fingertip_midpoint_jacobian = (
-                                                       self.left_finger_jacobian + self.right_finger_jacobian + self.middle_finger_jacobian) * 1 / 3  # approximation
+                                                       self.left_finger_jacobian + self.right_finger_jacobian) * 1 / 2 # approximation
 
         self.dof_torque = torch.zeros((self.num_envs, self.num_dofs), device=self.device)
         self.fingertip_contact_wrench = torch.zeros((self.num_envs, 6), device=self.device)
@@ -307,12 +298,7 @@ class FactoryBaseTactile(VecTask, FactoryABCBase):
 
         self.identity_quat = torch.tensor([0.0, 0.0, 0.0, 1.0], device=self.device).unsqueeze(0).repeat(self.num_envs,
                                                                                                         1)
-        
 
-        # self.rigid_contacts = self.gym.get_rigid_contacts(self.sim)
-        # print(self.rigid_contacts)
-
-        # self.test_plot = []
 
     def refresh_base_tensors(self):
         """Refresh tensors."""
@@ -334,7 +320,7 @@ class FactoryBaseTactile(VecTask, FactoryABCBase):
             self.gym.start_access_image_tensors(self.sim)
 
         # Privileged
-        self.finger_midpoint_pos = (self.left_finger_pos + self.right_finger_pos + self.middle_finger_pos) * (1 / 3)
+        self.finger_midpoint_pos = (self.left_finger_pos + self.right_finger_pos) * (1 / 2)
         self.fingertip_midpoint_pos = fc.translate_along_local_z(pos=self.finger_midpoint_pos,
                                                                  quat=self.gripper_normal_quat,
                                                                  offset=self.asset_info_kuka_table.openhand_finger_length,
@@ -345,8 +331,7 @@ class FactoryBaseTactile(VecTask, FactoryABCBase):
                                                                                        self.fingertip_centered_pos),
                                                                                       dim=1)
 
-        self.fingertip_midpoint_jacobian = (self.left_finger_jacobian + self.right_finger_jacobian
-                                            + self.middle_finger_jacobian) * (1 / 3)  # approximation
+        self.fingertip_midpoint_jacobian = (self.left_finger_jacobian + self.right_finger_jacobian) * (1 / 2)  # approximation
 
     def parse_controller_spec(self):
         """Parse controller specification into lower-level controller configuration."""

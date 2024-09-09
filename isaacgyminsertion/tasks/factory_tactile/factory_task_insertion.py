@@ -218,9 +218,9 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         self.hand_joints = torch.zeros((self.num_envs, 6), device=self.device)
 
-        self.plug_grasp_pos_local = self.plug_heights * 0.9 * torch.tensor([0.0, 0.0, 1.0], device=self.device).repeat(
+        self.plug_grasp_pos_local = self.plug_heights * 0.7 * torch.tensor([0.0, 0.0, 1.0], device=self.device).repeat(
             (self.num_envs, 1))
-        self.plug_grasp_pos_local[:, 0] = -0.1 * self.plug_widths.squeeze()
+        # self.plug_grasp_pos_local[:, 0] = -0.1 * self.plug_widths.squeeze()
 
         self.plug_grasp_quat_local = torch.tensor([0.0, 0.0, 0.0, 1.0], device=self.device).unsqueeze(0).repeat(
             self.num_envs, 1)
@@ -341,8 +341,8 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.plug_hand_pos_init, self.plug_hand_quat_init = torch.zeros((self.num_envs, 3), device=self.device), \
                                                             torch.zeros((self.num_envs, 4), device=self.device)
 
-        self.rigid_physics_params = torch.zeros((self.num_envs, 14), device=self.device, dtype=torch.float)
-        self.finger_normalized_forces = torch.zeros((self.num_envs, 3), device=self.device, dtype=torch.float)
+        self.rigid_physics_params = torch.zeros((self.num_envs, 13), device=self.device, dtype=torch.float)
+        self.finger_normalized_forces = torch.zeros((self.num_envs, 2), device=self.device, dtype=torch.float)
 
         # reward tensor
         self.reward_log_buf = torch.zeros_like(self.rew_buf)
@@ -442,10 +442,8 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         joint_names = [
             'finger_1_1_to_finger_1_2',
             'finger_2_1_to_finger_2_2',
-            'base_to_finger_3_2',
             'finger_1_2_to_finger_1_3',
             'finger_2_2_to_finger_2_3',
-            'finger_3_2_to_finger_3_3'
         ]
         joint_indices = [list(self.dof_dict.values()).index(name) for name in joint_names]
         # Extract values for specific joints using indexing
@@ -458,14 +456,11 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             self.left_finger_force.clone()) + e * self.finger_normalized_forces[:, 0]
         self.finger_normalized_forces[:, 1] = (1 - e) * normalize_forces(
             self.right_finger_force.clone()) + e * self.finger_normalized_forces[:, 1]
-        self.finger_normalized_forces[:, 2] = (1 - e) * normalize_forces(
-            self.middle_finger_force.clone()) + e * self.finger_normalized_forces[:, 2]
 
     def update_tactile(self, update_freq, update_delay):
 
         left_allsight_poses = torch.cat((self.left_finger_pos, self.left_finger_quat), dim=-1)
         right_allsight_poses = torch.cat((self.right_finger_pos, self.right_finger_quat), dim=-1)
-        middle_allsight_poses = torch.cat((self.middle_finger_pos, self.middle_finger_quat), dim=-1)
         object_poses = torch.cat((self.plug_pos, self.plug_quat), dim=-1)
 
         tf = np.eye(4)
@@ -481,15 +476,10 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         right_finger_poses = right_finger_poses @ tf
 
-        middle_finger_poses = xyzquat_to_tf_numpy(middle_allsight_poses.cpu().numpy())
-
-        middle_finger_poses = middle_finger_poses @ tf
-
         object_pose = xyzquat_to_tf_numpy(object_poses.cpu().numpy())
 
         self._render_tactile(left_finger_poses,
                              right_finger_poses,
-                             middle_finger_poses,
                              object_pose,
                              update_freq,
                              update_delay)
@@ -497,7 +487,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.tactile_queue[:, 1:] = self.tactile_queue[:, :-1].clone().detach()
         self.tactile_queue[:, 0, ...] = self.tactile_imgs
 
-    def _render_tactile(self, left_finger_pose, right_finger_pose, middle_finger_pose, object_pose, update_freq,
+    def _render_tactile(self, left_finger_pose, right_finger_pose, object_pose, update_freq,
                         update_delay):
 
         tactile_imgs_list, height_maps = [], []  # only for display.
@@ -509,11 +499,10 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
                 self.tactile_handles[e][0].update_pose_given_sim_pose(left_finger_pose[e], object_pose[e])
                 self.tactile_handles[e][1].update_pose_given_sim_pose(right_finger_pose[e], object_pose[e])
-                self.tactile_handles[e][2].update_pose_given_sim_pose(middle_finger_pose[e], object_pose[e])
 
                 tactile_imgs_per_env, height_maps_per_env = [], []
                 # TODO: find a parallel solution
-                for n in range(3):
+                for n in range(2):
                     if self.cfg_task.env.tactile_wrt_force:
                         force = 100 * finger_normalized_forces[e, n].cpu().detach().numpy()
                     else:
@@ -790,19 +779,16 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         # fingertip frictions
         left_finger_friction = []
         right_finger_friction = []
-        middle_finger_friction = []
         for e, p in zip(self.envs, self.kuka_handles):
             props = self.gym.get_actor_rigid_shape_properties(e, p)
             left_finger_friction.append(props[self.left_finger_id].friction)
             right_finger_friction.append(props[self.right_finger_id].friction)
-            middle_finger_friction.append(props[self.middle_finger_id].friction)
 
         physics_params = torch.transpose(to_torch([plug_mass,
                                                    plug_friction,
                                                    socket_friction,
                                                    left_finger_friction,
                                                    right_finger_friction,
-                                                   middle_finger_friction,
                                                    self.plug_heights,  # 1
                                                    self.plug_depths,  # 1
                                                    self.plug_widths,  # 1
@@ -1139,8 +1125,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.degrasp_buf[:] = (torch.abs(roll) > 0.4) | (torch.abs(pitch) > 0.4)
 
         fingertips_dist = (torch.norm(self.left_finger_pos - self.fingertip_centered_pos, p=2, dim=-1) < 0.005) & (
-                torch.norm(self.right_finger_pos - self.fingertip_centered_pos, p=2, dim=-1) < 0.005) & (
-                                  torch.norm(self.middle_finger_pos - self.fingertip_centered_pos, p=2, dim=-1) < 0.005)
+                torch.norm(self.right_finger_pos - self.fingertip_centered_pos, p=2, dim=-1) < 0.005)
 
         self.far_from_goal_buf[:] = torch.norm(self.plug_pos - self.socket_pos, p=2, dim=-1) > 0.3
 
@@ -1161,7 +1146,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             random_init_idx[subassembly] = torch.randint(0, self.total_init_poses[subassembly], size=(len(env_ids),))
         subassemblies = [self.envs_asset[e_id] for e_id in range(self.num_envs)]
 
-        kuka_dof_pos = torch.zeros((len(env_ids), 15))
+        kuka_dof_pos = torch.zeros((len(env_ids), 13))
         socket_pos = torch.zeros((len(env_ids), 3))
         socket_quat = torch.zeros((len(env_ids), 4))
         plug_pos = torch.zeros((len(env_ids), 3))
@@ -1198,7 +1183,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         subassemblies = [self.envs_asset[e_id] for e_id in range(self.num_envs)]
 
-        kuka_dof_pos = torch.zeros((len(env_ids), 15), device=self.device)
+        kuka_dof_pos = torch.zeros((len(env_ids), 13), device=self.device)
         socket_pos = torch.zeros((len(env_ids), 3), device=self.device)
         socket_quat = torch.zeros((len(env_ids), 4), device=self.device)
         plug_pos = torch.zeros((len(env_ids), 3), device=self.device)
@@ -1418,13 +1403,9 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             self.dof_pos[env_ids, list(self.dof_dict.values()).index(
                 'finger_2_1_to_finger_2_2')] = self.cfg_task.env.openhand.proximal_open
             self.dof_pos[env_ids, list(self.dof_dict.values()).index(
-                'base_to_finger_3_2')] = self.cfg_task.env.openhand.proximal_open + 0.4
-            self.dof_pos[env_ids, list(self.dof_dict.values()).index(
                 'finger_1_2_to_finger_1_3')] = self.cfg_task.env.openhand.distal_open
             self.dof_pos[env_ids, list(self.dof_dict.values()).index(
                 'finger_2_2_to_finger_2_3')] = self.cfg_task.env.openhand.distal_open
-            self.dof_pos[env_ids, list(self.dof_dict.values()).index(
-                'finger_3_2_to_finger_3_3')] = self.cfg_task.env.openhand.distal_open
 
         # Stabilize!
         self.dof_vel[env_ids] = 0.0  # shape = (num_envs, num_dofs)
@@ -1819,9 +1800,6 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         gripper_dof_pos[env_ids,
                         list(self.dof_dict.values()).index(
                             'finger_2_1_to_finger_2_2') - 7] = self.cfg_task.env.openhand.proximal_open
-        gripper_dof_pos[env_ids,
-                        list(self.dof_dict.values()).index(
-                            'base_to_finger_3_2') - 7] = self.cfg_task.env.openhand.proximal_open
 
         self._move_gripper_to_dof_pos(env_ids=env_ids, gripper_dof_pos=gripper_dof_pos, sim_steps=sim_steps)
         self.ctrl_target_gripper_dof_pos = gripper_dof_pos
@@ -1858,10 +1836,6 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             ('finger_2_1_to_finger_2_2',
              self.cfg_task.env.openhand.proximal_open,
              self.cfg_task.env.openhand.proximal_close, gripper_proximal_close_noise[1]),
-            ('base_to_finger_3_2',
-             self.cfg_task.env.openhand.proximal_open,
-             self.cfg_task.env.openhand.proximal_close,
-             gripper_proximal_close_noise[2]),
             (
                 'finger_1_2_to_finger_1_3', self.cfg_task.env.openhand.distal_open,
                 self.cfg_task.env.openhand.distal_close,
@@ -1870,10 +1844,6 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                 'finger_2_2_to_finger_2_3', self.cfg_task.env.openhand.distal_open,
                 self.cfg_task.env.openhand.distal_close,
                 gripper_distal_close_noise[1]),
-            (
-                'finger_3_2_to_finger_3_3', self.cfg_task.env.openhand.distal_open,
-                self.cfg_task.env.openhand.distal_close,
-                gripper_distal_close_noise[2]),
         ]
 
         for dof, open_value, close_value, noise in positions_indices:

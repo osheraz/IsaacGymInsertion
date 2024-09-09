@@ -48,7 +48,7 @@ def compute_dof_pos_target(cfg_ctrl,
                            device):
     """Compute Kuka DOF position target to move fingertips towards target pose."""
 
-    ctrl_target_dof_pos = torch.zeros((cfg_ctrl['num_envs'], 15), device=device)
+    ctrl_target_dof_pos = torch.zeros((cfg_ctrl['num_envs'], 13), device=device)
 
     pos_error, axis_angle_error = get_pose_error(
         fingertip_midpoint_pos=fingertip_midpoint_pos,
@@ -65,7 +65,7 @@ def compute_dof_pos_target(cfg_ctrl,
                                            device=device)
 
     ctrl_target_dof_pos[:, 0:7] = arm_dof_pos + delta_arm_dof_pos
-    ctrl_target_dof_pos[:, 7:15] = ctrl_target_gripper_dof_pos
+    ctrl_target_dof_pos[:, 7:13] = ctrl_target_gripper_dof_pos
 
     return ctrl_target_dof_pos
 
