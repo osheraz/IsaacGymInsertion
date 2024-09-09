@@ -385,9 +385,9 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             )
         )
 
-        self.noisy_socket_pos[:, 0] = self.socket_pos[:, 0] + self.socket_obs_pos_noise[:, 0]
-        self.noisy_socket_pos[:, 1] = self.socket_pos[:, 1] + self.socket_obs_pos_noise[:, 1]
-        self.noisy_socket_pos[:, 2] = self.socket_pos[:, 2] + self.socket_obs_pos_noise[:, 2]
+        self.noisy_socket_pos[:, 0] = self.socket_tip[:, 0] + self.socket_obs_pos_noise[:, 0]
+        self.noisy_socket_pos[:, 1] = self.socket_tip[:, 1] + self.socket_obs_pos_noise[:, 1]
+        self.noisy_socket_pos[:, 2] = self.socket_tip[:, 2] + self.socket_obs_pos_noise[:, 2]
 
         # Add observation noise to socket rot
         socket_rot_euler = torch.zeros(
@@ -769,7 +769,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         plug_pos_error, plug_quat_error = fc.get_pose_error(
             fingertip_midpoint_pos=self.obs_plug_pos.clone(),
             fingertip_midpoint_quat=self.obs_plug_quat.clone(),
-            ctrl_target_fingertip_midpoint_pos=self.socket_pos.clone() + self.socket_priv_pos_noise,
+            ctrl_target_fingertip_midpoint_pos=self.socket_tip.clone() + self.socket_priv_pos_noise,
             ctrl_target_fingertip_midpoint_quat=self.identity_quat.clone(),
             jacobian_type='geometric',
             rot_error_type='quat')
@@ -1091,7 +1091,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         distance_reset_buf = (self.far_from_goal_buf | self.degrasp_buf)
         early_reset_reward = distance_reset_buf * self.cfg_task.rl.early_reset_reward_scale
 
-        self.rew_buf[:] = keypoint_reward + 0 * engagement_reward + ori_reward + action_reward + action_delta_reward
+        self.rew_buf[:] = keypoint_reward + engagement_reward + ori_reward + action_reward + action_delta_reward
         self.rew_buf[:] += early_reset_reward
         # self.rew_buf[:] += (early_reset_reward * self.timeout_reset_buf)
         # self.rew_buf[:] += (self.timeout_reset_buf * self.success_reset_buf) * self.cfg_task.rl.success_bonus
@@ -1969,7 +1969,8 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
     def _check_plug_close_to_socket(self):
         """Check if plug is close to socket."""
-        return torch.norm(self.plug_pos[:, :2] - self.socket_tip[:, :2], p=2,
+        # 2
+        return torch.norm(self.plug_pos[:, :3] - self.socket_tip[:, :3], p=2,
                           dim=-1) < self.cfg_task.rl.close_error_thresh
 
     def _check_plug_inserted_in_socket(self):
@@ -1985,10 +1986,10 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         is_plug_close_to_socket = self._check_plug_close_to_socket()
 
         # Combine both checks
-        is_plug_inserted_in_socket = torch.logical_and(
-            is_plug_below_insertion_height, is_plug_close_to_socket
-        )
-
+        # is_plug_inserted_in_socket = torch.logical_and(
+        #     is_plug_below_insertion_height, is_plug_close_to_socket
+        # )
+        is_plug_inserted_in_socket = is_plug_close_to_socket
         return is_plug_inserted_in_socket
 
     def _check_plug_engaged_w_socket(self):
@@ -2004,14 +2005,16 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         # Check if plug is close to socket
         # NOTE: This check addresses edge case where base of plug is below top of socket,
         # but plug is outside socket
-        is_plug_close_to_socket = self._check_plug_close_to_socket()  # torch.norm(self.plug_pos[:, :2] - self.socket_tip[:, :2], p=2, dim=-1) < 0.005 # self._check_plug_close_to_socket()
+        # is_plug_close_to_socket = self._check_plug_close_to_socket()  # torch.norm(self.plug_pos[:, :2] - self.socket_tip[:, :2], p=2, dim=-1) < 0.005 # self._check_plug_close_to_socket()
+        is_plug_close_to_socket = torch.norm(self.plug_pos[:, :3] - self.socket_tip[:, :3], p=2, dim=-1) < 0.05
+
         # print(is_plug_below_engagement_height[0], is_plug_close_to_socket[0])
 
         # Combine both checks
-        is_plug_engaged_w_socket = torch.logical_and(
-            is_plug_below_engagement_height, is_plug_close_to_socket
-        )
-
+        # is_plug_engaged_w_socket = torch.logical_and(
+        #     is_plug_below_engagement_height, is_plug_close_to_socket
+        # )
+        is_plug_engaged_w_socket = is_plug_close_to_socket
         return is_plug_engaged_w_socket
 
     def _get_engagement_reward_scale(self, is_plug_engaged_w_socket, success_height_thresh):
@@ -2022,7 +2025,9 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         reward_scale = torch.zeros((self.num_envs,), dtype=torch.float32, device=self.device)
         # For envs in which plug and socket are engaged, compute positive scale
         engaged_idx = np.argwhere(is_plug_engaged_w_socket.cpu().numpy().copy()).squeeze()
-        height_dist = self.plug_pos[engaged_idx, 2] - self.socket_pos[engaged_idx, 2]
+        # height_dist = self.plug_pos[engaged_idx, 2] - self.socket_pos[engaged_idx, 2]
+        height_dist = torch.norm(self.plug_pos[engaged_idx, :3] - self.socket_tip[engaged_idx, :3], p=2, dim=-1)
+
         # NOTE: Edge case: if success_height_thresh is greater than 0.1,
         # denominator could be negative
         reward_scale[engaged_idx] = 1.0 / ((height_dist - success_height_thresh) + 0.1)

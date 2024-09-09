@@ -1109,7 +1109,7 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
 
         self.socket_tip = fc.translate_along_local_z(pos=self.socket_pos,
                                                      quat=self.socket_quat,
-                                                     offset=self.socket_heights * 2,
+                                                     offset=self.socket_heights * 3,
                                                      device=self.device)
 
         self.plug_tip = fc.translate_along_local_z(pos=self.plug_pos,
