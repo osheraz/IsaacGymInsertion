@@ -158,7 +158,7 @@ randomize:
 #    plug_pos_xy_initial: [0.50, 0.0, 0.0]  # z 0.03  initial XY position of plug on table
     grasp_plug_noise: 0.001 # xyz noise on grasp pos position during grasp at init
     plug_pos_xy_noise: [ 0.01,  0.01] # noise on plug position
-    plug_rot_noise: [ 0.3, 0.3, 0.0 ] # rot noise on plug init
+    plug_rot_noise: [ 0.0, 0.4, 0.0 ] # rot noise on plug init
     plug_pos_z_noise_bounds: [ 0.005, 0.03 ]  # plug z bound noise
 #    plug_quat_noise: [0.0, 0.0, 0.0, 0.0]
 
@@ -174,7 +174,7 @@ randomize:
 rl:
 
     pos_action_scale: [0.005, 0.005, 0.004]
-    rot_action_scale: [0.02, 0.02, 0.02]
+    rot_action_scale: [0.05, 0.05, 0.05]
 
     force_action_scale: [1.0, 1.0, 1.0]
     torque_action_scale: [1.0, 1.0, 1.0]
