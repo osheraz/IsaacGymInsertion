@@ -86,11 +86,6 @@ class PointCloudGenerator:
 
         # Initialize the view_matrix in torch tensor
         # from world space (robot) to camera space
-        view_matrix = torch.tensor([[-0.0163, -0.4122, 0.9109, 0.],
-                                    [0.9999, -0.0067, 0.0149, 0.],
-                                    [0., 0.9111, 0.4123, 0.],
-                                    [0.0065, 0.1445, -0.7189, 1.]], dtype=torch.float32).to(device)
-
         view_matrix = torch.tensor([[-0., -0.3961, 0.9182, 0.],
                                     [1, -0., 0.0, 0.],
                                     [0., 0.9182, 0.3961, 0.],
@@ -128,12 +123,19 @@ class PointCloudGenerator:
             self.cv = self.cam_height / 2.
             self.proj_matrix = torch.tensor(proj_matrix, dtype=torch.float32).to(device)
 
+        # * -1 fu
         self.int_mat = torch.Tensor(
-            [[-self.fu, 0, self.cu],
+            [[self.fu, 0, self.cu],
              [0, self.fv, self.cv],
              [0, 0, 1]]
         )
         self.ext_mat = torch.inverse(torch.Tensor(view_matrix)).to(device)
+
+        self.ext_mat = torch.tensor([[-0.0047587, -0.0064173, -0.9999681, 0.864325694496],
+                                     [0.9937006, -0.1119959, -0.0040101, -0.0595686154242],
+                                     [-0.1119666, -0.9936879, 0.0069098, 0.195660296944],
+                                     [0, 0, 0, 1.]], dtype=torch.float32).to(device).T
+
         self.int_mat_T_inv = torch.inverse(self.int_mat.T).to(device)
         self.depth_max = depth_max
 
@@ -158,7 +160,7 @@ class PointCloudGenerator:
             else:
                 valid_ids = torch.ones(points.shape, dtype=bool, device=self.device)
 
-            valid_depth = points[valid_ids]
+            valid_depth = points[valid_ids] * -1 # TODO
             uv_one_in_cam = self._uv_one_in_cam[valid_ids]
 
             # Calculate 3D points in camera coordinates
@@ -202,8 +204,8 @@ class ZedPointCloudSubscriber:
         self.h = 180  # 180
         self.display = display
 
-        self.with_seg = True
-        self.with_socket = True
+        self.with_seg = False
+        self.with_socket = False
         self.relative = False
         self.pointcloud_init = False
         self.init_success = False
@@ -320,7 +322,7 @@ class ZedPointCloudSubscriber:
                 cloud_points = self.pcl_gen.convert(frame)
                 proc_cloud = self.process_pointcloud(cloud_points)
                 # proc_cloud = remove_statistical_outliers(proc_cloud)
-                proc_cloud = self.sample_n(proc_cloud, num_sample=400)
+                proc_cloud = self.sample_n(proc_cloud, num_sample=4000)
                 self.pointcloud_pub.publish_pointcloud(proc_cloud)
 
                 # self.last_cloud = proc_cloud
