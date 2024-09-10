@@ -1127,7 +1127,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         fingertips_dist = (torch.norm(self.left_finger_pos - self.fingertip_centered_pos, p=2, dim=-1) < 0.005) & (
                 torch.norm(self.right_finger_pos - self.fingertip_centered_pos, p=2, dim=-1) < 0.005)
 
-        self.far_from_goal_buf[:] = torch.norm(self.plug_pos - self.socket_pos, p=2, dim=-1) > 0.3
+        self.far_from_goal_buf[:] = torch.norm(self.plug_pos - self.socket_pos, p=2, dim=-1) > 1.0
 
         # self.degrasp_buf[:] |= fingertips_dist
         if self.cfg_task.reset_at_fails:
