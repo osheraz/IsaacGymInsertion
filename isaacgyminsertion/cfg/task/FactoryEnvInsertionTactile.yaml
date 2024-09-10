@@ -19,7 +19,7 @@ external_cam:
     z_point_init: 0
 
     cam_pos_noise: 0.01
-    cam_point_noise: 0.05
+    cam_point_noise: 0.01
 
 env:
     env_name: 'FactoryEnvInsertionTactile'

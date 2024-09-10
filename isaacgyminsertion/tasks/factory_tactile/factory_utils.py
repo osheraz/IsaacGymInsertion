@@ -84,7 +84,7 @@ class DepthImageProcessor:
 
 class PointCloudAugmentations:
     def __init__(self,
-                 num_points=400, sigma=0.005, noise_clip=0.005, rotate_range=(-10, 10), scale_range=(0.8, 1.2)):
+                 num_points=400, sigma=0.003, noise_clip=0.002, rotate_range=(-10, 10), scale_range=(0.8, 1.2)):
         self.num_points = num_points  # Fixed number of points
         self.sigma = sigma            # Noise standard deviation
         self.noise_clip = noise_clip  # Clipping value for noise
@@ -101,7 +101,7 @@ class PointCloudAugmentations:
         """
         B, N, _ = pointcloud_batch.shape
 
-        pointwise_noise = torch.randn(pointcloud_batch.size(), device=pointcloud_batch.device) * self.sigma * 0
+        pointwise_noise = torch.randn(pointcloud_batch.size(), device=pointcloud_batch.device) * self.sigma
         pointwise_noise = torch.clamp(pointwise_noise, -self.noise_clip, self.noise_clip)
 
         noise_mask = torch.rand(B, N, device=pointcloud_batch.device) < noise_prob
@@ -225,7 +225,7 @@ class PointCloudAugmentations:
         """
         # Apply augmentations to the entire batch
         pointcloud_batch = self.random_noise(pointcloud_batch, pcl_noise)
-        pointcloud_batch = self.random_rotate(pointcloud_batch, angle, axes)
+        # pointcloud_batch = self.random_rotate(pointcloud_batch, angle, axes)
         # pointcloud_batch = self.add_outliers(pointcloud_batch)
 
         return pointcloud_batch

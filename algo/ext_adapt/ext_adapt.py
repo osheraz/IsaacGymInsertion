@@ -143,10 +143,13 @@ def display_obs(depth, seg, pcl, ax=None):
     if pcl is not None:
         pcl = pcl.cpu().detach().numpy()
         env_id = 0
-        ax.scatter(pcl[env_id, :, 0],
-                   pcl[env_id, :, 1],
-                   pcl[env_id, :, 2], color='k', s=2)
-
+        N = pcl.shape[1] // 2
+        ax.scatter(pcl[env_id, :N, 0],
+                   pcl[env_id, :N, 1],
+                   pcl[env_id, :N, 2], color='k', s=2)
+        ax.scatter(pcl[env_id, N:, 0],
+                   pcl[env_id, N:, 1],
+                   pcl[env_id, N:, 2], color='g', s=2)
         plt.pause(0.0001)
         ax.cla()
 
@@ -232,11 +235,11 @@ class ExtrinsicAdapt(object):
         self.stud_obs_mean_std = RunningMeanStd(self.obs_stud_shape).to(self.device)
         self.stud_obs_mean_std.train()
 
-        self.pcl_channel = 3
-        if self.task_config.env.merge_goal_pcl:
-            self.pcl_channel += 3
-        if self.task_config.env.merge_socket_pcl:
-            self.pcl_channel += 3
+        # self.pcl_channel = 3
+        # if self.task_config.env.merge_goal_pcl:
+        #     self.pcl_channel += 3
+        # if self.task_config.env.merge_socket_pcl:
+        #     self.pcl_channel += 3
         self.pcl_mean_std = RunningMeanStd((3,)).to(self.device)
         self.pcl_mean_std.train()
 
@@ -314,7 +317,7 @@ class ExtrinsicAdapt(object):
             from algo.ppo.experience import SimLogger
             self.data_logger = SimLogger(env=self.env)
 
-        self.display_obs = False
+        self.display_obs = self.env.cfg_task.external_cam.display
 
         if self.display_obs and self.pcl_info:
             self.fig = plt.figure()
@@ -373,8 +376,8 @@ class ExtrinsicAdapt(object):
 
         if self.pcl_info:
             # [B, T, N*3] to [B, T*N*3] to [B, T*N, 3]
-            # pcl = self.pcl_mean_std(pcl.reshape(-1, 3)).reshape((obs['pcl'].shape[0], -1, 3))
-            pcl = pcl.reshape((obs['pcl'].shape[0], -1, 3))
+            pcl = self.pcl_mean_std(pcl.reshape(-1, 3)).reshape((obs['pcl'].shape[0], -1, 3))
+            # pcl = pcl.reshape((obs['pcl'].shape[0], -1, 3))
 
             # if self.pcl_channel == 6:
             #     NP = self.task_config.env.num_points
@@ -421,7 +424,7 @@ class ExtrinsicAdapt(object):
         self.set_student_eval()
 
         steps = 0
-        obs_dict = self.env.reset(reset_at_success=False, reset_at_fails=True)
+        obs_dict = self.env.reset(reset_at_success=False, reset_at_fails=False)
         total_dones, num_success = 0, 0
 
         while steps < total_steps:
@@ -629,7 +632,7 @@ class ExtrinsicAdapt(object):
                 # loss_action = loss_action_fn(torch.clamp(mu, -1, 1),
                 #                              torch.clamp(batched_obs['teacher_actions'].detach(), -1, 1))
                 weights = torch.ones(6, device=self.device)
-                weights[2] = 0.1
+                # weights[2] = 0.1
                 loss_action = (torch.clamp(mu, -1, 1) - torch.clamp(batched_obs['teacher_actions'].detach(), -1,
                                                                     1)) ** 2
 

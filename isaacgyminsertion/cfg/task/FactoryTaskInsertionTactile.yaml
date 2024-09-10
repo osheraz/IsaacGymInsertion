@@ -118,8 +118,8 @@ env:
     num_points: 400
     num_points_socket: 400
     num_points_goal: 400
-    merge_goal_pcl: True
-    merge_socket_pcl: False
+    merge_goal_pcl: False
+    merge_socket_pcl: True
     relative_pcl: False
 
     record_video: True

@@ -979,7 +979,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
                     for k, v in self.subassembly_extrinsic_contact.items():
                         self.goal_pcl[self.subassembly_to_env_ids[k], ...] = v.get_goal_pcl(
-                            socket_pos=self.socket_pos[self.subassembly_to_env_ids[k], ...].clone(),
+                            socket_pos=self.socket_tip[self.subassembly_to_env_ids[k], ...].clone(),
                             socket_quat=self.socket_quat[self.subassembly_to_env_ids[k], ...].clone(),
                             plug_scale=self.plug_scale[self.subassembly_to_env_ids[k]],
                             display='square_peg_hole_32mm_loose' == k and self.cfg_task.external_cam.display).to(
@@ -2006,7 +2006,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         # NOTE: This check addresses edge case where base of plug is below top of socket,
         # but plug is outside socket
         # is_plug_close_to_socket = self._check_plug_close_to_socket()  # torch.norm(self.plug_pos[:, :2] - self.socket_tip[:, :2], p=2, dim=-1) < 0.005 # self._check_plug_close_to_socket()
-        is_plug_close_to_socket = torch.norm(self.plug_pos[:, :3] - self.socket_tip[:, :3], p=2, dim=-1) < 0.05
+        is_plug_close_to_socket = torch.norm(self.plug_pos[:, :3] - self.socket_tip[:, :3], p=2, dim=-1) < 0.005
 
         # print(is_plug_below_engagement_height[0], is_plug_close_to_socket[0])
 
