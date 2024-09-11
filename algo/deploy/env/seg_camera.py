@@ -31,9 +31,9 @@ class SegCameraSubscriber:
         self.iou = 0.9
         # Default configurations
         self.table_dims = {"x_min": 10, "y_min": 10, "x_max": 280, "y_max": 250}
-        self.socket_rough_pos = {"x_min": 60, "y_min": 60, "x_max": 280, "y_max": 180}
+        self.socket_rough_pos = {"x_min": 120, "y_min": 110, "x_max": 280, "y_max": 180}
         self.max_dims = {"width": 70, "height": 70}
-        self.socket_max_dims = {"width": 100, "height": 80}
+        self.socket_max_dims = {"width": 60, "height": 60}
         self.socket_min_dims = {"width": 0, "height": 0}
 
         self.min_dims = {"width": 10, "height": 15}
@@ -162,7 +162,7 @@ class SegCameraSubscriber:
                                                self.socket_min_dims,
                                                self.points_to_exclude):
                 socket.append([int(box[0]), int(box[1]), int(box[2]), int(box[3])])
-
+        #
         # for b in all_boxes:
         #     cv2.rectangle(frame, (b[0], b[1]), (b[2], b[3]), (0, 255, 0), 2)
 
@@ -182,17 +182,18 @@ class SegCameraSubscriber:
             self.iou = 0.6
             self.got_socket_mask = True
             self.init_success = True
-            self.min_dims = {"width": 20, "height": 25}
-            self.max_dims = {"width": 70, "height": 100}
+            self.min_dims = {"width": 15, "height": 15}
+            self.max_dims = {"width": 40, "height": 70}
 
         try:
             prompt_process = FastSAMPrompt(frame, results, device=self.device)
             if len(seg) > 1:
+                # print('jere')
                 smallest, biggest = self.find_smallest_and_largest_boxes(seg)
             else:
-                biggest = seg[0]
+                smallest = seg[0]
 
-            ann = prompt_process.box_prompt(bbox=biggest)[0]
+            ann = prompt_process.box_prompt(bbox=smallest)[0]
             self.plug_mask = (masks_to_bool(ann)).astype(int) * self.plug_id
             self.socket_mask = np.where(self.plug_mask > 0, 0, self.original_socket_mask)
 
@@ -201,7 +202,7 @@ class SegCameraSubscriber:
         except:
             # print('failed to find the object')
             pass
-
+        #
         # if True:
         #     if self.with_socket:
         #         mask = ((self.last_frame == self.plug_id) | (self.last_frame == self.socket_id)).astype(float)

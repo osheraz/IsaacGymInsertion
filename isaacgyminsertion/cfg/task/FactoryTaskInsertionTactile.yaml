@@ -135,14 +135,14 @@ external_cam:
   pcl_cam: False
   seg_cam: False
   depth_cam: False
-  display: False
+  display: True
 
   cam_res:
-    w: 96
-    h: 54
+    w: 320
+    h: 180
   cam_type: 'd'
   save_im: False
-  far_clip: 0.4
+  far_clip: 1.0
   near_clip: 0.1
   dis_noise: 0.001
 

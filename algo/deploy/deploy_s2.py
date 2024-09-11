@@ -585,7 +585,6 @@ class HardwarePlayer:
             # fix bug
             eef_stud = torch.cat((self.fingertip_centered_pos,
                                   self.stud_tf.forward(eef_stud[:, 3:].reshape(eef_stud.shape[0], 3, 3))), dim=1)
-            socket_pos = self.socket_pos
 
             # if self.train_config.from_offline:
             #     eef_stud = (eef_stud - self.stats["mean"]["eef_pos_rot6d"]) / self.stats["std"]["eef_pos_rot6d"]
@@ -682,7 +681,7 @@ class HardwarePlayer:
         # Set random init error
         self.env.arm.move_manipulator.scale_vel(scale_vel=0.1, scale_acc=0.1)
 
-        self.env.set_random_init_error(self.socket_pos, with_tracker=False)
+        # self.env.set_random_init_error(self.socket_pos, with_tracker=False)
         self.env.grasp()
 
         self.env.arm.move_manipulator.scale_vel(scale_vel=0.02, scale_acc=0.02)

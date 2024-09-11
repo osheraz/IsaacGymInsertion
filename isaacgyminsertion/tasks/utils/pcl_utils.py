@@ -101,7 +101,7 @@ class CameraPointCloud:
     def __init__(self, isc_sim, isc_gym, envs, camera_handles,
                  camera_props, sample_num=4000,
                  filter_func=None, pt_in_local=False,
-                 depth_max=0.4, graphics_device='cpu',
+                 depth_max=1.0, graphics_device='cpu',
                  compute_device='cpu'):
 
         self.sim = isc_sim

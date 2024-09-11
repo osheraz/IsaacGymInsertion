@@ -131,10 +131,28 @@ class PointCloudGenerator:
         )
         self.ext_mat = torch.inverse(torch.Tensor(view_matrix)).to(device)
 
-        self.ext_mat = torch.tensor([[-0.0047587, -0.0064173, -0.9999681, 0.864325694496],
-                                     [0.9937006, -0.1119959, -0.0040101, -0.0595686154242],
-                                     [-0.1119666, -0.9936879, 0.0069098, 0.195660296944],
-                                     [0, 0, 0, 1.]], dtype=torch.float32).to(device).T
+        self.ext_mat = torch.tensor([[-0.05271196, 0.22903687, - 0.97198949, 0.87886667],
+                                     [0.99853808, 0.02375095, - 0.04855511, - 0.01351213],
+                                     [0.01196477, - 0.97312795, - 0.229954, 0.21377821],
+                                     [0., 0., 0., 1.]], dtype=torch.float32).to(device)
+
+        def get_rotation_matrix(roll, pitch, yaw):
+            roll, pitch, yaw = torch.tensor(roll), torch.tensor(pitch), torch.tensor(yaw)
+            R_x = torch.tensor(
+                [[1, 0, 0], [0, torch.cos(roll), -torch.sin(roll)], [0, torch.sin(roll), torch.cos(roll)]],
+                dtype=torch.float32)
+            R_y = torch.tensor(
+                [[torch.cos(pitch), 0, torch.sin(pitch)], [0, 1, 0], [-torch.sin(pitch), 0, torch.cos(pitch)]],
+                dtype=torch.float32)
+            R_z = torch.tensor([[torch.cos(yaw), -torch.sin(yaw), 0], [torch.sin(yaw), torch.cos(yaw), 0], [0, 0, 1]],
+                               dtype=torch.float32)
+            return torch.mm(R_z, torch.mm(R_y, R_x))
+
+        roll, pitch, yaw = -0.04, -0.02, 0.0
+        rotation_tilt = get_rotation_matrix(roll, pitch, yaw)
+        new_rot = torch.mm(rotation_tilt, self.ext_mat[:3, :3])
+        self.ext_mat = torch.cat([torch.cat([new_rot, self.ext_mat[:3, 3:]], dim=1), self.ext_mat[3:, :]], dim=0).T
+
 
         self.int_mat_T_inv = torch.inverse(self.int_mat.T).to(device)
         self.depth_max = depth_max
@@ -160,7 +178,7 @@ class PointCloudGenerator:
             else:
                 valid_ids = torch.ones(points.shape, dtype=bool, device=self.device)
 
-            valid_depth = points[valid_ids] * -1 # TODO
+            valid_depth = points[valid_ids] * -1  # TODO
             uv_one_in_cam = self._uv_one_in_cam[valid_ids]
 
             # Calculate 3D points in camera coordinates
@@ -204,8 +222,8 @@ class ZedPointCloudSubscriber:
         self.h = 180  # 180
         self.display = display
 
-        self.with_seg = False
-        self.with_socket = False
+        self.with_seg = True
+        self.with_socket = True
         self.relative = False
         self.pointcloud_init = False
         self.init_success = False
@@ -295,7 +313,7 @@ class ZedPointCloudSubscriber:
 
                     if self.with_socket and not self.got_socket:
                         socket_mask = (seg == self.seg.socket_id).astype(float)
-                        socket_mask = self.seg.shrink_mask(socket_mask)
+                        # socket_mask = self.seg.shrink_mask(socket_mask)
                         proc_socket = self.pcl_gen.convert(frame * socket_mask)
                         proc_socket = self.process_pointcloud(proc_socket)
                         # proc_socket = remove_statistical_outliers(proc_socket)
@@ -321,8 +339,8 @@ class ZedPointCloudSubscriber:
 
                 cloud_points = self.pcl_gen.convert(frame)
                 proc_cloud = self.process_pointcloud(cloud_points)
-                # proc_cloud = remove_statistical_outliers(proc_cloud)
-                proc_cloud = self.sample_n(proc_cloud, num_sample=4000)
+                proc_cloud = remove_statistical_outliers(proc_cloud)
+                proc_cloud = self.sample_n(proc_cloud, num_sample=400)
                 self.pointcloud_pub.publish_pointcloud(proc_cloud)
 
                 # self.last_cloud = proc_cloud
@@ -414,9 +432,9 @@ class ZedPointCloudSubscriber:
         x = points[:, 0]
         y = points[:, 1]
         z = points[:, 2]
-        valid1 = (z >= 0.001) & (z <= 0.5)
-        valid2 = (x >= 0.4) & (x <= 0.65)
-        valid3 = (y >= -0.2) & (y <= 0.2)
+        valid1 = (z >= 0.001) & (z <= 0.2)
+        valid2 = (x >= 0.2) & (x <= 0.6)
+        valid3 = (y >= -0.4) & (y <= 0.4)
 
         valid = valid1 & valid3 & valid2
         points = points[valid]

@@ -662,6 +662,15 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
 
         return plug_assets, socket_assets
 
+    def get_real_camera_pose(self):
+        cam_pos = np.array(self.cfg_env.external_cam.real_cam_pos)
+        cam_ori = np.array(self.cfg_env.external_cam.real_cam_ori)
+        cam_ori = R.from_quat(cam_ori).as_matrix()
+        cam_T = np.eye(4)
+        cam_T[:3, :3] = cam_ori
+        cam_T[:3, 3] = cam_pos
+        return cam_T
+
     def _create_actors(self, lower, upper, num_per_row, kuka_asset, plug_assets, socket_assets, table_asset):
         """Set initial actor poses. Create actors. Set shape and DOF properties."""
 
@@ -730,13 +739,6 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
             self.gym.create_asset_force_sensor(kuka_asset, ft_handle, sensor_pose, sensor_options)
         # wrist_ft_handle = self.gym.find_asset_rigid_body_index(kuka_asset, 'iiwa7_link_7')
         # self.gym.create_asset_force_sensor(kuka_asset, wrist_ft_handle, sensor_pose)
-
-        self.init_camera_pos = (self.cfg_env.external_cam.x_init,
-                                self.cfg_env.external_cam.y_init,
-                                self.cfg_env.external_cam.z_init)
-        self.init_camera_point = (self.cfg_env.external_cam.x_point_init,
-                                self.cfg_env.external_cam.y_point_init,
-                                self.cfg_env.external_cam.z_point_init)
 
         from tqdm import tqdm
 
@@ -889,27 +891,59 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
 
             if self.external_cam:
                 # add external cam
-                self.pos_error_std = self.cfg_env.external_cam.cam_pos_noise
-                self.point_error_std = self.cfg_env.external_cam.cam_point_noise
+                if self.cfg_env.external_cam.use_point:
+                    self.init_camera_pos = (self.cfg_env.external_cam.x_init,
+                                            self.cfg_env.external_cam.y_init,
+                                            self.cfg_env.external_cam.z_init)
 
-                random_pos_error = np.random.normal(0, self.pos_error_std, 3)
-                random_point_error = np.random.normal(0, self.point_error_std, 3)
+                    self.init_camera_point = (self.cfg_env.external_cam.x_point_init,
+                                              self.cfg_env.external_cam.y_point_init,
+                                              self.cfg_env.external_cam.z_point_init)
 
-                perturbed_position = np.array(self.init_camera_pos) + random_pos_error
-                perturbed_point = np.array(self.init_camera_point) + random_point_error
+                    self.pos_error_std = self.cfg_env.external_cam.cam_pos_noise
+                    self.point_error_std = self.cfg_env.external_cam.cam_point_noise
 
-                cam, _, props = self.make_handle_trans(self.res[0], self.res[1], i,
+                    random_pos_error = np.random.normal(0, self.pos_error_std, 3)
+                    random_point_error = np.random.normal(0, self.point_error_std, 3)
+
+                    perturbed_position = np.array(self.init_camera_pos) + random_pos_error
+                    perturbed_point = np.array(self.init_camera_point) + random_point_error
+
+                    cam, _, props = self.make_handle_trans(self.res[0], self.res[1], i,
                                                            perturbed_position, perturbed_point)
+
+                    self.gym.set_camera_location(cam, self.envs[i],
+                                                 gymapi.Vec3(perturbed_position[0],
+                                                             perturbed_position[1],
+                                                             perturbed_position[2]),
+                                                 gymapi.Vec3(perturbed_point[0],
+                                                             perturbed_point[1],
+                                                             perturbed_point[2]))
+
+                if self.cfg_env.external_cam.use_real:
+
+                    cam_T = self.get_real_camera_pose()
+                    offset = np.array([
+                        [0.0, -1.0, 0.0, 0.0],
+                        [0.0, 0.0, -1.0, 0.0],
+                        [1.0, 0.0, 0.0, 0.0],
+                        [0.0, 0.0, 0.0, 1.0],
+                    ])
+
+                    cam_T = cam_T @ offset
+                    cam_pos = cam_T[:3, 3].flatten()
+                    cam_pose = gymapi.Transform()
+                    cam_pose.p = gymapi.Vec3(*cam_pos)
+                    cam_quat = R.from_matrix(cam_T[:3, :3]).as_quat()
+                    cam_pose.r = gymapi.Quat(*cam_quat)
+
+                    cam, _, props = self.make_handle_trans(self.res[0], self.res[1], i,
+                                                           cam_pos, cam_pos)
+
+                    self.gym.set_camera_transform(cam, self.envs[i], cam_pose)
+
                 self.camera_handles.append(cam)
                 self.camera_props.append(props)
-
-                self.gym.set_camera_location(cam, self.envs[i],
-                                             gymapi.Vec3(perturbed_position[0],
-                                                         perturbed_position[1],
-                                                         perturbed_position[2]),
-                                             gymapi.Vec3(perturbed_point[0],
-                                                         perturbed_point[1],
-                                                         perturbed_point[2]))
 
             if subassembly not in self.all_rendering_camera:
                 self.camera_props_viz = gymapi.CameraProperties()

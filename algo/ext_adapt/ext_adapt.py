@@ -376,6 +376,8 @@ class ExtrinsicAdapt(object):
 
         if self.pcl_info:
             # [B, T, N*3] to [B, T*N*3] to [B, T*N, 3]
+            if self.display_obs:
+                pcl_to_display = pcl.reshape((obs['pcl'].shape[0], -1, 3))
             pcl = self.pcl_mean_std(pcl.reshape(-1, 3)).reshape((obs['pcl'].shape[0], -1, 3))
             # pcl = pcl.reshape((obs['pcl'].shape[0], -1, 3))
 
@@ -407,7 +409,7 @@ class ExtrinsicAdapt(object):
         }
 
         if self.display_obs:
-            display_obs(img, seg, pcl, ax=self.ax)
+            display_obs(img, seg, pcl_to_display, ax=self.ax)
 
         return student_dict
 
