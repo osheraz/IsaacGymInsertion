@@ -49,12 +49,13 @@ tactile: # Pulling from task
 
 env:
     numEnvs: ${resolve_default:128,${...num_envs}}
-    numObservations: 18 #
-    numObsStudent: 18 #
+    numObservations: 21 #
+    numObsStudent: 21 #
     numStates: 28 # 27
-    numActions: 6 # [position, ori]
-    numTargets: 6 # [position, ori]
+    numActions: 9 # [position, ori]
+    numTargets: 9 # [position, ori]
     action_latency_max: 15
+
     # Should be the same as in EnvPPO
     numObsHist: 1
     numObsStudentHist: 1
@@ -63,7 +64,7 @@ env:
     ft_history_len: 1
 
     smooth_force: True
-
+    hand_action: True
     openhand:
         distal_open: 0.1
         distal_close: 0.4
@@ -175,6 +176,7 @@ rl:
 
     pos_action_scale: [0.01, 0.01, 0.01]
     rot_action_scale: [0.05, 0.05, 0.05]
+    gripper_action_scale: [0.01, 0.01, 0.01]
 
     force_action_scale: [1.0, 1.0, 1.0]
     torque_action_scale: [1.0, 1.0, 1.0]

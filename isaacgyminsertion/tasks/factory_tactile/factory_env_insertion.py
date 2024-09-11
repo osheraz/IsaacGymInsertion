@@ -531,8 +531,8 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
 
         self.print_sdf_warning()
         kuka_asset, table_asset = self.import_kuka_assets()
-        plug_assets, socket_assets = self._import_env_assets()
-        self._create_actors(lower, upper, num_per_row, kuka_asset, plug_assets, socket_assets, table_asset)
+        plug_assets, socket_assets, goal_assets = self._import_env_assets()
+        self._create_actors(lower, upper, num_per_row, kuka_asset, plug_assets, socket_assets, table_asset, goal_assets)
         self.print_sdf_finish()
 
         for subassembly in self.cfg_env.env.desired_subassemblies:
@@ -618,13 +618,17 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
         plug_options.max_linear_velocity = 1000.0  # default = 1000.0
         plug_options.angular_damping = 0.5  # default = 0.5
         plug_options.max_angular_velocity = 64.0  # default = 64.0
-        plug_options.disable_gravity = True
+        plug_options.disable_gravity = False
         plug_options.enable_gyroscopic_forces = True
         plug_options.default_dof_drive_mode = gymapi.DOF_MODE_NONE
         # plug_options.vhacd_enabled = True  # convex decomposition
         plug_options.use_mesh_materials = False
         if self.cfg_base.mode.export_scene:
             plug_options.mesh_normal_mode = gymapi.COMPUTE_PER_FACE
+
+
+        goal_asset_options = gymapi.AssetOptions()
+        goal_asset_options.disable_gravity = True
 
         socket_options = gymapi.AssetOptions()
         socket_options.flip_visual_attachments = False
@@ -645,6 +649,7 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
 
         plug_assets = []
         socket_assets = []
+        goal_assets = []
         for subassembly in self.cfg_env.env.desired_subassemblies:
             components = list(self.asset_info_insertion[subassembly])
             plug_file = self.asset_info_insertion[subassembly][components[0]]['urdf_path'] + '.urdf'
@@ -653,6 +658,8 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
             socket_options.density = self.asset_info_insertion[subassembly][components[1]]['density']
             plug_asset = self.gym.load_asset(self.sim, urdf_root, plug_file, plug_options)
             socket_asset = self.gym.load_asset(self.sim, urdf_root, socket_file, socket_options)
+            goal_asset = self.gym.load_asset(self.sim, urdf_root, plug_file, goal_asset_options)
+            goal_assets.append(goal_asset)
             plug_assets.append(plug_asset)
             socket_assets.append(socket_asset)
 
@@ -660,9 +667,9 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
             self.plug_files.append(os.path.join(urdf_root, plug_file))
             self.socket_files.append(os.path.join(urdf_root, socket_file))
 
-        return plug_assets, socket_assets
+        return plug_assets, socket_assets, goal_assets
 
-    def _create_actors(self, lower, upper, num_per_row, kuka_asset, plug_assets, socket_assets, table_asset):
+    def _create_actors(self, lower, upper, num_per_row, kuka_asset, plug_assets, socket_assets, table_asset, goal_assets):
         """Set initial actor poses. Create actors. Set shape and DOF properties."""
 
         kuka_pose = gymapi.Transform()
@@ -677,11 +684,22 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
         table_pose.p.z = self.cfg_base.env.table_height * 0.5
         table_pose.r = gymapi.Quat(0.0, 0.0, 0.0, 1.0)
 
+        self.y_disp = -10
+        self.goal_displacement = gymapi.Vec3(-0.0, self.y_disp, 0.15)
+        self.goal_displacement_tensor = torch_jit_utils.to_torch([self.goal_displacement.x,
+                                                                  self.goal_displacement.y,
+                                                                  self.goal_displacement.z], device=self.device)
+        goal_start_pose = gymapi.Transform()
+        goal_start_pose.p = gymapi.Vec3(self.cfg_base.env.kuka_depth, self.cfg_env.env.plug_lateral_offset,
+                                        self.cfg_base.env.table_height) + self.goal_displacement
+        goal_start_pose.p.z -= 0.04
+
         self.envs_asset = {}
         self.envs = []
         self.kuka_handles = []
         self.plug_handles = []
         self.socket_handles = []
+        self.goal_handles = []
         self.table_handles = []
         self.shape_ids = []
 
@@ -691,6 +709,7 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
         self.plug_actor_ids_sim = []  # within-sim indices
         self.socket_actor_ids_sim = []  # within-sim indices
         self.table_actor_ids_sim = []  # within-sim indices
+        self.goal_actor_ids_sim = []  # within-sim indices
 
         self.fingertips = ['finger_1_3', 'finger_2_3', 'finger_3_3']  # left, right, bottom. same for all envs
         self.fingertip_handles = [self.gym.find_asset_rigid_body_index(kuka_asset, name) for name in self.fingertips]
@@ -756,9 +775,11 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
             num_socket_shapes = self.gym.get_asset_rigid_shape_count(socket_assets[j])
             num_table_bodies = self.gym.get_asset_rigid_body_count(table_asset)
             num_table_shapes = self.gym.get_asset_rigid_shape_count(table_asset)
+            num_goal_bodies = self.gym.get_asset_rigid_body_count(goal_assets[j])
+            num_goal_shapes = self.gym.get_asset_rigid_shape_count(goal_assets[j])
 
-            max_agg_bodies = num_kuka_bodies + num_plug_bodies + num_socket_bodies + num_table_bodies
-            max_agg_shapes = num_kuka_shapes + num_plug_shapes + num_socket_shapes + num_table_shapes
+            max_agg_bodies = num_kuka_bodies + num_plug_bodies + num_socket_bodies + num_table_bodies + num_goal_bodies
+            max_agg_shapes = num_kuka_shapes + num_plug_shapes + num_socket_shapes + num_table_shapes + num_goal_shapes
             self.object_rb_handles = list(range(num_kuka_bodies, num_kuka_bodies + num_plug_bodies))
             # begin aggregation mode if enabled - this can improve simulation performance
             if self.cfg_env.env.aggregate_mode:
@@ -787,6 +808,11 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
 
             plug_handle = self.gym.create_actor(env_ptr, plug_assets[j], plug_pose, 'plug', i, 0, 2)
             self.plug_actor_ids_sim.append(actor_count)
+            actor_count += 1
+
+            goal_handle = self.gym.create_actor(env_ptr, goal_assets[j], goal_start_pose, "goal_object",
+                                                i + self.num_envs, 0, 0)
+            self.goal_actor_ids_sim.append(actor_count)
             actor_count += 1
 
             socket_pose = gymapi.Transform()
@@ -842,6 +868,15 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
             self.gym.set_actor_rigid_shape_properties(env_ptr, plug_handle, plug_shape_props)
             self.plug_scale.append(self.gym.get_actor_scale(env_ptr, plug_handle))
 
+            goal_shape_props = self.gym.get_actor_rigid_shape_properties(env_ptr, goal_handle)
+            goal_shape_props[0].friction = self.cfg_env.env.plug_friction
+            goal_shape_props[0].rolling_friction = 0.0  # default = 0.0
+            goal_shape_props[0].torsion_friction = 0.0  # default = 0.0
+            goal_shape_props[0].restitution = 0.0  # default = 0.0
+            goal_shape_props[0].compliance = 0.0  # default = 0.0
+            goal_shape_props[0].thickness = 0.0  # default = 0.0
+            self.gym.set_actor_rigid_shape_properties(env_ptr, goal_handle, goal_shape_props)
+
             socket_shape_props = self.gym.get_actor_rigid_shape_properties(env_ptr, socket_handle)
             socket_shape_props[0].friction = self.asset_info_insertion[subassembly][components[1]]['friction']
             socket_shape_props[0].rolling_friction = 0.0  # default = 0.0
@@ -886,6 +921,7 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
             self.plug_handles.append(plug_handle)
             self.socket_handles.append(socket_handle)
             self.table_handles.append(table_handle)
+            self.goal_handles.append(goal_handle)
 
             if self.external_cam:
                 # add external cam
@@ -930,7 +966,7 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
 
                 self.all_rendering_camera[subassembly].append(cam1)
 
-                cam2, trans2, _ = self.make_handle_trans(1280, 720, i, (0.7, 0.0, 0.1),
+                cam2, trans2, _ = self.make_handle_trans(1280, 720, i, (0.8, self.y_disp, 0.4),
                                                          (np.deg2rad(0), np.deg2rad(30), np.deg2rad(180)))
                 self.gym.attach_camera_to_body(
                     cam2,
@@ -1011,10 +1047,12 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
         self.kuka_actor_ids_sim = torch.tensor(self.kuka_actor_ids_sim, dtype=torch.int32, device=self.device)
         self.plug_actor_ids_sim = torch.tensor(self.plug_actor_ids_sim, dtype=torch.int32, device=self.device)
         self.socket_actor_ids_sim = torch.tensor(self.socket_actor_ids_sim, dtype=torch.int32, device=self.device)
+        self.goal_actor_ids_sim = torch.tensor(self.goal_actor_ids_sim, dtype=torch.int32, device=self.device)
 
         # For extracting root pos/quat
         self.plug_actor_id_env = self.gym.find_actor_index(env_ptr, 'plug', gymapi.DOMAIN_ENV)
         self.socket_actor_id_env = self.gym.find_actor_index(env_ptr, 'socket', gymapi.DOMAIN_ENV)
+        self.goal_actor_id_env = self.gym.find_actor_index(env_ptr, 'goal_object', gymapi.DOMAIN_ENV)
 
         # For extracting body pos/quat, force, and Jacobian
         self.robot_base_body_id_env = self.gym.find_actor_rigid_body_index(env_ptr, kuka_handle, "iiwa7_link_0",

@@ -218,6 +218,7 @@ class FactoryBaseTactile(VecTask, FactoryABCBase):
         self.arm_dof_pos = self.dof_pos[:, 0:7]
         self.arm_dof_vel = self.dof_vel[:, 0:7]
         self.arm_mass_matrix = self.mass_matrix[:, 0:7, 0:7]  # for kuka arm (not gripper)
+        self.gripper_mass_matrix = self.mass_matrix[:, 7:, 7:]  # for gripper arm (not gripper)
 
         self.robot_base_pos = self.body_pos[:, self.robot_base_body_id_env, 0:3]
         self.robot_base_quat = self.body_quat[:, self.robot_base_body_id_env, 0:4]
