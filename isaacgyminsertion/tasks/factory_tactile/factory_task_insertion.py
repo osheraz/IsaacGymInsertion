@@ -2038,12 +2038,12 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         # height_dist = self.plug_pos[engaged_idx, 2] - self.socket_pos[engaged_idx, 2]
         height_dist = torch.norm(self.plug_pos[engaged_idx, :3] - self.socket_tip[engaged_idx, :3], p=2, dim=-1)
 
-        quat_diff = torch_jit_utils.quat_mul(self.plug_quat[engaged_idx,:], torch_jit_utils.quat_conjugate(self.identity_quat[engaged_idx,:]))
+        quat_diff = torch_jit_utils.quat_mul(self.plug_quat, torch_jit_utils.quat_conjugate(self.identity_quat))
         rot_dist = 2.0 * torch.asin(torch.clamp(torch.norm(quat_diff[:, 0:3], p=2, dim=-1), max=1.0))
         ori_reward = 1 / (torch.abs(rot_dist) + 0.1)
         # NOTE: Edge case: if success_height_thresh is greater than 0.1,
         # denominator could be negative
-        reward_scale[engaged_idx] = 1.0 / ((height_dist - success_height_thresh) + 0.1) + ori_reward
+        reward_scale[engaged_idx] = 1.0 / ((height_dist - success_height_thresh) + 0.1) + ori_reward[engaged_idx]
         return reward_scale
 
     def step(self, actions):
