@@ -1094,6 +1094,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         self.rew_buf[:] = keypoint_reward + engagement_reward + ori_reward + action_reward + action_delta_reward
         self.rew_buf[:] += early_reset_reward
+
         # self.rew_buf[:] += (early_reset_reward * self.timeout_reset_buf)
         # self.rew_buf[:] += (self.timeout_reset_buf * self.success_reset_buf) * self.cfg_task.rl.success_bonus
 
@@ -1978,19 +1979,20 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         """Check if plug is inserted in socket."""
 
         # Check if plug is within threshold distance of assembled state
-        is_plug_below_insertion_height = (
-                self.plug_pos[:, 2] <= (self.socket_tip[:, 2] - self.cfg_task.rl.success_height_thresh)
-        )
-        # Check if plug is close to socket
-        # NOTE: This check addresses edge case where plug is within threshold distance of
-        # assembled state, but plug is outside socket
+
         is_plug_close_to_socket = self._check_plug_close_to_socket()
 
+        quat_diff = torch_jit_utils.quat_mul(self.plug_quat, torch_jit_utils.quat_conjugate(self.identity_quat))
+        rot_dist = 2.0 * torch.asin(torch.clamp(torch.norm(quat_diff[:, 0:3], p=2, dim=-1), max=1.0))
+
+        is_align = torch.where(torch.abs(rot_dist) <= 0.1,
+                                  torch.ones_like(is_plug_close_to_socket),
+                                  torch.zeros_like(is_plug_close_to_socket))
+
         # Combine both checks
-        # is_plug_inserted_in_socket = torch.logical_and(
-        #     is_plug_below_insertion_height, is_plug_close_to_socket
-        # )
-        is_plug_inserted_in_socket = is_plug_close_to_socket
+        is_plug_inserted_in_socket = torch.logical_and(
+            is_align, is_plug_close_to_socket
+        )
         return is_plug_inserted_in_socket
 
     def _check_plug_engaged_w_socket(self):
@@ -2003,19 +2005,26 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                 (self.plug_pos[:, 2]) < self.socket_tip[:, 2]
         )
 
+        quat_diff = torch_jit_utils.quat_mul(self.plug_quat, torch_jit_utils.quat_conjugate(self.identity_quat))
+        rot_dist = 2.0 * torch.asin(torch.clamp(torch.norm(quat_diff[:, 0:3], p=2, dim=-1), max=1.0))
+
         # Check if plug is close to socket
         # NOTE: This check addresses edge case where base of plug is below top of socket,
         # but plug is outside socket
         # is_plug_close_to_socket = self._check_plug_close_to_socket()  # torch.norm(self.plug_pos[:, :2] - self.socket_tip[:, :2], p=2, dim=-1) < 0.005 # self._check_plug_close_to_socket()
         is_plug_close_to_socket = torch.norm(self.plug_pos[:, :3] - self.socket_tip[:, :3], p=2, dim=-1) < 0.005
 
+        is_align = torch.where(torch.abs(rot_dist) <= 0.1,
+                                  torch.ones_like(is_plug_close_to_socket),
+                                  torch.zeros_like(is_plug_close_to_socket))
+
         # print(is_plug_below_engagement_height[0], is_plug_close_to_socket[0])
 
         # Combine both checks
-        # is_plug_engaged_w_socket = torch.logical_and(
-        #     is_plug_below_engagement_height, is_plug_close_to_socket
-        # )
-        is_plug_engaged_w_socket = is_plug_close_to_socket
+        is_plug_engaged_w_socket = torch.logical_and(
+            is_align, is_plug_close_to_socket
+        )
+
         return is_plug_engaged_w_socket
 
     def _get_engagement_reward_scale(self, is_plug_engaged_w_socket, success_height_thresh):
@@ -2029,9 +2038,12 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         # height_dist = self.plug_pos[engaged_idx, 2] - self.socket_pos[engaged_idx, 2]
         height_dist = torch.norm(self.plug_pos[engaged_idx, :3] - self.socket_tip[engaged_idx, :3], p=2, dim=-1)
 
+        quat_diff = torch_jit_utils.quat_mul(self.plug_quat[engaged_idx,:], torch_jit_utils.quat_conjugate(self.identity_quat[engaged_idx,:]))
+        rot_dist = 2.0 * torch.asin(torch.clamp(torch.norm(quat_diff[:, 0:3], p=2, dim=-1), max=1.0))
+        ori_reward = 1 / (torch.abs(rot_dist) + 0.1)
         # NOTE: Edge case: if success_height_thresh is greater than 0.1,
         # denominator could be negative
-        reward_scale[engaged_idx] = 1.0 / ((height_dist - success_height_thresh) + 0.1)
+        reward_scale[engaged_idx] = 1.0 / ((height_dist - success_height_thresh) + 0.1) + ori_reward
         return reward_scale
 
     def step(self, actions):
