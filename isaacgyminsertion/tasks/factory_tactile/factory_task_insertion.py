@@ -1147,14 +1147,14 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.far_from_goal_buf[:] = torch.norm(self.plug_pos - self.socket_pos, p=2, dim=-1) > 0.3
 
         # self.degrasp_buf[:] |= fingertips_dist
-        if self.cfg_task.reset_at_fails:
-            self.reset_buf[:] |= self.degrasp_buf[:]
-            self.reset_buf[:] |= self.far_from_goal_buf[:]
+        # if self.cfg_task.reset_at_fails:
+        #     self.reset_buf[:] |= self.degrasp_buf[:]
+            # self.reset_buf[:] |= self.far_from_goal_buf[:]
 
         if ((self.cfg_task.data_logger.collect_data or
              self.cfg_task.data_logger.collect_test_sim) and not self.cfg_task.collect_rotate):
             self.reset_buf[:] |= self.degrasp_buf[:]
-
+    # לא המחשב הזה ! ! ! ! ! !
     def _reset_predefined_environment(self, env_ids):
 
         random_init_idx = {}
