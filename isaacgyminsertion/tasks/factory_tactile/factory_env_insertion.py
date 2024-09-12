@@ -812,6 +812,7 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
             goal_handle = self.gym.create_actor(env_ptr, goal_assets[j], goal_start_pose, "goal_object",
                                                 i + self.num_envs, 0, 0)
             self.goal_actor_ids_sim.append(actor_count)
+            self.gym.set_rigid_body_color(env_ptr, goal_handle, 0, gymapi.MESH_VISUAL, gymapi.Vec3(255, 0, 110))
             actor_count += 1
 
             socket_pose = gymapi.Transform()
