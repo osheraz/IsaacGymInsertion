@@ -4,14 +4,14 @@ round_peg_hole_16mm_loose:
         diameter: 0.015983
         length: 0.0762 # 0.050
         density: 8000.0
-        friction: 0.5
+        friction: 1.0
         scale: 1.2
     round_hole_16mm:
         urdf_path: 'factory_round_hole_16mm'
         diameter: 0.0165
         height: 0.0089916
         density: 8000.0
-        friction: 0.5
+        friction: 1.0
 
 rectangular_peg_hole_32mm_loose:
     rectangular_peg_32mm_loose:
@@ -20,15 +20,15 @@ rectangular_peg_hole_32mm_loose:
         depth: 0.01982
         length: 0.0762
         density: 8000.0
-        friction: 0.5
-        scale: 1.2
+        friction: 1.0
+        scale: 1.3
     rectangular_hole_32mm:
         urdf_path: 'factory_rectangular_hole_32mm'
         width: 0.0324364
         depth: 0.0203152
         height: 0.0089916
         density: 8000.0
-        friction: 0.5
+        friction: 1.0
 
 square_peg_hole_32mm_loose:
     square_peg_32mm_loose:
@@ -37,15 +37,15 @@ square_peg_hole_32mm_loose:
         depth: 0.02973
         length: 0.0762
         density: 8000.0
-        friction: 0.5
-        scale: 1.1
+        friction: 1.0
+        scale: 1.2
     square_hole_32mm:
         urdf_path: 'factory_square_hole_32mm'
         width: 0.0324364
         depth: 0.0304728
         height: 0.0089916
         density: 8000.0
-        friction: 0.5
+        friction: 1.0
 
 rectangular_peg_hole_16mm_loose:
     rectangular_peg_16mm_loose:
@@ -54,7 +54,7 @@ rectangular_peg_hole_16mm_loose:
         depth: 0.009910
         length: 0.0762
         density: 8000.0
-        friction: 0.5
+        friction: 1.0
         scale: 1.2
     rectangular_hole_16mm:
         urdf_path: 'factory_rectangular_hole_16mm'
@@ -62,7 +62,7 @@ rectangular_peg_hole_16mm_loose:
         depth: 0.0101576
         height: 0.0089916
         density: 8000.0
-        friction: 0.5
+        friction: 1.0
 
 yellow_round_peg_2in:
     round_peg_2in:
@@ -70,14 +70,14 @@ yellow_round_peg_2in:
         diameter: 0.0508
         length: 0.0762
         density: 500.0
-        friction: 0.5
-        scale: 1.08
+        friction: 1.0
+        scale: 1.05
     round_hole_2in:
         urdf_path: 'green_round_hole_2in'
         diameter: 0.05105
         height: 0.01 # 0.01 #
         density: 8000.0
-        friction: 0.5
+        friction: 1.0
         # width: 0.1016
         # length: 0.09144
 
@@ -87,14 +87,14 @@ red_round_peg_1_5in:
         diameter: 0.0381
         length: 0.0762
         density: 2000.0
-        friction: 0.5
+        friction: 1.0
         scale: 1.1
     round_hole_1_5in:
         urdf_path: 'green_round_hole_1_5in'
         diameter: 0.0391
         height: 0.01
         density: 8000.0
-        friction: 0.5
+        friction: 1.0
         # width: 0.1016
         # length: 0.09144
 
@@ -105,7 +105,7 @@ triangle:
         depth: 0.05535
         length: 0.0762
         density: 500.0
-        friction: 0.5
+        friction: 1.0
         scale: 1.1
     red_triangle_hole:
         urdf_path: 'red_triangle_hole'
@@ -113,7 +113,7 @@ triangle:
         depth: 0.05715
         height: 0.01
         density: 8000.0
-        friction: 0.5
+        friction: 1.0
 
 small_triangle:
     triangle_peg:
@@ -122,7 +122,7 @@ small_triangle:
         depth: 0.04151
         length: 0.0762
         density: 2000.0
-        friction: 0.5
+        friction: 1.0
         scale: 1.2
     red_triangle_hole:
         urdf_path: 'small_red_triangle_hole'
@@ -130,4 +130,4 @@ small_triangle:
         depth: 0.04286
         height: 0.01 # actually the hole is 0.0381, but I bury half into the table
         density: 8000.0
-        friction: 0.5
+        friction: 1.0

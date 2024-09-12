@@ -26,10 +26,10 @@ env:
     aggregate_mode: True
 
     desired_subassemblies: [
-                            'red_round_peg_1_5in',
-                            'rectangular_peg_hole_32mm_loose',
+#                            'red_round_peg_1_5in',
+#                            'rectangular_peg_hole_32mm_loose',
                             'yellow_round_peg_2in',
-                            'square_peg_hole_32mm_loose',
+#                            'square_peg_hole_32mm_loose',
     ]
 #                             'round_peg_hole_16mm_loose',
 #                             'rectangular_peg_hole_16mm_loose',

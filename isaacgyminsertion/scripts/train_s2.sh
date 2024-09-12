@@ -1,8 +1,8 @@
 #!/bin/bash
 GPUS=${1:-0}
 SEED=${2:-42}
-CACHE=${3:-teacher}
-NUM_ENVS=${4:-1}
+CACHE=${3:-teacher_2f}
+NUM_ENVS=${4:-64}
 HEADLESS=${5:-True}
 
 
@@ -31,13 +31,13 @@ task.reset_at_fails=True \
 train.ppo.obs_info=True \
 train.ppo.img_info=False \
 train.ppo.seg_info=False \
-train.ppo.pcl_info=True \
-train.ppo.tactile_info=False \
-task.env.tactile=False \
-task.external_cam.external_cam=True \
+train.ppo.pcl_info=False \
+train.ppo.tactile_info=True \
+task.env.tactile=True \
+task.external_cam.external_cam=False \
 task.external_cam.depth_cam=False \
-task.external_cam.seg_cam=True \
-task.external_cam.pcl_cam=True \
+task.external_cam.seg_cam=False \
+task.external_cam.pcl_cam=False \
 train.algo=ExtrinsicAdapt \
 train.ppo.priv_info=True \
 offline_train.gpu_ids=[0] \

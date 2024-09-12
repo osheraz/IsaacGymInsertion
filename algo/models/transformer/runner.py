@@ -169,14 +169,15 @@ class Runner:
                                                                       self.img_eval_transform)
 
         # tactile
-        self.num_fingers = 3
+        self.num_fingers = 2
         self.tactile_channel = 1 if self.cfg.tactile_type == "gray" else 3
         self.tactile_color_jitter = self.cfg.tactile_color_jitter
         self.tactile_width = self.cfg.tactile_width
         self.tactile_height = self.cfg.tactile_height
         self.crop_tactile_width = self.tactile_width - self.cfg.tactile_crop_w
         self.crop_tactile_height = self.tactile_height - self.cfg.tactile_crop_h
-        self.tactile_transform, self.tactile_eval_transform = define_tactile_transforms(
+        # return transform, mask_transform, eval_transform, sync_transform, sync_eval_transform
+        self.tactile_transform,_, self.tactile_eval_transform, _, _ = define_img_transforms(
             self.tactile_width,
             self.tactile_height,
             self.crop_tactile_width,
@@ -387,10 +388,11 @@ class Runner:
 
         if self.cfg.model.use_tactile:
             tactile = tactile.to(self.device)
+
             if self.tactile_transform is not None:
                 if tactile.ndim == 4:
                     #                            B, T, F, C, H, W
-                    tactile = tactile.reshape(*img.shape[:2], 3, 1, self.crop_tactile_width, self.crop_tactile_height)
+                    tactile = tactile.reshape(*tactile.shape[:3], 1, self.crop_tactile_width, self.crop_tactile_height)
 
                 tactile = TactileTransform(self.tactile_eval_transform)(tactile).to(self.device)
 

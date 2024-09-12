@@ -649,7 +649,7 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
             components = list(self.asset_info_insertion[subassembly])
             plug_file = self.asset_info_insertion[subassembly][components[0]]['urdf_path'] + '.urdf'
             socket_file = self.asset_info_insertion[subassembly][components[1]]['urdf_path'] + '.urdf'
-            plug_options.density = self.asset_info_insertion[subassembly][components[0]]['density'] * 0.1
+            plug_options.density = self.asset_info_insertion[subassembly][components[0]]['density']
             socket_options.density = self.asset_info_insertion[subassembly][components[1]]['density']
             plug_asset = self.gym.load_asset(self.sim, urdf_root, plug_file, plug_options)
             socket_asset = self.gym.load_asset(self.sim, urdf_root, socket_file, socket_options)

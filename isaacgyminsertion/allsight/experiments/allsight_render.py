@@ -101,7 +101,9 @@ class AllSightRenderer:
         if obj_path is not None:
             self.obj_loader = object_loader(obj_path)
             obj_trimesh = trimesh.load(obj_path)
-            obj_trimesh.apply_scale(obj_scale)
+            # obj_trimesh.apply_scale(obj_scale)
+            obj_trimesh.vertices[:, 0] *= obj_scale  # Scale x
+            obj_trimesh.vertices[:, 1] *= obj_scale  # Scale y
             self.obj_mesh = obj_trimesh
             obj_euler = R.from_quat([0.0, 0.0, 0.0, 1.0]).as_euler("xyz", degrees=False)
             self.renderer.add_object(obj_trimesh, "object", orientation=obj_euler)

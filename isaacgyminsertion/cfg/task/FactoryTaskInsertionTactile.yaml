@@ -68,7 +68,7 @@ env:
         distal_open: 0.1
         distal_close: 0.4
         proximal_open: 1.0
-        proximal_close: 2.4
+        proximal_close: 1.4
         proximal_noise: 0.1
         distal_noise: 0.2
         base_angle: 1.8
@@ -174,7 +174,7 @@ randomize:
 rl:
 
     pos_action_scale: [0.005, 0.005, 0.004]
-    rot_action_scale: [0.05, 0.05, 0.05]
+    rot_action_scale: [0.01, 0.01, 0.01]
 
     force_action_scale: [1.0, 1.0, 1.0]
     torque_action_scale: [1.0, 1.0, 1.0]
@@ -198,7 +198,7 @@ rl:
     keypoint_reward_scale: -0.7 # scale on keypoint-based reward
     action_penalty_scale: -0.07  # scale on action penalty
     action_delta_scale: -0.07
-    ori_reward_scale: -0.1 # scale on ori-based reward
+    ori_reward_scale: -0.4 # scale on ori-based reward
 
 #    keypoint_reward_scale: -0.9 # scale on keypoint-based reward
 #    action_penalty_scale: -0.1  # scale on action penalty

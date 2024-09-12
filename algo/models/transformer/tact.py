@@ -255,7 +255,7 @@ class MultiModalModel(BaseModel):
         if additional_lin:
             num_lin_features += additional_lin
         self.num_lin_features = num_lin_features
-        self.num_channels = 3 if stack_tactile else 1
+        self.num_channels = 2 if stack_tactile else 1
         self.share_encoding = share_encoding
         self.stack_tactile = stack_tactile
 
