@@ -128,7 +128,7 @@ class FactoryBaseTactile(VecTask, FactoryABCBase):
         kuka_options.collapse_fixed_joints = False
         kuka_options.thickness = 0.0  # default = 0.02
         kuka_options.density = 1000.0  # default = 1000.0
-        kuka_options.armature = 0.01  # default = 0.0
+        kuka_options.armature = 0.00  # default = 0.0
         kuka_options.use_physx_armature = True
         if self.cfg_base.sim.add_damping:
             kuka_options.linear_damping = 1.0  # default = 0.0; increased to improve stability

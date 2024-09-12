@@ -36,7 +36,7 @@ sim:
         contact_collection: 1 # 0: CC_NEVER (don't collect contact info), 1: CC_LAST_SUBSTEP (collect only contacts on last substep), 2: CC_ALL_SUBSTEPS (broken - do not use!)
 
 env:
-    env_spacing: 0.5
+    env_spacing: 1.0
     kuka_depth: 0.5
     table_height: 0.001
     kuka_friction: 1.0
