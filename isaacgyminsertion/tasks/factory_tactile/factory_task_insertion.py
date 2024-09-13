@@ -1093,8 +1093,8 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         # self.far_from_goal_buf = torch.norm(self.fingertip_centered_pos - self.goal_pos, p=2, dim=-1) > 1.0
 
-        if self.cfg_task.reset_at_fails:
-            self.reset_buf[:] |= self.far_from_goal_buf[:]
+        # if self.cfg_task.reset_at_fails:
+            # self.reset_buf[:] |= self.far_from_goal_buf[:]
 
         # if ((self.cfg_task.data_logger.collect_data or
         #      self.cfg_task.data_logger.collect_test_sim) and not self.cfg_task.collect_rotate):
@@ -1839,55 +1839,80 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.generate_ctrl_signals()
 
     def _set_gripper_targets(self, env_ids, percentage=1.0, actions_per_finger=None):
-
+        # Scale factor
         scale = percentage / 1
 
+        # Clone the gripper_dof_pos to avoid modifying the original
         gripper_dof_pos = self.gripper_dof_pos.clone()
 
-        def scaled_position(index, open_value, close_value, noise, action, env_index):
-            if action == 1:
-                target_value = open_value + scale * (close_value - open_value) + noise
-            else:
-                target_value = close_value - scale * (close_value - open_value) - noise
+        # Get noise values as torch tensors
+        gripper_proximal_close_noise = torch.tensor(
+            np.random.uniform(0.0, self.cfg_task.env.openhand.proximal_noise, 3),
+            device=self.device, dtype=torch.float32)
+        gripper_distal_close_noise = torch.tensor(np.random.uniform(0.0, self.cfg_task.env.openhand.distal_noise, 3),
+                                                  device=self.device ,dtype=torch.float32)
 
-            current_value = self.gripper_dof_pos[env_ids[env_index], index]
-            target_tensor = torch.tensor(target_value, dtype=current_value.dtype, device=current_value.device)
-            return torch.max(current_value, target_tensor) if action == 1 else torch.min(current_value, target_tensor)
+        # Mapping finger joint properties into tensors
+        finger_open_values = torch.tensor(
+            [self.cfg_task.env.openhand.proximal_open, self.cfg_task.env.openhand.proximal_open,
+             self.cfg_task.env.openhand.proximal_open], device=self.device,dtype=torch.float32)
+        finger_close_values = torch.tensor(
+            [self.cfg_task.env.openhand.proximal_close, self.cfg_task.env.openhand.proximal_close,
+             self.cfg_task.env.openhand.proximal_close], device=self.device,dtype=torch.float32)
+        distal_open_values = torch.tensor(
+            [self.cfg_task.env.openhand.distal_open, self.cfg_task.env.openhand.distal_open,
+             self.cfg_task.env.openhand.distal_open], device=self.device,dtype=torch.float32)
+        distal_close_values = torch.tensor(
+            [self.cfg_task.env.openhand.distal_close, self.cfg_task.env.openhand.distal_close,
+             self.cfg_task.env.openhand.distal_close], device=self.device,dtype=torch.float32)
 
-        gripper_proximal_close_noise = np.random.uniform(0.0, self.cfg_task.env.openhand.proximal_noise, 3)
-        gripper_distal_close_noise = np.random.uniform(0.0, self.cfg_task.env.openhand.distal_noise, 3)
+        # Create tensor with DOF indices for each joint
+        proximal_indices = torch.tensor([list(self.dof_dict.values()).index('finger_1_1_to_finger_1_2') - 7,
+                                         list(self.dof_dict.values()).index('finger_2_1_to_finger_2_2') - 7,
+                                         list(self.dof_dict.values()).index('base_to_finger_3_2') - 7],
+                                        device=self.device)
+        distal_indices = torch.tensor([list(self.dof_dict.values()).index('finger_1_2_to_finger_1_3') - 7,
+                                       list(self.dof_dict.values()).index('finger_2_2_to_finger_2_3') - 7,
+                                       list(self.dof_dict.values()).index('finger_3_2_to_finger_3_3') - 7],
+                                      device=self.device)
 
-        finger_joint_mapping = {
-            1: [
-                ('finger_1_1_to_finger_1_2', self.cfg_task.env.openhand.proximal_open,
-                 self.cfg_task.env.openhand.proximal_close, gripper_proximal_close_noise[0]),
-                ('finger_1_2_to_finger_1_3', self.cfg_task.env.openhand.distal_open,
-                 self.cfg_task.env.openhand.distal_close, gripper_distal_close_noise[0])
-            ],
-            2: [
-                ('finger_2_1_to_finger_2_2', self.cfg_task.env.openhand.proximal_open,
-                 self.cfg_task.env.openhand.proximal_close, gripper_proximal_close_noise[1]),
-                ('finger_2_2_to_finger_2_3', self.cfg_task.env.openhand.distal_open,
-                 self.cfg_task.env.openhand.distal_close, gripper_distal_close_noise[1])
-            ],
-            3: [
-                ('base_to_finger_3_2', self.cfg_task.env.openhand.proximal_open,
-                 self.cfg_task.env.openhand.proximal_close, gripper_proximal_close_noise[2]),
-                ('finger_3_2_to_finger_3_3', self.cfg_task.env.openhand.distal_open,
-                 self.cfg_task.env.openhand.distal_close, gripper_distal_close_noise[2])
-            ]
-        }
+        # Apply noise and scale for proximal joints
+        proximal_targets = torch.where(actions_per_finger == 1,
+                                       finger_open_values.unsqueeze(0) + scale * (
+                                                   finger_close_values - finger_open_values).unsqueeze(
+                                           0) + gripper_proximal_close_noise.unsqueeze(0),
+                                       finger_close_values.unsqueeze(0) - scale * (
+                                                   finger_close_values - finger_open_values).unsqueeze(
+                                           0) - gripper_proximal_close_noise.unsqueeze(0))
 
-        for env_index in range(self.num_envs):
-            for finger_index in range(actions_per_finger.shape[1]):
-                action = actions_per_finger[env_index, finger_index]
-                for dof, open_value, close_value, noise in finger_joint_mapping[finger_index + 1]:
-                    index = list(self.dof_dict.values()).index(dof) - 7
-                    gripper_dof_pos[env_ids[env_index], index] = scaled_position(index, open_value, close_value, noise,
-                                                                                 action, env_index)
+        # Apply noise and scale for distal joints
+        distal_targets = torch.where(actions_per_finger == 1,
+                                     distal_open_values.unsqueeze(0) + scale * (
+                                                 distal_close_values - distal_open_values).unsqueeze(
+                                         0) + gripper_distal_close_noise.unsqueeze(0),
+                                     distal_close_values.unsqueeze(0) - scale * (
+                                                 distal_close_values - distal_open_values).unsqueeze(
+                                         0) - gripper_distal_close_noise.unsqueeze(0))
 
+        # Set the new gripper DOF positions using the proximal and distal targets
+        current_proximal_values = self.gripper_dof_pos[:, proximal_indices]
+        current_distal_values = self.gripper_dof_pos[:, distal_indices]
+
+        # Use element-wise torch.max and torch.min instead of ambiguous conditions
+        gripper_dof_pos[:, proximal_indices] = torch.where(actions_per_finger == 1,
+                                                                          torch.max(current_proximal_values,
+                                                                                    proximal_targets),
+                                                                          torch.min(current_proximal_values,
+                                                                                    proximal_targets))
+
+        gripper_dof_pos[:, distal_indices] = torch.where(actions_per_finger == 1,
+                                                                        torch.max(current_distal_values,
+                                                                                  distal_targets),
+                                                                        torch.min(current_distal_values,
+                                                                                  distal_targets))
+
+        # Compute the difference and update the control target positions
         diff = gripper_dof_pos[env_ids, :] - self.gripper_dof_pos[env_ids, :]
-
         self.ctrl_target_gripper_dof_pos[env_ids, :] = self.gripper_dof_pos[env_ids, :] + diff
 
     def _move_gripper_to_dof_pos(self, env_ids, gripper_dof_pos, sim_steps=20):
@@ -1976,11 +2001,10 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
     def _check_hand_engaged_w_plug(self):
         """Check if plug is engaged with socket."""
 
-        is_hand_close_to_plug = torch.norm(self.plug_pos[:, :3] - self.socket_tip[:, :3], p=2, dim=-1) < 0.005
 
-        left_dist = torch.norm(self.plug_pos - self.left_finger_pos, p=2, dim=-1) < 0.005
-        right_dist = torch.norm(self.plug_pos - self.right_finger_pos, p=2, dim=-1) < 0.005
-        middle_dist = torch.norm(self.plug_pos - self.middle_finger_pos, p=2, dim=-1) < 0.005
+        left_dist = torch.norm(self.plug_pos - self.left_finger_pos, p=2, dim=-1) < 0.01
+        right_dist = torch.norm(self.plug_pos - self.right_finger_pos, p=2, dim=-1) < 0.01
+        middle_dist = torch.norm(self.plug_pos - self.middle_finger_pos, p=2, dim=-1) < 0.01
 
         is_hand_engaged_w_plug = torch.logical_or(left_dist, torch.logical_or(right_dist, middle_dist))
 

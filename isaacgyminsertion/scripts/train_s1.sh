@@ -2,7 +2,7 @@
 GPUS=${1:-0}
 SEED=${2:-42}
 CACHE=${3:-test}
-NUM_ENVS=${4:-4096}
+NUM_ENVS=${4:-2024}
 HEADLESS=${5:-True}
 
 array=( $@ )
@@ -18,7 +18,7 @@ CUDA_VISIBLE_DEVICES=${GPUS} \
 python train.py task=FactoryTaskInsertionTactile headless=${HEADLESS} seed=${SEED} \
 multi_gpu=False \
 restore_train=False \
-task.grasp_at_init=False \
+task.random_init=True \
 task.reset_at_fails=True \
 task.reset_at_success=False \
 task.env.numEnvs=${NUM_ENVS} \

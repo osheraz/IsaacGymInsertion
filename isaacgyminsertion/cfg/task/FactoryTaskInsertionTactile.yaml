@@ -125,8 +125,8 @@ env:
 
     record_video: True
     record_ft: True
-    record_video_every: 1000
-    record_ft_every: 1000
+    record_video_every: 2000
+    record_ft_every: 2000
 
 sim:
     disable_gravity: True
@@ -196,7 +196,7 @@ rl:
     num_keypoints: 4  # number of keypoints used in reward
     keypoint_scale: 1.0  # length of line of keypoints
 
-    max_episode_length: 2000 # 8192  # terminate episode after this number of timesteps (failure)
+    max_episode_length: 1000 # 8192  # terminate episode after this number of timesteps (failure)
 
     orientation_threshold: 0.1
     far_error_thresh: 1.2  # threshold above which plug is considered too far from bolt
