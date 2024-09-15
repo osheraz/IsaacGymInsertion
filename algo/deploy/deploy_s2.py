@@ -417,9 +417,14 @@ class HardwarePlayer:
             self.socket_pos, dtype=torch.float32, device=self.device
         )
 
-        self.noisy_socket_pos[:, 0] = self.socket_pos[:, 0] + socket_obs_pos_noise[:, 0]
-        self.noisy_socket_pos[:, 1] = self.socket_pos[:, 1] + socket_obs_pos_noise[:, 1]
-        self.noisy_socket_pos[:, 2] = self.socket_pos[:, 2] + socket_obs_pos_noise[:, 2]
+        self.socket_tip = fc.translate_along_local_z(pos=self.socket_pos,
+                                                     quat=self.identity_quat,
+                                                     offset=self.socket_height * 3,
+                                                     device=self.device)
+
+        self.noisy_socket_pos[:, 0] = self.socket_tip[:, 0] + socket_obs_pos_noise[:, 0]
+        self.noisy_socket_pos[:, 1] = self.socket_tip[:, 1] + socket_obs_pos_noise[:, 1]
+        self.noisy_socket_pos[:, 2] = self.socket_tip[:, 2] + socket_obs_pos_noise[:, 2]
 
         # Add observation noise to socket rot
         socket_rot_euler = torch.zeros(

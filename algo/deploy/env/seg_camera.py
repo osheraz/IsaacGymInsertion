@@ -21,10 +21,11 @@ class SegCameraSubscriber:
         """
         """
         self.last_frame = None
+        self.raw_frame = None
         self.w = 320
         self.h = 180
         self.display = display
-        self.init_success = False
+        self.init_success = True
         self.device = device
         self.img_size = 1024
         self.conf = 0.4
@@ -123,13 +124,15 @@ class SegCameraSubscriber:
 
     def image_callback(self, msg):
         try:
-            frame = image_msg_to_numpy(msg)
+            self.raw_frame = image_msg_to_numpy(msg)
+            # self.process_frame(self.raw_frame)
         except Exception as e:
             print(e)
             return
 
-        # start = time.perf_counter()
+    def process_frame(self, frame):
 
+        start_time = time.time()
         # Resize the frame
         frame = cv2.resize(frame, (self.w, self.h), interpolation=cv2.INTER_AREA)
 
@@ -177,7 +180,7 @@ class SegCameraSubscriber:
             self.socket_mask = (mask_socket & ~mask_hole).astype(int)
             self.socket_mask *= self.socket_id
             self.original_socket_mask = self.socket_mask.copy()
-            self.img_size = 384
+            self.img_size = 448
             self.conf = 0.6
             self.iou = 0.6
             self.got_socket_mask = True
@@ -199,10 +202,11 @@ class SegCameraSubscriber:
 
             self.last_frame = self.plug_mask | self.socket_mask if self.with_socket else self.plug_mask
 
-        except:
-            # print('failed to find the object')
-            pass
-        #
+            return self.last_frame
+
+        except Exception as e:
+            print(e)
+
         # if True:
         #     if self.with_socket:
         #         mask = ((self.last_frame == self.plug_id) | (self.last_frame == self.socket_id)).astype(float)
@@ -217,6 +221,8 @@ class SegCameraSubscriber:
         #     cv2.imshow("Mask Image", seg_show)
         #     cv2.imshow("Raw Image", frame)
         #     cv2.waitKey(1)
+        #
+        #     print(time.time() - start_time)
 
     def shrink_mask(self, mask, shrink_percentage=10):
         """
@@ -241,6 +247,10 @@ class SegCameraSubscriber:
             shrunk_mask = cv2.erode(shrunk_mask, kernel, iterations=1)
 
         return shrunk_mask
+
+    def get_raw_frame(self):
+        # rospy.wait_for_message('/zedm/zed_node/rgb/image_rect_color')
+        return self.raw_frame if not isinstance(self.raw_frame, Image) else None
 
     def get_frame(self):
         # rospy.wait_for_message('/zedm/zed_node/rgb/image_rect_color')

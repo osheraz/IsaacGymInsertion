@@ -12,6 +12,7 @@ import sensor_msgs.point_cloud2 as pc2
 from sensor_msgs.msg import PointCloud2, PointField
 from std_msgs.msg import Header
 import numpy as np
+from pytorch3d import ops
 
 
 class PointCloudPublisher:
@@ -242,7 +243,7 @@ class ZedPointCloudSubscriber:
             self.pointcloud_socket_pub = PointCloudPublisher(topic='socket')
 
             self.seg = SegCameraSubscriber(with_socket=self.with_socket)
-            self._check_seg_ready()
+            # self._check_seg_ready()
 
         self.pointcloud_pub = PointCloudPublisher(topic='pointcloud')
 
@@ -307,7 +308,7 @@ class ZedPointCloudSubscriber:
             print(e)
         else:
             if self.with_seg:
-                seg = self.seg.get_frame()
+                seg = self.seg.process_frame(self.seg.get_raw_frame())
                 # seg = cv2.resize(seg, (640, 360), interpolation=cv2.INTER_NEAREST)
                 if seg is not None:
 
@@ -339,7 +340,7 @@ class ZedPointCloudSubscriber:
 
                 cloud_points = self.pcl_gen.convert(frame)
                 proc_cloud = self.process_pointcloud(cloud_points)
-                proc_cloud = remove_statistical_outliers(proc_cloud)
+                # proc_cloud = remove_statistical_outliers(proc_cloud)
                 proc_cloud = self.sample_n(proc_cloud, num_sample=400)
                 self.pointcloud_pub.publish_pointcloud(proc_cloud)
 
@@ -438,7 +439,10 @@ class ZedPointCloudSubscriber:
 
         valid = valid1 & valid3 & valid2
         points = points[valid]
-        # points = ops.sample_farthest_points(points, torch.tensor(valid, dtype=torch.int), K=512)[0]
+        # points = torch.from_numpy(points)
+        # sampled_points, indices = ops.sample_farthest_points(points=points.unsqueeze(0), K=points.shape[0])
+        # sampled_points = sampled_points.squeeze(0)
+        # points = sampled_points.numpy()
         points = self.voxel_grid_sampling(points)
 
         return points
