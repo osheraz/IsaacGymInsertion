@@ -66,9 +66,9 @@ def filter_pts(pts):
     y = pts[:, 1]
     z = pts[:, 2]
 
-    valid1 = (z >= 0.001) & (z <= 0.5)
-    valid2 = (x >= 0.2) & (x <= 0.65)
-    valid3 = (y >= -0.3) & (y <= 0.3)
+    valid1 = (z >= 0.001) & (z <= 0.6)
+    valid2 = (x >= 0.1) & (x <= 0.7)
+    valid3 = (y >= -0.4) & (y <= 0.4)
 
     valid = valid1 & valid3 & valid2
     pts = pts[valid]
@@ -983,13 +983,13 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                             socket_pos=self.socket_tip[self.subassembly_to_env_ids[k], ...].clone(),
                             socket_quat=self.socket_quat[self.subassembly_to_env_ids[k], ...].clone(),
                             plug_scale=self.plug_scale[self.subassembly_to_env_ids[k]],
-                            display='square_peg_hole_32mm_loose' == k and self.cfg_task.external_cam.display).to(
+                            display='a' == k and self.cfg_task.external_cam.display).to(
                             self.device)
 
-                    self.goal_pcl[pcl_noise] = self.pcl_process.augment(self.goal_pcl[pcl_noise],
-                                                                        self.rot_pcl_angle[pcl_noise],
-                                                                        self.axes[pcl_noise],
-                                                                        self.pcl_pos_noise[pcl_noise])
+                    # self.goal_pcl[pcl_noise] = self.pcl_process.augment(self.goal_pcl[pcl_noise],
+                    #                                                     self.rot_pcl_angle[pcl_noise],
+                    #                                                     self.axes[pcl_noise],
+                    #                                                     self.pcl_pos_noise[pcl_noise])
                     if socket_pts is not None:
                         self.pcl = torch.cat([plug_pts, socket_pts, self.goal_pcl], dim=1).flatten(start_dim=1)
                     else:
@@ -1147,9 +1147,9 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.far_from_goal_buf[:] = torch.norm(self.plug_pos - self.socket_pos, p=2, dim=-1) > 0.3
 
         # self.degrasp_buf[:] |= fingertips_dist
-        # if self.cfg_task.reset_at_fails:
-        #     self.reset_buf[:] |= self.degrasp_buf[:]
-            # self.reset_buf[:] |= self.far_from_goal_buf[:]
+        if self.cfg_task.reset_at_fails:
+            self.reset_buf[:] |= self.degrasp_buf[:]
+            self.reset_buf[:] |= self.far_from_goal_buf[:]
 
         if ((self.cfg_task.data_logger.collect_data or
              self.cfg_task.data_logger.collect_test_sim) and not self.cfg_task.collect_rotate):
