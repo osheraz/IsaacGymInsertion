@@ -945,10 +945,10 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                     depths=plug_depth.reshape(self.num_envs, self.res[1], self.res[0]),
                     filter_func=filter_pts, sample_num=self.cfg_task.env.num_points).to(self.device)
 
-                # plug_pts[pcl_noise] = self.pcl_process.augment(plug_pts[pcl_noise],
-                #                                                self.rot_pcl_angle[pcl_noise],
-                #                                                self.axes[pcl_noise],
-                #                                                self.pcl_pos_noise[pcl_noise])
+                plug_pts[pcl_noise] = self.pcl_process.augment(plug_pts[pcl_noise],
+                                                               self.rot_pcl_angle[pcl_noise],
+                                                               self.axes[pcl_noise],
+                                                               self.pcl_pos_noise[pcl_noise])
 
                 self.pcl = plug_pts.flatten(start_dim=1)
 
@@ -958,10 +958,10 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                         depths=socket_depth.reshape(self.num_envs, self.res[1], self.res[0]),
                         filter_func=filter_pts, sample_num=self.cfg_task.env.num_points_socket).to(self.device)
 
-                    # socket_pts[pcl_noise] = self.pcl_process.augment(socket_pts[pcl_noise],
-                    #                                                  self.rot_pcl_angle[pcl_noise],
-                    #                                                  self.axes[pcl_noise],
-                    #                                                  self.pcl_pos_noise[pcl_noise])
+                    socket_pts[pcl_noise] = self.pcl_process.augment(socket_pts[pcl_noise],
+                                                                     self.rot_pcl_angle[pcl_noise],
+                                                                     self.axes[pcl_noise],
+                                                                     self.pcl_pos_noise[pcl_noise])
 
                     if self.cfg_task.env.relative_pcl:
                         socket_mean = self.noisy_socket_pos.unsqueeze(1)  # socket_pts.mean(dim=1, keepdim=True)
@@ -990,6 +990,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                     #                                                     self.rot_pcl_angle[pcl_noise],
                     #                                                     self.axes[pcl_noise],
                     #                                                     self.pcl_pos_noise[pcl_noise])
+
                     if socket_pts is not None:
                         self.pcl = torch.cat([plug_pts, socket_pts, self.goal_pcl], dim=1).flatten(start_dim=1)
                     else:
