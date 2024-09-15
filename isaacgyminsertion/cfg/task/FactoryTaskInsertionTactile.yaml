@@ -159,7 +159,7 @@ randomize:
     plug_pos_xy_initial: [0.50, 0.0, 0.0]  # z 0.03  initial XY position of plug on table
     grasp_plug_noise: 0.005 # xyz noise on grasp pos position during grasp at init
     plug_pos_xy_noise: [ 0.3,  0.3] # noise on plug position
-    plug_rot_noise: [ 1.8, 1.8, 1.8 ] # rot noise on plug init
+    plug_rot_noise: [ 0.1, 0.1, 0.1 ] # rot noise on plug init
     plug_pos_z_noise_bounds: [ 0.0, 0.0 ]  # plug z bound noise
 #    plug_quat_noise: [0.0, 0.0, 0.0, 0.0]
 
@@ -179,7 +179,7 @@ randomize:
 
 rl:
 
-    pos_action_scale: [0.04, 0.04, 0.04]
+    pos_action_scale: [0.08, 0.08, 0.08]
     rot_action_scale: [0.1, 0.1, 0.1]
 
     gripper_action_scale: [0.01, 0.01, 0.01]
@@ -217,13 +217,15 @@ rl:
     action_delta_scale: -0.1
     ori_reward_scale: -0.8 # scale on ori-based reward
 
-    early_reset_reward_scale: -1.0
+    early_reset_reward_scale: -100.0
     engagement_reward_scale: 0.4
 
     # Success bonus
     success_bonus: 5.0  # bonus if plug is close enough to base of bolt shank
     # engagement_bonus: 0.01 # bonus if plug is engaged (partially inserted) with socket
-
+    liftedSuccessThreshold: 0.35
+    liftedInitThreshold: 0.05
+    baseObjectDisThreshold: 0.6
 
 ctrl:
     ctrl_type:  gym_default # {gym_default,

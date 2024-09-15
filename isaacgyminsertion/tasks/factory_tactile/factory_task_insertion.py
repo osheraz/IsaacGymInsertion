@@ -64,8 +64,8 @@ import matplotlib.pyplot as plt
 
 @torch.jit.script
 def randomize_rotation(rand0, rand1, x_unit_tensor, y_unit_tensor):
-    return quat_mul(quat_from_angle_axis(rand0 * np.pi, x_unit_tensor),
-                    quat_from_angle_axis(rand1 * np.pi, y_unit_tensor))
+    return quat_mul(quat_from_angle_axis(rand0 * 0.01 * np.pi, x_unit_tensor),
+                    quat_from_angle_axis(rand1 * 0.01 * np.pi, y_unit_tensor))
 
 
 @torch.no_grad()
@@ -164,6 +164,12 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.z_unit_tensor = to_torch([0, 0, 1], dtype=torch.float, device=self.device).repeat((self.num_envs, 1))
         self.goal_quat = self.identity_quat.clone()
         self.goal_pos = to_torch([1, 1, 1], dtype=torch.float, device=self.device).repeat((self.num_envs, 1))
+        self.lifted_success_threshold = self.cfg_task.rl.liftedSuccessThreshold
+        self.lifted_init_threshold = self.cfg_task.rl.liftedInitThreshold
+        self.base_object_distace_threshold = self.cfg_task.rl.baseObjectDisThreshold
+
+        self.lifted_object = torch.zeros(self.num_envs, device=self.device, dtype=torch.bool)
+        self.lifted_now = torch.zeros(self.num_envs, device=self.device, dtype=torch.bool)
 
         self.reset_goal_buf = self.reset_buf.clone()
 
@@ -651,6 +657,15 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.randomize_buf[:] += 1
 
         self._refresh_task_tensors()
+
+        # Check if lifted
+        plug_height = self.plug_pos[:, 2]
+        goal_pos = self.goal_pos[:, :3]
+        d1 = torch.norm(goal_pos - self.fingertip_centered_pos, dim=-1)
+        self.lifted_now = torch.logical_and((plug_height - self.cfg_base.env.table_height) > (0.03 / 2 + self.lifted_success_threshold), d1 < 0.1)
+        self.reset_buf = torch.where(~self.lifted_now & self.lifted_object, torch.ones_like(self.reset_buf), self.reset_buf) # reset the dropped envs
+        self.lifted_object = torch.logical_and((plug_height - self.cfg_base.env.table_height) > (self.lifted_success_threshold), d1 < 0.1)
+
         self.compute_observations()
         self.compute_reward()
 
@@ -786,12 +801,12 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         state_tensors = [
             #  add delta error
-            self.hand_joints, # 6
-            plug_hand_pos,    # 3
-            plug_hand_quat,   # 4
-            plug_pos_error,   # 3
-            plug_quat_error,  # 4
-            physics_params,   # 9
+            self.hand_joints,  # 6
+            plug_hand_pos,     # 3
+            plug_hand_quat,    # 4
+            plug_pos_error,    # 3
+            plug_quat_error,   # 4
+            physics_params,    # 9
         ]
 
         if self.cfg_task.env.tactile:
@@ -1024,11 +1039,20 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         hand_plug_dist = torch.norm(self.plug_pos - self.fingertip_centered_pos, p=2, dim=-1)
         hand_dist_rew = self.cfg_task.rl.eef_dist_reward_scale * hand_plug_dist
 
-        finger_dist = (torch.norm(self.plug_pos - self.left_finger_pos, p=2, dim=-1) +
-                       torch.norm(self.plug_pos - self.right_finger_pos, p=2, dim=-1) +
-                       torch.norm(self.plug_pos - self.middle_finger_pos, p=2, dim=-1))
+        plug_finger_dist = (torch.norm(self.plug_com_pos - self.left_finger_pos, p=2, dim=-1) +
+                       torch.norm(self.plug_com_pos - self.right_finger_pos, p=2, dim=-1) +
+                       torch.norm(self.plug_com_pos - self.middle_finger_pos, p=2, dim=-1))
 
-        finger_dist_rew = self.cfg_task.rl.finger_dist_reward_scale * finger_dist
+        plug_finger_dist_rew = 1.2 - 1 * plug_finger_dist
+        plug_finger_dist_rew *= ~self.lifted_now
+        goal_rew = 5 - 5 * plug_goal_dist
+        goal_rew *= self.lifted_now  # no reward for not grasped
+
+        # cube_height = self.plug_pos[:, 2]
+        # box_pos = self.plug_pos[:, :3]
+        # d1 = torch.norm(box_pos - self.fingertip_centered_pos, dim=-1)
+        #
+        # reward, _ = self._reward_base_height()
 
         action_penalty = torch.norm(self.actions, p=2, dim=-1)
         action_reward = self.cfg_task.rl.action_penalty_scale * action_penalty
@@ -1046,7 +1070,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         distance_reset_buf = (self.far_from_goal_buf | self.degrasp_buf)
         early_reset_reward = distance_reset_buf * self.cfg_task.rl.early_reset_reward_scale
 
-        self.rew_buf[:] = keypoint_reward + engagement_reward + action_reward + action_delta_reward
+        self.rew_buf[:] = action_reward + action_delta_reward + plug_finger_dist_rew + goal_rew
         self.rew_buf[:] += early_reset_reward
         # self.rew_buf[:] += (early_reset_reward * self.timeout_reset_buf)
         # self.rew_buf[:] += (self.timeout_reset_buf * self.success_reset_buf) * self.cfg_task.rl.success_bonus
@@ -1093,8 +1117,8 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         # self.far_from_goal_buf = torch.norm(self.fingertip_centered_pos - self.goal_pos, p=2, dim=-1) > 1.0
 
-        # if self.cfg_task.reset_at_fails:
-            # self.reset_buf[:] |= self.far_from_goal_buf[:]
+        if self.cfg_task.reset_at_fails:
+            self.reset_buf[:] |= self.far_from_goal_buf[:]
 
         # if ((self.cfg_task.data_logger.collect_data or
         #      self.cfg_task.data_logger.collect_test_sim) and not self.cfg_task.collect_rotate):
@@ -1716,7 +1740,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.prev_actions_queue[env_ids] *= 0
 
         self.rb_forces[env_ids, :, :] = 0.0
-
+        self.lifted_object[env_ids] = 0
         # object pose is represented with respect to the wrist
         self.obs_plug_pos[env_ids] = self.plug_pos[env_ids].clone()
         self.obs_plug_pos_freq[env_ids] = self.plug_pos[env_ids].clone()
@@ -2002,9 +2026,9 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         """Check if plug is engaged with socket."""
 
 
-        left_dist = torch.norm(self.plug_pos - self.left_finger_pos, p=2, dim=-1) < 0.01
-        right_dist = torch.norm(self.plug_pos - self.right_finger_pos, p=2, dim=-1) < 0.01
-        middle_dist = torch.norm(self.plug_pos - self.middle_finger_pos, p=2, dim=-1) < 0.01
+        left_dist = torch.norm(self.plug_pos - self.left_finger_pos, p=2, dim=-1) < 0.1
+        right_dist = torch.norm(self.plug_pos - self.right_finger_pos, p=2, dim=-1) < 0.1
+        middle_dist = torch.norm(self.plug_pos - self.middle_finger_pos, p=2, dim=-1) < 0.1
 
         is_hand_engaged_w_plug = torch.logical_or(left_dist, torch.logical_or(right_dist, middle_dist))
 

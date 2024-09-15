@@ -810,7 +810,7 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
             actor_count += 1
 
             goal_handle = self.gym.create_actor(env_ptr, goal_assets[j], goal_start_pose, "goal_object",
-                                                i + self.num_envs, 0, 0)
+                                                i + self.num_envs, -1, 0)
             self.goal_actor_ids_sim.append(actor_count)
             self.gym.set_rigid_body_color(env_ptr, goal_handle, 0, gymapi.MESH_VISUAL, gymapi.Vec3(255, 0, 110))
             actor_count += 1
@@ -966,8 +966,8 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
 
                 self.all_rendering_camera[subassembly].append(cam1)
 
-                cam2, trans2, _ = self.make_handle_trans(1280, 720, i, (0.8, self.y_disp, 0.4),
-                                                         (np.deg2rad(0), np.deg2rad(30), np.deg2rad(180)))
+                cam2, trans2, _ = self.make_handle_trans(1280, 720, i, (0.7,  0.0, 0.1),
+                                                         (np.deg2rad(0), np.deg2rad(0), np.deg2rad(180)))
                 self.gym.attach_camera_to_body(
                     cam2,
                     self.envs[i],
