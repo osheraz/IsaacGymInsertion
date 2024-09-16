@@ -170,6 +170,10 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         self.lifted_object = torch.zeros(self.num_envs, device=self.device, dtype=torch.bool)
         self.lifted_now = torch.zeros(self.num_envs, device=self.device, dtype=torch.bool)
+        self.closest_dist = -torch.ones(self.num_envs, device=self.device, dtype=torch.float)
+        self.curr_dist = torch.zeros(self.num_envs, device=self.device, dtype=torch.float)
+        self.highest_object = -torch.ones(self.num_envs, device=self.device, dtype=torch.float)
+        self.curr_height = torch.zeros(self.num_envs, device=self.device, dtype=torch.float)
 
         self.reset_goal_buf = self.reset_buf.clone()
 
@@ -423,6 +427,17 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.finger_normalized_forces[:, 2] = (1 - e) * normalize_forces(
             self.middle_finger_force.clone()) + e * self.finger_normalized_forces[:, 2]
 
+        # Check if lifted
+        plug_height = self.plug_pos[:, 2]
+        d1 = torch.norm(self.goal_pos[:, :3] - self.fingertip_centered_pos, dim=-1)
+        self.curr_dist = torch.norm(self.plug_pos - self.fingertip_centered_pos, dim=-1)
+        self.closest_dist = torch.where(self.closest_dist < 0, self.curr_dist, self.closest_dist)
+        self.curr_height = plug_height - self.cfg_base.env.table_height
+        self.highest_object = torch.where(self.highest_object < 0, self.curr_height, self.highest_object)
+        self.lifted_now = torch.logical_and(self.curr_height > (0.03 / 2 + self.lifted_success_threshold), d1 < 0.1)
+        self.lifted_object = torch.logical_and(self.curr_height > self.lifted_success_threshold, d1 < 0.1)
+
+
     def update_tactile(self, update_freq, update_delay):
 
         left_allsight_poses = torch.cat((self.left_finger_pos, self.left_finger_quat), dim=-1)
@@ -657,14 +672,6 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.randomize_buf[:] += 1
 
         self._refresh_task_tensors()
-
-        # Check if lifted
-        plug_height = self.plug_pos[:, 2]
-        goal_pos = self.goal_pos[:, :3]
-        d1 = torch.norm(goal_pos - self.fingertip_centered_pos, dim=-1)
-        self.lifted_now = torch.logical_and((plug_height - self.cfg_base.env.table_height) > (0.03 / 2 + self.lifted_success_threshold), d1 < 0.1)
-        self.reset_buf = torch.where(~self.lifted_now & self.lifted_object, torch.ones_like(self.reset_buf), self.reset_buf) # reset the dropped envs
-        self.lifted_object = torch.logical_and((plug_height - self.cfg_base.env.table_height) > (self.lifted_success_threshold), d1 < 0.1)
 
         self.compute_observations()
         self.compute_reward()
@@ -1033,17 +1040,17 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
     def _update_rew_buf(self):
         """Compute reward at current timestep."""
 
-        plug_goal_dist = torch.norm(self.plug_pos - self.goal_pos, p=2, dim=-1)
+        plug_goal_dist = torch.norm(self.plug_com_pos - self.goal_pos, p=2, dim=-1)
         goal_dist_rew = self.cfg_task.rl.goal_dist_reward_scale * plug_goal_dist
 
-        hand_plug_dist = torch.norm(self.plug_pos - self.fingertip_centered_pos, p=2, dim=-1)
+        hand_plug_dist = torch.norm(self.plug_com_pos - self.fingertip_centered_pos, p=2, dim=-1)
         hand_dist_rew = self.cfg_task.rl.eef_dist_reward_scale * hand_plug_dist
 
         plug_finger_dist = (torch.norm(self.plug_com_pos - self.left_finger_pos, p=2, dim=-1) +
                        torch.norm(self.plug_com_pos - self.right_finger_pos, p=2, dim=-1) +
                        torch.norm(self.plug_com_pos - self.middle_finger_pos, p=2, dim=-1))
 
-        plug_finger_dist_rew = 1.2 - 1 * plug_finger_dist
+        plug_finger_dist_rew = 1.2 - 1 * hand_plug_dist
         goal_rew = 5 - 5 * plug_goal_dist
         goal_rew *= self.lifted_now  # no reward for not grasped
 
@@ -1067,11 +1074,31 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         distance_reset_buf = (self.far_from_goal_buf | self.degrasp_buf)
         early_reset_reward = distance_reset_buf * self.cfg_task.rl.early_reset_reward_scale
 
-        self.rew_buf[:] = action_reward + action_delta_reward + plug_finger_dist_rew + 0 * goal_rew + height_rew
-        self.rew_buf[:] += early_reset_reward
+        # self.rew_buf[:] = action_reward + action_delta_reward + plug_finger_dist_rew + 0 * goal_rew + height_rew
+        # self.rew_buf[:] += early_reset_reward
         # self.rew_buf[:] += (early_reset_reward * self.timeout_reset_buf)
         # self.rew_buf[:] += (self.timeout_reset_buf * self.success_reset_buf) * self.cfg_task.rl.success_bonus
 
+        #############    NEW   ################
+        ############ approaching ##############
+        dist_delta = self.closest_dist - self.curr_dist
+        self.closest_dist = torch.minimum(self.closest_dist, self.curr_dist)
+        dist_delta = torch.clip(dist_delta, 0., 10.)
+        approach_rew = 0.5 * torch.tanh(10.0 * dist_delta)
+        approach_rew *= ~self.lifted_object
+
+        ############ lifting ##############
+        height_delta = self.curr_height - self.highest_object
+        self.highest_object = torch.maximum(self.highest_object, self.curr_height)
+        height_delta = torch.clip(height_delta, 0., 10.)
+        lifting_rew = 1.0 * torch.tanh(10.0 * height_delta)
+        lift_rew = torch.where(self.lifted_object, torch.zeros_like(lifting_rew), lifting_rew)
+
+        ########## pickup ######################
+        pick_rew = 3.5 * torch.where(self.lifted_object, torch.ones_like(self.reset_buf, dtype=torch.float),
+                               torch.zeros_like(self.reset_buf, dtype=torch.float))
+
+        self.rew_buf[:] = action_reward + action_delta_reward + approach_rew + lift_rew + pick_rew
         self.extras['successes'] = ((self.timeout_reset_buf | distance_reset_buf) * self.success_reset_buf) * 1.0
         self.extras['keypoint_reward'] = keypoint_reward
         self.extras['engagement_reward'] = engagement_reward
@@ -1099,7 +1126,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                 self.cfg_task.data_logger.collect_test_sim or
                 self.cfg_task.reset_at_success):
             self.reset_buf[:] |= self.success_reset_buf[:]
-
+            # self.reset_buf |= self.lifted_object
         # If max episode length has been reached
         self.timeout_reset_buf[:] = torch.where(self.progress_buf[:] >= (self.cfg_task.rl.max_episode_length - 1),
                                                 torch.ones_like(self.reset_buf),
@@ -1116,6 +1143,9 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         if self.cfg_task.reset_at_fails:
             self.reset_buf[:] |= self.far_from_goal_buf[:]
+
+        self.reset_buf = torch.where(~self.lifted_now & self.lifted_object,
+                                     torch.ones_like(self.reset_buf), self.reset_buf) # reset the dropped envs
 
         # if ((self.cfg_task.data_logger.collect_data or
         #      self.cfg_task.data_logger.collect_test_sim) and not self.cfg_task.collect_rotate):
@@ -1709,7 +1739,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.reset_buf[env_ids] = 0
         self.progress_buf[env_ids] = 0
 
-        if (self.reset_flag and self.cfg_task.reset_at_success):
+        if self.reset_flag and self.cfg_task.reset_at_success:
             print('\n\n\n Rand Inits \n\n\n')
             self.reset_flag = False
             # Cuz it's easier to shuffle here
@@ -1724,7 +1754,8 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.time_complete_task = torch.zeros_like(self.progress_buf)
         self.rew_buf[env_ids] = 0
         self.reward_log_buf[env_ids] = 0
-
+        self.curr_height[env_ids] = 0.
+        self.highest_object[env_ids] = -1.
         self.degrasp_buf[env_ids] = 0
         self.success_reset_buf[env_ids] = 0
         self.far_from_goal_buf[env_ids] = 0
