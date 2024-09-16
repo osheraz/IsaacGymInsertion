@@ -1044,15 +1044,12 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                        torch.norm(self.plug_com_pos - self.middle_finger_pos, p=2, dim=-1))
 
         plug_finger_dist_rew = 1.2 - 1 * plug_finger_dist
-        plug_finger_dist_rew *= ~self.lifted_now
         goal_rew = 5 - 5 * plug_goal_dist
         goal_rew *= self.lifted_now  # no reward for not grasped
 
-        # cube_height = self.plug_pos[:, 2]
-        # box_pos = self.plug_pos[:, :3]
-        # d1 = torch.norm(box_pos - self.fingertip_centered_pos, dim=-1)
-        #
-        # reward, _ = self._reward_base_height()
+        plug_height = self.plug_pos[:, 2]
+        lifting_rew = torch.tanh(10.0 * plug_height)
+        height_rew = torch.where(self.lifted_object, 3.5 * lifting_rew,  torch.zeros_like(lifting_rew))
 
         action_penalty = torch.norm(self.actions, p=2, dim=-1)
         action_reward = self.cfg_task.rl.action_penalty_scale * action_penalty
@@ -1070,7 +1067,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         distance_reset_buf = (self.far_from_goal_buf | self.degrasp_buf)
         early_reset_reward = distance_reset_buf * self.cfg_task.rl.early_reset_reward_scale
 
-        self.rew_buf[:] = action_reward + action_delta_reward + plug_finger_dist_rew + goal_rew
+        self.rew_buf[:] = action_reward + action_delta_reward + plug_finger_dist_rew + 0 * goal_rew + height_rew
         self.rew_buf[:] += early_reset_reward
         # self.rew_buf[:] += (early_reset_reward * self.timeout_reset_buf)
         # self.rew_buf[:] += (self.timeout_reset_buf * self.success_reset_buf) * self.cfg_task.rl.success_bonus
