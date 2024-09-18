@@ -157,7 +157,7 @@ randomize:
     same_socket: False
     # for grasp generations
     plug_pos_xy_initial: [0.50, 0.0, 0.0]  # z 0.03  initial XY position of plug on table
-    grasp_plug_noise: 0.005 # xyz noise on grasp pos position during grasp at init
+    grasp_plug_noise: 0.1 # xyz noise on grasp pos position during grasp at init
     plug_pos_xy_noise: [ 0.3,  0.3] # noise on plug position
     plug_rot_noise: [ 0.1, 0.1, 0.1 ] # rot noise on plug init
     plug_pos_z_noise_bounds: [ 0.0, 0.0 ]  # plug z bound noise
