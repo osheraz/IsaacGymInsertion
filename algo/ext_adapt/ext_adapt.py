@@ -150,6 +150,7 @@ def display_obs(depth, seg, pcl, ax=None):
         ax.scatter(pcl[env_id, N:, 0],
                    pcl[env_id, N:, 1],
                    pcl[env_id, N:, 2], color='g', s=2)
+        ax.set_xlim([0.3, 0.65])
         plt.pause(0.0001)
         ax.cla()
 

@@ -891,6 +891,10 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
 
             if self.external_cam:
                 # add external cam
+                self.pos_error_std = self.cfg_env.external_cam.cam_pos_noise
+                self.point_error_std = self.cfg_env.external_cam.cam_point_noise
+                self.ori_error_std = self.cfg_env.external_cam.cam_ori_error
+
                 if self.cfg_env.external_cam.use_point:
                     self.init_camera_pos = (self.cfg_env.external_cam.x_init,
                                             self.cfg_env.external_cam.y_init,
@@ -899,9 +903,6 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
                     self.init_camera_point = (self.cfg_env.external_cam.x_point_init,
                                               self.cfg_env.external_cam.y_point_init,
                                               self.cfg_env.external_cam.z_point_init)
-
-                    self.pos_error_std = self.cfg_env.external_cam.cam_pos_noise
-                    self.point_error_std = self.cfg_env.external_cam.cam_point_noise
 
                     random_pos_error = np.random.normal(0, self.pos_error_std, 3)
                     random_point_error = np.random.normal(0, self.point_error_std, 3)
@@ -922,6 +923,10 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
 
                 if self.cfg_env.external_cam.use_real:
 
+                    random_axis = np.random.normal(size=3)
+                    random_axis /= np.linalg.norm(random_axis)
+                    error_quat = R.from_rotvec(random_axis * np.radians(self.ori_error_std)).as_quat()
+
                     cam_T = self.get_real_camera_pose()
                     offset = np.array([
                         [0.0, -1.0, 0.0, 0.0],
@@ -932,10 +937,14 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
 
                     cam_T = cam_T @ offset
                     cam_pos = cam_T[:3, 3].flatten()
+
+                    cam_pos += np.random.normal(0, self.pos_error_std, 3)
                     cam_pose = gymapi.Transform()
                     cam_pose.p = gymapi.Vec3(*cam_pos)
                     cam_quat = R.from_matrix(cam_T[:3, :3]).as_quat()
-                    cam_pose.r = gymapi.Quat(*cam_quat)
+
+                    cam_quat_with_error = R.from_quat(cam_quat) * R.from_quat(error_quat)
+                    cam_pose.r = gymapi.Quat(*cam_quat_with_error.as_quat())
 
                     cam, _, props = self.make_handle_trans(self.res[0], self.res[1], i,
                                                            cam_pos, cam_pos)
@@ -1143,7 +1152,7 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
 
         self.socket_tip = fc.translate_along_local_z(pos=self.socket_pos,
                                                      quat=self.socket_quat,
-                                                     offset=self.socket_heights * 3,
+                                                     offset=self.socket_heights,
                                                      device=self.device)
 
         self.plug_tip = fc.translate_along_local_z(pos=self.plug_pos,

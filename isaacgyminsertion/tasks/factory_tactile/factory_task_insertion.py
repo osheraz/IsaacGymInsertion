@@ -39,6 +39,8 @@ import hydra
 import omegaconf
 import os
 
+import torch
+
 os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
 
 from isaacgym import gymapi, gymtorch
@@ -274,6 +276,9 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
             if self.cfg_task.env.merge_socket_pcl:
                 num_points += self.cfg_task.env.num_points_socket
+                self.socket_pcl = torch.zeros((self.num_envs, self.cfg_task.env.num_points_socket, 3),
+                                                device=self.device, dtype=torch.float)
+                self.got_socket = torch.zeros((self.num_envs, 1), device=self.device, dtype=torch.int32)
 
             if self.cfg_task.env.merge_goal_pcl:
                 self.goal_pcl = torch.zeros((self.num_envs, self.cfg_task.env.num_points_goal, 3),
@@ -289,7 +294,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             self.rot_pcl_angle = torch.deg2rad(torch.FloatTensor(self.num_envs).uniform_(*(-self.cfg_task.randomize.pcl_rot,
                                                                                            self.cfg_task.randomize.pcl_rot)).to(self.device))
             self.pcl_pos_noise = torch.randn(self.num_envs, 1, 3, device=self.device)
-            self.axes = torch.randint(0, 3, (self.num_envs,), device=self.device)
+            self.rot_axes = torch.randint(0, 3, (self.num_envs,), device=self.device)
 
         if self.cfg_task.env.tactile:
             # tactile buffers
@@ -910,7 +915,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             # self.rot_pcl_angle = torch.deg2rad(torch.FloatTensor(self.num_envs).uniform_(*(-self.cfg_task.randomize.pcl_rot,
             #                                                                                self.cfg_task.randomize.pcl_rot)).to(self.device))
             # self.pcl_pos_noise = torch.randn(self.num_envs, 1, 3, device=self.device)
-            # self.axes = torch.randint(0, 3, (self.num_envs,), device=self.device)
+            # self.rot_axes = torch.randint(0, 3, (self.num_envs,), device=self.device)
 
             if self.depth_cam:
                 if update.any():
@@ -947,12 +952,12 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
                 plug_pts[pcl_noise] = self.pcl_process.augment(plug_pts[pcl_noise],
                                                                self.rot_pcl_angle[pcl_noise],
-                                                               self.axes[pcl_noise],
+                                                               self.rot_axes[pcl_noise],
                                                                self.pcl_pos_noise[pcl_noise])
 
                 self.pcl = plug_pts.flatten(start_dim=1)
 
-                if self.cfg_task.env.merge_socket_pcl or self.cfg_task.env.relative_pcl:
+                if (self.cfg_task.env.merge_socket_pcl or self.cfg_task.env.relative_pcl) and not self.got_socket.all():
 
                     socket_pts = self.pcl_generator.get_point_cloud(
                         depths=socket_depth.reshape(self.num_envs, self.res[1], self.res[0]),
@@ -960,21 +965,25 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
                     socket_pts[pcl_noise] = self.pcl_process.augment(socket_pts[pcl_noise],
                                                                      self.rot_pcl_angle[pcl_noise],
-                                                                     self.axes[pcl_noise],
+                                                                     self.rot_axes[pcl_noise],
                                                                      self.pcl_pos_noise[pcl_noise])
+
+                    restarted = torch.where(self.got_socket == 0)[0]
+                    self.socket_pcl[restarted] = socket_pts[restarted]
+                    self.got_socket[restarted] = 1
 
                     if self.cfg_task.env.relative_pcl:
                         socket_mean = self.noisy_socket_pos.unsqueeze(1)  # socket_pts.mean(dim=1, keepdim=True)
                         plug_pts -= socket_mean
-                        socket_pts -= socket_mean
+                        self.socket_pcl -= socket_mean
 
-                    if self.cfg_task.env.merge_socket_pcl:
-                        self.pcl = torch.cat([plug_pts, socket_pts], dim=1).flatten(start_dim=1)
-                    else:
-                        self.pcl = plug_pts.flatten(start_dim=1)
-
+                if self.cfg_task.env.merge_socket_pcl:
+                    self.pcl = torch.cat([plug_pts, self.socket_pcl], dim=1).flatten(start_dim=1)
                 else:
-                    socket_pts = None
+                    self.pcl = plug_pts.flatten(start_dim=1)
+
+                # else:
+                #     socket_pts = None
 
                 if self.cfg_task.env.merge_goal_pcl:
 
@@ -988,11 +997,11 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
                     # self.goal_pcl[pcl_noise] = self.pcl_process.augment(self.goal_pcl[pcl_noise],
                     #                                                     self.rot_pcl_angle[pcl_noise],
-                    #                                                     self.axes[pcl_noise],
+                    #                                                     self.rot_axes[pcl_noise],
                     #                                                     self.pcl_pos_noise[pcl_noise])
 
-                    if socket_pts is not None:
-                        self.pcl = torch.cat([plug_pts, socket_pts, self.goal_pcl], dim=1).flatten(start_dim=1)
+                    if self.cfg_task.env.merge_socket_pcl:
+                        self.pcl = torch.cat([plug_pts, self.socket_pcl, self.goal_pcl], dim=1).flatten(start_dim=1)
                     else:
                         self.pcl = torch.cat([plug_pts, self.goal_pcl], dim=1).flatten(start_dim=1)
 
@@ -1701,9 +1710,10 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                                                                       self.cfg_task.randomize.pcl_rot)).to(self.device)
             self.rot_pcl_angle[env_ids] = torch.deg2rad(rand_angles)[env_ids]
             self.pcl_pos_noise[env_ids] = torch.randn(self.num_envs, 1, 3, device=self.device)[env_ids]
-            self.axes[env_ids] = torch.randint(0, 3, (self.num_envs,), device=self.device)[env_ids]
+            self.rot_axes[env_ids] = torch.randint(0, 3, (self.num_envs,), device=self.device)[env_ids]
             self.pcl_queue[env_ids] *= 0
             self.pcl[env_ids] *= 0
+            self.got_socket[env_ids] *= 0
             if self.cfg_task.env.merge_goal_pcl:
                 self.goal_pcl[env_ids] *= 0
         if self.cfg_task.env.compute_contact_gt:
