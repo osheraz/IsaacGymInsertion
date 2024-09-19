@@ -1052,7 +1052,10 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                        torch.norm(self.plug_tip - self.right_finger_pos, p=2, dim=-1) +
                        torch.norm(self.plug_tip - self.middle_finger_pos, p=2, dim=-1))
 
-        plug_finger_dist_rew = 1.2 - 1 * hand_plug_dist - 0.2 * plug_finger_dist
+        is_close = torch.where(hand_plug_dist < 0.005, torch.ones_like(hand_plug_dist),  torch.zeros_like(hand_plug_dist))
+        is_far = torch.where(hand_plug_dist > 0.005, torch.ones_like(hand_plug_dist),  torch.zeros_like(hand_plug_dist))
+
+        plug_finger_dist_rew = 1.2 - 1 * hand_plug_dist * is_far - 0.2 * plug_finger_dist * is_close
         plug_finger_dist_rew *= ~self.lifted_object
 
         goal_rew = 5 - 5 * plug_goal_dist
