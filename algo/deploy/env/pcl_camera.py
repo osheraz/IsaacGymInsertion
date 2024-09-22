@@ -302,59 +302,64 @@ class ZedPointCloudSubscriber:
 
         try:
             frame = image_msg_to_numpy(msg)
-            frame = cv2.resize(frame, (self.w, self.h), interpolation=cv2.INTER_AREA)
+            self.last_frame = cv2.resize(frame, (self.w, self.h), interpolation=cv2.INTER_AREA)
+            self.to_object_pcl()
+        except Exception as e:
+            print(e)
+
+    def to_pcl(self, frame, seg):
+
+        if self.with_seg:
+            # seg = self.seg.process_frame(self.seg.get_raw_frame())
+            # seg = cv2.resize(seg, (640, 360), interpolation=cv2.INTER_NEAREST)
+            if seg is not None:
+
+                if self.with_socket and not self.got_socket:
+                    socket_mask = (seg == self.seg.socket_id).astype(float)
+                    # socket_mask = self.seg.shrink_mask(socket_mask)
+                    proc_socket = self.pcl_gen.convert(frame * socket_mask)
+                    proc_socket = self.process_pointcloud(proc_socket)
+                    # proc_socket = remove_statistical_outliers(proc_socket)
+                    proc_socket = self.sample_n(proc_socket, num_sample=400)
+                    socket_mean = proc_socket.mean(axis=0)
+                    # print('mean',  socket_mean)
+                    # print('com', self.get_com(proc_socket))
+
+                    self.proc_socket = proc_socket
+                    self.got_socket = True
+
+                if self.with_socket:
+                    self.pointcloud_socket_pub.publish_pointcloud(self.proc_socket)
+
+                self.last_plug_mask = (seg == self.seg.plug_id).astype(float)
+
+            else:
+                print('Cant find the object')
+                return
+
+        try:
+            plug_mask = self.seg.shrink_mask(self.last_plug_mask)
+            frame *= plug_mask
+
+            cloud_points = self.pcl_gen.convert(frame)
+            proc_cloud = self.process_pointcloud(cloud_points)
+            # proc_cloud = remove_statistical_outliers(proc_cloud)
+            proc_cloud = self.sample_n(proc_cloud, num_sample=400)
+            self.pointcloud_pub.publish_pointcloud(proc_cloud)
+
+            # self.last_cloud = proc_cloud
+
+            if self.with_socket:
+
+                self.last_cloud = np.concatenate((proc_cloud, self.proc_socket), axis=0)
+
+                if self.relative:
+                    self.last_cloud -= socket_mean
 
         except Exception as e:
             print(e)
-        else:
-            if self.with_seg:
-                seg = self.seg.process_frame(self.seg.get_raw_frame())
-                # seg = cv2.resize(seg, (640, 360), interpolation=cv2.INTER_NEAREST)
-                if seg is not None:
 
-                    if self.with_socket and not self.got_socket:
-                        socket_mask = (seg == self.seg.socket_id).astype(float)
-                        # socket_mask = self.seg.shrink_mask(socket_mask)
-                        proc_socket = self.pcl_gen.convert(frame * socket_mask)
-                        proc_socket = self.process_pointcloud(proc_socket)
-                        # proc_socket = remove_statistical_outliers(proc_socket)
-                        proc_socket = self.sample_n(proc_socket, num_sample=400)
-                        socket_mean = proc_socket.mean(axis=0)
-                        # print('mean',  socket_mean)
-                        # print('com', self.get_com(proc_socket))
-
-                        self.proc_socket = proc_socket
-                        self.got_socket = False
-
-                    if self.with_socket:
-                        self.pointcloud_socket_pub.publish_pointcloud(self.proc_socket)
-
-                    plug_mask = (seg == self.seg.plug_id).astype(float)
-                    plug_mask = self.seg.shrink_mask(plug_mask)
-                    frame *= plug_mask
-                else:
-                    print('Cant find the object')
-                    return
-
-            try:
-
-                cloud_points = self.pcl_gen.convert(frame)
-                proc_cloud = self.process_pointcloud(cloud_points)
-                # proc_cloud = remove_statistical_outliers(proc_cloud)
-                proc_cloud = self.sample_n(proc_cloud, num_sample=400)
-                self.pointcloud_pub.publish_pointcloud(proc_cloud)
-
-                # self.last_cloud = proc_cloud
-
-                if self.with_socket:
-
-                    self.last_cloud = np.concatenate((proc_cloud, self.proc_socket), axis=0)
-
-                    if self.relative:
-                        self.last_cloud -= socket_mean
-
-            except Exception as e:
-                print(e)
+        return self.last_cloud
 
     def _check_camera_ready(self):
 
@@ -417,8 +422,13 @@ class ZedPointCloudSubscriber:
 
     def sample_n(self, pts, num_sample):
         num = pts.shape[0]
-        ids = np.random.randint(0, num, size=(num_sample,))
-        pts = pts[ids]
+        if num_sample <= num:
+            ids = np.random.randint(0, num, size=(num_sample,))
+            pts = pts[ids]
+        else:
+            sampled_pts = pts.copy()
+            additional_ids = np.random.randint(0, num, size=(num_sample - num,))
+            pts = np.concatenate([sampled_pts, pts[additional_ids]], axis=0)
         return pts
 
     def pointcloud_msg_to_numpy(self, msg):
@@ -467,15 +477,23 @@ class ZedPointCloudSubscriber:
     def get_pcl(self):
         return self.last_cloud
 
+    def get_last_depth(self):
+
+        return self.last_frame
+
+    def to_object_pcl(self):
+        depth = self.get_last_depth()
+        seg = self.seg.process_frame(self.seg.get_raw_frame())
+        self.to_pcl(depth, seg)
+
+        return self.last_cloud
 
 if __name__ == "__main__":
-    rospy.init_node('ZedPointCloud')
-    pointcloud_sub = ZedPointCloudSubscriber()
+    rospy.init_node('ZedPointCloudPub')
+    pcl = ZedPointCloudSubscriber()
     # pointcloud_pub = PointCloudPublisher()
-    rate = rospy.Rate(60)
+    rate = rospy.Rate(10)
 
     while not rospy.is_shutdown():
-        # if pointcloud_sub.last_cloud is not None:
-        #     pointcloud_pub.publish_pointcloud(pointcloud_sub.last_cloud)
-
+        pcl.to_object_pcl()
         rate.sleep()

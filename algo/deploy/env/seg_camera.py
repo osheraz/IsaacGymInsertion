@@ -130,7 +130,7 @@ class SegCameraSubscriber:
             print(e)
             return
 
-    def process_frame(self, frame):
+    def process_frame(self, frame, display=True):
 
         start_time = time.time()
         # Resize the frame
@@ -180,49 +180,48 @@ class SegCameraSubscriber:
             self.socket_mask = (mask_socket & ~mask_hole).astype(int)
             self.socket_mask *= self.socket_id
             self.original_socket_mask = self.socket_mask.copy()
-            self.img_size = 448
+            self.img_size = 448 # 896
             self.conf = 0.6
             self.iou = 0.6
             self.got_socket_mask = True
             self.init_success = True
-            self.min_dims = {"width": 15, "height": 15}
+            self.min_dims = {"width": 15, "height": 30}
             self.max_dims = {"width": 40, "height": 70}
 
         try:
             prompt_process = FastSAMPrompt(frame, results, device=self.device)
             if len(seg) > 1:
-                # print('jere')
                 smallest, biggest = self.find_smallest_and_largest_boxes(seg)
             else:
                 smallest = seg[0]
 
             ann = prompt_process.box_prompt(bbox=smallest)[0]
             self.plug_mask = (masks_to_bool(ann)).astype(int) * self.plug_id
+            # self.plug_mask = self.shrink_mask(self.plug_mask.astype(float)).astype(int)
             self.socket_mask = np.where(self.plug_mask > 0, 0, self.original_socket_mask)
 
             self.last_frame = self.plug_mask | self.socket_mask if self.with_socket else self.plug_mask
 
-            return self.last_frame
+            if display:
+                if self.with_socket:
+                    mask = ((self.last_frame == self.plug_id) | (self.last_frame == self.socket_id)).astype(float)
+                else:
+                    mask = (self.last_frame == self.plug_id).astype(float)
+
+                mask = self.shrink_mask(mask)
+                self.mask_3d = numpy.repeat(mask[:, :, numpy.newaxis], 3, axis=2)
+                seg_show = (self.mask_3d * frame).astype(np.uint8)
+                cv2.imshow("Mask Image", seg_show)
+                cv2.imshow("Raw Image", frame)
+                cv2.waitKey(1)
+
+                # print(time.time() - start_time)
 
         except Exception as e:
             print(e)
 
-        # if True:
-        #     if self.with_socket:
-        #         mask = ((self.last_frame == self.plug_id) | (self.last_frame == self.socket_id)).astype(float)
-        #     else:
-        #         mask = (self.last_frame == self.plug_id).astype(float)
-        #
-        #     mask = self.shrink_mask(mask)
-        #     self.mask_3d = numpy.repeat(mask[:, :, numpy.newaxis], 3, axis=2)
-        #     seg_show = (self.mask_3d * frame).astype(np.uint8)
-        #     # seg_show = cv2.normalize(seg_show, None, 0, 255, cv2.NORM_MINMAX)
-        #     # seg_show = seg_show.astype(np.uint8)
-        #     cv2.imshow("Mask Image", seg_show)
-        #     cv2.imshow("Raw Image", frame)
-        #     cv2.waitKey(1)
-        #
-        #     print(time.time() - start_time)
+        return self.last_frame
+
 
     def shrink_mask(self, mask, shrink_percentage=10):
         """
@@ -260,8 +259,9 @@ class SegCameraSubscriber:
 if __name__ == "__main__":
 
     rospy.init_node('Seg')
-    tactile = SegCameraSubscriber()
+    seg_cam = SegCameraSubscriber()
     rate = rospy.Rate(60)
 
     while not rospy.is_shutdown():
+        seg_cam.process_frame(seg_cam.get_raw_frame())
         rate.sleep()
