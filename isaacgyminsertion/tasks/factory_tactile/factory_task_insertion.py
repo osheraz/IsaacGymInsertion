@@ -726,27 +726,16 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         obs = torch.cat([eef_pos,  # 9
                          actions,  # 6
-                         noisy_delta_pos  # 3
+                         # noisy_delta_pos  # 3
                          ], dim=-1)
 
         self.obs_queue[:, :-self.num_observations] = self.obs_queue[:, self.num_observations:]
         self.obs_queue[:, -self.num_observations:] = obs
 
-        eef_stud = torch.cat(self.pose_world_to_robot_base(self.fingertip_centered_pos.clone(),
-                                                           self.fingertip_centered_quat.clone(),
-                                                           to_rep='matrix'), dim=-1)
-        # fix bug
-        eef_stud = torch.cat((self.fingertip_centered_pos,
-                              self.stud_tf.forward(eef_stud[:, 3:].reshape(eef_stud.shape[0], 3, 3))), dim=1)
-
-        # test = torch.cat(self.pose_world_to_robot_base(self.plug_pos.clone(),
-        #                                                   self.plug_quat.clone(),
-        #                                                   to_rep='rot6d'), dim=-1)
-
         obs_tensors_student = torch.cat([
-            eef_stud,
-            noisy_delta_pos,  # 3
-            actions,
+            eef_pos,
+            actions,  # 3
+            # noisy_delta_pos,
         ], dim=-1)
 
         self.obs_stud_queue[:, :-self.num_obs_stud] = self.obs_stud_queue[:, self.num_obs_stud:]

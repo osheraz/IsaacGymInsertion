@@ -554,12 +554,13 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
         self.init_plug_quat[subassembly] = torch.zeros((self.total_init_poses[subassembly], 4))
         self.init_dof_pos[subassembly] = torch.zeros((self.total_init_poses[subassembly], 15))
 
-        if add_noise:
-            socket_pos = self.add_socket_noise(self.initial_grasp_poses[subassembly]['socket_pos'])
-        else:
-            socket_pos = self.initial_grasp_poses[subassembly]['socket_pos']
-
+        socket_pos = self.initial_grasp_poses[subassembly]['socket_pos']
         socket_quat = self.initial_grasp_poses[subassembly]['socket_quat']
+
+        if add_noise:
+            socket_pos = self.add_socket_noise(socket_pos)
+            socket_quat = self.add_socket_quat_noise(socket_quat)
+
         plug_pos = self.initial_grasp_poses[subassembly]['plug_pos']
         plug_quat = self.initial_grasp_poses[subassembly]['plug_quat']
         dof_pos = self.initial_grasp_poses[subassembly]['dof_pos']
@@ -602,6 +603,18 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
         socket_pos[:, 2] = self.cfg_base.env.table_height + socket_noise_z
 
         return socket_pos
+
+    def add_socket_quat_noise(self, socket_quat):
+
+        num_positions = len(socket_quat)
+
+        # Randomize socket quat
+        socket_rot_noise = 2 * (np.random.rand(num_positions, 3) - 0.5)
+        noise_scale = np.diag(self.cfg['randomize']['socket_rot_euler_noise'])
+        socket_rot_noise = socket_rot_noise @ noise_scale
+        socket_quat[:, :] = R.from_euler('xyz', socket_rot_noise).as_quat()
+
+        return socket_quat
 
     def _import_env_assets(self):
         """Set plug and socket asset options. Import assets."""

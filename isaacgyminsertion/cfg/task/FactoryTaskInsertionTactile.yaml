@@ -49,8 +49,8 @@ tactile: # Pulling from task
 
 env:
     numEnvs: ${resolve_default:128,${...num_envs}}
-    numObservations: 18 #
-    numObsStudent: 18 #
+    numObservations: 15 #
+    numObsStudent: 15 #
     numStates: 28 # 27
     numActions: 6 # [position, ori]
     numTargets: 6 # [position, ori]
@@ -163,10 +163,10 @@ randomize:
 #    plug_quat_noise: [0.0, 0.0, 0.0, 0.0]
 
     socket_pos_xy_initial: [0.5, 0.0, 0.0]  # initial XY position of plug on table # round_hole_2in  width = 0.1016, length = 0.09144
-    socket_pos_xy_noise: [0.0001, 0.0001]  # noise on socket position
-    socket_pos_z_noise_bounds: [0.00, 0.0005]  # noise on socket offset from table
+    socket_pos_xy_noise: [0.1, 0.1]  # noise on socket position
+    socket_pos_z_noise_bounds: [0.00, 0.05]  # noise on socket offset from table
 #    above_socket_noise: [0.03, 0.03, 0.001]
-#    socket_rot_euler_noise: 0.001  # noise on socket position
+    socket_rot_euler_noise: [0.0, 0.0, 0.0872665]  # noise on socket position
 
     scale_noise_pos: [0.003, 0.003, 0.003]
     scale_noise_rot: [ 0.01, 0.01, 0.01]
