@@ -121,7 +121,6 @@ env:
     merge_goal_pcl: False
     merge_socket_pcl: True
     relative_pcl: False
-    socket_at_start: False
 
     record_video: True
     record_ft: True
@@ -169,7 +168,7 @@ randomize:
 #    above_socket_noise: [0.03, 0.03, 0.001]
 #    socket_rot_euler_noise: 0.001  # noise on socket position
 
-    scale_noise_pos: [0.001, 0.001, 0.001]
+    scale_noise_pos: [0.003, 0.003, 0.003]
     scale_noise_rot: [ 0.01, 0.01, 0.01]
 
 rl:

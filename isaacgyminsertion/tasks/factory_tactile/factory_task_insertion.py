@@ -277,7 +277,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             if self.cfg_task.env.merge_socket_pcl:
                 num_points += self.cfg_task.env.num_points_socket
                 self.socket_pcl = torch.zeros((self.num_envs, self.cfg_task.env.num_points_socket, 3),
-                                                device=self.device, dtype=torch.float)
+                                              device=self.device, dtype=torch.float)
                 self.got_socket = torch.zeros((self.num_envs, 1), device=self.device, dtype=torch.int32)
 
             if self.cfg_task.env.merge_goal_pcl:
@@ -291,8 +291,9 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
             self.pcl = torch.zeros((self.num_envs, num_points * 3), device=self.device, dtype=torch.float)
 
-            self.rot_pcl_angle = torch.deg2rad(torch.FloatTensor(self.num_envs).uniform_(*(-self.cfg_task.randomize.pcl_rot,
-                                                                                           self.cfg_task.randomize.pcl_rot)).to(self.device))
+            self.rot_pcl_angle = torch.deg2rad(
+                torch.FloatTensor(self.num_envs).uniform_(*(-self.cfg_task.randomize.pcl_rot,
+                                                            self.cfg_task.randomize.pcl_rot)).to(self.device))
             self.pcl_pos_noise = torch.randn(self.num_envs, 1, 3, device=self.device)
             self.rot_axes = torch.randint(0, 3, (self.num_envs,), device=self.device)
 
@@ -816,7 +817,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                                                    self.socket_depths,  # 1
                                                    self.socket_widths,  # 1
                                                    self.plug_scale,  # 1
-                                                   self.socket_scale, # 1
+                                                   self.socket_scale,  # 1
                                                    ]), 0, 1).to(self.device)
 
         self.rigid_physics_params[...] = physics_params
@@ -1164,7 +1165,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         if ((self.cfg_task.data_logger.collect_data or
              self.cfg_task.data_logger.collect_test_sim) and not self.cfg_task.collect_rotate):
             self.reset_buf[:] |= self.degrasp_buf[:]
-    # לא המחשב הזה ! ! ! ! ! !
+
     def _reset_predefined_environment(self, env_ids):
 
         random_init_idx = {}
@@ -1403,7 +1404,6 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             else:
                 self.complete_ft_frames = self.ft_frames[:]
             self.ft_frames = []
-
 
         self._reset_buffers(env_ids)
 
@@ -1991,19 +1991,27 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         # Check if plug is within threshold distance of assembled state
 
+        is_plug_below_insertion_height = (
+                self.plug_pos[:, 2] <= (self.socket_tip[:, 2] - self.cfg_task.rl.success_height_thresh)
+        )
+
         is_plug_close_to_socket = self._check_plug_close_to_socket()
 
         quat_diff = torch_jit_utils.quat_mul(self.plug_quat, torch_jit_utils.quat_conjugate(self.identity_quat))
         rot_dist = 2.0 * torch.asin(torch.clamp(torch.norm(quat_diff[:, 0:3], p=2, dim=-1), max=1.0))
 
         is_align = torch.where(torch.abs(rot_dist) <= 0.1,
-                                  torch.ones_like(is_plug_close_to_socket),
-                                  torch.zeros_like(is_plug_close_to_socket))
+                               torch.ones_like(is_plug_close_to_socket),
+                               torch.zeros_like(is_plug_close_to_socket))
 
-        # Combine both checks
         is_plug_inserted_in_socket = torch.logical_and(
             is_align, is_plug_close_to_socket
         )
+
+        is_plug_inserted_in_socket = torch.logical_and(
+            is_plug_inserted_in_socket, is_plug_below_insertion_height
+        )
+
         return is_plug_inserted_in_socket
 
     def _check_plug_engaged_w_socket(self):
@@ -2019,21 +2027,18 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         quat_diff = torch_jit_utils.quat_mul(self.plug_quat, torch_jit_utils.quat_conjugate(self.identity_quat))
         rot_dist = 2.0 * torch.asin(torch.clamp(torch.norm(quat_diff[:, 0:3], p=2, dim=-1), max=1.0))
 
-        # Check if plug is close to socket
-        # NOTE: This check addresses edge case where base of plug is below top of socket,
-        # but plug is outside socket
-        # is_plug_close_to_socket = self._check_plug_close_to_socket()  # torch.norm(self.plug_pos[:, :2] - self.socket_tip[:, :2], p=2, dim=-1) < 0.005 # self._check_plug_close_to_socket()
-        is_plug_close_to_socket = torch.norm(self.plug_pos[:, :3] - self.socket_tip[:, :3], p=2, dim=-1) < 0.005
+        is_plug_close_to_socket = self._check_plug_close_to_socket()
 
         is_align = torch.where(torch.abs(rot_dist) <= 0.1,
-                                  torch.ones_like(is_plug_close_to_socket),
-                                  torch.zeros_like(is_plug_close_to_socket))
+                               torch.ones_like(is_plug_close_to_socket),
+                               torch.zeros_like(is_plug_close_to_socket))
 
-        # print(is_plug_below_engagement_height[0], is_plug_close_to_socket[0])
-
-        # Combine both checks
         is_plug_engaged_w_socket = torch.logical_and(
             is_align, is_plug_close_to_socket
+        )
+
+        is_plug_engaged_w_socket = torch.logical_and(
+            is_plug_engaged_w_socket, is_plug_below_engagement_height
         )
 
         return is_plug_engaged_w_socket
@@ -2046,15 +2051,17 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         reward_scale = torch.zeros((self.num_envs,), dtype=torch.float32, device=self.device)
         # For envs in which plug and socket are engaged, compute positive scale
         engaged_idx = np.argwhere(is_plug_engaged_w_socket.cpu().numpy().copy()).squeeze()
+
         # height_dist = self.plug_pos[engaged_idx, 2] - self.socket_pos[engaged_idx, 2]
         height_dist = torch.norm(self.plug_pos[engaged_idx, :3] - self.socket_tip[engaged_idx, :3], p=2, dim=-1)
+        height_reward = 1.0 / ((height_dist - success_height_thresh) + 0.1)
 
         quat_diff = torch_jit_utils.quat_mul(self.plug_quat, torch_jit_utils.quat_conjugate(self.identity_quat))
         rot_dist = 2.0 * torch.asin(torch.clamp(torch.norm(quat_diff[:, 0:3], p=2, dim=-1), max=1.0))
         ori_reward = 1 / (torch.abs(rot_dist) + 0.1)
-        # NOTE: Edge case: if success_height_thresh is greater than 0.1,
-        # denominator could be negative
-        reward_scale[engaged_idx] = 1.0 / ((height_dist - success_height_thresh) + 0.1) + ori_reward[engaged_idx]
+
+        reward_scale[engaged_idx] = height_reward + ori_reward[engaged_idx]
+
         return reward_scale
 
     def step(self, actions):
