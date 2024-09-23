@@ -137,19 +137,30 @@ class PointCloudAugmentations:
         pointcloud_batch.scatter_(1, replace_indices.unsqueeze(-1).expand(-1, -1, 3), outliers)
         return pointcloud_batch
 
-    def random_dropout(self, coords, dropout_ratio=0.2):
-        n = coords.shape[-2]
-        r = dropout_ratio if isinstance(dropout_ratio, float) else torch.rand(1).uniform_(*dropout_ratio)
-        mask = torch.rand(n, device=coords.device) >= r
+    def batch_random_dropout(self, coords, dropout_ratio=0.2, no_dropout_prob=0.8):
+        batch_size, num_points, _ = coords.shape
+        if isinstance(dropout_ratio, float):
+            dropout_ratios = torch.full((batch_size,), dropout_ratio, device=coords.device)
+        else:
+            dropout_ratios = torch.rand(batch_size, device=coords.device).uniform_(*dropout_ratio)
+
+        no_dropout_mask = torch.rand(batch_size, device=coords.device) >= 1 - no_dropout_prob
+        mask = torch.rand(batch_size, num_points, device=coords.device) < dropout_ratios.unsqueeze(-1)
+        mask[no_dropout_mask] = False
         mask = mask.unsqueeze(-1).expand_as(coords)
-        coords = torch.where(mask, coords, torch.zeros_like(coords))
+        coords = torch.where(mask, torch.zeros_like(coords), coords)
+
         return coords
 
     def augment(self, pointcloud_batch, angle, axes, pcl_noise, dropout_ratio=0.2):
+        if not pointcloud_batch.shape[0]:
+            return pointcloud_batch
+
         pointcloud_batch = self.random_noise(pointcloud_batch, pcl_noise)
         # pointcloud_batch = self.random_rotate(pointcloud_batch, angle, axes)
         # pointcloud_batch = self.add_outliers(pointcloud_batch)
-        pointcloud_batch = self.random_dropout(pointcloud_batch, dropout_ratio)
+        pointcloud_batch = self.batch_random_dropout(pointcloud_batch)
+
         return pointcloud_batch
 
 

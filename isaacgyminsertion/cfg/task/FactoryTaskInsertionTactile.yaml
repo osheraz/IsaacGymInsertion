@@ -115,11 +115,13 @@ env:
     tactile_wrt_force: False
 
     compute_contact_gt: False
+    total_points: 2048
     num_points: 400
     num_points_socket: 400
     num_points_goal: 400
     merge_goal_pcl: False
     merge_socket_pcl: True
+    include_all_pcl: True
     relative_pcl: False
 
     record_video: True

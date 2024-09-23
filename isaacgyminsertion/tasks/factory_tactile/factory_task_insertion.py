@@ -274,6 +274,9 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
             num_points = self.cfg_task.env.num_points
 
+            if self.cfg_task.env.include_all_pcl:
+                num_points += self.cfg_task.env.total_points
+
             if self.cfg_task.env.merge_socket_pcl:
                 num_points += self.cfg_task.env.num_points_socket
                 self.socket_pcl = torch.zeros((self.num_envs, self.cfg_task.env.num_points_socket, 3),
@@ -890,6 +893,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         seg_noise = torch.logical_and(seg_noise, update_seg)
 
         if self.cam_type == "rgb":
+            assert NotImplementedError  # TODO..
             processed_images = torch.stack(self.cam_renders).unsqueeze(1)
             self.image_buf[update] = processed_images[update]
 
@@ -928,10 +932,21 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                     self.seg_buf[seg_noise] = self.depth_process.add_seg_noise(self.seg_buf[seg_noise])
 
             if self.pcl_cam:
+                if self.cfg_task.env.include_all_pcl:
+                    all_pts = self.pcl_generator.get_point_cloud(
+                              depths=depth.reshape(self.num_envs, self.res[1], self.res[0]),
+                              filter_func=filter_pts, sample_num=self.cfg_task.env.total_points).to(self.device)
+
+                    all_pts[pcl_noise] = self.pcl_process.augment(all_pts[pcl_noise],
+                                                                   self.rot_pcl_angle[pcl_noise],
+                                                                   self.rot_axes[pcl_noise],
+                                                                   self.pcl_pos_noise[pcl_noise])
+
                 if self.seg_cam:
                     plug_depth = depth.flatten(start_dim=1) * (seg.flatten(start_dim=1) == 2)
 
-                    if self.cfg_task.env.merge_socket_pcl or self.cfg_task.env.relative_pcl:
+                    if (self.cfg_task.env.merge_socket_pcl or self.cfg_task.env.relative_pcl)\
+                            and not self.got_socket.all():
                         socket_depth = depth.flatten(start_dim=1) * (seg.flatten(start_dim=1) == 3)
                 else:
                     plug_depth = depth.flatten(start_dim=1)
@@ -945,7 +960,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                                                                self.rot_axes[pcl_noise],
                                                                self.pcl_pos_noise[pcl_noise])
 
-                self.pcl = plug_pts.flatten(start_dim=1)
+                # self.pcl = plug_pts.flatten(start_dim=1)
 
                 if (self.cfg_task.env.merge_socket_pcl or self.cfg_task.env.relative_pcl) and not self.got_socket.all():
 
@@ -963,17 +978,10 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                     self.got_socket[restarted] = 1
 
                     if self.cfg_task.env.relative_pcl:
+                        assert NotImplementedError
                         socket_mean = self.noisy_socket_pos.unsqueeze(1)  # socket_pts.mean(dim=1, keepdim=True)
                         plug_pts -= socket_mean
                         self.socket_pcl -= socket_mean
-
-                if self.cfg_task.env.merge_socket_pcl:
-                    self.pcl = torch.cat([plug_pts, self.socket_pcl], dim=1).flatten(start_dim=1)
-                else:
-                    self.pcl = plug_pts.flatten(start_dim=1)
-
-                # else:
-                #     socket_pts = None
 
                 if self.cfg_task.env.merge_goal_pcl:
 
@@ -990,10 +998,18 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                     #                                                     self.rot_axes[pcl_noise],
                     #                                                     self.pcl_pos_noise[pcl_noise])
 
-                    if self.cfg_task.env.merge_socket_pcl:
-                        self.pcl = torch.cat([plug_pts, self.socket_pcl, self.goal_pcl], dim=1).flatten(start_dim=1)
-                    else:
-                        self.pcl = torch.cat([plug_pts, self.goal_pcl], dim=1).flatten(start_dim=1)
+                pcl_components = [plug_pts]
+
+                if self.cfg_task.env.merge_socket_pcl:
+                    pcl_components.append(self.socket_pcl)
+
+                if self.cfg_task.env.merge_goal_pcl:
+                    pcl_components.append(self.goal_pcl)
+
+                if self.cfg_task.env.include_all_pcl:
+                    pcl_components.append(all_pts)
+
+                self.pcl[update] = torch.cat(pcl_components, dim=1).flatten(start_dim=1)[update]
 
             if self.cfg_task.external_cam.display:
                 if self.depth_cam:
@@ -1144,10 +1160,10 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                 torch.norm(self.right_finger_pos - self.fingertip_centered_pos, p=2, dim=-1) < 0.005) & (
                                   torch.norm(self.middle_finger_pos - self.fingertip_centered_pos, p=2, dim=-1) < 0.005)
 
-        self.far_from_goal_buf[:] = torch.norm(self.plug_pos - self.socket_pos, p=2, dim=-1) > 0.3
+        self.far_from_goal_buf[:] = torch.norm(self.plug_pos - self.socket_pos, p=2, dim=-1) > 1.0
 
         # self.degrasp_buf[:] |= fingertips_dist
-        if self.cfg_task.reset_at_fails:
+        if self.cfg_task.reset_at_fails and False:
             self.reset_buf[:] |= self.degrasp_buf[:]
             self.reset_buf[:] |= self.far_from_goal_buf[:]
 
@@ -1972,7 +1988,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
     def _check_plug_close_to_socket(self):
         """Check if plug is close to socket."""
         # 2
-        return torch.norm(self.plug_pos[:, :3] - self.socket_tip[:, :3], p=2,
+        return torch.norm(self.plug_pos[:, :2] - self.socket_tip[:, :2], p=2,
                           dim=-1) < self.cfg_task.rl.close_error_thresh
 
     def _check_plug_inserted_in_socket(self):
@@ -1986,7 +2002,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         is_plug_close_to_socket = self._check_plug_close_to_socket()
 
-        quat_diff = torch_jit_utils.quat_mul(self.plug_quat, torch_jit_utils.quat_conjugate(self.identity_quat))
+        quat_diff = torch_jit_utils.quat_mul(self.plug_quat, torch_jit_utils.quat_conjugate(self.socket_quat))
         rot_dist = 2.0 * torch.asin(torch.clamp(torch.norm(quat_diff[:, 0:3], p=2, dim=-1), max=1.0))
 
         is_align = torch.where(torch.abs(rot_dist) <= 0.1,
@@ -2013,7 +2029,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                 (self.plug_pos[:, 2]) < self.socket_tip[:, 2]
         )
 
-        quat_diff = torch_jit_utils.quat_mul(self.plug_quat, torch_jit_utils.quat_conjugate(self.identity_quat))
+        quat_diff = torch_jit_utils.quat_mul(self.plug_quat, torch_jit_utils.quat_conjugate(self.socket_quat))
         rot_dist = 2.0 * torch.asin(torch.clamp(torch.norm(quat_diff[:, 0:3], p=2, dim=-1), max=1.0))
 
         is_plug_close_to_socket = self._check_plug_close_to_socket()
@@ -2045,7 +2061,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         height_dist = torch.norm(self.plug_pos[engaged_idx, :3] - self.socket_tip[engaged_idx, :3], p=2, dim=-1)
         height_reward = 1.0 / ((height_dist - success_height_thresh) + 0.1)
 
-        quat_diff = torch_jit_utils.quat_mul(self.plug_quat, torch_jit_utils.quat_conjugate(self.identity_quat))
+        quat_diff = torch_jit_utils.quat_mul(self.plug_quat, torch_jit_utils.quat_conjugate(self.socket_quat))
         rot_dist = 2.0 * torch.asin(torch.clamp(torch.norm(quat_diff[:, 0:3], p=2, dim=-1), max=1.0))
         ori_reward = 1 / (torch.abs(rot_dist) + 0.1)
 
