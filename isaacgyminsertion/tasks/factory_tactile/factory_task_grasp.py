@@ -674,7 +674,7 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                     (middle_finger_dist < max_dis))
             # print('dist', dist)
 
-            max_ang = 50
+            max_ang = 30
             cond = ((abs(roll * 180 / np.pi) < max_ang) &
                     (abs(pitch * 180 / np.pi) < max_ang) &
                     (abs(yaw * 180 / np.pi) < max_ang))

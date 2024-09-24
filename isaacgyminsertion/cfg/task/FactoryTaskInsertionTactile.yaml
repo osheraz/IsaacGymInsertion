@@ -79,11 +79,11 @@ env:
       schedule_steps: 1000000
       schedule_freq: 500 # schedule every 500 steps for stability
 
-    actionLatencyMax: 15
+    actionLatencyMax: 10
     actionLatencyScheduledSteps: 10_000_000
-    actionDelayProbMax: 0.3
+    actionDelayProbMax: 0.2
 
-    plugObsDelayProb: 0.3
+    plugObsDelayProb: 0.2
     ImgDelayProb: 0.1
     PclProbNoise: 1.0
     SegDelayProb: 0.1
@@ -195,7 +195,7 @@ rl:
     orientation_threshold: 0.1
     far_error_thresh: 0.100  # threshold above which plug is considered too far from bolt
     close_error_thresh: 0.005  # threshold below which plug is considered close enough to bolt
-    success_height_thresh: 0.005  # threshold distance below which plug is considered successfully inserted
+    success_height_thresh: 0.003  # threshold distance below which plug is considered successfully inserted
 
 #    keypoint_reward_scale: -0.7 # scale on keypoint-based reward
 #    action_penalty_scale: -0.07  # scale on action penalty

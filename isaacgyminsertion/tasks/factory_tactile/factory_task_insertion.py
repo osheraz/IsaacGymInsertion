@@ -297,7 +297,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             self.rot_pcl_angle = torch.deg2rad(
                 torch.FloatTensor(self.num_envs).uniform_(*(-self.cfg_task.randomize.pcl_rot,
                                                             self.cfg_task.randomize.pcl_rot)).to(self.device))
-            self.pcl_pos_noise = torch.randn(self.num_envs, 1, 3, device=self.device)
+            self.pcl_pos_noise = torch.rand(self.num_envs, 1, 3, device=self.device)
             self.rot_axes = torch.randint(0, 3, (self.num_envs,), device=self.device)
 
         if self.cfg_task.env.tactile:
@@ -667,7 +667,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
             # apply new forces
             force_indices = (torch.rand(self.num_envs, device=self.device) < self.random_force_prob).nonzero()
-            self.rb_forces[force_indices, self.object_rb_handles, :] = torch.randn(
+            self.rb_forces[force_indices, self.object_rb_handles, :] = torch.rand(
                 self.rb_forces[force_indices, self.object_rb_handles, :].shape,
                 device=self.device) * self.object_rb_masses * self.force_scale
 
@@ -753,7 +753,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             self.obs_plug_quat_freq[obs_update_freq] = self.plug_quat[obs_update_freq]
 
             # Simulate adding delay on top
-            update_delay = torch.randn(self.num_envs, device=self.device) > self.plug_obs_delay_prob
+            update_delay = torch.rand(self.num_envs, device=self.device) > self.plug_obs_delay_prob
             self.obs_plug_pos[update_delay] = self.obs_plug_pos_freq[update_delay]
             self.obs_plug_quat[update_delay] = self.obs_plug_quat_freq[update_delay]
 
@@ -1163,7 +1163,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.far_from_goal_buf[:] = torch.norm(self.plug_pos - self.socket_pos, p=2, dim=-1) > 1.0
 
         # self.degrasp_buf[:] |= fingertips_dist
-        if self.cfg_task.reset_at_fails:
+        if self.cfg_task.reset_at_fails and False:
             self.reset_buf[:] |= self.degrasp_buf[:]
             self.reset_buf[:] |= self.far_from_goal_buf[:]
 
@@ -1714,7 +1714,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             rand_angles = torch.FloatTensor(self.num_envs).uniform_(*(-self.cfg_task.randomize.pcl_rot,
                                                                       self.cfg_task.randomize.pcl_rot)).to(self.device)
             self.rot_pcl_angle[env_ids] = torch.deg2rad(rand_angles)[env_ids]
-            self.pcl_pos_noise[env_ids] = torch.randn(self.num_envs, 1, 3, device=self.device)[env_ids]
+            self.pcl_pos_noise[env_ids] = torch.rand(self.num_envs, 1, 3, device=self.device)[env_ids]
             self.rot_axes[env_ids] = torch.randint(0, 3, (self.num_envs,), device=self.device)[env_ids]
             self.pcl_queue[env_ids] *= 0
             self.pcl[env_ids] *= 0
@@ -1753,7 +1753,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                         device=self.device,
                     )
                 )
-                scale_pos_envs = torch.randn(self.num_envs, device=self.device) > self.scale_pos_prob
+                scale_pos_envs = torch.rand(self.num_envs, device=self.device) > self.scale_pos_prob
                 pos_action_scale[scale_pos_envs] += scale_noise_pos[scale_pos_envs]
                 pos_action_scale = torch.clamp(pos_action_scale, min=0)
                 pos_actions = pos_actions * pos_action_scale
@@ -1781,7 +1781,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                         device=self.device,
                     )
                 )
-                scale_rot_envs = torch.randn(self.num_envs, device=self.device) > self.scale_rot_prob
+                scale_rot_envs = torch.rand(self.num_envs, device=self.device) > self.scale_rot_prob
                 rot_action_scale[scale_rot_envs] += scale_noise_rot[scale_rot_envs]
                 rot_action_scale = torch.clamp(rot_action_scale, min=0)
 
