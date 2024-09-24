@@ -164,3 +164,15 @@ class PointNetLargeHalf(nn.Module):  # actually pointnet
         # gloabal max pooling
         x = torch.max(x, dim=1)[0]
         return x
+
+
+if __name__ == "__main__":
+    B, N, C = 4, 1024, 3  # Batch size 4, 1024 points, 3 channels (x, y, z)
+
+    pointnet = PointNet(point_channel=C, output_dim=256).cuda()  # Initialize PointNet
+    point_cloud = torch.randn(B, N, C).cuda()  # Create random point cloud [B, N, C]
+
+    output, indices = pointnet(point_cloud)  # Forward pass through PointNet
+
+    print(f"Output shape: {output.shape}")  # Should be [B, 256] after max pooling
+    print(f"Indices shape: {indices.shape}")  # Should be [B], corresponding to max indices
