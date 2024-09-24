@@ -170,7 +170,7 @@ randomize:
 #    above_socket_noise: [0.03, 0.03, 0.001]
     socket_rot_euler_noise: [0.0, 0.0, 0.0872665]  # noise on socket position
 
-    scale_noise_pos: [0.003, 0.003, 0.003]
+    scale_noise_pos: [0.002, 0.002, 0.002]
     scale_noise_rot: [ 0.01, 0.01, 0.01]
 
 rl:
@@ -190,7 +190,7 @@ rl:
     num_keypoints: 4  # number of keypoints used in reward
     keypoint_scale: 1.0  # length of line of keypoints
 
-    max_episode_length: 500 # 8192  # terminate episode after this number of timesteps (failure)
+    max_episode_length: 1000 # 8192  # terminate episode after this number of timesteps (failure)
 
     orientation_threshold: 0.1
     far_error_thresh: 0.100  # threshold above which plug is considered too far from bolt

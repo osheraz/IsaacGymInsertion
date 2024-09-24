@@ -429,11 +429,11 @@ class PPO(object):
                     cprint(f'saved model at {self.agent_steps}', 'green', attrs=['bold'])
                     self.save(os.path.join(self.nn_dir, f'last'))
 
-                if self.save_freq > 0:
-                    if self.epoch_num % self.save_freq == 0:
+                # if self.save_freq > 0:
+                #     if self.epoch_num % self.save_freq == 0:
                         # checkpoint_name = f'ep_{self.epoch_num}_step_{int(self.agent_steps // 1e6):04}M_reward_{mean_rewards:.2f}'
                         # self.save(os.path.join(self.nn_dir, checkpoint_name))
-                        self.save(os.path.join(self.nn_dir, 'last.pth'))
+                        # self.save(os.path.join(self.nn_dir, 'last.pth'))
                 if mean_rewards > self.best_rewards and self.agent_steps >= self.save_best_after and mean_rewards != 0.0:
                     print(f"save current best reward: {mean_rewards:.2f}")
                     prev_best_ckpt = os.path.join(self.nn_dir, f"best_reward_{self.best_rewards:.2f}.pth")
@@ -737,7 +737,7 @@ class PPO(object):
 
         steps = 0
         total_dones, num_success = 0, 0
-        self.obs = self.env.reset(reset_at_success=False, reset_at_fails=True)
+        self.obs = self.env.reset(reset_at_success=False, reset_at_fails=False)
 
         while save_trajectory or (steps < total_steps):
             # log video during test

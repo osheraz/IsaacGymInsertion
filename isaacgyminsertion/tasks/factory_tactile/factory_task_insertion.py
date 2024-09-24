@@ -768,8 +768,8 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         plug_pos_error, plug_quat_error = fc.get_pose_error(
             fingertip_midpoint_pos=self.obs_plug_pos.clone(),
             fingertip_midpoint_quat=self.obs_plug_quat.clone(),
-            ctrl_target_fingertip_midpoint_pos=self.socket_tip.clone() + self.socket_priv_pos_noise,
-            ctrl_target_fingertip_midpoint_quat=self.identity_quat.clone(),
+            ctrl_target_fingertip_midpoint_pos=self.socket_pos.clone() + self.socket_priv_pos_noise,
+            ctrl_target_fingertip_midpoint_quat=self.socket_quat.clone(),
             jacobian_type='geometric',
             rot_error_type='quat')
 
@@ -1095,7 +1095,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         action_delta_penalty = torch.norm(self.actions - self.prev_actions, p=2, dim=-1)
         action_delta_reward = self.cfg_task.rl.action_delta_scale * action_delta_penalty
 
-        plug_ori_penalty = torch.norm(self.plug_quat - self.identity_quat, p=2, dim=-1)
+        plug_ori_penalty = torch.norm(self.plug_quat - self.socket_quat, p=2, dim=-1)
         ori_reward = plug_ori_penalty * self.cfg_task.rl.ori_reward_scale
 
         keypoint_dist = self._get_keypoint_dist()
@@ -1163,7 +1163,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.far_from_goal_buf[:] = torch.norm(self.plug_pos - self.socket_pos, p=2, dim=-1) > 1.0
 
         # self.degrasp_buf[:] |= fingertips_dist
-        if self.cfg_task.reset_at_fails and False:
+        if self.cfg_task.reset_at_fails:
             self.reset_buf[:] |= self.degrasp_buf[:]
             self.reset_buf[:] |= self.far_from_goal_buf[:]
 
@@ -2010,12 +2010,12 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                                torch.zeros_like(is_plug_close_to_socket))
 
         is_plug_inserted_in_socket = torch.logical_and(
-            is_align, is_plug_close_to_socket
+            is_plug_below_insertion_height, is_plug_close_to_socket
         )
 
-        is_plug_inserted_in_socket = torch.logical_and(
-            is_plug_inserted_in_socket, is_plug_below_insertion_height
-        )
+        # is_plug_inserted_in_socket = torch.logical_and(
+        #     is_align, is_plug_inserted_in_socket
+        # )
 
         return is_plug_inserted_in_socket
 
