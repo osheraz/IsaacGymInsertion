@@ -126,8 +126,8 @@ env:
 
     record_video: True
     record_ft: True
-    record_video_every: 1500
-    record_ft_every: 1500
+    record_video_every: 1000
+    record_ft_every: 1000
 
 sim:
     disable_gravity: True
@@ -159,7 +159,7 @@ randomize:
     # for grasp generations
 #    plug_pos_xy_initial: [0.50, 0.0, 0.0]  # z 0.03  initial XY position of plug on table
     grasp_plug_noise: 0.005 # xyz noise on grasp pos position during grasp at init
-    plug_pos_xy_noise: [ 0.1,  0.1] # noise on plug position
+    plug_pos_xy_noise: [ 0.01,  0.01] # noise on plug position
     plug_rot_noise: [ 0.5, 0.5, 0.3 ] # rot noise on plug init
     plug_pos_z_noise_bounds: [ 0.05, 0.1 ]  # plug z bound noise
 #    plug_quat_noise: [0.0, 0.0, 0.0, 0.0]
@@ -175,7 +175,7 @@ randomize:
 
 rl:
 
-    pos_action_scale: [0.01, 0.01, 0.01]
+    pos_action_scale: [0.005, 0.005, 0.005]
     rot_action_scale: [0.05, 0.05, 0.05]
 
     force_action_scale: [1.0, 1.0, 1.0]
@@ -190,7 +190,7 @@ rl:
     num_keypoints: 4  # number of keypoints used in reward
     keypoint_scale: 1.0  # length of line of keypoints
 
-    max_episode_length: 1000 # 8192  # terminate episode after this number of timesteps (failure)
+    max_episode_length: 500 # 8192  # terminate episode after this number of timesteps (failure)
 
     orientation_threshold: 0.1
     far_error_thresh: 0.100  # threshold above which plug is considered too far from bolt
