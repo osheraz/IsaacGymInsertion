@@ -839,7 +839,12 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             # self.hand_joints,          # 6
             # self.plug_hand_pos_diff,   # 3
             # self.plug_hand_quat_diff,  # 4
-            plug_hand_pos,  # 3
+            self.socket_tip, # 3
+            self.socket_pos, # 3
+            self.plug_tip,   # 3
+            self.plug_pos,   # 3
+            self.plug_quat,  # 4
+            plug_hand_pos,   # 3
             plug_hand_quat,  # 4
             plug_pos_error,  # 3
             plug_quat_error,  # 4
@@ -2038,12 +2043,12 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                                torch.ones_like(is_plug_close_to_socket),
                                torch.zeros_like(is_plug_close_to_socket))
 
-        is_plug_engaged_w_socket = torch.logical_and(
-            is_align, is_plug_close_to_socket
-        )
+        # is_plug_engaged_w_socket = torch.logical_and(
+        #     is_align, is_plug_close_to_socket
+        # )
 
         is_plug_engaged_w_socket = torch.logical_and(
-            is_plug_engaged_w_socket, is_plug_below_engagement_height
+            is_plug_close_to_socket, is_plug_below_engagement_height
         )
 
         return is_plug_engaged_w_socket
@@ -2057,8 +2062,8 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         # For envs in which plug and socket are engaged, compute positive scale
         engaged_idx = np.argwhere(is_plug_engaged_w_socket.cpu().numpy().copy()).squeeze()
 
-        # height_dist = self.plug_pos[engaged_idx, 2] - self.socket_pos[engaged_idx, 2]
-        height_dist = torch.norm(self.plug_pos[engaged_idx, :3] - self.socket_tip[engaged_idx, :3], p=2, dim=-1)
+        height_dist = self.plug_pos[engaged_idx, 2] - self.socket_pos[engaged_idx, 2]
+        # height_dist = torch.norm(self.plug_pos[engaged_idx, :3] - self.socket_tip[engaged_idx, :3], p=2, dim=-1)
         height_reward = 1.0 / ((height_dist - success_height_thresh) + 0.1)
 
         quat_diff = torch_jit_utils.quat_mul(self.plug_quat, torch_jit_utils.quat_conjugate(self.socket_quat))

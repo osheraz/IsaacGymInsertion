@@ -51,7 +51,7 @@ env:
     numEnvs: ${resolve_default:128,${...num_envs}}
     numObservations: 15 #
     numObsStudent: 15 #
-    numStates: 28 # 27
+    numStates: 44 # 27
     numActions: 6 # [position, ori]
     numTargets: 6 # [position, ori]
     action_latency_max: 15
@@ -203,8 +203,8 @@ rl:
 #    ori_reward_scale: -0.1 # scale on ori-based reward
 
     keypoint_reward_scale: -0.9 # scale on keypoint-based reward
-    action_penalty_scale: -0.1  # scale on action penalty
-    action_delta_scale: -0.1
+    action_penalty_scale: -0.04  # scale on action penalty
+    action_delta_scale: -0.04
     ori_reward_scale: -0.5 # scale on ori-based reward
 
     early_reset_reward_scale: -1.0
