@@ -1,9 +1,9 @@
 #!/bin/bash
 GPUS=${1:-0}
 SEED=${2:-42}
-CACHE=${3:-teacher}
-NUM_ENVS=${4:-100}
-HEADLESS=${5:-True}
+CACHE=${3:-new_teacher}
+NUM_ENVS=${4:-5}
+HEADLESS=${5:-False}
 
 array=( $@ )
 len=${#array[@]}

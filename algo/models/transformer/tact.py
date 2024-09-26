@@ -348,15 +348,18 @@ class MultiModalModel(BaseModel):
                 pcl_objects += 1
 
             if pcl_conf['merge_goal']:
-                self.pcl_encoder['goal_encoder'] = MaskedPointNetEncoder(lin_encoding_size)
+                self.pcl_encoder['goal_encoder'] = PointNet()
                 pcl_objects += 1
 
             if pcl_conf['scene_pcl']:
-                self.pcl_encoder['scene_encoder'] = MaskedPointNetEncoder(lin_encoding_size)
+                self.pcl_encoder['scene_encoder'] = PointNet()
                 pcl_objects += 1
 
             self.pcl_encoding_size = 256
-            self.compress_pcl_enc = nn.Linear(pcl_objects * self.pcl_encoding_size, self.lin_encoding_size)
+            # self.compress_pcl_enc = nn.Linear(pcl_objects * self.pcl_encoding_size, self.lin_encoding_size)
+            self.compress_pcl_enc = nn.Sequential(nn.Linear(pcl_objects * self.pcl_encoding_size, 64),
+                                             nn.ReLU(),
+                                             nn.Linear(64, self.lin_encoding_size))
             num_features += 1
 
         if use_transformer and self.context_size > 1:

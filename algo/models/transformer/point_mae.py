@@ -201,7 +201,7 @@ class MaskedEncoder(nn.Module):
 class MaskedPointNetEncoder(nn.Module):
     def __init__(self,
                  lin_encoding_size,
-                 output_size=64,
+                 output_size=32,
                  num_group=10,
                  group_size=64,
                  mask_ratio=0.6,
@@ -246,7 +246,7 @@ if __name__ == "__main__":
     point_cloud = torch.randn(B, N, 3).cuda()  # Random point cloud
 
     masked_pointnet_encoder = MaskedPointNetEncoder(
-        lin_encoding_size=64,
+        lin_encoding_size=32,
         output_size=64,
         num_group=10,
         group_size=64,

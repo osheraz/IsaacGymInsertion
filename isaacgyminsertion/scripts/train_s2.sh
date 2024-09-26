@@ -1,7 +1,7 @@
 #!/bin/bash
 GPUS=${1:-0}
 SEED=${2:-42}
-CACHE=${3:-teacher}
+CACHE=${3:-new_teacher}
 NUM_ENVS=${4:-256}
 HEADLESS=${5:-True}
 
@@ -26,7 +26,7 @@ restore_train=True \
 offline_train.from_offline=False \
 task.grasp_at_init=False \
 offline_train.only_bc=True \
-task.reset_at_success=True \
+task.reset_at_success=False \
 task.reset_at_fails=True \
 train.ppo.obs_info=True \
 train.ppo.img_info=False \

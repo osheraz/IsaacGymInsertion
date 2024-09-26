@@ -133,11 +133,11 @@ sim:
     disable_gravity: True
 
 external_cam:
-  external_cam: True
+  external_cam: False
   pcl_cam: False
-  seg_cam: True
-  depth_cam: True
-  display: True
+  seg_cam: False
+  depth_cam: False
+  display: False
 
   cam_res:
     w: 96
