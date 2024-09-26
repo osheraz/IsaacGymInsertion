@@ -32,9 +32,9 @@ class SegCameraSubscriber:
         self.iou = 0.9
         # Default configurations
         self.table_dims = {"x_min": 10, "y_min": 10, "x_max": 280, "y_max": 250}
-        self.socket_rough_pos = {"x_min": 120, "y_min": 110, "x_max": 280, "y_max": 180}
+        self.socket_rough_pos = {"x_min": 110, "y_min": 70, "x_max": 210, "y_max": 150}
         self.max_dims = {"width": 70, "height": 70}
-        self.socket_max_dims = {"width": 60, "height": 60}
+        self.socket_max_dims = {"width": 80, "height": 60}
         self.socket_min_dims = {"width": 0, "height": 0}
 
         self.min_dims = {"width": 10, "height": 15}
@@ -130,7 +130,7 @@ class SegCameraSubscriber:
             print(e)
             return
 
-    def process_frame(self, frame, display=True):
+    def process_frame(self, frame):
 
         start_time = time.time()
         # Resize the frame
@@ -168,7 +168,8 @@ class SegCameraSubscriber:
         #
         # for b in all_boxes:
         #     cv2.rectangle(frame, (b[0], b[1]), (b[2], b[3]), (0, 255, 0), 2)
-
+        # cv2.imshow("Raw Image", frame)
+        # cv2.waitKey(0)
         if not self.got_socket_mask:
 
             prompt_process = FastSAMPrompt(frame, results, device=self.device)
@@ -180,13 +181,13 @@ class SegCameraSubscriber:
             self.socket_mask = (mask_socket & ~mask_hole).astype(int)
             self.socket_mask *= self.socket_id
             self.original_socket_mask = self.socket_mask.copy()
-            self.img_size = 448 # 896
+            self.img_size = 896 # 896
             self.conf = 0.6
             self.iou = 0.6
             self.got_socket_mask = True
             self.init_success = True
             self.min_dims = {"width": 15, "height": 30}
-            self.max_dims = {"width": 40, "height": 70}
+            self.max_dims = {"width": 60, "height": 100}
 
         try:
             prompt_process = FastSAMPrompt(frame, results, device=self.device)
@@ -198,15 +199,15 @@ class SegCameraSubscriber:
             ann = prompt_process.box_prompt(bbox=smallest)[0]
             self.plug_mask = (masks_to_bool(ann)).astype(int) * self.plug_id
             # self.plug_mask = self.shrink_mask(self.plug_mask.astype(float)).astype(int)
-            self.socket_mask = np.where(self.plug_mask > 0, 0, self.original_socket_mask)
+            # self.socket_mask = np.where(self.plug_mask > 0, 0, self.original_socket_mask)
 
-            self.last_frame = self.plug_mask | self.socket_mask if self.with_socket else self.plug_mask
+            # self.last_frame = self.plug_mask | self.socket_mask if self.with_socket else self.plug_mask
 
-            if display:
+            if self.display:
                 if self.with_socket:
-                    mask = ((self.last_frame == self.plug_id) | (self.last_frame == self.socket_id)).astype(float)
+                    mask = ((self.plug_mask == self.plug_id) | (self.socket_mask == self.socket_id)).astype(float)
                 else:
-                    mask = (self.last_frame == self.plug_id).astype(float)
+                    mask = (self.plug_mask == self.plug_id).astype(float)
 
                 mask = self.shrink_mask(mask)
                 self.mask_3d = numpy.repeat(mask[:, :, numpy.newaxis], 3, axis=2)
@@ -220,7 +221,10 @@ class SegCameraSubscriber:
         except Exception as e:
             print(e)
 
-        return self.last_frame
+        if self.with_socket:
+            return self.plug_mask, self.socket_mask
+        else:
+            return self.plug_mask
 
 
     def shrink_mask(self, mask, shrink_percentage=10):
@@ -259,7 +263,7 @@ class SegCameraSubscriber:
 if __name__ == "__main__":
 
     rospy.init_node('Seg')
-    seg_cam = SegCameraSubscriber()
+    seg_cam = SegCameraSubscriber(display=True)
     rate = rospy.Rate(60)
 
     while not rospy.is_shutdown():

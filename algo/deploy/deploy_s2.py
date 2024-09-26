@@ -61,7 +61,6 @@ class HardwarePlayer:
         self.stats = None
 
         self.rot_tf = RotationTransformer()
-        self.rot_tf_back = RotationTransformer(to_rep='quaternion', from_rep='rotation_6d', )
         self.stud_tf = RotationTransformer(from_rep='matrix', to_rep='rotation_6d')
 
         self.num_envs = 1
@@ -161,7 +160,7 @@ class HardwarePlayer:
             self.pcl_mean_std.eval()
 
         self.student = Student(student_cfg)
-        self.display_obs = False
+        self.display_obs = True
 
         if self.display_obs and self.pcl_info:
             self.fig = plt.figure()
@@ -211,12 +210,15 @@ class HardwarePlayer:
                 self.stats['std'][key] = torch.tensor(stats['std'][key], device=self.device)
         else:
             cprint(f'Restoring student from: {fn}', 'blue', attrs=['bold'])
+
             checkpoint = torch.load(fn, map_location=self.device)
             self.stud_obs_mean_std = RunningMeanStd((self.full_config.offline_train.model.linear.input_size,)).to(
                 self.device)
             self.stud_obs_mean_std.load_state_dict(checkpoint['stud_obs_mean_std'])
             self.pcl_mean_std.load_state_dict(checkpoint['pcl_mean_std'])
             self.student.model.load_state_dict(checkpoint['student'])
+            cprint(f'stud_obs_mean_std: {self.stud_obs_mean_std.running_mean}', 'green', attrs=['bold'])
+            cprint(f'pcl_mean_std: {self.pcl_mean_std.running_mean}', 'green', attrs=['bold'])
 
     def compile_inference(self, precision="high"):
         torch.set_float32_matmul_precision(precision)
@@ -574,7 +576,7 @@ class HardwarePlayer:
 
         obs = torch.cat([eef_pos,
                          action,
-                         noisy_delta_pos
+                         # noisy_delta_pos
                          ], dim=-1)
 
         self.obs_queue[:, :-self.num_observations] = self.obs_queue[:, self.num_observations:]
@@ -585,18 +587,17 @@ class HardwarePlayer:
         obs_dict = {'obs': self.obs_buf}
 
         if with_stud:
-            eef_stud = torch.cat((self.fingertip_centered_pos, quat2R(self.fingertip_centered_quat).reshape(1, -1)),
-                                 dim=-1)
-            # fix bug
-            eef_stud = torch.cat((self.fingertip_centered_pos,
-                                  self.stud_tf.forward(eef_stud[:, 3:].reshape(eef_stud.shape[0], 3, 3))), dim=1)
+            # eef_stud = torch.cat((self.fingertip_centered_pos, quat2R(self.fingertip_centered_quat).reshape(1, -1)),
+            #                      dim=-1)
+            # # fix bug
+            # eef_stud = torch.cat((self.fingertip_centered_pos,
+            #                       self.stud_tf.forward(eef_stud[:, 3:].reshape(eef_stud.shape[0], 3, 3))), dim=1)
 
             # if self.train_config.from_offline:
             #     eef_stud = (eef_stud - self.stats["mean"]["eef_pos_rot6d"]) / self.stats["std"]["eef_pos_rot6d"]
             #     socket_pos = (self.socket_pos - self.stats["mean"]["socket_pos"][:3]) / self.stats["std"]["socket_pos"][:3]
 
-            obs_stud = torch.cat([eef_stud,
-                                  noisy_delta_pos,
+            obs_stud = torch.cat([eef_pos,
                                   action,
                                   ], dim=-1)
 
@@ -777,7 +778,7 @@ class HardwarePlayer:
         # Apply the action
         if regulize_force:
             ft = torch.tensor(self.env.get_ft(), device=self.device, dtype=torch.float).unsqueeze(0)
-            condition_mask = torch.abs(ft[:, 2]) > 2.0
+            condition_mask = torch.abs(ft[:, 2]) > 1.5
             actions[:, 2] = torch.where(condition_mask, torch.clamp(actions[:, 2], min=0.0), actions[:, 2])
             # actions = torch.where(torch.abs(ft) > 1.5, torch.clamp(actions, min=0.0), actions)
             # print("Error:", np.round(self.plug_pos_error[0].cpu().numpy(), 4))

@@ -173,16 +173,99 @@ def unnormalize_data(ndata, stats):
 from pathlib import Path
 from tqdm import tqdm
 import random
+import pytorch3d.transforms as pt
+import functools
+from typing import Union
+from scipy.spatial.transform import Rotation
 
+class RotationTransformer:
+    valid_reps = [
+        'axis_angle',
+        'euler_angles',
+        'quaternion',
+        'rotation_6d',
+        'matrix'
+    ]
+
+    def __init__(self,
+                 from_rep='quaternion',
+                 to_rep='rotation_6d',
+                 from_convention=None,
+                 to_convention=None):
+        """
+        Valid representations
+
+        Always use matrix as intermediate representation.
+        """
+        assert from_rep != to_rep
+        assert from_rep in self.valid_reps
+        assert to_rep in self.valid_reps
+        if from_rep == 'euler_angles':
+            assert from_convention is not None
+        if to_rep == 'euler_angles':
+            assert to_convention is not None
+
+        forward_funcs = list()
+        inverse_funcs = list()
+
+        if from_rep != 'matrix':
+            funcs = [
+                getattr(pt, f'{from_rep}_to_matrix'),
+                getattr(pt, f'matrix_to_{from_rep}')
+            ]
+            if from_convention is not None:
+                funcs = [functools.partial(func, convention=from_convention)
+                         for func in funcs]
+            forward_funcs.append(funcs[0])
+            inverse_funcs.append(funcs[1])
+
+        if to_rep != 'matrix':
+            funcs = [
+                getattr(pt, f'matrix_to_{to_rep}'),
+                getattr(pt, f'{to_rep}_to_matrix')
+            ]
+            if to_convention is not None:
+                funcs = [functools.partial(func, convention=to_convention)
+                         for func in funcs]
+            forward_funcs.append(funcs[0])
+            inverse_funcs.append(funcs[1])
+
+        inverse_funcs = inverse_funcs[::-1]
+
+        self.forward_funcs = forward_funcs
+        self.inverse_funcs = inverse_funcs
+
+    @staticmethod
+    def _apply_funcs(x: Union[np.ndarray, torch.Tensor], funcs: list) -> Union[np.ndarray, torch.Tensor]:
+        x_ = x
+        if isinstance(x, np.ndarray):
+            x_ = torch.from_numpy(x)
+        x_: torch.Tensor
+        for func in funcs:
+            x_ = func(x_)
+        y = x_
+        if isinstance(x, np.ndarray):
+            y = x_.numpy()
+        return y
+
+    def forward(self, x: Union[np.ndarray, torch.Tensor]
+                ) -> Union[np.ndarray, torch.Tensor]:
+        return self._apply_funcs(x, self.forward_funcs)
+
+    def inverse(self, x: Union[np.ndarray, torch.Tensor]
+                ) -> Union[np.ndarray, torch.Tensor]:
+        return self._apply_funcs(x, self.inverse_funcs)
 
 class DataNormalizer:
     def __init__(self, cfg, file_list):
         self.cfg = cfg
         self.normalize_keys = self.cfg.normalize_keys
         self.normalization_path = self.cfg.normalize_file
-        self.normalize_dict = {"mean": {}, "std": {}}
+        self.stats = {"mean": {}, "std": {}}
         self.file_list = file_list
         self.remove_failed_trajectories()
+        self.rot_tf = RotationTransformer(from_rep='matrix', to_rep='rotation_6d')
+        self.rot_tf_from_quat = RotationTransformer()
         self.run()
 
     def ensure_directory_exists(self, path):
@@ -213,7 +296,7 @@ class DataNormalizer:
         """Load the normalization file if it exists, otherwise create it."""
         if os.path.exists(self.normalization_path):
             with open(self.normalization_path, 'rb') as f:
-                self.normalize_dict = pickle.load(f)
+                self.stats = pickle.load(f)
         else:
             self.create_normalization_file()
 
@@ -241,16 +324,22 @@ class DataNormalizer:
     def calculate_normalization_values(self, data, norm_key):
         """Calculate mean and standard deviation for the given data."""
         if norm_key == 'eef_pos':
-            from algo.models.diffusion.utils import convert_trajectory
-            data = convert_trajectory(data)
-        self.normalize_dict['mean'][norm_key] = np.mean(data, axis=0)
-        self.normalize_dict['std'][norm_key] = np.std(data, axis=0)
+            eef_pos_rot6d = np.concatenate((data[:, :3],
+                                            self.rot_tf.forward(data[:, 3:].reshape(data.shape[0], 3, 3))), axis=1)
+            self.stats['mean']['eef_pos'] = np.mean(eef_pos_rot6d, axis=0)
+            self.stats['std']['eef_pos'] = np.std(eef_pos_rot6d, axis=0)
+            # self.stats['mean'][norm_key] = np.mean(data, axis=0)
+            # self.stats['std'][norm_key] = np.std(data, axis=0)
+        else:
+            # Handle other normalization obs_keys
+            self.stats['mean'][norm_key] = np.mean(data, axis=0)
+            self.stats['std'][norm_key] = np.std(data, axis=0)
 
     def save_normalization_file(self):
         """Save the normalization values to file."""
         print(f'Saved new normalization file at: {self.normalization_path}')
         with open(self.normalization_path, 'wb') as f:
-            pickle.dump(self.normalize_dict, f)
+            pickle.dump(self.stats, f)
 
     def run(self):
         """Main method to run the process."""
@@ -319,6 +408,7 @@ class Dataset(torch.utils.data.Dataset):
         self.tactile_transform = tactile_transform
         self.cond_on_grasp = cond_on_grasp
         self.get_img = get_img
+        self.rot_tf = RotationTransformer(from_rep='matrix', to_rep='rotation_6d')
 
         episode_ends = []
 
@@ -376,6 +466,12 @@ class Dataset(torch.utils.data.Dataset):
 
             nsample[k] = torch.tensor(nsample[k], dtype=torch.float32)
 
+            if k == 'eef_pos':
+                eef_pos = nsample[k]
+                eef_pos_rot6d = np.concatenate((eef_pos[:, :3],
+                                                self.rot_tf.forward(eef_pos[:, 3:].reshape(eef_pos.shape[0], 3, 3))), axis=1)
+                nsample[k] = eef_pos_rot6d
+
             if self.state_noise > 0.0:
                 # add noise to the state
                 nsample[k] = nsample[k] + torch.randn_like(nsample[k]) * self.state_noise
@@ -401,9 +497,6 @@ class Dataset2(torch.utils.data.Dataset):
 
         self.state_noise = state_noise
         self.count = 0
-        # self.memmap_loader = None
-        # if "memmap_loader_path" in data.keys():
-        #     self.memmap_loader = MemmapLoader(data["memmap_loader_path"])
         self.to_torch = lambda x: torch.from_numpy(x).float()
 
         self.representation_type = representation_type

@@ -5,6 +5,8 @@ import os
 import pickle
 import sys
 import time
+import re
+
 from hydra.utils import to_absolute_path
 
 mypath = os.path.dirname(os.path.realpath(__file__))
@@ -19,6 +21,7 @@ import torch
 from algo.models.diffusion.dataset import Dataset, DataNormalizer
 from algo.models.diffusion.diffusion_policy import DiffusionPolicy
 from algo.models.diffusion.models import GaussianNoise, ImageEncoder, StateEncoder
+from algo.models.transformer.point_mae import MaskedPointNetEncoder
 from torch import nn
 from torch.nn import ModuleList
 from torchvision import transforms
@@ -30,20 +33,22 @@ import imageio
 import json
 
 RT_DIM = {
-    "eef_pos": 12,  # 3 + 9
+    "eef_pos": 9,  # 3 + 6
     "arm_joints": 7,
     "hand_joints": 6,
     "action": 6,
     "img": (180, 320),
     "tactile": (64, 64),
+    "pcl": (400, 3),
 }
 
 TEST_INPUT = {
-    "eef_pos": torch.zeros(12),
+    "eef_pos": torch.zeros(9),
     "arm_joints": torch.zeros(7),
     "hand_joints": torch.zeros(12),
     "img": torch.zeros(3, 180, 320),
     "tactile": torch.zeros(3, 64, 64),
+    "pcl": torch.zeros(400, 3),
     "control": torch.zeros(6),
 }
 
@@ -61,18 +66,6 @@ def define_transforms(channel, color_jitter, width, height, crop_width,
                     antialias=True,
                 ),
                 transforms.ColorJitter(brightness=0.1),
-            )
-        else:
-            # with depth, only jitter the rgb part
-            downsample = lambda x: transforms.Resize(
-                (width, height),
-                interpolation=transforms.InterpolationMode.BILINEAR,
-                antialias=True,
-            )(
-                torch.concat(
-                    [transforms.ColorJitter(brightness=0.1)(x[:, :3]), x[:, 3:]],
-                    axis=1,
-                )
             )
 
     # Not using color jitter, only downsample the image
@@ -141,9 +134,11 @@ class Agent:
                 "hand_joints": 64,
                 "arm_joints": 64,
                 "img": 128,
+                "pcl": 128,
                 "tactile": 128,
             },
             dropout={
+                "pcl": 0.0,
                 "eef_pos": 0.0,
                 "hand_joints": 0.0,
                 "arm_joints": 0.0,
@@ -151,7 +146,7 @@ class Agent:
                 "tactile": 0.0,
             },
             action_dim=6,
-            representation_type=["eef_pos", "hand_joints", "arm_joints", "img", "tactile"],
+            representation_type=["eef_pos", "hand_joints", "arm_joints", "img", "tactile", "pcl"],
             pred_horizon=4,
             obs_horizon=1,
             action_horizon=2,
@@ -293,6 +288,12 @@ class Agent:
             encoders["img"] = image_encoder
             obs_dim += image_dim
 
+        if "pcl" in self.representation_type:
+            pcl_encoder = MaskedPointNetEncoder(output_sizes["pcl"])
+            pcl_dim = output_sizes["pcl"]
+            encoders["pcl"] = pcl_encoder
+            obs_dim += pcl_dim
+
         if "tactile" in self.representation_type:
             if use_same_encoder:
                 # Use the same tactile encoder for all fingers
@@ -384,7 +385,6 @@ class Agent:
         # allocate memory for the image
         data_path = data_path[0]
         data_len = done_idx
-        import re
         def natural_sort_key(s):
             return [int(text) if text.isdigit() else text.lower() for text in re.split('([0-9]+)', s)]
 
@@ -404,12 +404,10 @@ class Agent:
         # Only use rgb
         def process_rgb(d):
             rgb = np.load(d)['tactile']
-            # rgb = d.astype(np.float32)
-            # rgb = np.moveaxis(rgb, -1, 1)
             if H == 112 and W == 224 and self.tactile_color_jitter == False:
                 rgb = self.tactile_downsample(
                     torch.tensor(rgb)
-                )  # [camera_num, 3, self.img_width, self.img_height]
+                )  # [finger_num, 3, self.img_width, self.img_height]
             else:
                 rgb = torch.tensor(rgb)
 
@@ -541,7 +539,6 @@ class Agent:
         self.policy.to_ema()
         self.eval(eval_traj, save_path=self.save_path)
 
-
     def get_train_action(self, data):
         act = self.get_eval_action(data)
         return np.stack(act)
@@ -568,7 +565,7 @@ class Agent:
 
         action = self.get_eval_action(data)
 
-        print("GETTING EVAL OBSERVATION", end="\r")
+        print("GETTING EVAL TRAJECTORY", end="\r")
         obs = self.get_observation(data, data_path, B)
         obs_list = []
 
@@ -579,9 +576,11 @@ class Agent:
 
         if "tactile" in self.representation_type:
             # transfer image type to float32
-            obs["tactile"] = obs["tactile"].float()
-            obs["tactile"] = self.tactile_eval_transform(obs["tactile"])
-
+            tactile = obs["tactile"].float()
+            T, F, C, W, H = tactile.shape
+            tactile = tactile.view(-1, C, W, H)
+            tactile = self.tactile_eval_transform(tactile)
+            obs["tactile"] = tactile.view(T, F, C, *tactile.shape[2:])
         for i in range(B):
             obs_list.append({rt: obs[rt][i] for rt in self.representation_type})
 
@@ -622,7 +621,7 @@ class Agent:
             current_action_gt = action_gt[i]
 
             # Render the frame
-            frame = render_frame(fig, canvas, ax_3d, ax_2d, ax_action_diff, eef_pos.reshape(-1, 12)[:, :3], tactile_imgs,
+            frame = render_frame(fig, canvas, ax_3d, ax_2d, ax_action_diff, eef_pos.reshape(-1, 9)[:, :3], tactile_imgs,
                                  current_action_gt, current_action)
             frames.append(frame)
 
@@ -727,6 +726,7 @@ class Runner:
                 "arm_joints": cfg.dropout_rate,
                 "img": cfg.img_dropout_rate,
                 "tactile": cfg.tactile_dropout_rate,
+                "pcl": cfg.pcl_dropout_rate
             },
             output_sizes={
                 "eef_pos": cfg.eef_pos_output_size,
@@ -734,8 +734,9 @@ class Runner:
                 "arm_joints": cfg.arm_joints_output_size,
                 "img": cfg.image_output_size,
                 "tactile": cfg.tactile_output_size,
+                "pcl": cfg.pcl_output_size
             },
-            representation_type=cfg.representation_type.split("-"),
+            representation_type=cfg.representation_type,
             identity_encoder=cfg.identity_encoder,
             obs_horizon=cfg.obs_horizon,
             pred_horizon=cfg.pred_horizon,
@@ -802,7 +803,7 @@ class Runner:
                 print('Loading trajectories from', data_path)
                 traj_list = glob(os.path.join(data_path, '*/*/obs/*.npz'))
                 normalizer = DataNormalizer(cfg, traj_list)
-                agent.stats = normalizer.normalize_dict
+                agent.stats = normalizer.stats
                 agent.save_stats(model_path)
 
             print(f"using data path {data_path}")

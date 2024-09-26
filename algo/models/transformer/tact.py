@@ -6,7 +6,7 @@ import torch.nn.functional as F
 import math
 from typing import List, Dict, Optional, Tuple, Callable
 from algo.models.transformer.pointnets import PointNet
-from algo.models.transformer.point_mae import MaskedPointNetEncoder
+# from algo.models.transformer.point_mae import MaskedPointNetEncoder
 
 class DepthOnlyFCBackbone32x64(nn.Module):
     def __init__(self, latent_dim, output_activation=None, num_channel=1):

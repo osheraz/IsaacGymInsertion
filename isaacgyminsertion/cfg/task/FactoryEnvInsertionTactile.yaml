@@ -32,12 +32,13 @@ external_cam:
     use_point: False
     use_real: True
 
-    cam_pos_noise: 0.01
+    cam_pos_noise: 0.00
     cam_point_noise: 0.01
-    cam_ori_error: 5.0
+    cam_ori_error: 0.0
 
-    real_cam_pos: [0.878866671023, -0.0135121315558, 0.21377820942]
-    real_cam_ori: [-0.537003511513, -0.571492980771, 0.446935960448,0.430431468194]
+    real_cam_pos: [0.73114316, -0.01966786, 0.1629284]
+    real_cam_ori: [0.60720, 0.6214361, -0.3433028,-0.3567319]
+
 
 env:
     env_name: 'FactoryEnvInsertionTactile'

@@ -46,7 +46,7 @@ class DiffusionPolicy:
         pred_horizon,
         action_horizon,
         action_dim,
-        representation_type,  # pos, img, tactile, eef
+        representation_type,  # pos, img, tactile, eef, pcl
         encoders,
         num_diffusion_iters=100,
         without_sampling=False,
@@ -189,6 +189,15 @@ class DiffusionPolicy:
                                     *nsample.shape[:2], -1
                                 )
                                 features.append(image_features)
+                            if data_key == "pcl":
+                                # [B, obs_horizon, N, 3]
+                                pcl_features = [
+                                    nets[f"{data_key}_encoder"](nsample.flatten(end_dim=1))
+                                ]
+                                pcl_features = pcl_features.reshape(
+                                    *nsample.shape[:2], -1
+                                )
+                                features.append(pcl_features)
                             if data_key == "tactile":
                                 # [B, obs_horizon, F, C, H, W]
                                 tactile = [nsample[:, :, i] for i in range(nsample.shape[2])]
@@ -431,7 +440,7 @@ class DiffusionPolicy:
 
         sample = np.stack([convert_to_numpy(x[data_key]) for x in obs_deque]) #.squeeze()
         if data_key != "img" and (data_key != "tactile" or not self.binarize_tactile) and data_key != "action":
-            # image & tactile & action is already normalized
+            # image & tactile & action are already normalized
             sample = normalize_data(sample, stats=stats, key=data_key)
 
         sample = (
@@ -462,6 +471,14 @@ class DiffusionPolicy:
 
                     image_features = image_features.reshape(*sample.shape[:2], -1)
                     features.append(image_features)
+                if data_key == "pcl":
+                    # [1, obs_horizon, N, 3]
+                    pcl_features = self.ema_nets[f"{data_key}_encoder"](
+                            sample.flatten(end_dim=1)
+                        )
+
+                    pcl_features = pcl_features.reshape(*sample.shape[:2], -1)
+                    features.append(pcl_features)
                 if data_key == "tactile":
 
                     tactile = [

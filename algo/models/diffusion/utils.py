@@ -49,17 +49,13 @@ def save_metrics(save_path, mse, norm_mse):
 def convert_trajectory(eef_pos):
     assert eef_pos.shape[1] == 7, f"Invalid shape for eef_pos: {eef_pos.shape}"
 
-    # Extract xyz and quaternions
     xyz = eef_pos[:, :3]  # (N, 3)
     quats = eef_pos[:, 3:]  # (N, 4)
 
-    # Convert quaternions to rotation matrices
     rotation_matrices = quat2R(quats)  # (N, 3, 3)
 
-    # Flatten rotation matrices
     rotation_matrices_flattened = rotation_matrices.reshape(rotation_matrices.shape[0], -1)  # (N, 9)
 
-    # Concatenate xyz with flattened rotation matrices
     eef_pos_converted = np.concatenate([xyz, rotation_matrices_flattened], axis=1)  # (N, 12)
 
     return eef_pos_converted

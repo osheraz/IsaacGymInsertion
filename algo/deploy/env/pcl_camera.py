@@ -132,10 +132,15 @@ class PointCloudGenerator:
         )
         self.ext_mat = torch.inverse(torch.Tensor(view_matrix)).to(device)
 
-        self.ext_mat = torch.tensor([[-0.05271196, 0.22903687, - 0.97198949, 0.87886667],
-                                     [0.99853808, 0.02375095, - 0.04855511, - 0.01351213],
-                                     [0.01196477, - 0.97312795, - 0.229954, 0.21377821],
+        self.ext_mat = torch.tensor([[-0.00807917,  0.50974899, -0.86028524,  0.73114316],
+                                     [ 0.99961725,  0.02688096,  0.00654023, -0.01966786],
+                                     [ 0.02645917, -0.85990312, -0.50977106,  0.1729284],
                                      [0., 0., 0., 1.]], dtype=torch.float32).to(device)
+
+        # [[-0.00807917  0.50974899 -0.86028524  0.73114316]
+        #  [ 0.99961725  0.02688096  0.00654023 -0.01966786]
+        #  [ 0.02645917 -0.85990312 -0.50977106  0.1629284 ]
+        #  [ 0.          0.          0.          1.        ]]
 
         def get_rotation_matrix(roll, pitch, yaw):
             roll, pitch, yaw = torch.tensor(roll), torch.tensor(pitch), torch.tensor(yaw)
@@ -149,11 +154,10 @@ class PointCloudGenerator:
                                dtype=torch.float32)
             return torch.mm(R_z, torch.mm(R_y, R_x))
 
-        roll, pitch, yaw = -0.04, -0.02, 0.0
+        roll, pitch, yaw = -0.00, -0.00, 0.0
         rotation_tilt = get_rotation_matrix(roll, pitch, yaw)
         new_rot = torch.mm(rotation_tilt, self.ext_mat[:3, :3])
         self.ext_mat = torch.cat([torch.cat([new_rot, self.ext_mat[:3, 3:]], dim=1), self.ext_mat[3:, :]], dim=0).T
-
 
         self.int_mat_T_inv = torch.inverse(self.int_mat.T).to(device)
         self.depth_max = depth_max
@@ -216,7 +220,7 @@ class ZedPointCloudSubscriber:
 
     def __init__(self, topic='/zedm/zed_node/point_cloud/cloud_registered', display=False):
 
-        self.far_clip = 0.4
+        self.far_clip = 0.5
         self.near_clip = 0.1
         self.dis_noise = 0.00
         self.w = 320  # 320
@@ -258,6 +262,8 @@ class ZedPointCloudSubscriber:
             self._pointcloud_subscriber = rospy.Subscriber(self._topic_name, PointCloud2, self.pointcloud_callback,
                                                            queue_size=2)
             self._check_pointcloud_ready()
+
+        self.timer = rospy.Timer(rospy.Duration(0.1), self.timer_callback)
 
     def update_plot(self):
 
@@ -303,7 +309,6 @@ class ZedPointCloudSubscriber:
         try:
             frame = image_msg_to_numpy(msg)
             self.last_frame = cv2.resize(frame, (self.w, self.h), interpolation=cv2.INTER_AREA)
-            self.to_object_pcl()
         except Exception as e:
             print(e)
 
@@ -312,10 +317,11 @@ class ZedPointCloudSubscriber:
         if self.with_seg:
             # seg = self.seg.process_frame(self.seg.get_raw_frame())
             # seg = cv2.resize(seg, (640, 360), interpolation=cv2.INTER_NEAREST)
+            p_mask, s_mask = seg[0], seg[1]
             if seg is not None:
 
                 if self.with_socket and not self.got_socket:
-                    socket_mask = (seg == self.seg.socket_id).astype(float)
+                    socket_mask = (s_mask == self.seg.socket_id).astype(float)
                     # socket_mask = self.seg.shrink_mask(socket_mask)
                     proc_socket = self.pcl_gen.convert(frame * socket_mask)
                     proc_socket = self.process_pointcloud(proc_socket)
@@ -331,7 +337,7 @@ class ZedPointCloudSubscriber:
                 if self.with_socket:
                     self.pointcloud_socket_pub.publish_pointcloud(self.proc_socket)
 
-                self.last_plug_mask = (seg == self.seg.plug_id).astype(float)
+                self.last_plug_mask = (p_mask == self.seg.plug_id).astype(float)
 
             else:
                 print('Cant find the object')
@@ -443,7 +449,7 @@ class ZedPointCloudSubscriber:
         x = points[:, 0]
         y = points[:, 1]
         z = points[:, 2]
-        valid1 = (z >= 0.001) & (z <= 0.2)
+        valid1 = (z >= -0.1) & (z <= 0.2)
         valid2 = (x >= 0.2) & (x <= 0.6)
         valid3 = (y >= -0.4) & (y <= 0.4)
 
@@ -482,18 +488,24 @@ class ZedPointCloudSubscriber:
         return self.last_frame
 
     def to_object_pcl(self):
+        rgb = self.seg.get_raw_frame()
         depth = self.get_last_depth()
-        seg = self.seg.process_frame(self.seg.get_raw_frame())
+
+        seg = self.seg.process_frame(rgb)
         self.to_pcl(depth, seg)
 
         return self.last_cloud
+
+    def timer_callback(self, event):
+        # Called periodically by the timer
+        self.to_object_pcl()
 
 if __name__ == "__main__":
     rospy.init_node('ZedPointCloudPub')
     pcl = ZedPointCloudSubscriber()
     # pointcloud_pub = PointCloudPublisher()
-    rate = rospy.Rate(10)
+    rate = rospy.Rate(30)
 
     while not rospy.is_shutdown():
-        pcl.to_object_pcl()
+        # pcl.to_object_pcl()
         rate.sleep()
