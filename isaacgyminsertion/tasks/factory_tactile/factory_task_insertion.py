@@ -1168,7 +1168,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.far_from_goal_buf[:] = torch.norm(self.plug_pos - self.socket_pos, p=2, dim=-1) > 1.0
 
         # self.degrasp_buf[:] |= fingertips_dist
-        if self.cfg_task.reset_at_fails and False:
+        if self.cfg_task.reset_at_fails:
             self.reset_buf[:] |= self.degrasp_buf[:]
             self.reset_buf[:] |= self.far_from_goal_buf[:]
 

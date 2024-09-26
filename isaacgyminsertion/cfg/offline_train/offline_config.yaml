@@ -81,7 +81,7 @@ train:
 model:
   # linear embedding
   linear:
-    input_size: 18
+    input_size: 15
 
   use_img: True
   use_seg: True

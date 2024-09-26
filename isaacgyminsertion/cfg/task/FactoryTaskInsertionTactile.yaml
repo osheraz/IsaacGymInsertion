@@ -121,7 +121,7 @@ env:
     num_points_goal: 400
     merge_goal_pcl: False
     merge_socket_pcl: True
-    include_all_pcl: True
+    include_all_pcl: False
     relative_pcl: False
 
     record_video: True
@@ -175,7 +175,7 @@ randomize:
 
 rl:
 
-    pos_action_scale: [0.005, 0.005, 0.005]
+    pos_action_scale: [0.01, 0.01, 0.01]
     rot_action_scale: [0.05, 0.05, 0.05]
 
     force_action_scale: [1.0, 1.0, 1.0]

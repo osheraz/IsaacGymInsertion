@@ -6,6 +6,7 @@ import torch.nn.functional as F
 import math
 from typing import List, Dict, Optional, Tuple, Callable
 from algo.models.transformer.pointnets import PointNet
+from algo.models.transformer.point_mae import MaskedPointNetEncoder
 
 class DepthOnlyFCBackbone32x64(nn.Module):
     def __init__(self, latent_dim, output_activation=None, num_channel=1):
@@ -268,6 +269,7 @@ class MultiModalModel(BaseModel):
         self.tactile_encoder_type = tactile_encoder
         self.img_encoder_type = img_encoder
         self.seg_encoder_type = seg_encoder
+        self.pcl_conf = pcl_conf
 
         num_features = 0
 
@@ -335,23 +337,26 @@ class MultiModalModel(BaseModel):
 
         if include_pcl:
 
-            # {'num_sample_plug':  self.task_cfg.task.env.num_points,
-            #                         'num_sample_hole': self.task_cfg.task.env.num_points_socket,
-            #                         'num_sample_goal': self.task_cfg.task.env.num_points_goal,
-            #                         'merge_socket':  self.task_cfg.task.env.merge_socket_pcl,
-            #                         'merge_goal':  self.task_cfg.task.env.merge_goal_pcl,
-            #                         'relative': False
-            #                         }
+            pcl_objects = 1
+            self.pcl_encoder = nn.ModuleDict()
+            # self.pcl_encoder['plug_encoder'] = MaskedPointNetEncoder(lin_encoding_size)
+            self.pcl_encoder['plug_encoder'] = PointNet()
 
-            self.p_channel = 3
             if pcl_conf['merge_socket']:
-                self.p_channel += 3
+                # self.pcl_encoder['socket_encoder'] = MaskedPointNetEncoder(lin_encoding_size)
+                self.pcl_encoder['socket_encoder'] = PointNet()
+                pcl_objects += 1
+
             if pcl_conf['merge_goal']:
-                self.p_channel += 3
+                self.pcl_encoder['goal_encoder'] = MaskedPointNetEncoder(lin_encoding_size)
+                pcl_objects += 1
+
+            if pcl_conf['scene_pcl']:
+                self.pcl_encoder['scene_encoder'] = MaskedPointNetEncoder(lin_encoding_size)
+                pcl_objects += 1
 
             self.pcl_encoding_size = 256
-            self.pcl_encoder = PointNet(point_channel=self.p_channel)
-            self.compress_pcl_enc = nn.Linear(self.pcl_encoding_size, self.lin_encoding_size)
+            self.compress_pcl_enc = nn.Linear(pcl_objects * self.pcl_encoding_size, self.lin_encoding_size)
             num_features += 1
 
         if use_transformer and self.context_size > 1:
@@ -506,19 +511,40 @@ class MultiModalModel(BaseModel):
             tokens_list.append(lin_encoding)
 
         if self.include_pcl:
+            pcl_encoding = []
+            NP = self.pcl_conf['num_sample_plug']
 
-            if self.p_channel == 6:
-                obs_pcl = torch.cat([obs_pcl[:, :obs_pcl.shape[1] // 2],
-                                     obs_pcl[:, obs_pcl.shape[1] // 2:]], dim=-1)
-            if self.p_channel == 9:
-                obs_pcl = torch.cat([obs_pcl[:, :obs_pcl.shape[1] // 3],
-                                     obs_pcl[:, obs_pcl.shape[1] // 3: 2 * obs_pcl.shape[1] // 3],
-                                     obs_pcl[:, 2 * obs_pcl.shape[1] // 3:]
-                                     ], dim=-1)
+            plug_pcl = obs_pcl[:, :NP].contiguous()
+            pcl_encoding.append(self.pcl_encoder['plug_encoder'](plug_pcl))
 
-            pcl_encoding, _ = self.pcl_encoder(obs_pcl)
+            if self.pcl_conf['merge_socket']:
+                NH = self.pcl_conf['num_sample_hole']
+                socket_pcl = obs_pcl[:, NP: NP + NH].contiguous()
+                pcl_encoding.append(self.pcl_encoder['socket_encoder'](socket_pcl))
+                NP += NH
+
+            if self.pcl_conf['merge_goal']:
+                NG = self.pcl_conf['num_sample_goal']
+                goal_pcl = obs_pcl[:, NP: NP + NG].contiguous()
+                pcl_encoding.append(self.pcl_encoder['goal_encoder'](goal_pcl))
+                NP += NG
+
+            if self.pcl_conf['scene_pcl']:
+                NA = self.pcl_conf['num_sample_all']
+                all_pcl = obs_pcl[:, NP: NP + NA].contiguous()
+                pcl_encoding.append(self.pcl_encoder['scene_encoder'](all_pcl))
+
+            pcl_encoding = torch.cat(pcl_encoding, dim=-1)
 
             pcl_encoding = self.compress_pcl_enc(pcl_encoding)
+
+            # pcl_encoding = self.pcl_encoder(obs_pcl)
+            # obs_pcl = torch.cat([obs_pcl[:, :obs_pcl.shape[1] // 2],
+            #                      obs_pcl[:, obs_pcl.shape[1] // 2:]], dim=-1)
+            # obs_pcl = torch.cat([obs_pcl[:, :obs_pcl.shape[1] // 3],
+            #                      obs_pcl[:, obs_pcl.shape[1] // 3: 2 * obs_pcl.shape[1] // 3],
+            #                      obs_pcl[:, 2 * obs_pcl.shape[1] // 3:]
+            #                      ], dim=-1)
 
             if len(pcl_encoding.shape) == 2:
                 pcl_encoding = pcl_encoding.unsqueeze(1)

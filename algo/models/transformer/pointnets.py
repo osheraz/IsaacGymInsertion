@@ -39,7 +39,7 @@ class PointNet(nn.Module):  # actually pointnet
         # Local
         x = self.local_mlp(x)
         x, indices = torch.max(x, dim=1)
-        return x, indices
+        return x
 
 
 class PointNetMedium(nn.Module):  # actually pointnet

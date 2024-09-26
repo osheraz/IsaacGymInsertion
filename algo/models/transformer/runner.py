@@ -86,8 +86,10 @@ class Runner:
             pcl_conf = {'num_sample_plug':  self.task_cfg.task.env.num_points,
                         'num_sample_hole': self.task_cfg.task.env.num_points_socket,
                         'num_sample_goal': self.task_cfg.task.env.num_points_goal,
+                        'num_sample_all': self.task_cfg.task.env.num_points_goal,
                         'merge_socket':  self.task_cfg.task.env.merge_socket_pcl,
                         'merge_goal':  self.task_cfg.task.env.merge_goal_pcl,
+                        'scene_pcl': self.task_cfg.task.env.include_all_pcl,
                         'relative': False
                         }
 

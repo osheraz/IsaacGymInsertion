@@ -380,12 +380,6 @@ class ExtrinsicAdapt(object):
             if self.display_obs:
                 pcl_to_display = pcl.reshape((obs['pcl'].shape[0], -1, 3))
             pcl = self.pcl_mean_std(pcl.reshape(-1, 3)).reshape((obs['pcl'].shape[0], -1, 3))
-            # pcl = pcl.reshape((obs['pcl'].shape[0], -1, 3))
-
-            # if self.pcl_channel == 6:
-            #     NP = self.task_config.env.num_points
-            #     NS = self.task_config.env.num_points_socket
-            #     NG = self.task_config.env.num_points_goal
 
         if student_obs is not None:
             if self.stats is not None and self.train_config.from_offline:
@@ -635,7 +629,7 @@ class ExtrinsicAdapt(object):
                 # loss_action = loss_action_fn(torch.clamp(mu, -1, 1),
                 #                              torch.clamp(batched_obs['teacher_actions'].detach(), -1, 1))
                 weights = torch.ones(6, device=self.device)
-                # weights[2] = 0.1
+                weights[2] = 0.1
                 loss_action = (torch.clamp(mu, -1, 1) - torch.clamp(batched_obs['teacher_actions'].detach(), -1,
                                                                     1)) ** 2
 

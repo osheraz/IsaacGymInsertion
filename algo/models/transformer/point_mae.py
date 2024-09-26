@@ -79,6 +79,7 @@ class Group(nn.Module):  # FPS + KNN
         idx_base = torch.arange(0, batch_size, device=xyz.device).view(-1, 1, 1) * num_points
         idx = idx + idx_base
         idx = idx.view(-1)
+        # neighborhood = xyz.view(batch_size * num_points, -1)[idx, :]
         neighborhood = xyz.view(batch_size * num_points, -1)[idx, :]
         neighborhood = neighborhood.view(batch_size, self.num_group, self.group_size, 3).contiguous()
         # normalize
@@ -199,6 +200,7 @@ class MaskedEncoder(nn.Module):
 
 class MaskedPointNetEncoder(nn.Module):
     def __init__(self,
+                 lin_encoding_size,
                  output_size=64,
                  num_group=10,
                  group_size=64,
@@ -214,7 +216,7 @@ class MaskedPointNetEncoder(nn.Module):
                                             embed_dim=output_size)
 
         self.skip_group = skip_group
-        self.fc = nn.Linear(int(num_group * (1 - mask_ratio)) * output_size, 256)
+        self.fc = nn.Linear(int(num_group * (1 - mask_ratio)) * output_size, lin_encoding_size)
 
     def forward(self, xyz):
         if self.skip_group:
@@ -240,10 +242,11 @@ class MaskedPointNetEncoder(nn.Module):
         return x_vis, mask
 
 if __name__ == "__main__":
-    B, N = 4, 1024  # Batch size 4, 1024 points per batch
+    B, N = 256, 400  # Batch size 4, 1024 points per batch
     point_cloud = torch.randn(B, N, 3).cuda()  # Random point cloud
 
     masked_pointnet_encoder = MaskedPointNetEncoder(
+        lin_encoding_size=64,
         output_size=64,
         num_group=10,
         group_size=64,
@@ -251,5 +254,6 @@ if __name__ == "__main__":
         mask_type='rand',
     ).cuda()
 
+    print(point_cloud.shape)
     output = masked_pointnet_encoder(point_cloud)
     print(output.shape)

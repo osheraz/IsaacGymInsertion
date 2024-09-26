@@ -156,7 +156,7 @@ class PointCloudAugmentations:
         if not pointcloud_batch.shape[0]:
             return pointcloud_batch
 
-        pointcloud_batch = self.random_noise(pointcloud_batch, pcl_noise)
+        # pointcloud_batch = self.random_noise(pointcloud_batch, pcl_noise)
         # pointcloud_batch = self.random_rotate(pointcloud_batch, angle, axes)
         # pointcloud_batch = self.add_outliers(pointcloud_batch)
         pointcloud_batch = self.batch_random_dropout(pointcloud_batch)
