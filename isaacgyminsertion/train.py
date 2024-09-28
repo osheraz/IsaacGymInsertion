@@ -133,7 +133,7 @@ def run(cfg: DictConfig):  # , config_path: Optional[str] = None
                 f.write(OmegaConf.to_yaml(cfg))
 
         if cfg.restore_train:
-            agent.restore_train(cfg.train.load_path)
+            agent.restore_train(cfg.train.load_path, cfg.restore_student)
         agent.train()
 
     cprint("Finished", "green", attrs=["bold"])

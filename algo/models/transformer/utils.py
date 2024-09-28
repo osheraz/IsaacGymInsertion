@@ -218,22 +218,16 @@ class Masking(nn.Module):
 
 def define_tactile_transforms(width, height, crop_width, crop_height,
                               img_patch_size=16, img_gaussian_noise=0.0, img_masking_prob=0.0):
+
     downsample = transforms.Resize((width, height), interpolation=transforms.InterpolationMode.BILINEAR)
 
     transform = nn.Sequential(
         downsample,
         transforms.RandomCrop((crop_width, crop_height)),
-        v2.RandomErasing(p=0.4, scale=(0.02, 0.1), ratio=(0.3, 3.3), value=-0.5, inplace=False),
-        v2.RandomErasing(p=0.4, scale=(0.02, 0.1), ratio=(0.3, 3.3), value=0, inplace=False),
+        # v2.RandomErasing(p=0.4, scale=(0.02, 0.1), ratio=(0.3, 3.3), value=-0.5, inplace=False),
+        # v2.RandomErasing(p=0.4, scale=(0.02, 0.1), ratio=(0.3, 3.3), value=0, inplace=False),
         v2.GaussianBlur(kernel_size=5, sigma=(0.01, 0.1)),
-        v2.RandomRotation(degrees=5)
-    )
-
-    mask_transform = nn.Sequential(
-        downsample,
-        transforms.RandomCrop((crop_width, crop_height)),
-        v2.GaussianBlur(kernel_size=5, sigma=(0.01, 0.1)),
-        v2.RandomRotation(degrees=5)
+        v2.RandomRotation(degrees=3)
     )
 
     # Add gaussian noise to the image
@@ -241,10 +235,6 @@ def define_tactile_transforms(width, height, crop_width, crop_height,
         transform = nn.Sequential(
             transform,
             GaussianNoise(img_gaussian_noise),
-        )
-        mask_transform = nn.Sequential(
-            mask_transform,
-            GaussianNoise(img_gaussian_noise * 2),
         )
 
     def mask_img(x):

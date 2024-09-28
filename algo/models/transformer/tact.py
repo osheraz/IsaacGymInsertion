@@ -429,7 +429,7 @@ class MultiModalModel(BaseModel):
 
                         # currently, the size is [batch_size, self.context_size, self.tactile_encoding_size]
                 elif self.tactile_encoder_type == "depth":
-                    for finger in fingers:
+                    for finger in fingers:  # in stack_tactile there is only 1
                         # get the observation encoding
                         tactile_encoding = self.tactile_encoder(finger)
                         tactile_encoding = tactile_encoding.reshape((self.context_size, -1, self.tactile_encoding_size))

@@ -881,16 +881,15 @@ class ExtrinsicAdapt(object):
         # TODO
         pass
 
-    def restore_train(self, fn):
+    def restore_train(self, fn, restore_student=False):
         checkpoint = torch.load(fn)
-        # cprint('Restoring train with teacher')
         cprint(f'Restoring train with teacher: {fn}', 'red', attrs=['bold'])
         self.agent.load_state_dict(checkpoint['model'])
         self.running_mean_std.load_state_dict(checkpoint['running_mean_std'])
         self.priv_mean_std.load_state_dict(checkpoint['priv_mean_std'])
         self.set_eval()
 
-        if self.train_config.from_offline:
+        if restore_student:
             stud_fn = fn.replace('stage1_nn/last.pth', 'stage2_nn/last_stud.pth')
             self.restore_student(stud_fn, from_offline=self.train_config.from_offline)
 
@@ -939,7 +938,8 @@ class ExtrinsicAdapt(object):
             checkpoint = torch.load(fn)
             self.stud_obs_mean_std.load_state_dict(checkpoint['stud_obs_mean_std'])
             self.pcl_mean_std.load_state_dict(checkpoint['pcl_mean_std'])
-            self.student.model.load_state_dict(checkpoint['student'])
+            cprint(f'Non-Strict Loading!', 'red', attrs=['bold'])
+            self.student.model.load_state_dict(checkpoint['student'], strict=False)
             cprint(f'stud_obs_mean_std: {self.stud_obs_mean_std.running_mean}', 'green', attrs=['bold'])
             cprint(f'pcl_mean_std: {self.pcl_mean_std.running_mean}', 'green', attrs=['bold'])
 

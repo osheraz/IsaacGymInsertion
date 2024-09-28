@@ -43,6 +43,8 @@ train_tactile: False # flag for real offline
 
 # used to set checkpoint path
 restore_train: False
+restore_student: False
+
 checkpoint: 'outputs/teacher/stage1_nn/last.pth'
 # set sigma when restoring network
 sigma: ''
