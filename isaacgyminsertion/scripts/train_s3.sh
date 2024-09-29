@@ -24,6 +24,7 @@ task.env.numEnvs=${NUM_ENVS} \
 multi_gpu=False \
 restore_train=True \
 restore_student=True \
+phase=3 \
 offline_train.from_offline=False \
 task.grasp_at_init=False \
 offline_train.only_bc=True \

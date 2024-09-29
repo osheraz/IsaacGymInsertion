@@ -14,7 +14,7 @@ class PointNet(nn.Module):  # actually pointnet
         # NOTE: we require the output dim to be 256, in order to match the pretrained weights
         super(PointNet, self).__init__()
 
-        print(f'PointNetSmall')
+        # print(f'PointNetSmall')
         in_channel = point_channel
         mlp_out_dim = 256
         self.local_mlp = nn.Sequential(

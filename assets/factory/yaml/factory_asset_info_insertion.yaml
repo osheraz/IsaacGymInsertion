@@ -38,7 +38,7 @@ square_peg_hole_32mm_loose:
         length: 0.0762
         density: 8000.0
         friction: 0.5
-        scale: 1.1
+        scale: 1.085
     square_hole_32mm:
         urdf_path: 'factory_square_hole_32mm'
         width: 0.0324364
@@ -71,7 +71,7 @@ yellow_round_peg_2in:
         length: 0.0762
         density: 500.0
         friction: 0.5
-        scale: 1.08
+        scale: 1.04
     round_hole_2in:
         urdf_path: 'green_round_hole_2in'
         diameter: 0.05105
@@ -123,7 +123,7 @@ small_triangle:
         length: 0.0762
         density: 2000.0
         friction: 0.5
-        scale: 1.2
+        scale: 1.17
     red_triangle_hole:
         urdf_path: 'small_red_triangle_hole'
         width: 0.04949

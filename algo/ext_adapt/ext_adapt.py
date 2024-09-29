@@ -295,7 +295,18 @@ class ExtrinsicAdapt(object):
             p.requires_grad = False
 
         self.optim = torch.optim.Adam(self.student.model.parameters(), lr=1e-3, weight_decay=1e-6)
-        print([m for m in self.student.model.modules()])
+
+        def recurse(module, indent=0):
+            print("  " * indent + f"{module.__class__.__name__}:")
+            for name, child in module.named_children():
+                if not name.isdigit():
+                    print("  " * (indent + 1) + f"{name}:")
+                recurse(child, indent + 2)
+            for name, param in module.named_parameters(recurse=False):
+                status = " (requires_grad=True)" if param.requires_grad else " (requires_grad=False)"
+                print("  " * (indent + 1) + f"{name}: {param.__class__.__name__}{status}")
+
+        recurse(self.student.model)
         print('--------')
 
         # ---- Training Misc
@@ -353,6 +364,12 @@ class ExtrinsicAdapt(object):
                 self.stud_obs_mean_std.train()
             if self.pcl_mean_std:
                 self.pcl_mean_std.train()
+
+    def update_student_alpha(self, steps, max_steps=1e6, init_alpha=0.01, final_alpha=1.0):
+
+        alpha = min(init_alpha + (final_alpha - init_alpha) * (steps / max_steps), 1.0)
+        # self.student.model.alpha = alpha
+        cprint(f'Update model alpha: {alpha}', 'blue', attrs=['bold'])
 
     def process_obs(self, obs, obj_id=2, socket_id=3, distinct=True):
 
@@ -537,7 +554,9 @@ class ExtrinsicAdapt(object):
             self.storage.update_data('student_actions', n, student_actions)
 
             # do env step
-            if self.agent_steps < 1e6:
+            if self.agent_steps < 1e6 and not self.tactile_info:
+                actions = torch.clamp(res_dict['actions'], -1.0, 1.0)
+            elif self.agent_steps < 5e4 and self.tactile_info:
                 actions = torch.clamp(res_dict['actions'], -1.0, 1.0)
             else:
                 actions = torch.clamp(student_actions, -1.0, 1.0)
@@ -650,13 +669,14 @@ class ExtrinsicAdapt(object):
                 if self.multi_gpu:
                     # batch all_reduce ops: see https://github.com/entity-neural-network/incubator/pull/220
                     all_grads_list = []
-                    for param in self.student.model.parameters():
+
+                    for param in filter(lambda p: p.requires_grad, self.student.model.parameters()):
                         if param.grad is not None:
                             all_grads_list.append(param.grad.view(-1))
                     all_grads = torch.cat(all_grads_list)
                     dist.all_reduce(all_grads, op=dist.ReduceOp.SUM)
                     offset = 0
-                    for param in self.student.model.parameters():
+                    for param in filter(lambda p: p.requires_grad, self.student.model.parameters()):
                         if param.grad is not None:
                             param.grad.data.copy_(
                                 all_grads[offset: offset + param.numel()].view_as(
@@ -666,7 +686,7 @@ class ExtrinsicAdapt(object):
                             )
                             offset += param.numel()
 
-                torch.nn.utils.clip_grad_norm_(self.student.model.parameters(), 0.5)
+                torch.nn.utils.clip_grad_norm_(filter(lambda p: p.requires_grad, self.student.model.parameters()), 0.5)
 
                 self.optim.step()
 
@@ -677,7 +697,9 @@ class ExtrinsicAdapt(object):
     def train(self):
         _t = time.time()
         _last_t = time.time()
-        test_every = 5e5
+        update_alpha = 1e4
+        test_every = 5e5 if not self.tactile_info else 5e4
+        self.update_alpha_every = 0
         self.epoch_num = 0
         self.next_test_step = test_every
         self.obs = self.env.reset(reset_at_success=True, reset_at_fails=True)
@@ -752,6 +774,11 @@ class ExtrinsicAdapt(object):
                         os.remove(prev_best_ckpt.replace('.pth', '_stud.pth'))
                     self.best_rewards = mean_rewards
                     self.save(os.path.join(self.nn_dir, f'best_reward_{mean_rewards:.2f}'))
+
+                if self.tactile_info and self.agent_steps > self.update_alpha_every:
+                    self.update_student_alpha(steps=self.agent_steps)
+                    self.update_alpha_every += update_alpha
+
                 self.success_rate = mean_success
 
         print('max steps achieved')
@@ -809,9 +836,9 @@ class ExtrinsicAdapt(object):
             self.optim.zero_grad()
             loss = (self.action_scale * loss_action) + (self.latent_scale * loss_latent)
             loss.backward()
-            torch.nn.utils.clip_grad_norm_(self.student.model.parameters(), 0.5)
+            torch.nn.utils.clip_grad_norm_(filter(lambda p: p.requires_grad, self.student.model.parameters()), 0.5)
 
-            for param in self.student.model.parameters():
+            for param in filter(lambda p: p.requires_grad, self.student.model.parameters()):
                 if param.grad is not None:
                     param.grad = replace_nan_with_zero(param.grad)
 
@@ -881,7 +908,7 @@ class ExtrinsicAdapt(object):
         # TODO
         pass
 
-    def restore_train(self, fn, restore_student=False):
+    def restore_train(self, fn, restore_student=False, phase=None):
         checkpoint = torch.load(fn)
         cprint(f'Restoring train with teacher: {fn}', 'red', attrs=['bold'])
         self.agent.load_state_dict(checkpoint['model'])
@@ -891,7 +918,7 @@ class ExtrinsicAdapt(object):
 
         if restore_student:
             stud_fn = fn.replace('stage1_nn/last.pth', 'stage2_nn/last_stud.pth')
-            self.restore_student(stud_fn, from_offline=self.train_config.from_offline)
+            self.restore_student(stud_fn, from_offline=self.train_config.from_offline, phase=phase)
 
     def restore_test(self, fn):
         # load teacher for gt label, should act with student
@@ -906,7 +933,7 @@ class ExtrinsicAdapt(object):
         self.set_eval()
         self.set_student_eval()
 
-    def restore_student(self, fn, from_offline=False, phase=1):
+    def restore_student(self, fn, from_offline=False, phase=None):
 
         if from_offline:
             if phase == 2:
@@ -938,10 +965,25 @@ class ExtrinsicAdapt(object):
             checkpoint = torch.load(fn)
             self.stud_obs_mean_std.load_state_dict(checkpoint['stud_obs_mean_std'])
             self.pcl_mean_std.load_state_dict(checkpoint['pcl_mean_std'])
-            cprint(f'Non-Strict Loading!', 'red', attrs=['bold'])
-            self.student.model.load_state_dict(checkpoint['student'], strict=False)
             cprint(f'stud_obs_mean_std: {self.stud_obs_mean_std.running_mean}', 'green', attrs=['bold'])
             cprint(f'pcl_mean_std: {self.pcl_mean_std.running_mean}', 'green', attrs=['bold'])
+
+            cprint(f'Non-strict student loading!', 'red', attrs=['bold'])
+            self.student.model.load_state_dict(checkpoint['student'], strict=False)
+            if phase == 3:
+                for param in self.student.model.parameters():
+                    param.requires_grad = False
+                for param in self.student.model.new_decoder.parameters():
+                    param.requires_grad = True
+                self.optim = torch.optim.Adam(
+                    filter(lambda p: p.requires_grad, self.student.model.parameters()),
+                    lr=1e-3,
+                    weight_decay=1e-6
+                )
+                cprint(f'phase three (only new decoder)', 'red', attrs=['bold'])
+                for name, param in self.student.model.named_parameters():
+                    if param.requires_grad:
+                        cprint(f"Layer: {name} | Requires Grad: {param.requires_grad}", 'red', attrs=['bold'])
 
     def save(self, name):
 

@@ -202,7 +202,7 @@ class Renderer:
             gel_scale = 1.02
             gel_trimesh.vertices[:, 0] *= gel_scale  # Scale x
             gel_trimesh.vertices[:, 1] *= gel_scale  # Scale y
-            gel_trimesh.vertices[:, 2] *= gel_scale  # Scale z
+            # gel_trimesh.vertices[:, 2] *= gel_scale  # Scale z
 
             self.sensor_vertices = gel_trimesh.vertices
             self.sensor_normals = gel_trimesh.vertex_normals

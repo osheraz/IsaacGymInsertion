@@ -253,6 +253,8 @@ class MultiModalModel(BaseModel):
         self.img_encoding_size = img_encoding_size
         self.seg_encoding_size = seg_encoding_size
         self.additional_lin = additional_lin
+        self.alpha = 0.0
+
         if additional_lin:
             num_lin_features += additional_lin
         self.num_lin_features = num_lin_features
@@ -289,7 +291,7 @@ class MultiModalModel(BaseModel):
             else:
                 self.compress_tac_enc = nn.Identity()
 
-            num_features += 1 if self.stack_tactile else 3
+            tac_features = 1 if self.stack_tactile else 3
 
         if include_img:
             if img_encoder.split("-")[0] == "efficientnet":
@@ -371,12 +373,31 @@ class MultiModalModel(BaseModel):
                 num_layers=mha_num_attention_layers,
                 ff_dim_factor=mha_ff_dim_factor,
             )
+
+            if include_tactile:
+                self.new_decoder = MultiLayerDecoder(
+                    embed_dim=self.tactile_encoding_size,
+                    seq_len=self.context_size * (num_features+tac_features),
+                    output_layers=[256, 128, 64, 32],
+                    nhead=mha_num_attention_heads,
+                    num_layers=mha_num_attention_layers,
+                    ff_dim_factor=mha_ff_dim_factor,
+                )
         else:
             self.decoder = MLPDecoder(
                 input_dim=self.context_size * num_features * self.tactile_encoding_size,
                 hidden_layers=[256, 128, 64],
                 output_dim=32
             )
+            if include_tactile:
+                self.new_decoder = MultiLayerDecoder(
+                    embed_dim=self.tactile_encoding_size,
+                    seq_len=self.context_size * (num_features+tac_features),
+                    output_layers=[256, 128, 64, 32],
+                    nhead=mha_num_attention_heads,
+                    num_layers=mha_num_attention_layers,
+                    ff_dim_factor=mha_ff_dim_factor,
+                )
 
         self.latent_predictor = nn.Sequential(
             nn.Linear(32, self.num_output_params),
@@ -439,7 +460,7 @@ class MultiModalModel(BaseModel):
                 raise NotImplementedError
 
             obs_features = torch.cat(obs_features, dim=1)
-            tokens_list.append(obs_features)
+            # tokens_list.append(obs_features)
 
         if self.include_img:
             # img
@@ -556,8 +577,15 @@ class MultiModalModel(BaseModel):
 
         # concatenate the goal encoding to the observation encoding
         tokens = torch.cat(tokens_list, dim=1)
-        # currently, the size is [batch_size, context, embed_dim]
         final_repr = self.decoder(tokens)
+
+        if self.include_tactile:
+            tokens_list.append(obs_features)
+            new_tokens = torch.cat(tokens_list, dim=1)
+            new_repr = self.new_decoder(new_tokens)
+            final_repr += self.alpha * new_repr
+
+        # currently, the size is [batch_size, context, embed_dim]
         # currently, the size is [batch_size, 32]
         latent_pred = self.latent_predictor(final_repr)
 

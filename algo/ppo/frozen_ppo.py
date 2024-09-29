@@ -462,7 +462,7 @@ class PPO(object):
 
         torch.save(weights, f'{name}.pth')
 
-    def restore_train(self, fn):
+    def restore_train(self, fn, **kwargs):
         cprint(f"Restore teacher from {fn}", 'red', attrs=['bold'])
 
         if not fn:
