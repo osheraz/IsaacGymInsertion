@@ -368,7 +368,7 @@ class ExtrinsicAdapt(object):
     def update_student_alpha(self, steps, max_steps=1e6, init_alpha=0.01, final_alpha=1.0):
 
         alpha = min(init_alpha + (final_alpha - init_alpha) * (steps / max_steps), 1.0)
-        # self.student.model.alpha = alpha
+        self.student.model.alpha = alpha
         cprint(f'Update model alpha: {alpha}', 'blue', attrs=['bold'])
 
     def process_obs(self, obs, obj_id=2, socket_id=3, distinct=True):
@@ -438,10 +438,12 @@ class ExtrinsicAdapt(object):
         self.set_student_eval()
 
         steps = 0
-        obs_dict = self.env.reset(reset_at_success=False, reset_at_fails=False)
+        reset_at_success = True
+        obs_dict = self.env.reset(reset_at_success=reset_at_success, reset_at_fails=True)
         total_dones, num_success = 0, 0
 
         while steps < total_steps:
+
             steps += 1
             self.log_video()
             self.it += 1
@@ -476,7 +478,7 @@ class ExtrinsicAdapt(object):
             if save_trajectory:
                 self.data_logger.log_trajectory_data(mu, latent, done, save_trajectory=save_trajectory)
 
-            if self.env.progress_buf[0] == self.env.max_episode_length - 1:
+            if self.env.progress_buf[0] == self.env.max_episode_length - 1 and not reset_at_success:
                 num_success += self.env.success_reset_buf[done.nonzero()].sum()
                 total_dones += len(done.nonzero())
                 success_rate = num_success / total_dones
@@ -489,6 +491,15 @@ class ExtrinsicAdapt(object):
                                 steps=self.agent_steps,
                                 success_rate=success_rate,
                                 log_file=os.path.join(self.nn_dir, f'log.json'))
+            else:
+                num_success = self.env.test_reset_buf.sum().item()
+                total_dones = len(self.env.test_reset_buf)
+                success_rate = num_success / total_dones
+
+            if (steps == self.env.max_episode_length - 1 or success_rate >= 1.0) and reset_at_success:
+                self.test_success = success_rate
+                print(f'[Test] success rate: {success_rate}, max_steps: {self.env.progress_buf.max()}')
+                return
 
         if self.test_success > self.best_success and self.agent_steps > 1e5:
             cprint(f'saved model at {self.agent_steps} Success {self.test_success:.2f}', 'green', attrs=['bold'])
@@ -701,7 +712,7 @@ class ExtrinsicAdapt(object):
         test_every = 5e5 if not self.tactile_info else 5e4
         self.update_alpha_every = 0
         self.epoch_num = 0
-        self.next_test_step = test_every
+        self.next_test_step = 0
         self.obs = self.env.reset(reset_at_success=True, reset_at_fails=True)
         self.agent_steps = (self.batch_size if not self.multi_gpu else self.batch_size * self.rank_size)
         if self.multi_gpu:
@@ -871,9 +882,7 @@ class ExtrinsicAdapt(object):
 
             if self.agent_steps >= self.next_test_step and self.task_config.reset_at_success:
                 cprint(f'Disabling resets and evaluating', 'blue', attrs=['bold'])
-                self.task_config.reset_at_success = False
                 self.test(total_steps=self.env.cfg_task.rl.max_episode_length)
-                self.task_config.reset_at_success = True
                 self.set_student_train()
                 cprint(f'Resume training', 'blue', attrs=['bold'])
                 self.next_test_step += test_every
@@ -981,9 +990,9 @@ class ExtrinsicAdapt(object):
                     weight_decay=1e-6
                 )
                 cprint(f'phase three (only new decoder)', 'red', attrs=['bold'])
-                for name, param in self.student.model.named_parameters():
-                    if param.requires_grad:
-                        cprint(f"Layer: {name} | Requires Grad: {param.requires_grad}", 'red', attrs=['bold'])
+                # for name, param in self.student.model.named_parameters():
+                #     if param.requires_grad:
+                #         cprint(f"Layer: {name} | Requires Grad: {param.requires_grad}", 'red', attrs=['bold'])
 
     def save(self, name):
 

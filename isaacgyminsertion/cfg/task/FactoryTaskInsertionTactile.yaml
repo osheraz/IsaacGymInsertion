@@ -12,6 +12,7 @@ grasp_at_init: False
 collect_rotate: False
 reset_at_success: False
 reset_at_fails: False
+rand_inits: False
 
 grasp_logger:
     total_grasp: 2000

@@ -2,8 +2,8 @@
 GPUS=${1:-0}
 SEED=${2:-42}
 CACHE=${3:-new_teacher}
-NUM_ENVS=${4:-16}
-HEADLESS=${5:-True}
+NUM_ENVS=${4:-10}
+HEADLESS=${5:-False}
 
 
 array=( $@ )
@@ -25,10 +25,11 @@ multi_gpu=False \
 restore_train=True \
 restore_student=True \
 phase=3 \
+task.rand_inits=True \
 offline_train.from_offline=False \
 task.grasp_at_init=False \
 offline_train.only_bc=True \
-task.reset_at_success=False \
+task.reset_at_success=True \
 task.reset_at_fails=True \
 train.ppo.obs_info=True \
 train.ppo.img_info=False \

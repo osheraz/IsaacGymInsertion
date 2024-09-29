@@ -340,6 +340,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.degrasp_buf = torch.zeros_like(self.reset_buf)
         self.far_from_goal_buf = torch.zeros_like(self.reset_buf)
         self.success_reset_buf = torch.zeros_like(self.reset_buf)
+        self.test_reset_buf = torch.zeros_like(self.reset_buf)
 
         # state tensors
         self.plug_hand_pos, self.plug_hand_quat = torch.zeros((self.num_envs, 3), device=self.device), \
@@ -1146,7 +1147,14 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         if (self.cfg_task.data_logger.collect_data or
                 self.cfg_task.data_logger.collect_test_sim or
                 self.cfg_task.reset_at_success):
+
             self.reset_buf[:] |= self.success_reset_buf[:]
+
+            new_success = self.success_reset_buf & ~self.test_reset_buf & (self.progress_buf < self.max_episode_length - 1)
+            self.test_reset_buf |= new_success
+            self.test_reset_buf[:] = torch.where(self.progress_buf[:] >= (self.cfg_task.rl.max_episode_length - 1),
+                                                 torch.zeros_like(self.reset_buf),
+                                                 self.test_reset_buf)
 
         # If max episode length has been reached
         self.timeout_reset_buf[:] = torch.where(self.progress_buf[:] >= (self.cfg_task.rl.max_episode_length - 1),
@@ -1154,6 +1162,8 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                                                 self.reset_buf)
 
         self.reset_buf[:] = self.timeout_reset_buf[:]
+
+
 
         # check is object is grasped and reset if not
         roll, pitch, _ = get_euler_xyz(self.plug_quat.clone())
@@ -1670,13 +1680,15 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         if (not self.cfg_task.grasp_at_init and
                 self.reset_flag and
-                self.cfg_task.reset_at_success):
+                self.cfg_task.reset_at_success and
+                self.cfg_task.rand_inits):
+
             print('\n\n\n Rand Inits \n\n\n')
             self.reset_flag = False
             # Cuz it's easier to shuffle here
             self.progress_buf[env_ids] = torch.randint(
                 low=0,
-                high=self.cfg_task.rl.max_episode_length + 1,
+                high=self.cfg_task.rl.max_episode_length,
                 size=(len(env_ids),),
                 device=self.device,
                 dtype=torch.long
