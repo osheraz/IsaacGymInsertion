@@ -980,9 +980,12 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                                                                      self.rot_axes[pcl_noise],
                                                                      self.pcl_pos_noise[pcl_noise])
 
-                    zero_mask = torch.all(self.socket_pcl == 0, dim=(1, 2))
+                    zero_mask = torch.all(self.socket_pcl == 0, dim=2)
                     zero_pcl = torch.nonzero(zero_mask).squeeze()
                     restarted = torch.where(self.got_socket == 0)[0]
+
+                    if zero_pcl.numel() > 0:
+                        zero_pcl = zero_pcl[:, 0] if zero_pcl.dim() > 1 else zero_pcl
 
                     if restarted.numel() == 0:
                         restarted = zero_pcl
@@ -1207,8 +1210,8 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         # self.degrasp_buf[:] |= fingertips_dist
         if self.cfg_task.reset_at_fails:
-            self.reset_buf[:] |= self.degrasp_buf[:]
-            self.reset_buf[:] |= self.far_from_goal_buf[:]
+            self.reset_buf[1:] |= self.degrasp_buf[1:]
+            self.reset_buf[1:] |= self.far_from_goal_buf[1:]
 
         if ((self.cfg_task.data_logger.collect_data or
              self.cfg_task.data_logger.collect_test_sim) and not self.cfg_task.collect_rotate):

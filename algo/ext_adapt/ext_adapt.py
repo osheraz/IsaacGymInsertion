@@ -127,8 +127,13 @@ def replace_nan_with_zero(tensor):
     return tensor
 
 
-def display_obs(depth, seg, pcl, ax=None):
+def display_obs(depth, seg, pcl, tactile, ax=None):
     env_id = 2
+
+    if tactile is not None:
+        tactile = tactile[env_id, 0, ...].reshape(3, 32, 64).cpu().detach().numpy()
+        horizontal_stack = np.hstack([tactile[i] for i in range(3)])
+        cv2.imshow('Tactile Sequence ', horizontal_stack)
 
     if depth is not None:
         depth = depth[env_id, 0, ...].reshape(1, 54, 96)
@@ -424,7 +429,7 @@ class ExtrinsicAdapt(object):
         }
 
         if self.display_obs:
-            display_obs(img, seg, pcl_to_display, ax=self.ax)
+            display_obs(img, seg, pcl_to_display, tactile, ax=self.ax)
 
         return student_dict
 

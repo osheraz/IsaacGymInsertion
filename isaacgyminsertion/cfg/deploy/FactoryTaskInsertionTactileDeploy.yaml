@@ -30,7 +30,7 @@ rl:
 #    pos_action_scale: [0.009, 0.009, 0.004]
 #    rot_action_scale: [0.01, 0.01, 0.01]
     pos_action_scale: [ 0.007, 0.007, 0.007 ]
-    rot_action_scale: [ 0.02, 0.02, 0.02 ]
+    rot_action_scale: [ 0.01, 0.01, 0.01 ]
     clamp_rot: ${...task.rl.clamp_rot}
     clamp_rot_thresh: ${...task.rl.clamp_rot_thresh}
 

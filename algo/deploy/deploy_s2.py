@@ -160,7 +160,7 @@ class HardwarePlayer:
             self.pcl_mean_std.eval()
 
         self.student = Student(student_cfg)
-        self.display_obs = True
+        self.display_obs = False
 
         if self.display_obs and self.pcl_info:
             self.fig = plt.figure()

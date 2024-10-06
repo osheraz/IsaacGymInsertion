@@ -49,7 +49,7 @@ def find_config_folder(base_folder):
 @hydra.main(config_name="config", config_path="./cfg")
 def main(config: DictConfig):
 
-    teacher = 'teacher'
+    teacher = 'new_teacher'
     config.checkpoint = to_absolute_path(f'outputs/{teacher}/stage1_nn/last.pth')
     config.offline_train.train.student_ckpt_path = to_absolute_path(f'outputs/{teacher}/student/checkpoints/model_last.pt')
     config.offline_train.model.transformer.tact_path = to_absolute_path(f'outputs/{teacher}/tact/checkpoints/model_last.pt')
