@@ -314,8 +314,8 @@ class PPO(object):
         #     'performance/EnvStepFPS': self.agent_steps / self.data_collect_time,
         # })
 
-        # for k, v in self.extra_info.items():
-        #     self.writer.add_scalar(f'{k}', v, self.agent_steps)
+        for k, v in self.extra_info.items():
+            self.writer.add_scalar(f'{k}', v, self.agent_steps)
         #     wandb.log({
         #         f'{k}': v,
         #     })
