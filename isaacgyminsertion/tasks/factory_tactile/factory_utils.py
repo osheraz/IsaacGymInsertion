@@ -91,6 +91,7 @@ class PointCloudAugmentations:
         self.dropout_ratio = dropout_ratio
 
     def random_noise(self, pointcloud_batch, pcl_noise, noise_prob=0.3):
+
         B, N, _ = pointcloud_batch.shape
         pointwise_noise = torch.clamp(torch.randn_like(pointcloud_batch) * self.sigma, -self.noise_clip, self.noise_clip)
         noise_mask = (torch.rand(B, N, device=pointcloud_batch.device) < noise_prob).unsqueeze(-1).float()

@@ -975,17 +975,11 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                         depths=socket_depth.reshape(self.num_envs, self.res[1], self.res[0]),
                         filter_func=filter_pts, sample_num=self.cfg_task.env.num_points_socket).to(self.device)
 
-                    socket_pts[pcl_noise] = self.pcl_process.augment(socket_pts[pcl_noise],
-                                                                     self.rot_pcl_angle[pcl_noise],
-                                                                     self.rot_axes[pcl_noise],
-                                                                     self.pcl_pos_noise[pcl_noise])
-
-                    zero_mask = torch.all(self.socket_pcl == 0, dim=2)
+                    zero_mask = torch.all(torch.abs(self.socket_pcl) <= 0.05, dim=2)
+                    zero_mask = torch.all(zero_mask, dim=1)
                     zero_pcl = torch.nonzero(zero_mask).squeeze()
-                    restarted = torch.where(self.got_socket == 0)[0]
 
-                    if zero_pcl.numel() > 0:
-                        zero_pcl = zero_pcl[:, 0] if zero_pcl.dim() > 1 else zero_pcl
+                    restarted = torch.where(self.got_socket == 0)[0]
 
                     if restarted.numel() == 0:
                         restarted = zero_pcl
@@ -995,6 +989,11 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                         if zero_pcl.dim() == 0:
                             zero_pcl = zero_pcl.unsqueeze(0)
                         restarted = torch.cat((restarted, zero_pcl)).unique()
+
+                    socket_pts[pcl_noise] = self.pcl_process.augment(socket_pts[pcl_noise],
+                                                                     self.rot_pcl_angle[pcl_noise],
+                                                                     self.rot_axes[pcl_noise],
+                                                                     self.pcl_pos_noise[pcl_noise])
 
                     self.socket_pcl[restarted] = socket_pts[restarted]
                     self.got_socket[restarted] = 1
