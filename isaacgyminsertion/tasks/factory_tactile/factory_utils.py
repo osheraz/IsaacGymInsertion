@@ -81,9 +81,10 @@ class DepthImageProcessor:
     #     return resized_images
 
 class PointCloudAugmentations:
-    def __init__(self, num_points=400, sigma=0.003, noise_clip=0.002, rotate_range=(-10, 10), scale_range=(0.8, 1.2), dropout_ratio=0.2):
+    def __init__(self, num_points=400, sigma=0.001, noise_clip=0.001, rotate_range=(-10, 10), scale_range=(0.8, 1.2), dropout_ratio=0.2):
         self.num_points = num_points
         self.sigma = sigma
+        self.const_noise = 0.000
         self.noise_clip = noise_clip
         self.rotate_range = rotate_range
         self.scale_range = scale_range
@@ -94,7 +95,7 @@ class PointCloudAugmentations:
         pointwise_noise = torch.clamp(torch.randn_like(pointcloud_batch) * self.sigma, -self.noise_clip, self.noise_clip)
         noise_mask = (torch.rand(B, N, device=pointcloud_batch.device) < noise_prob).unsqueeze(-1).float()
         pointcloud_batch += pointwise_noise * noise_mask
-        constant_noise = torch.clamp(pcl_noise * self.sigma, -self.noise_clip, self.noise_clip)
+        constant_noise = torch.clamp(pcl_noise * self.const_noise, -self.noise_clip, self.noise_clip)
         return pointcloud_batch + constant_noise
 
     def random_rotate(self, pointcloud_batch, angles_rad, axes):
@@ -156,10 +157,10 @@ class PointCloudAugmentations:
         if not pointcloud_batch.shape[0]:
             return pointcloud_batch
 
-        # pointcloud_batch = self.random_noise(pointcloud_batch, pcl_noise)
+        pointcloud_batch = self.random_noise(pointcloud_batch, pcl_noise)
         # pointcloud_batch = self.random_rotate(pointcloud_batch, angle, axes)
         # pointcloud_batch = self.add_outliers(pointcloud_batch)
-        pointcloud_batch = self.batch_random_dropout(pointcloud_batch)
+        # pointcloud_batch = self.batch_random_dropout(pointcloud_batch)
 
         return pointcloud_batch
 

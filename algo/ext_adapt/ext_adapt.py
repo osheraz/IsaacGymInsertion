@@ -128,21 +128,23 @@ def replace_nan_with_zero(tensor):
 
 
 def display_obs(depth, seg, pcl, ax=None):
+    env_id = 2
+
     if depth is not None:
-        depth = depth[0, 0, ...].reshape(1, 54, 96)
+        depth = depth[env_id, 0, ...].reshape(1, 54, 96)
         dp = depth.cpu().detach().numpy()
         dp = np.transpose(dp, (1, 2, 0))
         cv2.imshow('Depth Sequence', dp)
 
     if seg is not None:
-        seg = seg[0, 0, ...].reshape(1, 54, 96)
+        seg = seg[env_id, 0, ...].reshape(1, 54, 96)
         sg = seg.cpu().detach().numpy()
         sg = np.transpose(sg, (1, 2, 0))
         cv2.imshow('Seg Sequence', sg)
 
     if pcl is not None:
         pcl = pcl.cpu().detach().numpy()
-        env_id = 0
+
         N = pcl.shape[1] // 2
         ax.scatter(pcl[env_id, :N, 0],
                    pcl[env_id, :N, 1],
@@ -150,7 +152,7 @@ def display_obs(depth, seg, pcl, ax=None):
         ax.scatter(pcl[env_id, N:, 0],
                    pcl[env_id, N:, 1],
                    pcl[env_id, N:, 2], color='g', s=2)
-        ax.set_xlim([0.3, 0.65])
+        # ax.set_xlim([0.3, 0.65])
         plt.pause(0.0001)
         ax.cla()
 
@@ -241,6 +243,7 @@ class ExtrinsicAdapt(object):
         #     self.pcl_channel += 3
         # if self.task_config.env.merge_socket_pcl:
         #     self.pcl_channel += 3
+
         self.pcl_mean_std = RunningMeanStd((3,)).to(self.device)
         self.pcl_mean_std.train()
 
@@ -438,7 +441,7 @@ class ExtrinsicAdapt(object):
         self.set_student_eval()
 
         steps = 0
-        reset_at_success = True
+        reset_at_success = False
         obs_dict = self.env.reset(reset_at_success=reset_at_success, reset_at_fails=True)
         total_dones, num_success = 0, 0
 
@@ -479,8 +482,8 @@ class ExtrinsicAdapt(object):
                 self.data_logger.log_trajectory_data(mu, latent, done, save_trajectory=save_trajectory)
 
             if self.env.progress_buf[0] == self.env.max_episode_length - 1 and not reset_at_success:
-                num_success += self.env.success_reset_buf[done.nonzero()].sum()
-                total_dones += len(done.nonzero())
+                num_success = self.env.success_reset_buf[done.nonzero()].sum()
+                total_dones = len(done.nonzero())
                 success_rate = num_success / total_dones
                 self.test_success = success_rate
                 print('[Test] success rate:', success_rate)
@@ -498,8 +501,8 @@ class ExtrinsicAdapt(object):
 
             if (steps == self.env.max_episode_length - 1 or success_rate >= 1.0) and reset_at_success:
                 self.test_success = success_rate
-                print(f'[Test] success rate: {success_rate}, max_steps: {self.env.progress_buf.max()}')
-                return
+                print(f'[Test2] success rate: {success_rate}, max_steps: {self.env.progress_buf.max()}')
+                break
 
         if self.test_success > self.best_success and self.agent_steps > 1e5:
             cprint(f'saved model at {self.agent_steps} Success {self.test_success:.2f}', 'green', attrs=['bold'])
@@ -712,8 +715,9 @@ class ExtrinsicAdapt(object):
         test_every = 5e5 if not self.tactile_info else 5e4
         self.update_alpha_every = 0
         self.epoch_num = 0
-        self.next_test_step = 0
-        self.obs = self.env.reset(reset_at_success=True, reset_at_fails=True)
+        self.next_test_step = test_every
+        reset_at_success = True
+        self.obs = self.env.reset(reset_at_success=reset_at_success, reset_at_fails=True)
         self.agent_steps = (self.batch_size if not self.multi_gpu else self.batch_size * self.rank_size)
         if self.multi_gpu:
             torch.cuda.set_device(self.rank)
@@ -761,7 +765,7 @@ class ExtrinsicAdapt(object):
                 if self.agent_steps >= self.next_test_step:
                     cprint(f'Disabling resets and evaluating', 'blue', attrs=['bold'])
                     self.test(total_steps=self.env.cfg_task.rl.max_episode_length)
-                    self.obs = self.env.reset(reset_at_success=True, reset_at_fails=True)
+                    self.obs = self.env.reset(reset_at_success=reset_at_success, reset_at_fails=True)
                     self.set_student_train()
                     self.next_test_step += test_every
                     cprint(f'Resume training', 'blue', attrs=['bold'])
@@ -980,19 +984,18 @@ class ExtrinsicAdapt(object):
             cprint(f'Non-strict student loading!', 'red', attrs=['bold'])
             self.student.model.load_state_dict(checkpoint['student'], strict=False)
             if phase == 3:
-                for param in self.student.model.parameters():
-                    param.requires_grad = False
-                for param in self.student.model.new_decoder.parameters():
-                    param.requires_grad = True
-                self.optim = torch.optim.Adam(
-                    filter(lambda p: p.requires_grad, self.student.model.parameters()),
-                    lr=1e-3,
-                    weight_decay=1e-6
-                )
+                optim_params = []
+                for name, p in self.student.model.named_parameters():
+                    if 'tac' in name or 'new' in name:
+                        optim_params.append(p)
+                    else:
+                        p.requires_grad = False
+
+                self.optim = torch.optim.Adam(optim_params, lr=1e-3, weight_decay=1e-6)
                 cprint(f'phase three (only new decoder)', 'red', attrs=['bold'])
-                # for name, param in self.student.model.named_parameters():
-                #     if param.requires_grad:
-                #         cprint(f"Layer: {name} | Requires Grad: {param.requires_grad}", 'red', attrs=['bold'])
+                for name, param in self.student.model.named_parameters():
+                    if param.requires_grad:
+                        cprint(f"Layer: {name} | Requires Grad: {param.requires_grad}", 'red', attrs=['bold'])
 
     def save(self, name):
 

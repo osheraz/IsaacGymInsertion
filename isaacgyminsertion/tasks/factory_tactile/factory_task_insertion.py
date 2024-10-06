@@ -297,7 +297,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             self.rot_pcl_angle = torch.deg2rad(
                 torch.FloatTensor(self.num_envs).uniform_(*(-self.cfg_task.randomize.pcl_rot,
                                                             self.cfg_task.randomize.pcl_rot)).to(self.device))
-            self.pcl_pos_noise = torch.rand(self.num_envs, 1, 3, device=self.device)
+            self.pcl_pos_noise = torch.randn(self.num_envs, 1, 3, device=self.device)
             self.rot_axes = torch.randint(0, 3, (self.num_envs,), device=self.device)
 
         if self.cfg_task.env.tactile:
@@ -340,6 +340,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.degrasp_buf = torch.zeros_like(self.reset_buf)
         self.far_from_goal_buf = torch.zeros_like(self.reset_buf)
         self.success_reset_buf = torch.zeros_like(self.reset_buf)
+        self.progress_change_tracker = torch.zeros_like(self.reset_buf)
         self.test_reset_buf = torch.zeros_like(self.reset_buf)
 
         # state tensors
@@ -840,16 +841,16 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             # self.hand_joints,          # 6
             # self.plug_hand_pos_diff,   # 3
             # self.plug_hand_quat_diff,  # 4
-            self.socket_tip, # 3
-            self.socket_pos, # 3
-            self.plug_tip,   # 3
-            self.plug_pos,   # 3
-            self.plug_quat,  # 4
-            plug_hand_pos,   # 3
-            plug_hand_quat,  # 4
-            plug_pos_error,  # 3
+            self.socket_tip,  # 3
+            self.socket_pos,  # 3
+            self.plug_tip,    # 3
+            self.plug_pos,    # 3
+            self.plug_quat,   # 4
+            plug_hand_pos,    # 3
+            plug_hand_quat,   # 4
+            plug_pos_error,   # 3
             plug_quat_error,  # 4
-            physics_params,  # 13
+            physics_params,   # 13
             # self.plug_pcd.view(self.num_envs, -1),  # 3 * num_points
         ]
 
@@ -878,7 +879,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                                      img_update,
                                      seg_update,
                                      seg_add_noise,
-                                     pcl_add_noise)
+                                     pcl_add_noise,)
 
         self.frame += 1
         self.obs_buf = self.obs_queue.clone()  # torch.cat(obs_tensors, dim=-1)  # shape = (num_envs, num_observations)
@@ -951,8 +952,8 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                 if self.seg_cam:
                     plug_depth = depth.flatten(start_dim=1) * (seg.flatten(start_dim=1) == 2)
 
-                    if (self.cfg_task.env.merge_socket_pcl or self.cfg_task.env.relative_pcl)\
-                            and not self.got_socket.all():
+                    if ((self.cfg_task.env.merge_socket_pcl or self.cfg_task.env.relative_pcl) and
+                            not self.got_socket.all()):
                         socket_depth = depth.flatten(start_dim=1) * (seg.flatten(start_dim=1) == 3)
                 else:
                     plug_depth = depth.flatten(start_dim=1)
@@ -979,7 +980,19 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                                                                      self.rot_axes[pcl_noise],
                                                                      self.pcl_pos_noise[pcl_noise])
 
+                    zero_mask = torch.all(self.socket_pcl == 0, dim=(1, 2))
+                    zero_pcl = torch.nonzero(zero_mask).squeeze()
                     restarted = torch.where(self.got_socket == 0)[0]
+
+                    if restarted.numel() == 0:
+                        restarted = zero_pcl
+                    elif zero_pcl.numel() > 0:
+                        if restarted.dim() == 0:
+                            restarted = restarted.unsqueeze(0)
+                        if zero_pcl.dim() == 0:
+                            zero_pcl = zero_pcl.unsqueeze(0)
+                        restarted = torch.cat((restarted, zero_pcl)).unique()
+
                     self.socket_pcl[restarted] = socket_pts[restarted]
                     self.got_socket[restarted] = 1
 
@@ -1104,6 +1117,9 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         plug_ori_penalty = torch.norm(self.plug_quat - self.socket_quat, p=2, dim=-1)
         ori_reward = plug_ori_penalty * self.cfg_task.rl.ori_reward_scale
 
+        eef_ori_penalty = torch.norm(self.fingertip_centered_quat - self.gripper_goal_quat, p=2, dim=-1)
+        eef_ori_reward = eef_ori_penalty * self.cfg_task.rl.eef_ori_reward_scale
+
         keypoint_dist = self._get_keypoint_dist()
         keypoint_reward = keypoint_dist * self.cfg_task.rl.keypoint_reward_scale
 
@@ -1114,7 +1130,12 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         distance_reset_buf = (self.far_from_goal_buf | self.degrasp_buf)
         early_reset_reward = distance_reset_buf * self.cfg_task.rl.early_reset_reward_scale
 
-        self.rew_buf[:] = keypoint_reward + engagement_reward + ori_reward + action_reward + action_delta_reward
+        self.rew_buf[:] = (keypoint_reward +
+                           engagement_reward +
+                           ori_reward +
+                           action_reward +
+                           action_delta_reward +
+                           eef_ori_reward)
         self.rew_buf[:] += early_reset_reward
 
         # self.rew_buf[:] += (early_reset_reward * self.timeout_reset_buf)
@@ -1148,7 +1169,12 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                 self.cfg_task.data_logger.collect_test_sim or
                 self.cfg_task.reset_at_success):
 
-            self.reset_buf[:] |= self.success_reset_buf[:]
+            # success_reset = torch.rand(self.num_envs, device=self.device) > 0.5
+            # self.reset_buf[success_reset] |= self.success_reset_buf[success_reset]
+
+            self.progress_change_tracker += self.success_reset_buf
+            reset_mask = (self.progress_change_tracker >= 30)
+            self.reset_buf |= reset_mask
 
             new_success = self.success_reset_buf & ~self.test_reset_buf & (self.progress_buf < self.max_episode_length - 1)
             self.test_reset_buf |= new_success
@@ -1166,16 +1192,18 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
 
         # check is object is grasped and reset if not
-        roll, pitch, _ = get_euler_xyz(self.plug_quat.clone())
+        roll, pitch, yaw = get_euler_xyz(self.plug_quat.clone())
         roll[roll > np.pi] -= 2 * np.pi
         pitch[pitch > np.pi] -= 2 * np.pi
-        self.degrasp_buf[:] = (torch.abs(roll) > 0.4) | (torch.abs(pitch) > 0.4)
+        yaw[yaw > np.pi] -= 2 * np.pi
+
+        self.degrasp_buf[:] = (torch.abs(roll) > 0.3) | (torch.abs(pitch) > 0.3) | (torch.abs(yaw) > 0.3)
 
         fingertips_dist = (torch.norm(self.left_finger_pos - self.fingertip_centered_pos, p=2, dim=-1) < 0.005) & (
                 torch.norm(self.right_finger_pos - self.fingertip_centered_pos, p=2, dim=-1) < 0.005) & (
                                   torch.norm(self.middle_finger_pos - self.fingertip_centered_pos, p=2, dim=-1) < 0.005)
 
-        self.far_from_goal_buf[:] = torch.norm(self.plug_pos - self.socket_pos, p=2, dim=-1) > 1.0
+        self.far_from_goal_buf[:] = torch.norm(self.plug_pos - self.socket_pos, p=2, dim=-1) > 0.3
 
         # self.degrasp_buf[:] |= fingertips_dist
         if self.cfg_task.reset_at_fails:
@@ -1700,6 +1728,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         self.degrasp_buf[env_ids] = 0
         self.success_reset_buf[env_ids] = 0
+        self.progress_change_tracker[env_ids] = 0
         self.far_from_goal_buf[env_ids] = 0
         self.timeout_reset_buf[env_ids] = 0
 
@@ -1731,11 +1760,13 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             rand_angles = torch.FloatTensor(self.num_envs).uniform_(*(-self.cfg_task.randomize.pcl_rot,
                                                                       self.cfg_task.randomize.pcl_rot)).to(self.device)
             self.rot_pcl_angle[env_ids] = torch.deg2rad(rand_angles)[env_ids]
-            self.pcl_pos_noise[env_ids] = torch.rand(self.num_envs, 1, 3, device=self.device)[env_ids]
+            self.pcl_pos_noise[env_ids] = torch.randn(self.num_envs, 1, 3, device=self.device)[env_ids]
             self.rot_axes[env_ids] = torch.randint(0, 3, (self.num_envs,), device=self.device)[env_ids]
             self.pcl_queue[env_ids] *= 0
             self.pcl[env_ids] *= 0
             self.got_socket[env_ids] *= 0
+            if self.cfg_task.env.merge_socket_pcl:
+                self.socket_pcl[env_ids] *= 0
             if self.cfg_task.env.merge_goal_pcl:
                 self.goal_pcl[env_ids] *= 0
         if self.cfg_task.env.compute_contact_gt:

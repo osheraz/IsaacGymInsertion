@@ -1,9 +1,9 @@
 #!/bin/bash
 GPUS=${1:-0}
 SEED=${2:-42}
-CACHE=${3:-new_teacher}
-NUM_ENVS=${4:-16}
-HEADLESS=${5:-False}
+CACHE=${3:-test_teacher}
+NUM_ENVS=${4:-32}
+HEADLESS=${5:-True}
 
 
 array=( $@ )
@@ -33,7 +33,7 @@ train.ppo.obs_info=True \
 train.ppo.img_info=False \
 train.ppo.seg_info=False \
 train.ppo.pcl_info=True \
-task.env.tactile=True \
+task.env.tactile=False \
 task.external_cam.external_cam=True \
 task.external_cam.depth_cam=False \
 task.external_cam.seg_cam=True \

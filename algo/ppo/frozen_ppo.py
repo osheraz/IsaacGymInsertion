@@ -804,11 +804,11 @@ class PPO(object):
     def _write_ft(self, data, output_loc):
         import matplotlib.pyplot as plt
         plt.figure(figsize=(8, 6))
-        plt.plot(np.array(data)[:, :3])
+        plt.plot(np.array(data)[:, :])
         plt.xlabel('time')
         # plt.ylim([-0.25, 0.25])
-        plt.ylabel('force')
-        plt.savefig(f'{output_loc}_force.png')
+        plt.ylabel('action')
+        plt.savefig(f'{output_loc}_action.png')
         plt.close()
 
     def log_video(self):

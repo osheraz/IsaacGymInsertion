@@ -82,22 +82,21 @@ env:
 
     actionLatencyMax: 10
     actionLatencyScheduledSteps: 10_000_000
-    actionDelayProbMax: 0.2
 
+    actionDelayProbMax: 0.2
     plugObsDelayProb: 0.2
     ImgDelayProb: 0.1
     PclProbNoise: 1.0
     SegDelayProb: 0.1
     SegProbNoise: 0.1
     TactileDelayProb: 0.1
+    scalePosProb: 0.3
+    scaleRotProb: 0.3
 
     # Sim runs at 60 Hz
     maxObjectSkipObs: 2  # i.e max 30hz
     maxSkipImg: 2
     maxSkipTactile: 2
-
-    scalePosProb: 0.3
-    scaleRotProb: 0.3
 
     num_gripper_move_sim_steps: 120  # number of timesteps to reserve for moving gripper before first step of episode
     num_gripper_close_sim_steps: 50  # number of timesteps to reserve for closing gripper onto plug during each reset
@@ -203,10 +202,11 @@ rl:
 #    action_delta_scale: -0.07
 #    ori_reward_scale: -0.1 # scale on ori-based reward
 
-    keypoint_reward_scale: -0.9 # scale on keypoint-based reward
-    action_penalty_scale: -0.04  # scale on action penalty
-    action_delta_scale: -0.04
+    keypoint_reward_scale: -1.0 # scale on keypoint-based reward
+    action_penalty_scale: -0.1  # scale on action penalty
+    action_delta_scale: -0.1
     ori_reward_scale: -0.5 # scale on ori-based reward
+    eef_ori_reward_scale: -0.5 # scale on ori-based reward
 
     early_reset_reward_scale: -1.0
     engagement_reward_scale: 0.4
