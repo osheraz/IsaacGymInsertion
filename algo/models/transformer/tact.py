@@ -6,10 +6,11 @@ import torch.nn.functional as F
 import math
 from typing import List, Dict, Optional, Tuple, Callable
 from algo.models.transformer.pointnets import PointNet
+from algo.models.transformer.tactile_cnn import CNNWithSpatialSoftArgmax
 # from algo.models.transformer.point_mae import MaskedPointNetEncoder
 
 class DepthOnlyFCBackbone32x64(nn.Module):
-    def __init__(self, latent_dim, output_activation=None, num_channel=1):
+    def __init__(self, latent_dim, output_activation=None, num_channel=3):
         super().__init__()
 
         self.num_channel = num_channel
@@ -29,12 +30,13 @@ class DepthOnlyFCBackbone32x64(nn.Module):
             nn.Linear(64 * 12 * 28, 128),
             activation,
             nn.Linear(128, latent_dim)
+
         )
 
         if output_activation == "tanh":
             self.output_activation = nn.Tanh()
         else:
-            self.output_activation = activation
+            self.output_activation = nn.Identity()
 
     def forward(self, images: torch.Tensor):
         images_compressed = self.image_compression(images)
@@ -102,7 +104,7 @@ class DepthOnlyFCBackbone54x96(nn.Module):
         if output_activation == "tanh":
             self.output_activation = nn.Tanh()
         else:
-            self.output_activation = activation
+            self.output_activation = nn.Identity()
 
     def forward(self, images: torch.Tensor):
         images_compressed = self.image_compression(images)
@@ -281,7 +283,7 @@ class MultiModalModel(BaseModel):
                 self.tactile_encoder = replace_bn_with_gn(self.tactile_encoder)
                 self.num_tactile_features = self.tactile_encoder._fc.in_features
             elif tactile_encoder == 'depth':
-                self.tactile_encoder = DepthOnlyFCBackbone32x64(latent_dim=self.tactile_encoding_size, num_channel=self.num_channels)
+                self.tactile_encoder = CNNWithSpatialSoftArgmax(latent_dim=self.tactile_encoding_size)
                 self.num_tactile_features = self.tactile_encoding_size
             else:
                 raise NotImplementedError
