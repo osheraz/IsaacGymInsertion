@@ -52,7 +52,7 @@ env:
     numEnvs: ${resolve_default:128,${...num_envs}}
     numObservations: 15 #
     numObsStudent: 15 #
-    numStates: 44 # 27
+    numStates: 64 # 27
     numActions: 6 # [position, ori]
     numTargets: 6 # [position, ori]
     action_latency_max: 15
@@ -146,7 +146,7 @@ external_cam:
   save_im: False
   far_clip: 0.5
   near_clip: 0.1
-  dis_noise: 0.001
+  dis_noise: 0.000 # 0.001 - adding noise in transform instead
 
 randomize:
     force_scale: 0.0
@@ -158,14 +158,14 @@ randomize:
     same_socket: False
     # for grasp generations
 #    plug_pos_xy_initial: [0.50, 0.0, 0.0]  # z 0.03  initial XY position of plug on table
-    grasp_plug_noise: 0.005 # xyz noise on grasp pos position during grasp at init
+    grasp_plug_noise: 0.003 # xyz noise on grasp pos position during grasp at init
     plug_pos_xy_noise: [ 0.01,  0.01] # noise on plug position
-    plug_rot_noise: [ 0.3, 0.3, 0.3 ] # rot noise on plug init
-    plug_pos_z_noise_bounds: [ 0.05, 0.1 ]  # plug z bound noise
+    plug_rot_noise: [ 0.3, 0.3, 0.3 ] # [0.3, 0.3, 0.3] rot noise on plug init
+    plug_pos_z_noise_bounds: [ 0.05, 0.08 ]  # [0.05, 0.1] plug z bound noise
 #    plug_quat_noise: [0.0, 0.0, 0.0, 0.0]
 
     socket_pos_xy_initial: [0.5, 0.0, 0.0]  # initial XY position of plug on table # round_hole_2in  width = 0.1016, length = 0.09144
-    socket_pos_xy_noise: [0.1, 0.1]  # noise on socket position
+    socket_pos_xy_noise: [0.05, 0.05]  # [0.1, 0.1] noise on socket position
     socket_pos_z_noise_bounds: [0.00, 0.05]  # noise on socket offset from table
 #    above_socket_noise: [0.03, 0.03, 0.001]
     socket_rot_euler_noise: [0.0, 0.0, 0.0872665]  # noise on socket position

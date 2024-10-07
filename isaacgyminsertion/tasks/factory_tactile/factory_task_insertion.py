@@ -838,7 +838,9 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             # plug_bottom_wrt_robot[1],  # 4
             # self.socket_pos.clone(),   # 3
             # self.socket_quat.clone(),  # 4
-            # self.hand_joints,          # 6
+            self.hand_joints,          # 6
+            self.arm_dof_pos,          # 7
+            self.arm_dof_vel,          # 7
             # self.plug_hand_pos_diff,   # 3
             # self.plug_hand_quat_diff,  # 4
             self.socket_tip,  # 3
@@ -1209,8 +1211,11 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
         # self.degrasp_buf[:] |= fingertips_dist
         if self.cfg_task.reset_at_fails:
-            self.reset_buf[1:] |= self.degrasp_buf[1:]
+            # self.reset_buf[1:] |= self.degrasp_buf[1:]
             self.reset_buf[1:] |= self.far_from_goal_buf[1:]
+            num_resetting_envs = self.reset_buf.sum().item()
+            if num_resetting_envs > 0:
+                print(f'Resetting {num_resetting_envs} envs.')
 
         if ((self.cfg_task.data_logger.collect_data or
              self.cfg_task.data_logger.collect_test_sim) and not self.cfg_task.collect_rotate):
@@ -2076,7 +2081,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         # NOTE: In assembled state, plug origin is coincident with socket origin;
         # thus plug pos must be offset to compute actual pos of base of plug
         is_plug_below_engagement_height = (
-                (self.plug_pos[:, 2]) < self.socket_tip[:, 2]
+                (self.plug_pos[:, 2] + 0 * self.cfg_task.env.socket_base_height) < self.socket_tip[:, 2]
         )
 
         quat_diff = torch_jit_utils.quat_mul(self.plug_quat, torch_jit_utils.quat_conjugate(self.socket_quat))

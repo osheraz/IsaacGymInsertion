@@ -331,7 +331,6 @@ class ExtrinsicAdapt(object):
 
         self.last_recording_it = 0
         self.last_recording_it_ft = 0
-
         # ---- Data Logger ----
         if self.env.cfg_task.data_logger.collect_data:
             from algo.ppo.experience import SimLogger
@@ -489,9 +488,10 @@ class ExtrinsicAdapt(object):
             if self.env.progress_buf[0] == self.env.max_episode_length - 1 and not reset_at_success:
                 num_success = self.env.success_reset_buf[done.nonzero()].sum()
                 total_dones = len(done.nonzero())
-                success_rate = num_success / total_dones
+                success_rate2 = num_success / total_dones
+                success_rate = torch.mean(self.env.success_reset_buf * 1.0).item()
                 self.test_success = success_rate
-                print('[Test] success rate:', success_rate)
+                print('[Test] success rate:', success_rate, success_rate2)
                 log_test_result(best_loss=self.best_loss,
                                 cur_loss=self.cur_loss,
                                 best_reward=self.best_rewards,
@@ -578,7 +578,15 @@ class ExtrinsicAdapt(object):
             elif self.agent_steps < 5e4 and self.tactile_info:
                 actions = torch.clamp(res_dict['actions'], -1.0, 1.0)
             else:
-                actions = torch.clamp(student_actions, -1.0, 1.0)
+                def get_beta(max_steps=1e7, start_value=1.0, end_value=0.0):
+                    beta = max(end_value, start_value - (start_value - end_value) * (self.agent_steps / max_steps))
+                    return beta
+
+                beta = get_beta()
+                if torch.rand(1).item() < beta:
+                    actions = torch.clamp(res_dict['actions'], -1.0, 1.0)
+                else:
+                    actions = torch.clamp(student_actions, -1.0, 1.0)
 
             self.obs, rewards, self.dones, infos = self.env.step(actions)
 
@@ -887,7 +895,7 @@ class ExtrinsicAdapt(object):
             self.step_reward = self.step_reward * not_dones
             self.step_length = self.step_length * not_dones
 
-            # self.log_tensorboard()
+            self.log_tensorboard()
 
             if self.agent_steps >= self.next_test_step and self.task_config.reset_at_success:
                 cprint(f'Disabling resets and evaluating', 'blue', attrs=['bold'])

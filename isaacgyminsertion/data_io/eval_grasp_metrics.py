@@ -2,8 +2,9 @@ import os
 import numpy as np
 import torch
 import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
 from tqdm import tqdm
+from scipy.spatial.transform import Rotation as R
+
 
 class GraspPoseVisualizer:
     def __init__(self, num_envs):
@@ -54,15 +55,59 @@ class GraspPoseVisualizer:
         output_folder = f'plots/{subassembly}'
         os.makedirs(output_folder, exist_ok=True)
 
-        # Extract data
+        # Extract positional data
         socket_positions = self.init_socket_pos[subassembly].numpy()
         plug_positions = self.init_plug_pos[subassembly].numpy()
         num_poses = self.total_init_poses[subassembly]
 
+        # Convert quaternions to roll, pitch, and yaw
+        socket_rpy = R.from_quat(self.init_socket_quat[subassembly].numpy()).as_euler('xyz', degrees=True)
+        plug_rpy = R.from_quat(self.init_plug_quat[subassembly].numpy()).as_euler('xyz', degrees=True)
+        rpy_labels = ['Roll', 'Pitch', 'Yaw']
+
+        # Calculate statistics for RPY angles
+        socket_means = np.mean(socket_rpy, axis=0)
+        socket_stds = np.std(socket_rpy, axis=0)
+        socket_mins = np.min(socket_rpy, axis=0)
+        socket_maxs = np.max(socket_rpy, axis=0)
+
+        plug_means = np.mean(plug_rpy, axis=0)
+        plug_stds = np.std(plug_rpy, axis=0)
+        plug_mins = np.min(plug_rpy, axis=0)
+        plug_maxs = np.max(plug_rpy, axis=0)
+
+        # Plot statistics for Roll, Pitch, and Yaw in a single grouped bar chart
+        x = np.arange(len(rpy_labels))  # The label locations
+        width = 0.2  # The width of the bars
+
+        fig, ax = plt.subplots(figsize=(12, 8))
+        ax.bar(x - 1.5 * width, socket_means, width, label='Socket Mean', color='r')
+        ax.bar(x - 0.5 * width, plug_means, width, label='Plug Mean', color='b')
+        ax.bar(x + 0.5 * width, socket_stds, width, label='Socket Std', color='r', alpha=0.6)
+        ax.bar(x + 1.5 * width, plug_stds, width, label='Plug Std', color='b', alpha=0.6)
+
+        # Adding min and max values as error bars
+        ax.errorbar(x - 1.5 * width, socket_means, yerr=[socket_means - socket_mins, socket_maxs - socket_means],
+                    fmt='o', color='r', capsize=5)
+        ax.errorbar(x - 0.5 * width, plug_means, yerr=[plug_means - plug_mins, plug_maxs - plug_means], fmt='o',
+                    color='b', capsize=5)
+
+        # Configure the plot
+        ax.set_xlabel('Orientation')
+        ax.set_ylabel('Degrees')
+        ax.set_title(f'Orientation Statistics for {subassembly}')
+        ax.set_xticks(x)
+        ax.set_xticklabels(rpy_labels)
+        ax.legend()
+        plt.tight_layout()
+        plt.savefig(f'{output_folder}/orientation_statistics.png')
+        plt.close()
+
         # Plot socket positions in 3D
         fig = plt.figure(figsize=(12, 8))
         ax = fig.add_subplot(111, projection='3d')
-        ax.scatter(socket_positions[:, 0], socket_positions[:, 1], socket_positions[:, 2], c='r', label='Socket Positions')
+        ax.scatter(socket_positions[:, 0], socket_positions[:, 1], socket_positions[:, 2], c='r',
+                   label='Socket Positions')
         ax.set_title(f'Socket Positions for {subassembly}')
         ax.set_xlabel('X Position')
         ax.set_ylabel('Y Position')
@@ -106,7 +151,6 @@ class GraspPoseVisualizer:
         plt.savefig(f'{output_folder}/mean_error.png')
         plt.close()
 
-        # Additional metrics and plots can be added here
 
 if __name__ == "__main__":
     # Example usage

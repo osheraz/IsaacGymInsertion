@@ -663,10 +663,9 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
 
             # Check orientation
             left_finger_dist = torch.norm(self.left_finger_pos[:, :2] - self.plug_tip[:, :2], p=2, dim=-1)
-            right_finger_dist = torch.norm(self.right_finger_pos[:, :2] - self.plug_tip[:, :2], p=2,
-                                           dim=-1)
-            middle_finger_dist = torch.norm(self.middle_finger_pos[:, :2] - self.plug_tip[:, :2], p=2,
-                                            dim=-1)
+            right_finger_dist = torch.norm(self.right_finger_pos[:, :2] - self.plug_tip[:, :2], p=2, dim=-1)
+            middle_finger_dist = torch.norm(self.middle_finger_pos[:, :2] - self.plug_tip[:, :2], p=2, dim=-1)
+
             # dist = torch.norm(self.socket_tip[:, :2] - self.plug_pos[:, :2], p=2, dim=-1)
             max_dis = 0.05
             dist = ((left_finger_dist < max_dis) &
@@ -674,7 +673,7 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                     (middle_finger_dist < max_dis))
             # print('dist', dist)
 
-            max_ang = 30
+            max_ang = 20
             cond = ((abs(roll * 180 / np.pi) < max_ang) &
                     (abs(pitch * 180 / np.pi) < max_ang) &
                     (abs(yaw * 180 / np.pi) < max_ang))
@@ -858,8 +857,8 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             socket_pos[:, 2] = self.cfg_base.env.table_height + socket_noise_z
 
         socket_euler_w_noise = np.array([0, 0, 0])
-        # socket_euler_w_noise[2] = np.random.uniform(-self.cfg_task.randomize.socket_rot_euler_noise,
-        #                                              self.cfg_task.randomize.socket_rot_euler_noise, 1)  # -2 to 2 deg
+        socket_euler_w_noise[2] = np.random.uniform(-self.cfg_task.randomize.socket_rot_euler_noise[2],
+                                                     self.cfg_task.randomize.socket_rot_euler_noise[2], 1)
         socket_quat[:, :] = torch.from_numpy(R.from_euler('xyz', socket_euler_w_noise).as_quat())
 
         # above socket with overlap
