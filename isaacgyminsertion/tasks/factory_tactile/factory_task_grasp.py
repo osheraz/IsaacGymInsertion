@@ -113,7 +113,7 @@ class FactoryTaskGraspTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         # 0.9 2in, 1.5in cylinder
         # 0.7 triangle
 
-        self.plug_grasp_pos_local = self.plug_heights * 0.9 * torch.tensor([0.0, 0.0, 1.0], device=self.device).repeat(
+        self.plug_grasp_pos_local = self.plug_heights * 1.0 * torch.tensor([0.0, 0.0, 1.0], device=self.device).repeat(
             (self.num_envs, 1))
         self.plug_grasp_pos_local[:, 0] = -0.1 * self.plug_widths.squeeze()
 
