@@ -539,7 +539,6 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
             self._initialize_grasp_poses(subassembly)
 
     def _initialize_grasp_poses(self, subassembly, pre_noise=True, add_noise=False):
-
         try:
             sf = subassembly + '_noise' if pre_noise else subassembly
             self.initial_grasp_poses[subassembly] = np.load(f'initial_grasp_data/{sf}.npz')
@@ -565,7 +564,39 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
         plug_quat = self.initial_grasp_poses[subassembly]['plug_quat']
         dof_pos = self.initial_grasp_poses[subassembly]['dof_pos']
 
-        self.env_to_grasp = torch.zeros((self.num_envs,)).to(dtype=torch.int32)
+        # Convert quaternions to tensors
+        plug_quat_tensor = torch.from_numpy(plug_quat).clone()
+
+        from isaacgyminsertion.utils.torch_jit_utils import get_euler_xyz
+        # Calculate roll, pitch, yaw from quaternions
+        roll, pitch, yaw = get_euler_xyz(plug_quat_tensor)
+        roll[roll > np.pi] -= 2 * np.pi
+        pitch[pitch > np.pi] -= 2 * np.pi
+        yaw[yaw > np.pi] -= 2 * np.pi
+
+        # Set a threshold for the maximum allowable angle (in radians)
+        max_ang = 0.3
+
+        # Identify the extreme cases based on roll, pitch, and yaw
+        degrasp_buf = (torch.abs(roll) > max_ang) | (torch.abs(pitch) > max_ang) | (torch.abs(yaw) > max_ang)
+
+        # Filter out extreme cases
+        valid_indices = ~degrasp_buf
+        print('removed:', len(degrasp_buf.nonzero()))
+        socket_pos = socket_pos[valid_indices]
+        socket_quat = socket_quat[valid_indices]
+        plug_pos = plug_pos[valid_indices]
+        plug_quat = plug_quat[valid_indices]
+        dof_pos = dof_pos[valid_indices]
+
+        # Update the total number of valid initial poses after filtering
+        self.total_init_poses[subassembly] = valid_indices.sum().item()
+
+        self.init_socket_pos[subassembly] = torch.zeros((self.total_init_poses[subassembly], 3))
+        self.init_socket_quat[subassembly] = torch.zeros((self.total_init_poses[subassembly], 4))
+        self.init_plug_pos[subassembly] = torch.zeros((self.total_init_poses[subassembly], 3))
+        self.init_plug_quat[subassembly] = torch.zeros((self.total_init_poses[subassembly], 4))
+        self.init_dof_pos[subassembly] = torch.zeros((self.total_init_poses[subassembly], 15))
 
         print("Loading Grasping poses for:", subassembly)
         for i in tqdm(range(self.total_init_poses[subassembly])):

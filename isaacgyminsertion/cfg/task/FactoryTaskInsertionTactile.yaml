@@ -146,7 +146,7 @@ external_cam:
   save_im: False
   far_clip: 0.5
   near_clip: 0.1
-  dis_noise: 0.000 # 0.001 - adding noise in transform instead
+  dis_noise: 0.001 # 0.001 - adding noise in transform instead
 
 randomize:
     force_scale: 0.0
@@ -195,18 +195,18 @@ rl:
     orientation_threshold: 0.1
     far_error_thresh: 0.100  # threshold above which plug is considered too far from bolt
     close_error_thresh: 0.005  # threshold below which plug is considered close enough to bolt
-    success_height_thresh: 0.003  # threshold distance below which plug is considered successfully inserted
+    success_height_thresh: 0.005  # threshold distance below which plug is considered successfully inserted
 
 #    keypoint_reward_scale: -0.7 # scale on keypoint-based reward
 #    action_penalty_scale: -0.07  # scale on action penalty
 #    action_delta_scale: -0.07
 #    ori_reward_scale: -0.1 # scale on ori-based reward
 
-    keypoint_reward_scale: -1.0 # scale on keypoint-based reward
-    action_penalty_scale: -0.1  # scale on action penalty
-    action_delta_scale: -0.1
+    keypoint_reward_scale: -0.9 # scale on keypoint-based reward
+    action_penalty_scale: -0.04  # scale on action penalty
+    action_delta_scale: -0.04
     ori_reward_scale: -0.5 # scale on ori-based reward
-    eef_ori_reward_scale: -0.5 # scale on ori-based reward
+    eef_ori_reward_scale: -0.0 # scale on ori-based reward
 
     early_reset_reward_scale: -1.0
     engagement_reward_scale: 0.4

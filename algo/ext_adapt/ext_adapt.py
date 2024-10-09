@@ -128,6 +128,7 @@ def replace_nan_with_zero(tensor):
 
 
 def display_obs(depth, seg, pcl, tactile, ax=None):
+
     env_id = 2
 
     if tactile is not None:
@@ -151,6 +152,7 @@ def display_obs(depth, seg, pcl, tactile, ax=None):
         pcl = pcl.cpu().detach().numpy()
 
         N = pcl.shape[1] // 2
+
         ax.scatter(pcl[env_id, :N, 0],
                    pcl[env_id, :N, 1],
                    pcl[env_id, :N, 2], color='k', s=2)
@@ -445,15 +447,15 @@ class ExtrinsicAdapt(object):
         self.set_student_eval()
 
         steps = 0
-        reset_at_success = False
-        obs_dict = self.env.reset(reset_at_success=reset_at_success, reset_at_fails=True)
+        reset_at_success = True
+        obs_dict = self.env.reset(reset_at_success=reset_at_success, reset_at_fails=False)
         total_dones, num_success = 0, 0
 
         while steps < total_steps:
 
             steps += 1
-            self.log_video()
-            self.it += 1
+            # self.log_video()
+            # self.it += 1
 
             prep_obs = self.process_obs(obs_dict)
 
@@ -507,6 +509,13 @@ class ExtrinsicAdapt(object):
             if (steps == self.env.max_episode_length - 1 or success_rate >= 1.0) and reset_at_success:
                 self.test_success = success_rate
                 print(f'[Test2] success rate: {success_rate}, max_steps: {self.env.progress_buf.max()}')
+                log_test_result(best_loss=self.best_loss,
+                                cur_loss=self.cur_loss,
+                                best_reward=self.best_rewards,
+                                cur_reward=self.cur_reward,
+                                steps=self.agent_steps,
+                                success_rate=success_rate,
+                                log_file=os.path.join(self.nn_dir, f'log.json'))
                 break
 
         if self.test_success > self.best_success and self.agent_steps > 1e5:
@@ -518,12 +527,14 @@ class ExtrinsicAdapt(object):
             self.best_success = self.test_success
             self.save(os.path.join(self.nn_dir, f'best_succ_{self.best_success :.2f}'))
 
+        return num_success, total_dones
+
     def play_steps(self):
 
         for n in range(self.horizon_length):
             # if not self.multi_gpu or (self.multi_gpu and self.rank == 0):
-            # self.log_video()
-            # self.it += 1
+            self.log_video()
+            self.it += 1
 
             with torch.no_grad():
                 # Collect samples
@@ -728,7 +739,7 @@ class ExtrinsicAdapt(object):
         test_every = 5e5 if not self.tactile_info else 5e4
         self.update_alpha_every = 0
         self.epoch_num = 0
-        self.next_test_step = test_every
+        self.next_test_step = 0
         reset_at_success = True
         self.obs = self.env.reset(reset_at_success=reset_at_success, reset_at_fails=True)
         self.agent_steps = (self.batch_size if not self.multi_gpu else self.batch_size * self.rank_size)
@@ -824,8 +835,8 @@ class ExtrinsicAdapt(object):
         test_every = 1e6
         self.next_test_step = test_every
         while self.agent_steps <= 1e9:
-            self.log_video()
-            self.it += 1
+            # self.log_video()
+            # self.it += 1
 
             # teacher pass
             mu_gt, e_gt = self.agent.act_inference({

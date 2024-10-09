@@ -1,8 +1,8 @@
 #!/bin/bash
 GPUS=${1:-0}
 SEED=${2:-42}
-CACHE=${3:-test_teacher}
-NUM_ENVS=${4:-32}
+CACHE=${3:-re_teacher}
+NUM_ENVS=${4:-100}
 HEADLESS=${5:-True}
 
 
