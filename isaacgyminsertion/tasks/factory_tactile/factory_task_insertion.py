@@ -1179,11 +1179,14 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             # success_reset = torch.rand(self.num_envs, device=self.device) > 0.5
             # self.reset_buf[success_reset] |= self.success_reset_buf[success_reset]
 
+            # Reset envs after 100 steps inside the hole (learn to stay inside)
             self.progress_change_tracker += self.success_reset_buf
-            reset_mask = (self.progress_change_tracker >= 30)
+            reset_mask = (self.progress_change_tracker >= 100)
             self.reset_buf |= reset_mask
 
-            new_success = self.success_reset_buf & ~self.test_reset_buf & (self.progress_buf < self.max_episode_length - 1)
+            new_success = (self.success_reset_buf &                            # first success
+                           ~self.test_reset_buf &                              # dont update new success
+                           (self.progress_buf < self.max_episode_length - 1))  # still within the limits
             self.test_reset_buf |= new_success
 
             self.test_reset_buf[:] = torch.where(self.progress_buf[:] >= (self.cfg_task.rl.max_episode_length - 1),
@@ -2155,6 +2158,7 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
             self.reset_flag = reset_at_success and reset_at_fails
             self.cfg_task.reset_at_success = reset_at_success
             self.cfg_task.reset_at_fails = reset_at_fails
+            self.test_reset_buf *= 0
 
         self.reset_idx(torch.arange(self.num_envs, device=self.device))
         self.compute_observations()

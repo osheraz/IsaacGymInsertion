@@ -30,7 +30,7 @@ ppo:
   learning_rate: 0.00025
   kl_threshold: 0.02
   # PPO batch collection
-  horizon_length: 16 # 64 , 8
+  horizon_length: 64 # 64 , 8
   mini_epochs: 8 # 8
   minibatch_size: 24 # batch size = num_envs * horizon_length; minibatch_size = batch_size / num_minibatches
 

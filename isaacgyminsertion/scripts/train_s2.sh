@@ -2,7 +2,7 @@
 GPUS=${1:-0}
 SEED=${2:-42}
 CACHE=${3:-re_teacher}
-NUM_ENVS=${4:-256}
+NUM_ENVS=${4:-32}
 HEADLESS=${5:-True}
 
 
@@ -33,8 +33,8 @@ train.ppo.obs_info=True \
 train.ppo.img_info=False \
 train.ppo.seg_info=False \
 train.ppo.pcl_info=True \
-train.ppo.tactile_info=False \
-task.env.tactile=False \
+train.ppo.tactile_info=True \
+task.env.tactile=True \
 task.external_cam.external_cam=True \
 task.external_cam.depth_cam=False \
 task.external_cam.seg_cam=True \

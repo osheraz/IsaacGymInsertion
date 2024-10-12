@@ -304,7 +304,7 @@ class ExtrinsicAdapt(object):
         for name, p in self.agent.named_parameters():
             p.requires_grad = False
 
-        self.optim = torch.optim.Adam(self.student.model.parameters(), lr=1e-3, weight_decay=1e-6)
+        self.optim = torch.optim.Adam(self.student.model.parameters(), lr=3e-4)
 
         def recurse(module, indent=0):
             print("  " * indent + f"{module.__class__.__name__}:")
@@ -447,7 +447,7 @@ class ExtrinsicAdapt(object):
         self.set_student_eval()
 
         steps = 0
-        reset_at_success = True
+        reset_at_success = False
         obs_dict = self.env.reset(reset_at_success=reset_at_success, reset_at_fails=False)
         total_dones, num_success = 0, 0
 
@@ -589,7 +589,7 @@ class ExtrinsicAdapt(object):
             elif self.agent_steps < 5e4 and self.tactile_info:
                 actions = torch.clamp(res_dict['actions'], -1.0, 1.0)
             else:
-                def get_beta(max_steps=1e7, start_value=1.0, end_value=0.0):
+                def get_beta(max_steps=3e6, start_value=1.0, end_value=0.0):
                     beta = max(end_value, start_value - (start_value - end_value) * (self.agent_steps / max_steps))
                     return beta
 
@@ -739,7 +739,7 @@ class ExtrinsicAdapt(object):
         test_every = 5e5 if not self.tactile_info else 5e4
         self.update_alpha_every = 0
         self.epoch_num = 0
-        self.next_test_step = 0
+        self.next_test_step = test_every
         reset_at_success = True
         self.obs = self.env.reset(reset_at_success=reset_at_success, reset_at_fails=True)
         self.agent_steps = (self.batch_size if not self.multi_gpu else self.batch_size * self.rank_size)
