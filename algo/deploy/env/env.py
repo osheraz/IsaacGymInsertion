@@ -90,8 +90,11 @@ class ExperimentEnv:
             obs['seg'] = seg
 
         if self.with_pcl:
-            pcl = self.pcl_gen.get_pcl()
+            pcl, sync_rgb, sync_depth, sync_seg = self.pcl_gen.get_pcl()
             obs['pcl'] = pcl
+            obs['rgb'] = sync_rgb
+            obs['img'] = sync_depth
+            obs['seg'] = sync_seg
 
         return obs
 

@@ -561,15 +561,15 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
                     else:
                         resized_img = tactile_img
 
+                    tactile_imgs_per_env.append(tactile_img)
+                    height_maps_per_env.append(height_map)
+
                     if self.num_channels == 3:
                         tac_img = to_torch(resized_img).permute(2, 0, 1).to(self.device)
                         self.tactile_imgs[e, n] = tac_img.flatten()
                     else:
                         resized_img = cv2.cvtColor(resized_img.astype('float32'), cv2.COLOR_BGR2GRAY)
                         self.tactile_imgs[e, n] = to_torch(resized_img).to(self.device).flatten()
-
-                    tactile_imgs_per_env.append(tactile_img)
-                    height_maps_per_env.append(height_map)
 
                 height_maps.append(height_maps_per_env)
                 tactile_imgs_list.append(tactile_imgs_per_env)
@@ -1140,8 +1140,8 @@ class FactoryTaskInsertionTactile(FactoryEnvInsertionTactile, FactoryABCTask):
         self.rew_buf[:] = (keypoint_reward +
                            engagement_reward +
                            ori_reward +
-                           action_reward +
-                           action_delta_reward +
+                           action_reward * self.success_reset_buf +
+                           action_delta_reward * self.success_reset_buf +
                            eef_ori_reward)
         self.rew_buf[:] += early_reset_reward
 

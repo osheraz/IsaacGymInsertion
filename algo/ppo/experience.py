@@ -761,6 +761,8 @@ class RealLogger():
         self.env = env
 
         self.with_zed = self.env.deploy_config.env.depth_cam
+        self.with_pcl = self.env.deploy_config.env.pcl
+
         self.with_tactile = self.env.deploy_config.env.tactile
         self.with_ext_cam = self.env.deploy_config.env.ext_cam
         self.with_hand = self.env.deploy_config.env.hand
@@ -783,6 +785,8 @@ class RealLogger():
             'plug_pos_shape': POS_SIZE + QUAT_SIZE,
             'plug_hand_pos_shape': POS_SIZE + QUAT_SIZE,
             'img_shape': env.image_buf.shape[1:],
+            'seg_shape': env.seg_buf.shape[1:],
+            'pcl_shape': env.pcl.shape[1:],
             'tactile_shape': env.tactile_imgs.shape[1:],
         }
 
@@ -812,9 +816,6 @@ class RealLogger():
                                       self.env.noisy_gripper_goal_quat.clone()), dim=-1)
 
         ft = self.env.ft_data.clone()
-        # contacts = self.env.contacts.clone()
-        # obs_hist = self.env.obs_buf.clone()
-        # obs_hist_stud = self.env.obs_student_buf.clone()
         priv_obs = self.env.states_buf.clone()
 
         log_data = {
@@ -826,10 +827,6 @@ class RealLogger():
             'latent': latent,
             'priv_obs': priv_obs,
             'done': done.squeeze(0),
-            # 'target': self.env.targets,
-            # 'obs_hist': obs_hist,
-            # 'obs_hist_stud': obs_hist_stud,
-            # 'contact': contacts,
             'ft': ft
         }
 
@@ -851,7 +848,8 @@ class RealLogger():
 
         if self.with_zed:
             log_data.update({
-                'img': self.env.image_buf.clone()
+                'img': self.env.image_buf.clone(),
+                'seg': self.env.seg_buf.clone()
             })
 
         if self.with_tactile:
@@ -859,4 +857,8 @@ class RealLogger():
                 'tactile': self.env.tactile_imgs.clone()
             })
 
+        if self.with_pcl:
+            log_data.update({
+                'pcl': self.env.pcl.clone()
+            })
         self.data_logger.update(save_trajectory=save_trajectory, **log_data)

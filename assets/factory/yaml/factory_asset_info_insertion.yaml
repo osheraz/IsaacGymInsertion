@@ -128,6 +128,57 @@ small_triangle:
         urdf_path: 'small_red_triangle_hole'
         width: 0.04949
         depth: 0.04286
-        height: 0.01 # actually the hole is 0.0381, but I bury half into the table
+        height: 0.01 
+        density: 8000.0
+        friction: 0.5
+
+ellipse:
+    ellipse_peg:
+        urdf_path: 'ellipse_peg'
+        width: 0.035
+        depth: 0.05
+        length: 0.0762
+        density: 2000.0
+        friction: 0.5
+        scale: 1.1
+    ellipse_hole:
+        urdf_path: 'ellipse_hole'
+        width: 0.03511
+        depth: 0.0511
+        height: 0.01
+        density: 8000.0
+        friction: 0.5
+
+hexagon:
+    hexagon_peg:
+        urdf_path: 'hexagon_peg'
+        width: 0.03464
+        depth: 0.04
+        length: 0.0762
+        density: 2000.0
+        friction: 0.5
+        scale: 1.1
+    hexagon_hole:
+        urdf_path: 'hexagon_hole'
+        width: 0.03574
+        depth: 0.0411
+        height: 0.01
+        density: 8000.0
+        friction: 0.5
+
+trapez:
+    trapez_peg:
+        urdf_path: 'trapez_peg'
+        width: 0.03
+        depth: 0.06
+        length: 0.0762
+        density: 2000.0
+        friction: 0.5
+        scale: 1.1
+    trapez_hole:
+        urdf_path: 'trapez_hole'
+        width: 0.0311
+        depth: 0.0611
+        height: 0.01
         density: 8000.0
         friction: 0.5

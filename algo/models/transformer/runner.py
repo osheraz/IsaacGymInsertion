@@ -20,7 +20,7 @@ import time
 from hydra.utils import to_absolute_path
 from warmup_scheduler import GradualWarmupScheduler
 from matplotlib import pyplot as plt
-
+import cv2
 
 class Runner:
     def __init__(self,
@@ -369,16 +369,16 @@ class Runner:
 
         return np.mean(val_loss)
 
-    def predict(self, obs_dict, requires_grad=False):
+    def predict(self, obs_dict, requires_grad=False, display=False):
 
         if not requires_grad:
             self.model.eval()
             with torch.no_grad():
-                return self._predict_forward(obs_dict)
+                return self._predict_forward(obs_dict, display)
         else:
-            return self._predict_forward(obs_dict)
+            return self._predict_forward(obs_dict, display)
 
-    def _predict_forward(self, obs_dict):
+    def _predict_forward(self, obs_dict, display=False):
 
         tactile = obs_dict['tactile'] if 'tactile' in obs_dict else None
         img = obs_dict['img'] if 'img' in obs_dict else None
@@ -398,6 +398,12 @@ class Runner:
                                               self.crop_tactile_width, self.crop_tactile_height)
 
                 tactile = self.process_tactile(tactile).to(self.device)
+
+                if display:
+                    tactilet = tactile[0, 0, ...].reshape(self.num_fingers,  self.crop_tactile_width, self.crop_tactile_height).cpu().detach().numpy()
+                    horizontal_stack = np.hstack([tactilet[i] for i in range(3)])
+                    cv2.imshow('Tactile Sequence ', horizontal_stack)
+                    cv2.waitKey(1)
 
         if self.cfg.model.use_img:
 

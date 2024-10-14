@@ -8,7 +8,7 @@ import cv2
 
 class ZedCameraSubscriber:
 
-    def __init__(self, topic='/zedm/zed_node/depth/depth_registered', with_seg=True, display=False):
+    def __init__(self, topic='/zedm/zed_node/depth/depth_registered', with_seg=False, display=False):
         """
         Finger Device class for a single Finger
         :param serial: Finger device serial
@@ -17,7 +17,7 @@ class ZedCameraSubscriber:
         self.w = 320 # 320
         self.h = 180 # 180
         self.cam_type = 'd'
-        self.far_clip = 0.4
+        self.far_clip = 0.5
         self.near_clip = 0.1
         self.dis_noise = 0.00
         self.display = display
@@ -25,6 +25,7 @@ class ZedCameraSubscriber:
         self.init_success = False
         self.with_seg = with_seg
         self.with_socket = False
+
         if with_seg:
             from algo.deploy.env.seg_camera import SegCameraSubscriber
             self.seg = SegCameraSubscriber(with_socket=self.with_socket)
@@ -102,15 +103,16 @@ class ZedCameraSubscriber:
             except Exception as e:
                 print(e)
 
-            cv2.imshow("Depth Image", proc_frame.transpose(1, 2, 0))
+            if self.display:
+                cv2.imshow("Depth Image", proc_frame.transpose(1, 2, 0))
 
-            cv2.imshow("Test Depth Image", self.last_frame.transpose(1, 2, 0))
-            key = cv2.waitKey(1)
+                cv2.imshow("Test Depth Image", self.last_frame.transpose(1, 2, 0))
+                key = cv2.waitKey(1)
 
     def get_frame(self):
 
-        seg_frame = cv2.resize(self.seg_frame.astype(float), (96, 54), interpolation=cv2.INTER_NEAREST)
-        last_frame = numpy.expand_dims(cv2.resize(self.last_frame[0], (96, 54), interpolation=cv2.INTER_AREA), axis=0)
+        seg_frame = cv2.resize(self.seg_frame.astype(float), (320, 180), interpolation=cv2.INTER_NEAREST)
+        last_frame = numpy.expand_dims(cv2.resize(self.last_frame[0], (320, 180), interpolation=cv2.INTER_AREA), axis=0)
 
         return last_frame, seg_frame
 
@@ -136,7 +138,7 @@ class ZedCameraSubscriber:
 if __name__ == "__main__":
 
     rospy.init_node('Zed')
-    tactile = ZedCameraSubscriber()
+    tactile = ZedCameraSubscriber(display=True)
     rate = rospy.Rate(60)
 
     while not rospy.is_shutdown():

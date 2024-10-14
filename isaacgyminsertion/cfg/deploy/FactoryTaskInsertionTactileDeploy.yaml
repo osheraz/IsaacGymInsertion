@@ -20,7 +20,7 @@ data_logger:
     # for data collection
     collect_data: False
     total_trajectories: 5
-    base_folder: "/home/roblab20/tactile_predict"
+    base_folder: "/home/roblab20/for_paper"
     sub_folder: "datastore_real"
 
 # taking from training default, allows to over write
@@ -35,11 +35,13 @@ rl:
     clamp_rot_thresh: ${...task.rl.clamp_rot_thresh}
 
 env:
-  depth_cam: False
   hand: True
   arm: True
-  ext_cam: True
-  tactile: True
+  depth_cam: False
+  seg: False
+  ext_cam: False
+  tactile: False
+  pcl: True
 
   tactile_seq_length: ${...task.env.tactile_history_len}
   ft_seq_length: ${...task.env.ft_history_len}
@@ -67,7 +69,10 @@ ppo:
 
   extrin_adapt: False
   tactile_info: False
-  obs_info: False
+  pcl_info: True
+  obs_info: True
+  seg_info: False
+  img_info: False
   ft_info: False
 
   tactile_seq_length: ${...task.env.tactile_history_len}

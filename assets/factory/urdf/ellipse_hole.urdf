@@ -1,0 +1,19 @@
+<?xml version="1.0"?>
+<robot name="ellipse_peg">
+    <link name="ellipse_peg">
+        <visual>
+            <!--origin xyz="0 0 0.01905" rpy="0 1.57079632679 0"-->
+            <geometry>
+                <mesh filename="../mesh/factory_insertion/ellipse_hole.obj"/>
+            </geometry>
+        </visual>
+        <collision>
+            <!--origin xyz="0 0 0.01905" rpy="0 1.57079632679 0"-->
+            <geometry>
+                <mesh filename="../mesh/factory_insertion/ellipse_hole.obj"/>
+            </geometry>
+                        <sdf resolution="256" />
+
+        </collision>
+    </link>
+</robot>

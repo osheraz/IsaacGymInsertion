@@ -203,8 +203,8 @@ rl:
 #    ori_reward_scale: -0.1 # scale on ori-based reward
 
     keypoint_reward_scale: -0.9 # scale on keypoint-based reward
-    action_penalty_scale: -0.04  # scale on action penalty
-    action_delta_scale: -0.04
+    action_penalty_scale: -0.1  # scale on action penalty
+    action_delta_scale: -0.2
     ori_reward_scale: -0.5 # scale on ori-based reward
     eef_ori_reward_scale: -0.0 # scale on ori-based reward
 

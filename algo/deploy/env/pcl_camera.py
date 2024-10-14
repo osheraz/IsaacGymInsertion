@@ -12,8 +12,8 @@ import sensor_msgs.point_cloud2 as pc2
 from sensor_msgs.msg import PointCloud2, PointField
 from std_msgs.msg import Header
 import numpy as np
-from pytorch3d import ops
-
+# from pytorch3d import ops
+from algo.deploy.env.zed_camera import ZedCameraSubscriber
 
 class PointCloudPublisher:
     def __init__(self, topic='pointcloud'):
@@ -241,6 +241,8 @@ class ZedPointCloudSubscriber:
         self.pcl_gen = PointCloudGenerator(input_type=input_type)
 
         self.first = True
+
+        self.depth_cam = ZedCameraSubscriber()
 
         if self.with_seg:
             from algo.deploy.env.seg_camera import SegCameraSubscriber
@@ -481,20 +483,30 @@ class ZedPointCloudSubscriber:
         return sampled_points
 
     def get_pcl(self):
-        return self.last_cloud
+        return self.last_cloud, self.sync_rgb, self.sync_depth, self.sync_seg
 
     def get_last_depth(self):
 
         return self.last_frame
 
     def to_object_pcl(self):
-        rgb = self.seg.get_raw_frame()
-        depth = self.get_last_depth()
 
-        seg = self.seg.process_frame(rgb)
-        self.to_pcl(depth, seg)
+        self.sync_rgb = self.seg.get_raw_frame()
+        sync_depth = self.get_last_depth()
+        sync_seg = self.seg.process_frame(self.sync_rgb)
+        self.to_pcl(sync_depth, sync_seg)
 
-        return self.last_cloud
+        # for records
+        self.sync_depth = self.depth_cam.process_depth_image(np.expand_dims(self.last_frame, axis=0))
+        self.sync_seg = (sync_seg[0] | sync_seg[1])
+
+        # cv2.imshow("Depth Image", self.sync_depth.transpose(1, 2, 0))
+        # mask = ((self.sync_seg ==2) | (self.sync_seg == 3)).astype(float)
+        # self.mask_3d = np.repeat(mask[:, :, np.newaxis], 3, axis=2)
+        # seg_show = (self.mask_3d * self.sync_rgb).astype(np.uint8)
+        # cv2.imshow("Mask Image", seg_show)
+        # cv2.waitKey(0)
+        # return self.last_cloud
 
     def timer_callback(self, event):
         # Called periodically by the timer

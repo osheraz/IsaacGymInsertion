@@ -575,7 +575,7 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
         yaw[yaw > np.pi] -= 2 * np.pi
 
         # Set a threshold for the maximum allowable angle (in radians)
-        max_ang = 0.3
+        max_ang = 0.4
 
         # Identify the extreme cases based on roll, pitch, and yaw
         degrasp_buf = (torch.abs(roll) > max_ang) | (torch.abs(pitch) > max_ang) | (torch.abs(yaw) > max_ang)
@@ -915,7 +915,11 @@ class FactoryEnvInsertionTactile(FactoryBaseTactile, FactoryABCEnv):
             self.socket_heights.append(self.asset_info_insertion[subassembly][components[1]]['height'])
             if (any('rectangular' in sub for sub in components) or
                     any('square' in sub for sub in components) or
-                    any('triangle' in sub for sub in components)):
+                    any('triangle' in sub for sub in components) or
+                    any('hexagon' in sub for sub in components) or
+                    any('ellipse' in sub for sub in components) or
+                    any('trapez' in sub for sub in components)
+            ):
                 self.plug_widths.append(self.asset_info_insertion[subassembly][components[0]]['width'])
                 self.plug_depths.append(self.asset_info_insertion[subassembly][components[0]]['depth'])
                 self.socket_widths.append(self.asset_info_insertion[subassembly][components[1]]['width'])

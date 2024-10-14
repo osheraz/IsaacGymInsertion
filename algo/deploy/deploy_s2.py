@@ -98,6 +98,7 @@ class HardwarePlayer:
 
         self.external_cam = self.full_config.task.external_cam.external_cam
         self.res = [self.full_config.task.external_cam.cam_res.w, self.full_config.task.external_cam.cam_res.h]
+        self.res = [320, 180]
         self.cam_type = self.full_config.task.external_cam.cam_type
         self.near_clip = self.full_config.task.external_cam.near_clip
         self.far_clip = self.full_config.task.external_cam.far_clip
@@ -136,11 +137,11 @@ class HardwarePlayer:
         self.asset_info_insertion = self.asset_info_insertion['']['']['']['']['']['']['assets']['factory']['yaml']
 
         self.ppo_config = full_config.train.ppo
-        self.obs_info = True  # self.ppo_config["obs_info"]
-        self.tactile_info = False
-        self.img_info = False  # self.ppo_config["img_info"]
-        self.seg_info = False  # self.ppo_config["seg_info"]
-        self.pcl_info = True  # self.ppo_config["seg_info"]
+        self.obs_info = self.deploy_config.ppo.obs_info
+        self.tactile_info = self.deploy_config.ppo.tactile_info
+        self.img_info = self.deploy_config.ppo.img_info
+        self.seg_info = self.deploy_config.ppo.seg_info
+        self.pcl_info = self.deploy_config.ppo.pcl_info
 
         student_cfg = self.full_config
         student_cfg.offline_train.only_bc = True
@@ -151,11 +152,6 @@ class HardwarePlayer:
         student_cfg.offline_train.model.use_pcl = self.pcl_info
 
         if self.pcl_info:
-            self.pcl_channel = 3
-            if self.full_config.task.env.merge_goal_pcl:
-                self.pcl_channel += 3
-            if self.full_config.task.env.merge_socket_pcl:
-                self.pcl_channel += 3
             self.pcl_mean_std = RunningMeanStd((3,)).to(self.device)
             self.pcl_mean_std.eval()
 
@@ -170,13 +166,13 @@ class HardwarePlayer:
 
     def restore(self, fn):
         checkpoint = torch.load(fn)
-        self.running_mean_std.load_state_dict(checkpoint['running_mean_std'])
+        # self.running_mean_std.load_state_dict(checkpoint['running_mean_std'])
         if 'priv_mean_std' in checkpoint:
             print('Loading Policy with priv info')
-            self.priv_mean_std.load_state_dict(checkpoint['priv_mean_std'])
+            # self.priv_mean_std.load_state_dict(checkpoint['priv_mean_std'])
         else:
             print('Loading Policy without priv info')
-        self.agent.load_state_dict(checkpoint['model'])
+        # self.agent.load_state_dict(checkpoint['model'])
 
         # stud_fn = fn.replace('stage1_nn/last.pth', 'student/checkpoints/model_last.pt')
         stud_fn = fn.replace('stage1_nn/last.pth', 'stage2_nn/last_stud.pth')
@@ -361,16 +357,14 @@ class HardwarePlayer:
         )
 
         self.img_queue = torch.zeros(
-            (1, self.img_hist_len, 1 if self.cam_type == 'd' else 3, self.res[1], self.res[0]),
+            (1, self.img_hist_len, self.res[1], self.res[0]),
             device=self.device,
             dtype=torch.float,
         )
-        self.image_buf = torch.zeros(1, 1 if self.cam_type == 'd' else 3, self.res[1], self.res[0]).to(
-            self.device)
+        self.image_buf = torch.zeros(1, self.res[1], self.res[0]).to(self.device)
 
-        self.seg_queue = torch.zeros(
-            (1, self.img_hist_len, self.res[1], self.res[0]), device=self.device, dtype=torch.float,
-        )
+        self.seg_queue = torch.zeros((1, self.img_hist_len, self.res[1], self.res[0]),
+                                     device=self.device, dtype=torch.float,)
         self.seg_buf = torch.zeros(1, self.res[1], self.res[0]).to(self.device)
 
         num_points = self.full_config.task.env.num_points
@@ -421,7 +415,7 @@ class HardwarePlayer:
 
         self.socket_tip = fc.translate_along_local_z(pos=self.socket_pos,
                                                      quat=self.identity_quat,
-                                                     offset=self.socket_height * 3,
+                                                     offset=self.socket_height,
                                                      device=self.device)
 
         self.noisy_socket_pos[:, 0] = self.socket_tip[:, 0] + socket_obs_pos_noise[:, 0]
@@ -544,9 +538,9 @@ class HardwarePlayer:
                 cv2.imshow("Hand View\tLeft\tRight\tMiddle", np.concatenate((left, right, bottom), axis=1) + 0.5)
                 cv2.waitKey(1)
 
-        if with_img:
+        if with_img or with_pcl: # TODO: modify! just for the record
             img = obses['img']
-            self.image_buf[0] = to_torch(img).to(self.device)
+            self.image_buf[0] = to_torch(img[0]).to(self.device)
             self.img_queue[:, 1:] = self.img_queue[:, :-1].clone().detach()
             self.img_queue[:, 0, ...] = self.image_buf
 
@@ -687,7 +681,7 @@ class HardwarePlayer:
         # Set random init error
         self.env.arm.move_manipulator.scale_vel(scale_vel=0.1, scale_acc=0.1)
 
-        # self.env.set_random_init_error(self.socket_pos, with_tracker=False)
+        self.env.set_random_init_error(self.socket_pos, with_tracker=False)
         self.env.grasp()
 
         self.env.arm.move_manipulator.scale_vel(scale_vel=0.02, scale_acc=0.02)
@@ -913,7 +907,15 @@ class HardwarePlayer:
         self._initialize_grasp_poses()
         from algo.deploy.env.env import ExperimentEnv
         rospy.init_node('DeployEnv')
-        self.env = ExperimentEnv(with_ext_cam=False, with_pcl=True, with_tactile=False)
+
+        ext_cam = self.deploy_config.env.ext_cam
+        pcl = self.deploy_config.env.pcl
+        tactile = self.deploy_config.env.tactile
+
+        self.env = ExperimentEnv(with_ext_cam=ext_cam,
+                                 with_pcl=pcl,
+                                 with_tactile=tactile)
+
         self.env.arm.move_manipulator.scale_vel(scale_vel=0.004, scale_acc=0.004)
 
         rospy.logwarn('Finished setting the env, lets play.')
