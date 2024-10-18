@@ -434,6 +434,131 @@ class ExtrinsicAdapt(object):
 
         return student_dict
 
+
+    def test_log(self, total_steps=1e9, trials_per_noise=10):
+        """
+        Test the model with varying levels of point cloud noise, run each configuration multiple times,
+        log the average success rates, and plot the results.
+        """
+
+        noise_levels = np.linspace(0.01, 0.05, 5).tolist()
+        # Helper: Add noise to point cloud
+        def add_noise_to_pcl(pcl, noise_level):
+            noise = torch.randn_like(pcl) * noise_level
+            return pcl + noise
+
+        def save_success_rate_log(noise_results, log_file):
+            timestamp = datetime.now().isoformat()
+            data = {'timestamp': timestamp, 'results': noise_results}
+            with open(log_file, 'w') as f:
+                yaml.dump(data, f)
+            print(f"Success rate log saved to: {log_file}")
+
+        def plot_success_rate(noise_results, plot_file):
+            noise_levels = list(noise_results.keys())
+            success_rates = list(noise_results.values())
+
+            plt.figure(figsize=(8, 6))
+            plt.plot(noise_levels, success_rates, marker='o', linestyle='-', color='b', label='Average Success Rate')
+            plt.xlabel('Noise Level')
+            plt.ylabel('Average Success Rate')
+            plt.title('Average Success Rate vs. Point Cloud Noise')
+            plt.grid(True)
+            plt.legend()
+            plt.savefig(plot_file)
+            plt.close()
+            print(f"Success rate plot saved to: {plot_file}")
+
+        noise_results = {}  # Store average success rates for each noise level
+        self.env.reset(reset_at_success=False, reset_at_fails=False)
+
+        reset_at_success = False
+        for noise_level in noise_levels:
+            print(f"Testing with point cloud noise level: {noise_level}")
+
+            success_sum = 0  # Track total success across trials
+
+            for trial in range(trials_per_noise):
+                print(f"Trial {trial + 1} for Noise Level {noise_level}")
+
+                # Reset environment at the start of each trial
+                obs_dict = self.env.reset(reset_at_success=reset_at_success, reset_at_fails=False)
+
+                self.set_eval()
+                self.set_student_eval()
+                steps = 0
+                num_success, total_dones = 0, 0
+
+                while steps < self.env.max_episode_length:
+                    steps += 1
+
+                    # Process observations with noise
+                    def process_obs_with_noise(obs):
+                        prep_obs = self.process_obs(obs)
+                        if prep_obs['pcl'] is not None:
+                            prep_obs['pcl'] = add_noise_to_pcl(prep_obs['pcl'], noise_level)
+                        return prep_obs
+
+                    prep_obs = process_obs_with_noise(obs_dict)
+
+                    student_dict = {
+                        'student_obs': prep_obs.get('student_obs'),
+                        'tactile': prep_obs.get('tactile'),
+                        'img': prep_obs.get('img'),
+                        'seg': prep_obs.get('seg'),
+                        'pcl': prep_obs.get('pcl'),
+                    }
+
+                    # Student model forward pass
+                    latent, _ = self.student.predict(student_dict, requires_grad=False)
+
+                    # Agent model forward pass
+                    if not self.only_bc:
+                        input_dict = {
+                            'obs': self.running_mean_std(obs_dict['obs']),
+                            'latent': latent,
+                        }
+                        mu, latent = self.agent.act_inference(input_dict)
+                    else:
+                        mu = latent
+
+                    mu = torch.clamp(mu, -1.0, 1.0)
+
+                    # Perform an environment step
+                    obs_dict, r, done, info = self.env.step(mu)
+
+                    # Track success if we reach the end of the episode
+                    if self.env.progress_buf[0] == self.env.max_episode_length - 1 and not reset_at_success:
+                        num_success = self.env.success_reset_buf[done.nonzero()].sum().item()
+                        total_dones = len(done.nonzero())
+                        success_rate = num_success / total_dones if total_dones > 0 else 0
+                        print(f'Success Rate for Trial {trial + 1}: {success_rate}')
+                        break
+                    else:
+                        num_success = self.env.test_reset_buf.sum().item()
+                        total_dones = len(self.env.test_reset_buf)
+                        success_rate = num_success / total_dones
+                        if (steps == self.env.max_episode_length - 1 or success_rate >= 1.0) and reset_at_success:
+                            break
+
+                success_sum += success_rate  # Accumulate success for averaging
+
+            # Calculate and store the average success rate for this noise level
+            average_success_rate = success_sum / trials_per_noise
+            noise_results[noise_level] = average_success_rate
+            print(f'Average Success Rate for Noise {noise_level}: {average_success_rate}')
+
+        # Define log and plot file paths
+        log_where = '/home/roblab30/osher3_workspace/src/isaacgym/python/IsaacGymInsertion/isaacgyminsertion/outputs/comp'
+        log_file = os.path.join(log_where, f'noise_success_log.yaml')
+        plot_file = os.path.join(log_where, f'noise_success_plot.png')
+
+        # Save results to a log file and generate a plot
+        save_success_rate_log(noise_results, log_file)
+        plot_success_rate(noise_results, plot_file)
+
+        return noise_results, noise_level
+
     def test(self, total_steps=1e9):
 
         save_trajectory = self.env.cfg_task.data_logger.collect_data
@@ -586,8 +711,8 @@ class ExtrinsicAdapt(object):
             # do env step
             if self.agent_steps < 1e6 and not self.tactile_info:
                 actions = torch.clamp(res_dict['actions'], -1.0, 1.0)
-            elif self.agent_steps < 5e4 and self.tactile_info:
-                actions = torch.clamp(res_dict['actions'], -1.0, 1.0)
+            # elif self.agent_steps < 5e4 and self.tactile_info:
+            #     actions = torch.clamp(res_dict['actions'], -1.0, 1.0)
             else:
                 def get_beta(max_steps=3e6, start_value=1.0, end_value=0.0):
                     beta = max(end_value, start_value - (start_value - end_value) * (self.agent_steps / max_steps))
@@ -736,7 +861,7 @@ class ExtrinsicAdapt(object):
         _t = time.time()
         _last_t = time.time()
         update_alpha = 1e4
-        test_every = 5e5 if not self.tactile_info else 5e4
+        test_every = 5e5 if not self.tactile_info else 5e5
         self.update_alpha_every = 0
         self.epoch_num = 0
         self.next_test_step = test_every

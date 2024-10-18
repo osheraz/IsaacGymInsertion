@@ -582,11 +582,11 @@ class MultiModalModel(BaseModel):
         tokens = torch.cat(tokens_list, dim=1)
         final_repr = self.decoder(tokens)
 
-        if self.include_tactile and False:
-            tokens_list.append(obs_features)
-            new_tokens = torch.cat(tokens_list, dim=1)
-            new_repr = self.new_decoder(new_tokens)
-            final_repr += self.alpha * new_repr
+        # if self.include_tactile:
+        #     tokens_list.append(obs_features)
+        #     new_tokens = torch.cat(tokens_list, dim=1)
+        #     new_repr = self.new_decoder(new_tokens)
+        #     final_repr += self.alpha * new_repr
 
         # currently, the size is [batch_size, context, embed_dim]
         # currently, the size is [batch_size, 32]

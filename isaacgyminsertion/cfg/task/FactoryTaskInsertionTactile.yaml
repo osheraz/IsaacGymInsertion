@@ -29,8 +29,8 @@ data_logger:
 
 tactile: # Pulling from task
   tacto:
-    width: 64 # 224 # 480 | 224
-    height: 64 # 224 # 480 | 224 for the gan
+    width: 224 # 224 # 480 | 224
+    height: 224 # 224 # 480 | 224 for the gan
     visualize_gui: True
 
   with_bg: True # add background reference frame
@@ -86,7 +86,7 @@ env:
     actionDelayProbMax: 0.2
     plugObsDelayProb: 0.2
     ImgDelayProb: 0.1
-    PclProbNoise: 1.0
+    PclProbNoise: 0.7
     SegDelayProb: 0.1
     SegProbNoise: 0.1
     TactileDelayProb: 0.1

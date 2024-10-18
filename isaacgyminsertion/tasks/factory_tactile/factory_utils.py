@@ -84,7 +84,7 @@ class PointCloudAugmentations:
     def __init__(self, num_points=400, sigma=0.001, noise_clip=0.001, rotate_range=(-10, 10), scale_range=(0.8, 1.2), dropout_ratio=0.2):
         self.num_points = num_points
         self.sigma = sigma
-        self.const_noise = 0.000
+        self.const_noise = 0.001
         self.noise_clip = noise_clip
         self.rotate_range = rotate_range
         self.scale_range = scale_range

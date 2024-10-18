@@ -226,8 +226,9 @@ def define_tactile_transforms(width, height, crop_width, crop_height,
         transforms.RandomCrop((crop_width, crop_height)),
         # v2.RandomErasing(p=0.4, scale=(0.02, 0.1), ratio=(0.3, 3.3), value=-0.5, inplace=False),
         # v2.RandomErasing(p=0.4, scale=(0.02, 0.1), ratio=(0.3, 3.3), value=0, inplace=False),
-        v2.GaussianBlur(kernel_size=5, sigma=(0.01, 0.1)),
-        v2.RandomRotation(degrees=3)
+        transforms.RandomApply([transforms.ColorJitter(brightness=0.1, contrast=0.1)], p=0.3),
+        transforms.RandomApply([v2.GaussianBlur(kernel_size=5, sigma=(0.01, 0.1))], p=0.5),
+        transforms.RandomApply([v2.RandomRotation(degrees=3)], p=0.5)
     )
 
     # Add gaussian noise to the image
