@@ -147,6 +147,8 @@ class SegCameraSubscriber:
         )
 
         seg, socket, all_boxes = [], [], []
+        if not results:
+            return
 
         for box in results[0].boxes:
             box = box.xyxy.cpu().numpy()[0]
@@ -187,7 +189,7 @@ class SegCameraSubscriber:
             self.got_socket_mask = True
             self.init_success = True
             self.min_dims = {"width": 15, "height": 30}
-            self.max_dims = {"width": 60, "height": 100}
+            self.max_dims = {"width": 40, "height": 100}
 
         try:
             prompt_process = FastSAMPrompt(frame, results, device=self.device)
@@ -219,7 +221,7 @@ class SegCameraSubscriber:
                 # print(time.time() - start_time)
 
         except Exception as e:
-            print(e)
+            print(e, 'seg')
 
         if self.with_socket:
             return self.plug_mask, self.socket_mask

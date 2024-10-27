@@ -15,7 +15,7 @@ import yaml
 # all_paths = glob('/home/roblab20/tactile_diffusion/datastore_real/*/*/obs/*.npz')
 # all_paths = glob('/home/roblab20/tactile_tests/second/*/*/obs/*.npz')
 # all_paths = glob('/home/osher/tactile_insertion/datastore_42_no_phys_params/*/*/obs/*.npz')
-all_paths = glob('/home/roblab20/tactile_predict/datastore_real/*/*/obs/*.npz')
+all_paths = glob('/home/roblab20/for_paper/datastore_real/*/*/obs/*.npz')
 
 print(len(all_paths))
 
@@ -450,7 +450,7 @@ if False:
     plt.scatter(data['socket_pos'][1:done_idx, 0], data['socket_pos'][1:done_idx, 1], color='r', s=35)
     plt.show()
 
-if True:
+if False:
     import cv2
     import numpy as np
     from tqdm import tqdm
@@ -480,7 +480,7 @@ if True:
 
     print(data.files)
     tactile_folder = path[:-7].replace('obs', 'tactile')
-    seg = False
+    seg = True
     if seg:
         img_folder = path[:-7].replace('obs', 'img')
         seg_folder = path[:-7].replace('obs', 'seg')
@@ -497,7 +497,7 @@ if True:
 
     plt.figure(figsize=(10, 6))
 
-    if seg:
+    if True:
         seg_img = np.stack(
             [np.load(os.path.join(seg_folder, f'seg_{i}.npz'))['seg'] for i in range(0, done_idx)])
         depth_img = np.stack(
@@ -519,13 +519,13 @@ if True:
         img2 = tactile_img[j][1] #- tactile_img[0][1]
         img3 = tactile_img[j][2] #- tactile_img[0][2]
 
-        if seg:
+        if True:
             depth = depth_img[j]
             seg = (seg_img[j] == 2).astype(float)
 
             # depth = np.uint8(depth)
-            depth = depth_img[j]
-            if seg:
+            depth = np.expand_dims(depth_img[j], 0)
+            if True:
                 seg = seg_img[j]
 
         img = np.concatenate((img1, img2, img3), axis=2)
@@ -536,9 +536,9 @@ if True:
         # img = np.hstack((img, binarize_image(img)))
         # Update and redraw the tactile image
         # depth = np.uint8(depth)
-        # cv2.imshow("seg Image", (depth * seg) .transpose(1, 2, 0) + 0.5)
+        cv2.imshow("seg Image", (depth * (seg == 2)) .transpose(1, 2, 0))
 
-        # cv2.imshow("Depth Image", depth.transpose(1, 2, 0) + 0.5)
+        cv2.imshow("Depth Image", depth.transpose(1, 2, 0))
         # cv2.namedWindow('test', cv2.WND_PROP_FULLSCREEN)
         key = cv2.waitKey(20)
         cv2.imshow('test', img.transpose(1, 2, 0))
@@ -575,3 +575,102 @@ if False:
         # plt.plot(sin_cos_representation[:,4:6], 'go')
 
     plt.show()
+
+
+if True:
+    import cv2
+    import os
+    import numpy as np
+    from tqdm import tqdm
+    import random
+    import matplotlib.pyplot as plt
+
+
+    # Helper function to reverse normalization of images
+    def reverse_normalize(image, mean=None, std=None):
+        mean = np.array([0.5, 0.5, 0.5]) if mean is None else mean
+        std = np.array([0.5, 0.5, 0.5]) if std is None else std
+        return (image * std[:, None, None]) + mean[:, None, None]
+
+
+    # Helper function to binarize an image based on a threshold
+    def binarize_image(tensor, threshold=0.01):
+        return (tensor > threshold).astype(np.float32)
+
+
+    # Function to load data from paths
+    def load_data(done_idx, folder, prefix):
+        return np.stack([np.load(os.path.join(folder, f'{prefix}_{i}.npz'))[prefix] for i in range(0, done_idx)])
+
+
+    # Initialize the figure for the point cloud (3D) once
+    fig = plt.figure(figsize=(6, 4))
+    ax = fig.add_subplot(111, projection='3d')
+
+
+    # Function to display the data from a given path
+    def display_data(path):
+        data = np.load(path)
+        done_idx = data['done'].nonzero()[-1][0]
+
+        tactile_folder = path[:-7].replace('obs', 'tactile')
+        img_folder = tactile_folder.replace('tactile', 'img')
+        seg_folder = tactile_folder.replace('tactile', 'seg')
+        pcl_folder = tactile_folder.replace('tactile', 'pcl')
+        rgb_folder = tactile_folder.replace('tactile', 'rgb')
+
+        tactile_img = load_data(done_idx, tactile_folder, 'tactile')
+        seg_img = load_data(done_idx, seg_folder, 'seg')
+        depth_img = load_data(done_idx, img_folder, 'img')
+        pcl_obs = load_data(done_idx, pcl_folder, 'pcl')
+        rgb_img = load_data(done_idx, rgb_folder, 'rgb')
+
+        # Main loop to display images
+        for j in tqdm(range(done_idx)):
+            img1, img2, img3 = tactile_img[j][0], tactile_img[j][1], tactile_img[j][2]
+            depth, seg, rgb = depth_img[j], seg_img[j], rgb_img[j].astype(np.uint8)
+            pcl = pcl_obs[j]
+
+            # Update the point cloud in the existing figure
+            ax.plot(pcl[:, 0], pcl[:, 1], pcl[:, 2], 'ko')
+            plt.pause(0.0001)
+            ax.cla()  # Clear the plot for the next point cloud
+
+            # Prepare images for display
+            img = np.concatenate((img1, img2, img3), axis=2)
+            depth_display = np.expand_dims(depth, 0)
+            seg_display = seg_img[j]
+
+            # Display images using OpenCV in the same windows
+            cv2.imshow("Segmentation Image", (depth_display * seg).transpose(1, 2, 0))
+            cv2.imshow("Depth Image", depth_display.transpose(1, 2, 0))
+            cv2.imshow('Tactile Image', img.transpose(1, 2, 0))
+            cv2.imshow('rgb Image', cv2.cvtColor(rgb.transpose(1, 2, 0), cv2.COLOR_RGB2BGR))
+
+            # Exit on keypress
+            key = cv2.waitKey(20)
+            if key == 27:  # Escape key to exit
+                break
+
+        # After displaying the images, clear the figure for the next file
+        ax.clear()
+
+
+    # Prompt user for input to either loop through all files or sample one
+    user_input = 'all' # input("Enter 'all' to loop through all files, or 'sample' to show a single random file: ")
+
+    if user_input == 'all':
+        # Loop through all files, reusing the same figure and windows
+        for path in all_paths:
+            print(f"Displaying data for: {path}")
+            display_data(path)
+
+    elif user_input == 'sample':
+        # Sample one file and display it
+        path = random.sample(all_paths, 1)[0]
+        print(f"Displaying data for: {path}")
+        display_data(path)
+
+    else:
+        print("Invalid input. Please enter 'all' or 'sample'.")
+

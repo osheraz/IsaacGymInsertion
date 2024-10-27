@@ -378,7 +378,7 @@ class DataLoggerSim():
         if save_trajectory:
             self.pbar = tqdm(total=self.total_trajectories)
             self.total_trajectories = total_trajectories
-            self.num_workers = 12
+            self.num_workers = 8
             try:
                 self.q_s = [mp.JoinableQueue(maxsize=episode_length) for _ in range(self.num_workers)]
                 self.workers = [mp.Process(target=self.worker, args=(q, idx)) for idx, q in enumerate(self.q_s)]
@@ -516,7 +516,7 @@ class DataLoggerReal:
 
         if save_trajectory:
             self.pbar = tqdm(total=self.total_trajectories)
-            self.num_workers = 12
+            self.num_workers = 3
             self.manager = mp.Manager()
             self.q_s = [self.manager.Queue(maxsize=episode_length) for _ in range(self.num_workers)]
             self.workers = [mp.Process(target=self.worker, args=(q, idx)) for idx, q in enumerate(self.q_s)]
@@ -558,6 +558,7 @@ class DataLoggerReal:
                 continue
             if value is None:
                 value = torch.zeros((self.num_envs, self.data_shapes[key]), dtype=torch.float32, device=self.device)
+
             self.log_data[key][self.env_ids, self.env_step_counter, ...] = value.clone().unsqueeze(1)
 
         done = kwargs.get('done', None)
@@ -762,7 +763,6 @@ class RealLogger():
 
         self.with_zed = self.env.deploy_config.env.depth_cam
         self.with_pcl = self.env.deploy_config.env.pcl
-
         self.with_tactile = self.env.deploy_config.env.tactile
         self.with_ext_cam = self.env.deploy_config.env.ext_cam
         self.with_hand = self.env.deploy_config.env.hand
@@ -778,16 +778,17 @@ class RealLogger():
             'obs_hist_shape': env.full_config.task.env.numObservations,
             'obs_hist_stud_shape': env.full_config.task.env.numObsStudent,
             'contact_shape': env.full_config.task.env.num_points,
-            'latent_shape': 8,  # env.deploy_config.network.merge_mlp.units[-1],
+            # 'latent_shape': 8,  # env.deploy_config.network.merge_mlp.units[-1],
             'ft_shape': env.ft_data.shape[-1],
             'priv_obs_shape': env.full_config.train.ppo.priv_info_dim,
             'plug_pos_error_shape': POS_SIZE + QUAT_SIZE,
             'plug_pos_shape': POS_SIZE + QUAT_SIZE,
             'plug_hand_pos_shape': POS_SIZE + QUAT_SIZE,
             'img_shape': env.image_buf.shape[1:],
+            'rgb_shape': env.rgb_buf.shape[1:],
             'seg_shape': env.seg_buf.shape[1:],
             'pcl_shape': env.pcl.shape[1:],
-            'tactile_shape': env.tactile_imgs.shape[1:],
+            'tactile_shape': env.tactile_record_imgs.shape[1:],
         }
 
         log_folder = env.deploy_config.data_logger.base_folder
@@ -816,7 +817,7 @@ class RealLogger():
                                       self.env.noisy_gripper_goal_quat.clone()), dim=-1)
 
         ft = self.env.ft_data.clone()
-        priv_obs = self.env.states_buf.clone()
+        # priv_obs = self.env.states_buf.clone()
 
         log_data = {
             'arm_joints': self.env.arm_dof_pos.clone(),
@@ -824,8 +825,8 @@ class RealLogger():
             'socket_pos': socket_pos,
             'noisy_socket_pos': noisy_socket_pos,
             'action': action,
-            'latent': latent,
-            'priv_obs': priv_obs,
+            # 'latent': latent,
+            # 'priv_obs': priv_obs,
             'done': done.squeeze(0),
             'ft': ft
         }
@@ -849,12 +850,13 @@ class RealLogger():
         if self.with_zed:
             log_data.update({
                 'img': self.env.image_buf.clone(),
-                'seg': self.env.seg_buf.clone()
+                'seg': self.env.seg_buf.clone(),
+                'rgb': self.env.rgb_buf.clone()
             })
 
         if self.with_tactile:
             log_data.update({
-                'tactile': self.env.tactile_imgs.clone()
+                'tactile': self.env.tactile_record_imgs.clone()
             })
 
         if self.with_pcl:

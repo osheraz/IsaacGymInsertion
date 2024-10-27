@@ -18,7 +18,7 @@ tactile_display_viz: True
 
 data_logger:
     # for data collection
-    collect_data: False
+    collect_data: True
     total_trajectories: 5
     base_folder: "/home/roblab20/for_paper"
     sub_folder: "datastore_real"
@@ -26,22 +26,23 @@ data_logger:
 # taking from training default, allows to over write
 # actually, we should write different config for each observation we test
 rl:
-    max_episode_length: 1000
+    max_episode_length: 500
 #    pos_action_scale: [0.009, 0.009, 0.004]
 #    rot_action_scale: [0.01, 0.01, 0.01]
-    pos_action_scale: [ 0.007, 0.007, 0.007 ]
-    rot_action_scale: [ 0.01, 0.01, 0.01 ]
+    pos_action_scale: [ 0.01, 0.01, 0.005 ]
+    rot_action_scale: [ 0.02, 0.02, 0.1]
     clamp_rot: ${...task.rl.clamp_rot}
     clamp_rot_thresh: ${...task.rl.clamp_rot_thresh}
 
 env:
+  # can be async to model inputs.
   hand: True
   arm: True
-  depth_cam: False
+  depth_cam: True
   seg: False
   ext_cam: False
-  tactile: False
-  pcl: True
+  tactile: True
+  pcl: True # if true, seg and depth will also be recorded
 
   tactile_seq_length: ${...task.env.tactile_history_len}
   ft_seq_length: ${...task.env.ft_history_len}
@@ -67,8 +68,9 @@ env:
 ppo:
   priv_info: True
 
+  # Inputs to the model
   extrin_adapt: False
-  tactile_info: False
+  tactile_info: True
   pcl_info: True
   obs_info: True
   seg_info: False
@@ -90,5 +92,6 @@ common_poses:
   socket_pos: [0.52858, 0.001704983755619459, 0.001]
 
   joints_above_socket: [-0.01306919673345508, 0.46035625642851, -3.115810324760627, -1.5234410615555438, -0.012022574425053278, -1.1572361716453639, 1.5847205313963213, 0.0]
+#  joints_above_socket: [-0.015, 0.264, -3.116, -1.611, -0.008, -1.266, 1.583]
   joints_above_plug: [-0.4343525190442179, 0.3393440474185589, -3.118461501625801, -1.762369221913092, -0.010365555594806786, -1.0404064904168955, 1.172501677329807]
 

@@ -90,9 +90,9 @@ class ExperimentEnv:
             obs['seg'] = seg
 
         if self.with_pcl:
-            pcl, sync_rgb, sync_depth, sync_seg = self.pcl_gen.get_pcl()
+            pcl, sync_rgb, sync_depth, sync_seg, sync_rec_rgb = self.pcl_gen.get_pcl()
             obs['pcl'] = pcl
-            obs['rgb'] = sync_rgb
+            obs['rgb'] = sync_rec_rgb
             obs['img'] = sync_depth
             obs['seg'] = sync_seg
 
@@ -254,16 +254,16 @@ class ExperimentEnv:
             if with_tracker:
                 obj_pos = self.tracker.get_obj_pos()  # tracker already gives the bottom of the object
                 obj_height = 0  # 0.07
-                init_delta_height = 0.05
+                init_delta_height = 0.08
             else:
                 obj_pos = true_socket_pose
                 obj_pos[-1] += 0.015
                 obj_height = 0  # 0.07
-                init_delta_height = 0.05
+                init_delta_height = 0.1
 
             if not np.isnan(np.sum(obj_pos)):
 
-                rand_add = np.random.uniform(-0.005, 0.005, 2)
+                rand_add = np.random.uniform(-0.01, 0.01, 2)
                 # added delta_x/delta_y to approximately center the object
                 ee_pos[0] = true_socket_pose[0] + (ee_pos[0] - obj_pos[0]) + rand_add[0]
                 ee_pos[1] = true_socket_pose[1] + (ee_pos[1] - obj_pos[1]) + rand_add[1]

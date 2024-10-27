@@ -189,6 +189,7 @@ class Runner:
             self.cfg.tactile_masking_prob
         )
         self.process_tactile = TactileTransform(self.tactile_transform)
+        self.eval_process_tactile = TactileTransform(self.tactile_eval_transform)
 
     def train(self, dl, val_dl, ckpt_path, print_every=50, eval_every=250, test_every=500):
         """

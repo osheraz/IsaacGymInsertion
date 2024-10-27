@@ -235,9 +235,9 @@ class ZedPointCloudSubscriber:
         self.got_socket = False
         self.use_depth = True
         self.use_pcl = not self.use_depth
+        self.last_cloud = None
 
         input_type = 'depth' if self.use_depth else 'pcl'
-        self.last_cloud = None
         self.pcl_gen = PointCloudGenerator(input_type=input_type)
 
         self.first = True
@@ -249,7 +249,7 @@ class ZedPointCloudSubscriber:
             self.pointcloud_socket_pub = PointCloudPublisher(topic='socket')
 
             self.seg = SegCameraSubscriber(with_socket=self.with_socket)
-            # self._check_seg_ready()
+            self._check_seg_ready()
 
         self.pointcloud_pub = PointCloudPublisher(topic='pointcloud')
 
@@ -266,6 +266,9 @@ class ZedPointCloudSubscriber:
             self._check_pointcloud_ready()
 
         self.timer = rospy.Timer(rospy.Duration(0.1), self.timer_callback)
+        self._record_subscriber = rospy.Subscriber('/record/image_raw', Image, self.record_callback, queue_size=1)
+
+        self._check_convert_ready()
 
     def update_plot(self):
 
@@ -314,11 +317,22 @@ class ZedPointCloudSubscriber:
         except Exception as e:
             print(e)
 
+    def record_callback(self, msg):
+        try:
+            rec_frame = image_msg_to_numpy(msg)
+            self.record_frame = cv2.resize(rec_frame, (640, 480), interpolation=cv2.INTER_AREA)
+            # self.process_frame(self.raw_frame)
+        except Exception as e:
+            print(e)
+            return
+
     def to_pcl(self, frame, seg):
 
         if self.with_seg:
             # seg = self.seg.process_frame(self.seg.get_raw_frame())
             # seg = cv2.resize(seg, (640, 360), interpolation=cv2.INTER_NEAREST)
+            if not seg:
+                return
             p_mask, s_mask = seg[0], seg[1]
             if seg is not None:
 
@@ -351,6 +365,8 @@ class ZedPointCloudSubscriber:
 
             cloud_points = self.pcl_gen.convert(frame)
             proc_cloud = self.process_pointcloud(cloud_points)
+            if proc_cloud.shape[0] < 10:
+                return
             # proc_cloud = remove_statistical_outliers(proc_cloud)
             proc_cloud = self.sample_n(proc_cloud, num_sample=400)
             self.pointcloud_pub.publish_pointcloud(proc_cloud)
@@ -365,7 +381,7 @@ class ZedPointCloudSubscriber:
                     self.last_cloud -= socket_mean
 
         except Exception as e:
-            print(e)
+            print(e, 'pcl')
 
         return self.last_cloud
 
@@ -392,7 +408,15 @@ class ZedPointCloudSubscriber:
         print('Waiting for SAM to init')
         while not self.seg.init_success and not rospy.is_shutdown():
             self.init_success &= self.seg.init_success
+            rospy.sleep(0.1)
         print('SAM is ready')
+
+    def _check_convert_ready(self):
+        print('Waiting for depth-to-pcl to init')
+        while self.last_cloud is None and not rospy.is_shutdown():
+            self.init_success &= self.last_cloud is None
+            rospy.sleep(0.1)
+        print('depth-to-pcl is ready')
 
     def _check_pointcloud_ready(self):
         self.last_cloud = None
@@ -482,8 +506,12 @@ class ZedPointCloudSubscriber:
 
         return sampled_points
 
+    def get_record_frame(self):
+        # rospy.wait_for_message('/zedm/zed_node/rgb/image_rect_color')
+        return self.record_frame if not isinstance(self.record_frame, Image) else None
+
     def get_pcl(self):
-        return self.last_cloud, self.sync_rgb, self.sync_depth, self.sync_seg
+        return self.last_cloud, self.sync_rgb, self.sync_depth, self.sync_seg, self.sync_record_rgb
 
     def get_last_depth(self):
 
@@ -491,6 +519,7 @@ class ZedPointCloudSubscriber:
 
     def to_object_pcl(self):
 
+        self.sync_record_rgb = self.get_record_frame()
         self.sync_rgb = self.seg.get_raw_frame()
         sync_depth = self.get_last_depth()
         sync_seg = self.seg.process_frame(self.sync_rgb)
@@ -499,7 +528,6 @@ class ZedPointCloudSubscriber:
         # for records
         self.sync_depth = self.depth_cam.process_depth_image(np.expand_dims(self.last_frame, axis=0))
         self.sync_seg = (sync_seg[0] | sync_seg[1])
-
         # cv2.imshow("Depth Image", self.sync_depth.transpose(1, 2, 0))
         # mask = ((self.sync_seg ==2) | (self.sync_seg == 3)).astype(float)
         # self.mask_3d = np.repeat(mask[:, :, np.newaxis], 3, axis=2)
