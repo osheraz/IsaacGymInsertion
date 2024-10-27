@@ -90,6 +90,7 @@ class Runner:
                         'merge_socket':  self.task_cfg.task.env.merge_socket_pcl,
                         'merge_goal':  self.task_cfg.task.env.merge_goal_pcl,
                         'scene_pcl': self.task_cfg.task.env.include_all_pcl,
+                        'merge_plug': self.task_cfg.task.env.include_plug_pcl,
                         'relative': False
                         }
 

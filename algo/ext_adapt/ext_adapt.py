@@ -434,49 +434,55 @@ class ExtrinsicAdapt(object):
 
         return student_dict
 
-
     def test_log(self, total_steps=1e9, trials_per_noise=10):
         """
         Test the model with varying levels of point cloud noise, run each configuration multiple times,
-        log the average success rates, and plot the results.
+        log and plot the mean and std success rates, and plot the results.
         """
 
-        noise_levels = np.linspace(0.01, 0.05, 5).tolist()
+        noise_levels = np.linspace(0.00, 0.01, 10).tolist()
+
         # Helper: Add noise to point cloud
         def add_noise_to_pcl(pcl, noise_level):
             noise = torch.randn_like(pcl) * noise_level
             return pcl + noise
 
+        # Helper: Save success rates log with mean and std
         def save_success_rate_log(noise_results, log_file):
             timestamp = datetime.now().isoformat()
             data = {'timestamp': timestamp, 'results': noise_results}
             with open(log_file, 'w') as f:
-                yaml.dump(data, f)
+                json.dump(data, f, indent=4)  # Save as JSON
             print(f"Success rate log saved to: {log_file}")
 
-        def plot_success_rate(noise_results, plot_file):
+        # Helper: Plot mean and std success rates
+        def plot_success_rate_with_std(noise_results, plot_file):
             noise_levels = list(noise_results.keys())
-            success_rates = list(noise_results.values())
+            means = [noise_results[noise_level]['mean'] for noise_level in noise_levels]
+            stds = [noise_results[noise_level]['std'] for noise_level in noise_levels]
 
             plt.figure(figsize=(8, 6))
-            plt.plot(noise_levels, success_rates, marker='o', linestyle='-', color='b', label='Average Success Rate')
+            plt.plot(noise_levels, means, marker='o', linestyle='-', color='b', label='Mean Success Rate')
+            plt.fill_between(noise_levels, np.array(means) - np.array(stds), np.array(means) + np.array(stds),
+                             alpha=0.2, label='±1 Std Dev')
+
             plt.xlabel('Noise Level')
-            plt.ylabel('Average Success Rate')
-            plt.title('Average Success Rate vs. Point Cloud Noise')
+            plt.ylabel('Success Rate')
+            plt.title('Success Rate vs. Point Cloud Noise (Mean ±1 Std)')
             plt.grid(True)
             plt.legend()
             plt.savefig(plot_file)
             plt.close()
             print(f"Success rate plot saved to: {plot_file}")
 
-        noise_results = {}  # Store average success rates for each noise level
+        noise_results = {}  # Store mean and std success rates for each noise level
         self.env.reset(reset_at_success=False, reset_at_fails=False)
 
         reset_at_success = False
         for noise_level in noise_levels:
             print(f"Testing with point cloud noise level: {noise_level}")
 
-            success_sum = 0  # Track total success across trials
+            success_rates = []  # Track success rates across trials
 
             for trial in range(trials_per_noise):
                 print(f"Trial {trial + 1} for Noise Level {noise_level}")
@@ -494,9 +500,9 @@ class ExtrinsicAdapt(object):
 
                     # Process observations with noise
                     def process_obs_with_noise(obs):
+                        if obs['pcl'] is not None:
+                            obs['pcl'] = add_noise_to_pcl(obs['pcl'], noise_level)
                         prep_obs = self.process_obs(obs)
-                        if prep_obs['pcl'] is not None:
-                            prep_obs['pcl'] = add_noise_to_pcl(prep_obs['pcl'], noise_level)
                         return prep_obs
 
                     prep_obs = process_obs_with_noise(obs_dict)
@@ -533,31 +539,26 @@ class ExtrinsicAdapt(object):
                         total_dones = len(done.nonzero())
                         success_rate = num_success / total_dones if total_dones > 0 else 0
                         print(f'Success Rate for Trial {trial + 1}: {success_rate}')
+                        success_rates.append(success_rate)
                         break
-                    else:
-                        num_success = self.env.test_reset_buf.sum().item()
-                        total_dones = len(self.env.test_reset_buf)
-                        success_rate = num_success / total_dones
-                        if (steps == self.env.max_episode_length - 1 or success_rate >= 1.0) and reset_at_success:
-                            break
 
-                success_sum += success_rate  # Accumulate success for averaging
+            # Calculate and store the mean and std success rate for this noise level
+            mean_success_rate = np.mean(success_rates)
+            std_success_rate = np.std(success_rates)
+            noise_results[noise_level] = {'mean': mean_success_rate, 'std': std_success_rate}
 
-            # Calculate and store the average success rate for this noise level
-            average_success_rate = success_sum / trials_per_noise
-            noise_results[noise_level] = average_success_rate
-            print(f'Average Success Rate for Noise {noise_level}: {average_success_rate}')
+            print(f'Mean Success Rate for Noise {noise_level}: {mean_success_rate}, Std Dev: {std_success_rate}')
 
         # Define log and plot file paths
-        log_where = '/home/roblab30/osher3_workspace/src/isaacgym/python/IsaacGymInsertion/isaacgyminsertion/outputs/comp'
-        log_file = os.path.join(log_where, f'noise_success_log.yaml')
-        plot_file = os.path.join(log_where, f'noise_success_plot.png')
+        log_where = '/home/roblab30/osher3_workspace/src/isaacgym/python/IsaacGymInsertion/isaacgyminsertion/outputs/new_comp'
+        log_file = os.path.join(log_where, 'noise_success_log.json')  # Save as JSON
+        plot_file = os.path.join(log_where, 'noise_success_plot.png')
 
         # Save results to a log file and generate a plot
         save_success_rate_log(noise_results, log_file)
-        plot_success_rate(noise_results, plot_file)
+        plot_success_rate_with_std(noise_results, plot_file)
 
-        return noise_results, noise_level
+        return noise_results
 
     def test(self, total_steps=1e9):
 

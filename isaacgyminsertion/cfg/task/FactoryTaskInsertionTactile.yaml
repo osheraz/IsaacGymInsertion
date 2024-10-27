@@ -122,6 +122,7 @@ env:
     merge_goal_pcl: False
     merge_socket_pcl: True
     include_all_pcl: False
+    include_plug_pcl: True
     relative_pcl: False
 
     record_video: True

@@ -1,9 +1,9 @@
 #!/bin/bash
 GPUS=${1:-0}
 SEED=${2:-42}
-CACHE=${3:-re_teacher}
+CACHE=${3:-new_re_teacher}
 NUM_ENVS=${4:-10}
-HEADLESS=${5:-False}
+HEADLESS=${5:-True}
 
 
 array=( $@ )
@@ -28,12 +28,12 @@ task.reset_at_fails=True \
 test=True \
 train.algo=ExtrinsicAdapt \
 train.ppo.priv_info=True \
-train.ppo.tactile_info=False \
+train.ppo.tactile_info=True \
 train.ppo.obs_info=True \
 train.ppo.img_info=False \
 train.ppo.seg_info=False \
 train.ppo.pcl_info=True \
-task.env.tactile=False \
+task.env.tactile=True \
 task.external_cam.external_cam=True \
 task.external_cam.depth_cam=False \
 task.external_cam.seg_cam=True \

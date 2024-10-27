@@ -341,11 +341,13 @@ class MultiModalModel(BaseModel):
             num_features += 1
 
         if include_pcl:
-
-            pcl_objects = 1
+            pcl_objects = 0
             self.pcl_encoder = nn.ModuleDict()
-            # self.pcl_encoder['plug_encoder'] = MaskedPointNetEncoder(lin_encoding_size)
-            self.pcl_encoder['plug_encoder'] = PointNet()
+
+            if pcl_conf['merge_plug']:
+                pcl_objects += 1
+                # self.pcl_encoder['plug_encoder'] = MaskedPointNetEncoder(lin_encoding_size)
+                self.pcl_encoder['plug_encoder'] = PointNet()
 
             if pcl_conf['merge_socket']:
                 # self.pcl_encoder['socket_encoder'] = MaskedPointNetEncoder(lin_encoding_size)
@@ -539,10 +541,12 @@ class MultiModalModel(BaseModel):
 
         if self.include_pcl:
             pcl_encoding = []
-            NP = self.pcl_conf['num_sample_plug']
+            NP = 0
+            if self.pcl_conf['merge_plug']:
+                NP += self.pcl_conf['num_sample_plug']
 
-            plug_pcl = obs_pcl[:, :NP].contiguous()
-            pcl_encoding.append(self.pcl_encoder['plug_encoder'](plug_pcl))
+                plug_pcl = obs_pcl[:, :NP].contiguous()
+                pcl_encoding.append(self.pcl_encoder['plug_encoder'](plug_pcl))
 
             if self.pcl_conf['merge_socket']:
                 NH = self.pcl_conf['num_sample_hole']
