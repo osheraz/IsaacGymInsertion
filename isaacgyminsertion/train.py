@@ -1,7 +1,7 @@
 # --------------------------------------------------------
 # Now its my turn.
 # https://arxiv.org/abs/todo.
-# Copyright (c) 2023
+# Copyright (c) 2024
 # Licensed under The MIT License [see LICENSE for details]
 # --------------------------------------------------------
 # --------------------------------------------------------

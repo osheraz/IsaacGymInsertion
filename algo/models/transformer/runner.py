@@ -399,7 +399,8 @@ class Runner:
                     tactile = tactile.reshape(*tactile.shape[:2], self.num_fingers, 1,
                                               self.crop_tactile_width, self.crop_tactile_height)
 
-                tactile = self.process_tactile(tactile).to(self.device)
+                # tactile = self.process_tactile(tactile).to(self.device)
+                tactile = self.eval_process_tactile(tactile).to(self.device)
 
                 if display:
                     tactilet = tactile[0, 0, ...].reshape(self.num_fingers,  self.crop_tactile_width, self.crop_tactile_height).cpu().detach().numpy()

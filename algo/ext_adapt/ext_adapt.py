@@ -1,7 +1,7 @@
 # --------------------------------------------------------
 # now its our turn.
 # https://arxiv.org/abs/todo
-# Copyright (c) 2023 Osher & Co.
+# Copyright (c) 2024 Osher & Co.
 # Licensed under The MIT License [see LICENSE for details]
 # --------------------------------------------------------
 # --------------------------------------------------------

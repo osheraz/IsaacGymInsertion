@@ -1,4 +1,10 @@
 # --------------------------------------------------------
+# TODO
+# https://arxiv.org/abs/todo
+# Copyright (c) 2024 Osher & friends?
+# Licensed under The MIT License [see LICENSE for details]
+# --------------------------------------------------------
+# --------------------------------------------------------
 # In-Hand Object Rotation via Rapid Motor Adaptation
 # https://arxiv.org/abs/2210.04887
 # Copyright (c) 2022 Haozhi Qi

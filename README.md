@@ -1,11 +1,48 @@
-# Isaac Gym Tactile Benchmark Environments
-
-### About this repository
-
-This repository contains example RL environments for the NVIDIA Isaac Gym with AllSight tactile sensor implementation.
+<div align="center">
+<h2>Visoutactile Insertion</h2>
 
 
-### Installation
+<img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="https://opensource.org/license/apache-2-0" />
+<img src="https://img.shields.io/github/last-commit/osheraz/IsaacGymInsertion?style&color=5D6D7E" alt="git-last-commit" />
+
+</div>
+
+---
+
+- [Overview](#overview)
+- [Getting Started](#getting-started)
+    - [Dependencies](#dependencies)
+    - [Installation](#installation)
+- [Usage](#usage)
+    - [Data](#data)
+    - [Train](#train)
+    - [Deploy](#deploy)
+- [License](#license)
+
+
+---
+
+
+## Overview
+
+This repo is a code implementation of the following paper:
+
+---
+
+## Getting Started
+
+#### Dependencies
+
+Project was tested on:
+- ubuntu >=18.04
+- python >= 3.8
+- cuda >=11.7
+- built on ROS melodic\noetic
+  
+
+#### Installation
+
+1. Install IsaacGym:
 
 Download the Isaac Gym Preview 4 release from the [website](https://developer.nvidia.com/isaac-gym), then
 follow the installation instructions in the documentation. 
@@ -15,4 +52,82 @@ Once Isaac Gym is installed and samples work within your current python environm
 ```bash
 pip install -e .
 ```
+
+2. Clone and install this repo:
+```sh
+cd isaacgym/python
+git clone https://github.com/osheraz/IsaacGymInsertion
+cd IsaacGymInsertion && pip install -e .
+```
+
+---
+## Usage
+
+### Brief
+- Train a teacher policy using privliged information with RL
+- Train a student policy using visual and\or tactile information
+- Deploy on real-robot
+
+#### Step 1: Teacher Policy training
+```bash
+cd isaacgyminsertion
+scripts/train_s1.sh
+```
+Evaluate teacher policy:
+```bash
+scripts/eval_s1.sh
+```
+
+#### Step 2: Visuotactile Student distillation
+Modify ```scripts/train_s2.sh``` given which student policy you want to use:
+```
+# for segmented-pcl:
+train.ppo.obs_info=True \ train.ppo.img_info=False \ train.ppo.seg_info=False \ train.ppo.pcl_info=True \ train.ppo.tactile_info=False \ task.env.tactile=False \ task.external_cam.external_cam=True \ task.external_cam.depth_cam=False \ task.external_cam.seg_cam=True \ task.external_cam.pcl_cam=True \```
+```
+```
+# for segmented-depth:
+train.ppo.obs_info=True \ train.ppo.img_info=True \ train.ppo.seg_info=True \ train.ppo.pcl_info=False \ train.ppo.tactile_info=False \ task.env.tactile=False \ task.external_cam.external_cam=True \ task.external_cam.depth_cam=True \ task.external_cam.seg_cam=True \ task.external_cam.pcl_cam=False \```
+```
+```
+# for visualtactile (pcl+tactile):
+train.ppo.obs_info=True \ train.ppo.img_info=False \ train.ppo.seg_info=False \ train.ppo.pcl_info=True \ train.ppo.tactile_info=True \ task.env.tactile=True \ task.external_cam.external_cam=True \ task.external_cam.depth_cam=False \ task.external_cam.seg_cam=True \ task.external_cam.pcl_cam=True \```
+```
+
+Next, train the policy:
+```bash
+scripts/train_s2.sh
+```
+Evaluate with same arguemnts in eval_s2.sh:
+```bash
+scripts/eval_s2.sh
+```
+
+**Note:** All configs, logs, and model weights are saved in a folder within ```outputs/```.
+
+---
+
+## Deploy
+
+see - [deploy_instructions](#https://github.com/osheraz/IsaacGymInsertion/blob/main/algo/deploy/README.md)
+
+
+---
+
+## Acknowledgements (third-party dependencies)
+
+- [isaacgym](https://developer.nvidia.com/isaac-gym)
+- [dexenv](https://github.com/Improbable-AI/dexenv)
+- [visual_wholebody](https://github.com/Ericonaldo/visual_wholebody)
+- [hora](https://github.com/haozhiqi/hora)
+
+---
+
+## License
+
+This repository is licensed under the Apache [License](/LICENSE). Feel free to use, modify, and distribute the code as per the terms of this license.
+
+
+---
+
+[↑ Return](#Top)
 

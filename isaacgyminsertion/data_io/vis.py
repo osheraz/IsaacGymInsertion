@@ -15,7 +15,7 @@ import yaml
 # all_paths = glob('/home/roblab20/tactile_diffusion/datastore_real/*/*/obs/*.npz')
 # all_paths = glob('/home/roblab20/tactile_tests/second/*/*/obs/*.npz')
 # all_paths = glob('/home/osher/tactile_insertion/datastore_42_no_phys_params/*/*/obs/*.npz')
-all_paths = glob('/home/roblab20/for_paper/datastore_real/*/*/obs/*.npz')
+all_paths = glob('/home/roblab20/for_paper/with_video/*/obs/*.npz')
 
 print(len(all_paths))
 
@@ -642,10 +642,11 @@ if True:
             seg_display = seg_img[j]
 
             # Display images using OpenCV in the same windows
-            cv2.imshow("Segmentation Image", (depth_display * seg).transpose(1, 2, 0))
+            cv2.imshow("Segmentation Image", (depth_display * ((seg == 2) | (seg == 3))).transpose(1, 2, 0))
             cv2.imshow("Depth Image", depth_display.transpose(1, 2, 0))
             cv2.imshow('Tactile Image', img.transpose(1, 2, 0))
             cv2.imshow('rgb Image', cv2.cvtColor(rgb.transpose(1, 2, 0), cv2.COLOR_RGB2BGR))
+            # cv2.imshow('rgb Image', rgb.transpose(1, 2, 0))
 
             # Exit on keypress
             key = cv2.waitKey(20)

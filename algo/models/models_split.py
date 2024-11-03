@@ -1,7 +1,7 @@
 # --------------------------------------------------------
 # TODO
 # https://arxiv.org/abs/todo
-# Copyright (c) 2023 Osher & Dhruv & friends?
+# Copyright (c) 2024 Osher & friends?
 # Licensed under The MIT License [see LICENSE for details]
 # --------------------------------------------------------
 # --------------------------------------------------------

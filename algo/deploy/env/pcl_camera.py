@@ -1,82 +1,18 @@
 import rospy
 from sensor_msgs.msg import PointCloud2, CameraInfo, Image
-import numpy as np
 import matplotlib.pyplot as plt
 from algo.deploy.env.env_utils.deploy_utils import image_msg_to_numpy
+from algo.deploy.env.env_utils.pcl_utils import PointCloudPublisher
 
-np.set_printoptions(suppress=True, formatter={'float_kind': '{: .3f}'.format})
 import torch
 import cv2
 from sklearn.neighbors import NearestNeighbors
 import sensor_msgs.point_cloud2 as pc2
 from sensor_msgs.msg import PointCloud2, PointField
-from std_msgs.msg import Header
 import numpy as np
-# from pytorch3d import ops
 from algo.deploy.env.zed_camera import ZedCameraSubscriber
 
-class PointCloudPublisher:
-    def __init__(self, topic='pointcloud'):
-        self.pcl_pub = rospy.Publisher(f'/{topic}', PointCloud2, queue_size=10)
-
-    def publish_pointcloud(self, points):
-        """
-        Publish the point cloud to a ROS topic.
-
-        :param points: numpy array of shape [N, 3] representing the point cloud
-        """
-        header = Header()
-        header.stamp = rospy.Time.now()
-        header.frame_id = 'base_link'  # Set the frame according to your setup
-
-        # Define the PointCloud2 fields (x, y, z)
-        fields = [
-            PointField('x', 0, PointField.FLOAT32, 1),
-            PointField('y', 4, PointField.FLOAT32, 1),
-            PointField('z', 8, PointField.FLOAT32, 1)
-        ]
-
-        # Convert the numpy array to PointCloud2 format
-        cloud_msg = pc2.create_cloud(header, fields, points)
-
-        # Publish the point cloud message
-        self.pcl_pub.publish(cloud_msg)
-
-
-def remove_statistical_outliers(points, k=20, z_thresh=2.0):
-    # Find the k-nearest neighbors for each point
-    nbrs = NearestNeighbors(n_neighbors=k + 1).fit(points)  # k+1 because the point itself is included
-    distances, _ = nbrs.kneighbors(points)
-
-    # Remove the point itself from distance calculation (the first column)
-    mean_distances = np.mean(distances[:, 1:], axis=1)
-
-    # Calculate mean and standard deviation of distances
-    mean = np.mean(mean_distances)
-    std = np.std(mean_distances)
-
-    # Keep points that are within the z_thresh standard deviations
-    inliers = np.where(np.abs(mean_distances - mean) < z_thresh * std)[0]
-
-    return points[inliers]
-
-
-def plot_point_cloud(points):
-    """ Visualize 3D point cloud using Matplotlib """
-    fig = plt.figure()
-    ax = fig.add_subplot(111, projection='3d')
-
-    # Extract x, y, z coordinates from the points
-    x = points[::10, 0]
-    y = points[::10, 1]
-    z = points[::10, 2]
-
-    # Plot the points
-    ax.scatter(x, y, z, c=z, cmap='viridis', marker='.')
-    ax.set_xlabel('X')
-    ax.set_ylabel('Y')
-    ax.set_zlabel('Z')
-    plt.show()
+np.set_printoptions(suppress=True, formatter={'float_kind': '{: .3f}'.format})
 
 
 class PointCloudGenerator:
@@ -91,11 +27,6 @@ class PointCloudGenerator:
                                     [1, -0., 0.0, 0.],
                                     [0., 0.9182, 0.3961, 0.],
                                     [0.0, 0.125, -0.7245, 1.]], dtype=torch.float32).to(device)
-
-        # array([[ 0.    , -0.3961,  0.9182,  0.    ],
-        #        [ 1.    ,  0.    , -0.    ,  0.    ],
-        #        [-0.    ,  0.9182,  0.3961,  0.    ],
-        #        [-0.    ,  0.1383, -0.7245,  1.    ]], dtype=float32)
 
         if camera_info_topic is not None:
             camera_info = rospy.wait_for_message(camera_info_topic, CameraInfo)
@@ -132,15 +63,10 @@ class PointCloudGenerator:
         )
         self.ext_mat = torch.inverse(torch.Tensor(view_matrix)).to(device)
 
-        self.ext_mat = torch.tensor([[-0.00807917,  0.50974899, -0.86028524,  0.73114316],
-                                     [ 0.99961725,  0.02688096,  0.00654023, -0.01966786],
-                                     [ 0.02645917, -0.85990312, -0.50977106,  0.1729284],
+        self.ext_mat = torch.tensor([[-0.00807917, 0.50974899, -0.86028524, 0.73114316],
+                                     [0.99961725, 0.02688096, 0.00654023, -0.01966786],
+                                     [0.02645917, -0.85990312, -0.50977106, 0.1729284],
                                      [0., 0., 0., 1.]], dtype=torch.float32).to(device)
-
-        # [[-0.00807917  0.50974899 -0.86028524  0.73114316]
-        #  [ 0.99961725  0.02688096  0.00654023 -0.01966786]
-        #  [ 0.02645917 -0.85990312 -0.50977106  0.1629284 ]
-        #  [ 0.          0.          0.          1.        ]]
 
         def get_rotation_matrix(roll, pitch, yaw):
             roll, pitch, yaw = torch.tensor(roll), torch.tensor(pitch), torch.tensor(yaw)
@@ -154,10 +80,10 @@ class PointCloudGenerator:
                                dtype=torch.float32)
             return torch.mm(R_z, torch.mm(R_y, R_x))
 
-        roll, pitch, yaw = -0.00, -0.00, 0.0
-        rotation_tilt = get_rotation_matrix(roll, pitch, yaw)
-        new_rot = torch.mm(rotation_tilt, self.ext_mat[:3, :3])
-        self.ext_mat = torch.cat([torch.cat([new_rot, self.ext_mat[:3, 3:]], dim=1), self.ext_mat[3:, :]], dim=0).T
+        # roll, pitch, yaw = 0.00, 0.0, 0.0
+        # rotation_tilt = get_rotation_matrix(roll, pitch, yaw)
+        # new_rot = torch.mm(rotation_tilt, self.ext_mat[:3, :3])
+        # self.ext_mat = torch.cat([torch.cat([new_rot, self.ext_mat[:3, 3:]], dim=1), self.ext_mat[3:, :]], dim=0).T
 
         self.int_mat_T_inv = torch.inverse(self.int_mat.T).to(device)
         self.depth_max = depth_max
@@ -294,17 +220,10 @@ class ZedPointCloudSubscriber:
 
     def get_com(self, pcl):
 
-        # Example point cloud
-
-        # Fit k-nearest neighbors to estimate local density
         nbrs = NearestNeighbors(n_neighbors=10, algorithm='ball_tree').fit(pcl)
         distances, indices = nbrs.kneighbors(pcl)
-
-        # Local density: inverse of the mean distance to the nearest neighbors
         density = np.mean(distances, axis=1)
         weights = 1.0 / density
-
-        # Compute the weighted centroid (center of mass)
         weighted_center = np.average(pcl, axis=0, weights=weights)
 
         return weighted_center
@@ -490,18 +409,12 @@ class ZedPointCloudSubscriber:
         return points
 
     def voxel_grid_sampling(self, points, voxel_size=0.001):
-        # voxel_size is a tuple (voxel_size_x, voxel_size_y, voxel_size_z)
         voxel_size_x = voxel_size
         voxel_size_y = voxel_size
         voxel_size_z = voxel_size
 
-        # Floor the points into voxel bins with different sizes for x, y, and z
         voxel_grid = np.floor(points / np.array([voxel_size_x, voxel_size_y, voxel_size_z])).astype(int)
-
-        # Use np.unique to find unique voxels and get indices
         unique_voxels, indices = np.unique(voxel_grid, axis=0, return_index=True)
-
-        # Select the first point in each voxel
         sampled_points = points[indices]
 
         return sampled_points
@@ -539,6 +452,7 @@ class ZedPointCloudSubscriber:
     def timer_callback(self, event):
         # Called periodically by the timer
         self.to_object_pcl()
+
 
 if __name__ == "__main__":
     rospy.init_node('ZedPointCloudPub')

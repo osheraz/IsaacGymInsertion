@@ -797,7 +797,7 @@ class HardwarePlayer:
         # Apply the action
         if regulize_force:
             ft = torch.tensor(self.env.get_ft(), device=self.device, dtype=torch.float).unsqueeze(0)
-            condition_mask = torch.abs(ft[:, 2]) > 2.5
+            condition_mask = torch.abs(ft[:, 2]) > 3.0
             actions[:, 2] = torch.where(condition_mask, torch.clamp(actions[:, 2], min=0.0), actions[:, 2])
             # actions = torch.where(torch.abs(ft) > 1.5, torch.clamp(actions, min=0.0), actions)
             # print("Error:", np.round(self.plug_pos_error[0].cpu().numpy(), 4))
