@@ -15,7 +15,9 @@
     - [Installation](#installation)
 - [Usage](#usage)
     - [Step 1: Teacher Policy training](#step-1--teacher-policy-training)
-    - [Step 2: Visuotactile Student distillation](#step-2--visuotactile-student-distillation)
+    - [Step 2: Evaluate the teacher policy](#step-2--evaluate-the-teacher-policy)
+    - [Step 3: Visuotactile Student distillation](#step-3--visuotactile-student-distillation)
+    - [Step 4: Step 4: Evaluate the student](#step-4--evaluate-the-student)
     - [Deploy](#deploy)
 - [License](#license)
 
