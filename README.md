@@ -14,8 +14,8 @@
     - [Dependencies](#dependencies)
     - [Installation](#installation)
 - [Usage](#usage)
-    - [Data](#data)
-    - [Train](#train)
+    - [Step 1: Teacher Policy training](#step-1--teacher-policy-training)
+    - [Step 2: Visuotactile Student distillation](#step-2--visuotactile-student-distillation)
     - [Deploy](#deploy)
 - [License](#license)
 
@@ -68,17 +68,19 @@ cd IsaacGymInsertion && pip install -e .
 - Train a student policy using visual and\or tactile information
 - Deploy on real-robot
 
+**Note:** All configs, logs, and model weights are saved in a folder within ```outputs/```.
+
 #### Step 1: Teacher Policy training
 ```bash
 cd isaacgyminsertion
 scripts/train_s1.sh
 ```
-Evaluate teacher policy:
+#### Step 2: Evaluate the teacher policy
 ```bash
 scripts/eval_s1.sh
 ```
 
-#### Step 2: Visuotactile Student distillation
+#### Step 3: Visuotactile Student distillation
 Modify ```scripts/train_s2.sh``` given which student policy you want to use:
 ```
 # for segmented-pcl:
@@ -97,18 +99,17 @@ Next, train the policy:
 ```bash
 scripts/train_s2.sh
 ```
-Evaluate with same arguemnts in eval_s2.sh:
+#### Step 4: Evaluate the student 
+Evaluate with same arguments in eval_s2.sh:
 ```bash
 scripts/eval_s2.sh
 ```
-
-**Note:** All configs, logs, and model weights are saved in a folder within ```outputs/```.
 
 ---
 
 ## Deploy
 
-see - [deploy_instructions](#https://github.com/osheraz/IsaacGymInsertion/blob/main/algo/deploy/README.md)
+See - [deploy_instructions](#https://github.com/osheraz/IsaacGymInsertion/blob/main/algo/deploy/README.md)
 
 
 ---
