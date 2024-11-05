@@ -119,8 +119,8 @@ See - [deploy_instructions](#https://github.com/osheraz/IsaacGymInsertion/blob/m
 ## Acknowledgements (third-party dependencies)
 
 - [isaacgym](https://developer.nvidia.com/isaac-gym)
-- [dexenv](https://github.com/Improbable-AI/dexenv)
-- [visual_wholebody](https://github.com/Ericonaldo/visual_wholebody)
+- [IsaacGymEnvs-Factory](https://github.com/isaac-sim/IsaacGymEnvs)
+- [dexenv](https://github.com/Improbable-AI/dexenv) 
 - [hora](https://github.com/haozhiqi/hora)
 
 ---
