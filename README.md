@@ -13,6 +13,7 @@
   width="80%">
 </div>
 <br>
+
 ```
 @misc{azulay2024visuo,
       title={Visuotactile-Based Learning for Insertion with Compliant Hands}, 
@@ -23,6 +24,9 @@
       primaryClass={cs.RO}
 }
 ```
+
+**Note:** I’ll be updating the code and restructuring the repository soon to provide a cleaner, more organized code base.
+
 
 ---
 
@@ -40,8 +44,6 @@
 
 
 ---
-
-**Note:** I’ll be updating the code and restructuring the repository soon to provide a cleaner, more organized code base
 
 ## Overview
 
@@ -134,7 +136,7 @@ See - [deploy_instructions](https://github.com/osheraz/IsaacGymInsertion/blob/ma
 
 ---
 
-## Acknowledgements (third-party dependencies)
+## Acknowledgements
 
 - [isaacgym](https://developer.nvidia.com/isaac-gym)
 - [IsaacGymEnvs-Factory](https://github.com/isaac-sim/IsaacGymEnvs)
