@@ -6,12 +6,13 @@
 <img src="https://img.shields.io/github/last-commit/osheraz/IsaacGymInsertion?style&color=5D6D7E" alt="git-last-commit" />
 
 </div>
+<br><br>
 
 <div align="center">
   <img src="visoutactile.gif"
   width="80%">
 </div>
-
+<br>
 ```
 @misc{azulay2024visuo,
       title={Visuotactile-Based Learning for Insertion with Compliant Hands}, 
@@ -40,6 +41,7 @@
 
 ---
 
+**Note:** I’ll be updating the code and restructuring the repository soon to provide a cleaner, more organized code base
 
 ## Overview
 
