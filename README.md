@@ -1,11 +1,27 @@
 <div align="center">
-<h2>Visoutactile Insertion</h2>
+<h2>Visuotactile-Based Learning for Insertion with Compliant Hands</h2>
 
 
 <img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="https://opensource.org/license/apache-2-0" />
 <img src="https://img.shields.io/github/last-commit/osheraz/IsaacGymInsertion?style&color=5D6D7E" alt="git-last-commit" />
 
 </div>
+
+<div align="center">
+  <img src="visoutactile.gif"
+  width="80%">
+</div>
+
+```
+@misc{azulay2024visuo,
+      title={Visuotactile-Based Learning for Insertion with Compliant Hands}, 
+      author={Osher Azulay and Dhruv Metha Ramesh and Nimrod Curtis and Avishai Sintov},
+      year={2024},
+      eprint={todo},
+      archivePrefix={arXiv},
+      primaryClass={cs.RO}
+}
+```
 
 ---
 
@@ -111,7 +127,7 @@ scripts/eval_s2.sh
 
 ## Deploy
 
-See - [deploy_instructions](#https://github.com/osheraz/IsaacGymInsertion/blob/main/algo/deploy/README.md)
+See - [deploy_instructions](https://github.com/osheraz/IsaacGymInsertion/blob/main/algo/deploy/README.md)
 
 
 ---

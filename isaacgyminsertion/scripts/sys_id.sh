@@ -17,10 +17,7 @@ python train.py task=FactoryTaskInsertionTactile headless=${HEADLESS} seed=${SEE
 task.env.numEnvs=${NUM_ENVS} \
 task.env.tactile=False \
 task.env.smooth_force=True \
-task.env.numObsHist=5 \
-task.env.numObservations=215 \
 task.env.compute_contact_gt=False \
-task.env.numStates=16 \
 train.algo=PPO \
 train.ppo.priv_info=True \
 train.ppo.extrin_adapt=False \
