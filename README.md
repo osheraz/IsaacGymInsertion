@@ -26,7 +26,7 @@
 }
 ```
 
-**Note:** I’ll be updating the code and restructuring the repository soon to provide a cleaner, more organized code base.
+<span style="color:blue;">**Note:** I’ll be updating the code and restructuring the repository soon to provide a cleaner, more organized code base.</span>
 
 
 ---
