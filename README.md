@@ -15,13 +15,14 @@
 <br>
 
 ```
-@misc{azulay2024visuo,
+@misc{azulay2024visuotactilebasedlearninginsertioncompliant,
       title={Visuotactile-Based Learning for Insertion with Compliant Hands}, 
       author={Osher Azulay and Dhruv Metha Ramesh and Nimrod Curtis and Avishai Sintov},
       year={2024},
-      eprint={todo},
+      eprint={2411.06408},
       archivePrefix={arXiv},
-      primaryClass={cs.RO}
+      primaryClass={cs.RO},
+      url={https://arxiv.org/abs/2411.06408}, 
 }
 ```
 
@@ -47,7 +48,8 @@
 
 ## Overview
 
-This repo is a code implementation of the following paper:
+This repo is a code implementation of the following paper: [Visuotactile-Based Learning for Insertion with Compliant Hands
+](https://arxiv.org/abs/2411.06408). 
 
 ---
 
