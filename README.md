@@ -94,6 +94,26 @@ cd IsaacGymInsertion && pip install -e .
 
 **Note:** All configs, logs, and model weights are saved in a folder within ```outputs/```.
 
+As noted before, this repository includes implementations for tactile sensing (built on top of [TACTO](https://github.com/facebookresearch/tacto/tree/main)) and point cloud observation.
+
+To visualize each input, refer to the `cfg/task/FactoryTaskInsertionTactile.yaml` file and set `True` for each input you would like to enable.
+
+To visualize tactile inputs, set the following parameters:
+```
+tactile=True  
+tactile_display_viz=True
+```
+You can adjust the tactile parameters in the file `allsight\conf\sensor\config_allsight_white.yml`.
+
+To visualize depth, point cloud, or masks, set the following parameters:
+```
+external_cam=True  
+pcl_cam\depth_cam\seg_cam=True 
+display=True
+```
+
+### Training
+
 #### Step 1: Teacher Policy training
 ```bash
 cd isaacgyminsertion
