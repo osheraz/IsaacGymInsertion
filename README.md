@@ -26,7 +26,7 @@
 }
 ```
 
-This repository provides the official implementation of [Visuotactile-Based Learning for Insertion with Compliant Hands]([https://developer.nvidia.com/isaac-gym](https://osheraz.github.io/visuotactile/) .
+This repository provides the official implementation of [Visuotactile-Based Learning for Insertion with Compliant Hands](https://osheraz.github.io/visuotactile/) .
 
 
 <span style="color:blue;">**Note:** I’ll be updating the code and restructuring the repository soon to provide a cleaner, more organized code base.</span>
