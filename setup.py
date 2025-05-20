@@ -22,6 +22,21 @@ INSTALL_REQUIRES = [
     "hydra-core>=1.1",
     "rl-games>=1.6.0",
     "pyvirtualdisplay",
+    "matplotlib",
+    "numpy==1.23.5",
+    "scipy",
+    "opencv-python",
+    "trimesh",
+    "imageio",
+    "deepdish",
+    "efficientnet-pytorch",
+    "hyperopt",
+    "wandb",
+    "tensorboard",
+    "pytorch3d",
+    "pyrender",
+    "open3d",
+    "warmup_scheduler"
     ]
 
 

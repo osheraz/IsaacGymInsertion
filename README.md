@@ -79,7 +79,13 @@ Project was tested on:
 
 #### Installation
 
-1. Install IsaacGym:
+1. First, Create Mamba-Forge environment:
+    ```bash
+    mamba create -n insertion python=3.8
+    mamba activate insertion
+    ```
+
+2. Install IsaacGym:
 
     Download the Isaac Gym Preview 4 release from the [website](https://developer.nvidia.com/isaac-gym), then
     follow the installation instructions in the documentation. 
@@ -90,7 +96,7 @@ Project was tested on:
     pip install -e .
     ```
 
-2. Clone and install this repo:
+3. Clone and install this repo:
     ```sh
     cd isaacgym/python
     git clone https://github.com/osheraz/IsaacGymInsertion
