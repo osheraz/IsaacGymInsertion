@@ -45,6 +45,20 @@
 
 ---
 
+### Tactile Rendering in IsaacGym
+
+> **Built on top of** [TACTO](https://github.com/facebookresearch/tacto)  
+> This project extends `allsight_sim` by integrating support for round-shaped tactile rendering for IsaacGym. > For more information about the base simulation framework of the tactile images, please refer to the original [allsight_sim](https://github.com/osheraz/allsight_sim) project.
+
+
+<div align="center">
+  <img src="tactile.gif"
+  width="80%">
+</div>
+<br>
+
+--- 
+
 ## Overview
 
 This repository provides the official implementation of [Visuotactile-Based Learning for Insertion with Compliant Hands](https://osheraz.github.io/visuotactile/).
@@ -52,6 +66,7 @@ This repository provides the official implementation of [Visuotactile-Based Lear
 ---
 
 ## Getting Started
+
 
 #### Dependencies
 
@@ -84,18 +99,6 @@ Project was tested on:
 
 ---
 ## Usage
-
-### Round shape tactile rendering in IsaacGym
-
-</div>
-<br><br>
-
-<div align="center">
-  <img src="tactile.gif"
-  width="80%">
-</div>
-<br>
-
 
 ### Brief
 - Train a teacher policy using privliged information with RL
