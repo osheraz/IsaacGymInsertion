@@ -15,21 +15,17 @@
 <br>
 
 ```
-@misc{azulay2024visuotactilebasedlearninginsertioncompliant,
-      title={Visuotactile-Based Learning for Insertion with Compliant Hands}, 
-      author={Osher Azulay and Dhruv Metha Ramesh and Nimrod Curtis and Avishai Sintov},
-      year={2024},
-      eprint={2411.06408},
-      archivePrefix={arXiv},
-      primaryClass={cs.RO},
-      url={https://arxiv.org/abs/2411.06408}, 
+@article{azulay2025visuotactile,
+  title={Visuotactile-Based Learning for Insertion With Compliant Hands},
+  author={Azulay, Osher and Ramesh, Dhruv Metha and Curtis, Nimrod and Sintov, Avishai},
+  journal={IEEE Robotics and Automation Letters},
+  volume={10},
+  number={4},
+  pages={4053--4060},
+  year={2025},
+  publisher={IEEE}
 }
 ```
-
-This repository provides the official implementation of [Visuotactile-Based Learning for Insertion with Compliant Hands](https://osheraz.github.io/visuotactile/) .
-
-
-<span style="color:blue;">**Note:** I’ll be updating the code and restructuring the repository soon to provide a cleaner, more organized code base.</span>
 
 
 ---
@@ -51,8 +47,7 @@ This repository provides the official implementation of [Visuotactile-Based Lear
 
 ## Overview
 
-This repo is a code implementation of the following paper: [Visuotactile-Based Learning for Insertion with Compliant Hands
-](https://arxiv.org/abs/2411.06408). 
+This repository provides the official implementation of [Visuotactile-Based Learning for Insertion with Compliant Hands](https://osheraz.github.io/visuotactile/).
 
 ---
 
@@ -71,24 +66,36 @@ Project was tested on:
 
 1. Install IsaacGym:
 
-Download the Isaac Gym Preview 4 release from the [website](https://developer.nvidia.com/isaac-gym), then
-follow the installation instructions in the documentation. 
+    Download the Isaac Gym Preview 4 release from the [website](https://developer.nvidia.com/isaac-gym), then
+    follow the installation instructions in the documentation. 
 
-Once Isaac Gym is installed and samples work within your current python environment, install this repo:
+    Once Isaac Gym is installed and samples work within your current python environment, install this repo:
 
-```bash
-pip install -e .
-```
+    ```bash
+    pip install -e .
+    ```
 
 2. Clone and install this repo:
-```sh
-cd isaacgym/python
-git clone https://github.com/osheraz/IsaacGymInsertion
-cd IsaacGymInsertion && pip install -e .
-```
+    ```sh
+    cd isaacgym/python
+    git clone https://github.com/osheraz/IsaacGymInsertion
+    cd IsaacGymInsertion && pip install -e .
+    ```
 
 ---
 ## Usage
+
+### Round shape tactile rendering in IsaacGym
+
+</div>
+<br><br>
+
+<div align="center">
+  <img src="tactile.gif"
+  width="80%">
+</div>
+<br>
+
 
 ### Brief
 - Train a teacher policy using privliged information with RL
